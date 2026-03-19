@@ -207,6 +207,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
   <div class="hdr-right">
     <div class="demo-badge" id="demo-badge">⚠ Demo Data</div>
     <button class="load-btn" onclick="document.getElementById('json-loader').click()">↑ Load model_stats.json</button>
+    <a href="../index.html" style="font-size:12px;color:var(--text-sub);text-decoration:none;padding:4px 10px;border:1px solid var(--border);border-radius:6px;transition:color .15s,border-color .15s" onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--border-mid)'" onmouseout="this.style.color='var(--text-sub)';this.style.borderColor='var(--border)'">← Hub</a>
     <button class="theme-toggle" id="theme-toggle" title="Toggle theme">🌙</button>
   </div>
 </header>
@@ -363,11 +364,11 @@ function applyTheme(dark){
   isDark = dark;
   html.setAttribute('data-theme', dark ? 'dark' : 'light');
   themeBtn.textContent = dark ? '🌙' : '☀️';
-  localStorage.setItem('sm-theme', dark ? 'dark' : 'light');
+  localStorage.setItem('hub-theme', dark ? 'dark' : 'light');
   setTimeout(() => renderActive(), 50);
 }
 themeBtn.addEventListener('click', () => applyTheme(!isDark));
-if (localStorage.getItem('sm-theme') === 'light') applyTheme(false);
+if (localStorage.getItem('hub-theme') === 'light') applyTheme(false);
 
 // ── CHART COLOR HELPERS ────────────────────────────────────────────────────
 const C = () => ({

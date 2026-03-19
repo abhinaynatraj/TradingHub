@@ -732,6 +732,18 @@ const PROJECTS = [
     stats:    null,
   },
   {
+    id:       'candle',
+    title:    'Candle Profiler',
+    subtitle: 'NQ · ES Candle Probability Engine',
+    desc:     'Computes forward-looking candle sequence probabilities across NQ and ES 1-minute data. Given the current candle classification (bull/bear), shows the probability distribution for the next candle\'s high, low, close, and directional outcome (C3 bull %).',
+    json:     'CandleScience/candle_probs.json',
+    link:     'CandleScience/index.html',
+    color:    '#f59e0b',
+    icon:     '📊',
+    type:     'candle',
+    stats:    null,
+  },
+  {
     id:       'ny1',
     title:    'NY1 F.P.FVG',
     subtitle: 'First Presented FVG · 9:31–10:00 ET',
@@ -789,6 +801,23 @@ async function loadStats(project) {
         label2: 'EV',       val2: sgn(o.ev), cls2: o.ev > 0 ? 'pos' : 'neg',
         label3: 'Trades',   val3: num(d.meta?.total_resolved), cls3: 'neutral',
         dateRange: d.meta?.table ? `${d.meta.table} · HTF ${d.meta.htf_min}min` : '—',
+      };
+    }
+
+    if (project.type === 'candle') {
+      const nq = d.NQ || {};
+      const probs = nq.probs || {};
+      const all = probs.all || {};
+      const bullBull = probs.bull_bull || {};
+      const totalN = all.n || 0;
+      const bbCont = bullBull.c3?.c3_bull ?? null;
+      const generated = d.generated ? d.generated.slice(0, 10) : '—';
+      return {
+        label1: 'NQ Samples', val1: num(totalN),           cls1: 'neutral',
+        label2: 'Bull↑↑ C3', val2: bbCont != null ? bbCont.toFixed(1) + '%' : '—',
+                              cls2: bbCont >= 55 ? 'pos' : bbCont <= 45 ? 'neg' : '',
+        label3: 'Symbols',    val3: 'NQ · ES',             cls3: 'neutral',
+        dateRange: `Updated ${generated}`,
       };
     }
 

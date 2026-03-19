@@ -3036,7 +3036,7 @@ function WarGamePanel({ data, T, instrument, c1, c2, c3Bull, maePerc }) {
 }
 
 function App() {
-  const [dark,       setDark]       = useState(true);
+  const [dark,       setDark]       = useState(() => localStorage.getItem('hub-theme') !== 'light');
   const [allData,    setAllData]    = useState(null);
   const [error,      setError]      = useState(null);
   const [instrument, setInstrument] = useState("NQ");
@@ -3268,7 +3268,8 @@ function App() {
             </div>
             {isDirty&&<button onClick={onReset} style={{fontSize:9,color:T.textMuted,background:T.bgBtn,border:`1px solid ${T.border}`,borderRadius:5,padding:"3px 8px",cursor:"pointer"}}>RESET</button>}
             <button onClick={onUpdate} disabled={updating} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:updating?T.textDim:T.textMuted,background:T.bgBtn,border:`1px solid ${updating?T.borderSel:T.border}`,borderRadius:20,padding:"4px 10px",cursor:updating?"default":"pointer",transition:"all 0.2s",opacity:updating?.7:1}}>{updating?"⟳ Updating…":"⟳ Update"}</button>
-            <button onClick={()=>setDark(d=>!d)} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:T.textMuted,background:T.bgBtn,border:`1px solid ${T.border}`,borderRadius:20,padding:"4px 10px",cursor:"pointer",transition:"all 0.2s"}}>{dark?"☀ Light":"☾ Dark"}</button>
+            <a href="../index.html" style={{fontSize:11,color:T.textMuted,textDecoration:"none",display:"flex",alignItems:"center",gap:5,background:T.bgBtn,border:`1px solid ${T.border}`,borderRadius:20,padding:"4px 10px",transition:"all 0.2s"}}>← Hub</a>
+            <button onClick={()=>setDark(d=>{ const next=!d; localStorage.setItem('hub-theme',next?'dark':'light'); return next; })} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:T.textMuted,background:T.bgBtn,border:`1px solid ${T.border}`,borderRadius:20,padding:"4px 10px",cursor:"pointer",transition:"all 0.2s"}}>{dark?"☀ Light":"☾ Dark"}</button>
           </div>
         </div>
         <div style={{marginTop:4,fontSize:9,color:error?T.red:allData?"#2e7d32":T.textDim}}>
