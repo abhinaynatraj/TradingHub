@@ -6,14 +6,14 @@
 <title>NY1 F.P.FVG · NQ Futures Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=IBM+Plex+Mono:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
 :root{
-  --font-display:'Syne',sans-serif;
-  --font-data:'JetBrains Mono',monospace;
-  --font-body:'DM Sans',sans-serif;
+  --font-display:'Plus Jakarta Sans',sans-serif;
+  --font-data:'IBM Plex Mono',monospace;
+  --font-body:'Inter',sans-serif;
   --ease:cubic-bezier(0.16,1,0.3,1);
 }
 
@@ -59,9 +59,28 @@ nav{
   background:var(--nav-bg);border-bottom:1px solid var(--border);
   backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
   height:60px;display:flex;align-items:center;
-  padding:0 32px;gap:32px;
+  padding:0 32px;gap:20px;
   box-shadow:var(--shadow);
 }
+.hub-back{
+  display:flex;align-items:center;gap:8px;
+  text-decoration:none;flex-shrink:0;
+  padding:6px 10px 6px 6px;border-radius:8px;
+  transition:background .15s;
+}
+.hub-back:hover{background:var(--border);}
+.hub-back-arrow{
+  font-size:13px;color:var(--faint);
+  transition:color .15s,transform .15s;
+}
+.hub-back:hover .hub-back-arrow{color:var(--text);transform:translateX(-2px);}
+.hub-wordmark{
+  font-family:var(--font-display);font-size:14px;font-weight:800;
+  letter-spacing:-0.02em;color:var(--subtle);line-height:1;
+}
+.hub-wordmark em{color:var(--blue);font-style:normal;}
+.hub-back:hover .hub-wordmark{color:var(--text);}
+.nav-divider{width:1px;height:24px;background:var(--border);flex-shrink:0;}
 .nav-logo{
   font-family:var(--font-display);font-size:20px;font-weight:800;
   letter-spacing:-0.03em;color:var(--text);
@@ -77,6 +96,19 @@ nav{
 }
 .nav-link:hover,.nav-link.active{color:var(--text);background:var(--border);}
 .nav-link.active{color:var(--text);}
+.model-select{
+  display:flex;align-items:center;gap:2px;
+  background:var(--card);border:1px solid var(--border);
+  border-radius:8px;padding:2px;margin-left:auto;flex-shrink:0;
+}
+.model-opt{
+  font-family:var(--font-body);font-size:12px;font-weight:500;
+  color:var(--subtle);padding:5px 12px;border-radius:6px;
+  cursor:pointer;border:none;background:none;
+  transition:color .15s,background .15s;white-space:nowrap;
+}
+.model-opt:hover{color:var(--text);}
+.model-opt.active{background:var(--border);color:var(--text);}
 .theme-btn{
   width:36px;height:36px;border-radius:8px;
   border:1px solid var(--border);background:var(--card);
@@ -98,8 +130,8 @@ main{max-width:1340px;margin:0 auto;padding:40px 28px 100px;}
 /* HERO */
 .hero{margin-bottom:48px;}
 .hero-eyebrow{
-  font-family:var(--font-data);font-size:10px;font-weight:500;
-  letter-spacing:0.18em;text-transform:uppercase;color:var(--cyan);
+  font-family:var(--font-data);font-size:11px;font-weight:500;
+  letter-spacing:0.06em;text-transform:uppercase;color:var(--cyan);
   margin-bottom:10px;
 }
 .hero-title{
@@ -133,8 +165,8 @@ main{max-width:1340px;margin:0 auto;padding:40px 28px 100px;}
 }
 .stat-tile-bar{position:absolute;top:0;left:0;right:0;height:3px;border-radius:14px 14px 0 0;}
 .stat-lbl{
-  font-family:var(--font-data);font-size:9px;font-weight:500;
-  letter-spacing:0.16em;text-transform:uppercase;color:var(--faint);
+  font-family:var(--font-data);font-size:11px;font-weight:500;
+  letter-spacing:0.04em;text-transform:uppercase;color:var(--faint);
   margin-bottom:10px;
 }
 .stat-val{
@@ -147,7 +179,7 @@ main{max-width:1340px;margin:0 auto;padding:40px 28px 100px;}
 .stat-val.amber{color:var(--amber);}
 .stat-val.cyan{color:var(--cyan);}
 .stat-val.neutral{color:var(--text);}
-.stat-hint{font-family:var(--font-data);font-size:9px;color:var(--faint);line-height:1.5;}
+.stat-hint{font-family:var(--font-data);font-size:11px;color:var(--faint);line-height:1.5;}
 
 /* SECTION HEADERS */
 .sec-head{
@@ -155,14 +187,14 @@ main{max-width:1340px;margin:0 auto;padding:40px 28px 100px;}
   margin:52px 0 22px;
 }
 .sec-label{
-  font-family:var(--font-display);font-size:10px;font-weight:800;
-  letter-spacing:0.25em;text-transform:uppercase;color:var(--subtle);
+  font-family:var(--font-display);font-size:11px;font-weight:700;
+  letter-spacing:0.06em;text-transform:uppercase;color:var(--subtle);
   white-space:nowrap;
 }
 .sec-line{flex:1;height:1px;background:var(--border);}
 .sec-pill{
-  font-family:var(--font-data);font-size:9px;font-weight:500;
-  letter-spacing:0.1em;text-transform:uppercase;
+  font-family:var(--font-data);font-size:11px;font-weight:500;
+  letter-spacing:0.04em;text-transform:uppercase;
   padding:4px 12px;border-radius:20px;
   background:var(--card);border:1px solid var(--border);color:var(--faint);
 }
@@ -193,7 +225,7 @@ main{max-width:1340px;margin:0 auto;padding:40px 28px 100px;}
 .how-body strong{color:var(--text);font-weight:500;}
 .how-tag{
   display:inline-block;font-family:var(--font-data);
-  font-size:9px;font-weight:500;letter-spacing:0.1em;
+  font-size:11px;font-weight:500;letter-spacing:0.04em;
   padding:3px 8px;border-radius:4px;margin-top:12px;
   text-transform:uppercase;
 }
@@ -214,8 +246,8 @@ main{max-width:1340px;margin:0 auto;padding:40px 28px 100px;}
   display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;
 }
 .panel-title{
-  font-family:var(--font-display);font-size:11px;font-weight:700;
-  letter-spacing:0.16em;text-transform:uppercase;color:var(--text);
+  font-family:var(--font-display);font-size:12px;font-weight:700;
+  letter-spacing:0.04em;text-transform:uppercase;color:var(--text);
 }
 .panel-note{font-family:var(--font-data);font-size:10px;color:var(--faint);}
 .panel-body{padding:20px;}
@@ -234,26 +266,29 @@ canvas{display:block;width:100%;}
 }
 .dir-card:hover{box-shadow:var(--shadow-lg);}
 .dir-label{
-  font-family:var(--font-display);font-size:11px;font-weight:700;
-  letter-spacing:0.14em;text-transform:uppercase;margin-bottom:14px;
+  font-family:var(--font-display);font-size:12px;font-weight:700;
+  letter-spacing:0.04em;text-transform:uppercase;margin-bottom:14px;
   display:flex;align-items:center;gap:8px;
 }
 .dir-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
 .dir-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
-.dir-stat-lbl{font-family:var(--font-data);font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--faint);margin-bottom:4px;}
+.dir-stat-lbl{font-family:var(--font-data);font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:var(--faint);margin-bottom:4px;}
 .dir-stat-val{font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-0.02em;line-height:1;}
 
 /* YEAR TABLE */
-.yr-table{width:100%;border-collapse:collapse;}
+.yr-table-wrap{overflow-x:auto;}
+.yr-table{width:100%;border-collapse:collapse;min-width:560px;}
 .yr-table th{
-  font-family:var(--font-data);font-size:9px;font-weight:600;
-  letter-spacing:0.12em;text-transform:uppercase;color:var(--faint);
-  padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);
+  font-family:var(--font-data);font-size:10px;font-weight:600;
+  letter-spacing:0.04em;text-transform:uppercase;color:var(--faint);
+  padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);
+  white-space:nowrap;
 }
 .yr-table th:not(:first-child){text-align:right;}
 .yr-table td{
-  font-family:var(--font-data);font-size:12px;
-  padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text);
+  font-family:var(--font-data);font-size:11px;
+  padding:9px 12px;border-bottom:1px solid var(--border);color:var(--text);
+  white-space:nowrap;
 }
 .yr-table td:not(:first-child){text-align:right;}
 .yr-table tr:last-child td{border-bottom:none;}
@@ -265,8 +300,8 @@ canvas{display:block;width:100%;}
 .trades-wrap{overflow-x:auto;}
 .trades-table{width:100%;border-collapse:collapse;min-width:800px;}
 .trades-table th{
-  font-family:var(--font-data);font-size:9px;font-weight:600;
-  letter-spacing:0.12em;text-transform:uppercase;color:var(--faint);
+  font-family:var(--font-data);font-size:11px;font-weight:600;
+  letter-spacing:0.04em;text-transform:uppercase;color:var(--faint);
   padding:10px 12px;text-align:left;border-bottom:1px solid var(--border);
   background:var(--card-alt);cursor:pointer;user-select:none;white-space:nowrap;
 }
@@ -281,7 +316,7 @@ canvas{display:block;width:100%;}
 .trades-table tr:last-child td{border-bottom:none;}
 .trades-table tbody tr:hover td{background:var(--card-alt);color:var(--text);}
 .badge{
-  display:inline-block;font-size:9px;font-weight:600;letter-spacing:0.08em;
+  display:inline-block;font-size:11px;font-weight:600;letter-spacing:0.04em;
   padding:2px 8px;border-radius:4px;text-transform:uppercase;
 }
 .badge-long{background:rgba(96,165,250,0.15);color:var(--blue);border:1px solid rgba(96,165,250,0.3);}
@@ -297,6 +332,26 @@ canvas{display:block;width:100%;}
 .chart-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
 @media(max-width:700px){.chart-row{grid-template-columns:1fr;}}
 
+/* MODEL COMPARISON TABLE */
+.model-comp-table{width:100%;border-collapse:collapse;}
+.model-comp-table th{
+  font-family:var(--font-data);font-size:11px;font-weight:600;
+  letter-spacing:0.04em;text-transform:uppercase;color:var(--faint);
+  padding:10px 16px;text-align:left;border-bottom:1px solid var(--border);
+  background:var(--card-alt);
+}
+.model-comp-table th:not(:first-child){text-align:right;}
+.model-comp-table td{
+  font-family:var(--font-data);font-size:12px;
+  padding:10px 16px;border-bottom:1px solid var(--border);color:var(--subtle);
+}
+.model-comp-table td:not(:first-child){text-align:right;}
+.model-comp-table td.comp-metric{
+  font-family:var(--font-body);font-size:12px;font-weight:500;color:var(--text);
+}
+.model-comp-table tr:last-child td{border-bottom:none;}
+.model-comp-table tr:hover td{background:var(--card-alt);}
+
 /* FOOTER */
 footer{
   border-top:1px solid var(--border);
@@ -309,13 +364,22 @@ footer{
 <body>
 
 <nav>
+  <a class="hub-back" href="../index.html">
+    <span class="hub-back-arrow">←</span>
+    <span class="hub-wordmark">Kingline<em>Wolfpack</em></span>
+  </a>
+  <div class="nav-divider"></div>
   <div class="nav-logo">NY1<span>°</span></div>
   <div class="nav-links">
     <a class="nav-link active" href="#overview" onclick="smoothNav(event,'overview')">Overview</a>
     <a class="nav-link" href="#performance" onclick="smoothNav(event,'performance')">Performance</a>
     <a class="nav-link" href="#trades" onclick="smoothNav(event,'trades')">Trades</a>
+    <a class="nav-link" href="#comparison" onclick="smoothNav(event,'comparison')">Compare</a>
   </div>
-  <a href="../index.html" style="font-size:12px;color:var(--text-sub);text-decoration:none;padding:4px 10px;border:1px solid var(--border);border-radius:6px;transition:color .15s,border-color .15s" onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--border-mid)'" onmouseout="this.style.color='var(--text-sub)';this.style.borderColor='var(--border)'">← Hub</a>
+  <div class="model-select">
+    <button class="model-opt" data-model="cashflow" onclick="switchModel('cashflow')">Cashflow</button>
+    <button class="model-opt active" data-model="cashflow_extended" onclick="switchModel('cashflow_extended')">Cashflow + Extended</button>
+  </div>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">☀</button>
 </nav>
 
@@ -329,7 +393,7 @@ footer{
       <h1 class="hero-title">NY1 <span>F.P.FVG</span></h1>
       <p class="hero-sub">First Presented Fair Value Gap · 1-Minute Data · 11 Years</p>
       <div class="stats-grid" id="heroStats"></div>
-      <div class="stats-grid" style="margin-top:14px;grid-template-columns:repeat(5,1fr)" id="riskStatsGrid"></div>
+      <div class="stats-grid" style="margin-top:14px;grid-template-columns:repeat(4,1fr)" id="riskStatsGrid"></div>
     </section>
 
     <!-- HOW IT WORKS -->
@@ -413,7 +477,7 @@ footer{
         <span class="panel-note">Win Rate · Trades · Avg MAE · Avg MFE1 · Avg MFE2</span>
       </div>
       <div class="panel-body tight">
-        <canvas id="cvQuarter" height="260"></canvas>
+        <canvas id="cvQuarter"></canvas>
       </div>
     </div>
 
@@ -422,10 +486,12 @@ footer{
       <div class="panel">
         <div class="panel-hd">
           <span class="panel-title">Performance by Year</span>
-          <span class="panel-note">TP1 win rate + avg combined R</span>
+          <span class="panel-note">TP1 win rate · MAE · MFE by year</span>
         </div>
         <div class="panel-body" style="padding:0">
+          <div class="yr-table-wrap">
           <table class="yr-table" id="yrTable"></table>
+          </div>
         </div>
       </div>
       <div class="panel">
@@ -457,6 +523,10 @@ footer{
       </div>
     </div>
 
+    <!-- MODEL COMPARISON -->
+    <div id="comparison"></div>
+    <div id="compSection"></div>
+
   </div><!-- #app -->
 </main>
 
@@ -481,7 +551,7 @@ function toggleTheme() {
 // Re-render charts when theme changes
 let _data = null;
 const themeObserver = new MutationObserver(() => {
-  if (_data) renderCharts(_data);
+  if (_data) renderCharts(_data[_activeModel]);
 });
 themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
@@ -535,16 +605,27 @@ function wrColorBars(wr) {
 function pct(v, dp = 1) { return (v * 100).toFixed(dp) + '%'; }
 function rnd(v, dp = 2) { return v >= 0 ? '+' + v.toFixed(dp) : v.toFixed(dp); }
 
+// ─── MODEL SELECTION ─────────────────────────────────────────────────────────
+let _activeModel = 'cashflow_extended';
+
+function switchModel(key) {
+  _activeModel = key;
+  document.querySelectorAll('.model-opt').forEach(el => {
+    el.classList.toggle('active', el.dataset.model === key);
+  });
+  if (_data) renderAll(_data[key]);
+}
+
 // ─── LOAD DATA ───────────────────────────────────────────────────────────────
 async function loadData() {
   try {
     const r = await fetch('./ny1_results.json');
     if (!r.ok) throw new Error(r.status);
-    const d = await r.json();
-    _data = d;
+    const raw = await r.json();
+    _data = raw;
     document.getElementById('loading').style.display = 'none';
     document.getElementById('app').style.display = '';
-    renderAll(d);
+    renderAll(_data[_activeModel]);
   } catch (e) {
     document.getElementById('loading').innerHTML =
       '<span style="color:var(--red)">&#9888; Could not load ny1_results.json — run python3 ny1_backtest.py first</span>';
@@ -559,6 +640,7 @@ function renderAll(d) {
   renderCharts(d);
   renderYearTable(d.by_year);
   renderTradesTable(d.recent_trades || d.trades);
+  renderComparison();
   // update pills
   document.getElementById('perfPill').textContent = d.meta.n + ' resolved trades';
   document.getElementById('tradesNote').textContent = 'Most recent 40 of ' + d.meta.n + ' resolved';
@@ -572,6 +654,16 @@ function renderHero(meta, rs) {
   const avgMae    = meta.avg_mae_pct;
   rs = rs || {};
 
+  const isExt    = _activeModel === 'cashflow_extended';
+  const avgMfe2  = meta.avg_mfe2_pct;
+  const avgR     = meta.avg_r;
+  const mfeStat  = isExt
+    ? { lbl: 'Avg MFE2', val: avgMfe2 != null ? avgMfe2.toFixed(4) + '%' : '—',
+        cls: 'cyan', hint: 'Avg runner max favorable (extended)', bar: cssVar('--cyan') }
+    : { lbl: 'Avg R',    val: avgR    != null ? avgR.toFixed(4) + 'R'   : '—',
+        cls: avgR >= 0 ? 'green' : 'red',
+        hint: 'Avg combined R per trade (cashflow)', bar: avgR >= 0 ? cssVar('--green') : cssVar('--red') };
+
   const primary = [
     { lbl: 'Total Trades',  val: meta.n.toLocaleString(), cls: 'neutral',
       hint: meta.date_range, bar: cssVar('--blue') },
@@ -582,22 +674,16 @@ function renderHero(meta, rs) {
     { lbl: 'Avg MAE',
       val: avgMae != null ? avgMae.toFixed(4) + '%' : '—',
       cls: 'amber', hint: 'Avg stop distance from entry', bar: cssVar('--amber') },
+    mfeStat,
     { lbl: 'Sharpe Ratio',
       val: rs.sharpe != null ? rs.sharpe.toFixed(3) : '—',
       cls: rs.sharpe > 0 ? 'green' : rs.sharpe < 0 ? 'red' : 'neutral',
       hint: 'Annualised per-trade R', bar: cssVar('--purple') },
     { lbl: 'Fill Rate', val: pct(fillRate), cls: 'cyan',
       hint: meta.total_filled + ' / ' + meta.total_setups + ' setups', bar: cssVar('--cyan') },
-    { lbl: 'Setup Rate', val: pct(setupRate), cls: 'neutral',
-      hint: meta.total_setups + ' / ' + meta.trading_days + ' days', bar: cssVar('--subtle') },
   ];
 
   const risk = [
-    { lbl: 'Risk of Ruin',
-      val: rs.ror != null ? (rs.ror * 100).toFixed(2) + '%' : '—',
-      cls: rs.ror > 0.1 ? 'red' : rs.ror > 0.02 ? 'amber' : 'green',
-      hint: `Acct $${(rs.account_size||4500).toLocaleString()} · Risk $${rs.risk_per_trade||225}/trade`,
-      bar: cssVar('--red') },
     { lbl: 'Max Consec Wins',   val: rs.max_consec_wins  ?? '—', cls: 'green',
       hint: 'Longest winning streak', bar: cssVar('--green') },
     { lbl: 'Max Consec Losses', val: rs.max_consec_losses ?? '—', cls: 'red',
@@ -607,7 +693,9 @@ function renderHero(meta, rs) {
       cls: 'amber', hint: 'Median stop distance', bar: cssVar('--amber') },
     { lbl: 'MFE Median',
       val: rs.mfe_median != null ? rs.mfe_median.toFixed(4) + '%' : '—',
-      cls: 'cyan', hint: 'Median max favorable (runner)', bar: cssVar('--cyan') },
+      cls: 'cyan',
+      hint: isExt ? 'Median runner max favorable' : 'Median TP1 exit (wins only)',
+      bar: cssVar('--cyan') },
   ];
 
   const tileHTML = t => `
@@ -628,12 +716,21 @@ function renderDirection(byDir) {
     { key: 'LONG', color: cssVar('--blue'), label: 'Long' },
     { key: 'SHORT', color: cssVar('--red'), label: 'Short' },
   ];
+  const isExtended = _activeModel === 'cashflow_extended';
   const container = document.getElementById('dirGrid');
   container.innerHTML = dirs.map(({ key, color, label }) => {
     const d = byDir[key];
     const wr = d.tp1_wr;
     const wrC = wr >= 0.5 ? cssVar('--green') : cssVar('--red');
-    const rC = d.avg_r >= 0 ? cssVar('--green') : cssVar('--red');
+    const mfeMiddle = isExtended
+      ? `<div>
+           <div class="dir-stat-lbl">Avg MFE2</div>
+           <div class="dir-stat-val" style="color:var(--green)">${d.avg_mfe2_pct != null ? d.avg_mfe2_pct.toFixed(4)+'%' : '—'}</div>
+         </div>`
+      : `<div>
+           <div class="dir-stat-lbl">Avg R</div>
+           <div class="dir-stat-val" style="color:${d.avg_r >= 0 ? cssVar('--green') : cssVar('--red')}">${d.avg_r != null ? rnd(d.avg_r) + 'R' : '—'}</div>
+         </div>`;
     return `
       <div class="dir-card">
         <div class="dir-label">
@@ -646,10 +743,7 @@ function renderDirection(byDir) {
             <div class="dir-stat-lbl">TP1 WR</div>
             <div class="dir-stat-val" style="color:${wrC}">${pct(wr)}</div>
           </div>
-          <div>
-            <div class="dir-stat-lbl">Avg MFE2</div>
-            <div class="dir-stat-val" style="color:var(--green)">${d.avg_mfe2_pct != null ? d.avg_mfe2_pct.toFixed(4)+'%' : '—'}</div>
-          </div>
+          ${mfeMiddle}
           <div>
             <div class="dir-stat-lbl">Avg MAE</div>
             <div class="dir-stat-val" style="color:var(--amber)">${d.avg_mae_pct != null ? d.avg_mae_pct.toFixed(4)+'%' : '—'}</div>
@@ -813,7 +907,9 @@ function drawHour(byHour) {
 
 // QUARTERLY CHART
 function drawQuarter(byQ) {
-  const ctx = setupCanvas('cvQuarter', 260);
+  const nStatRows = _activeModel === 'cashflow_extended' ? 4 : 3;
+  const canvasH   = 168 + nStatRows * 26 + 16;
+  const ctx = setupCanvas('cvQuarter', canvasH);
   if (!ctx || !byQ) return;
   const W = ctx.W, H = ctx.H;
   const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
@@ -833,8 +929,8 @@ function drawQuarter(byQ) {
   ctx.fillRect(0, 0, W, H);
 
   // Top half: WR bars
-  const PAD  = { top: 28, right: 20, bottom: 8, left: 52 };
-  const chartH = H * 0.58;
+  const PAD  = { top: 28, right: 20, bottom: 8, left: 68 };
+  const chartH = H * 0.52;
   const cW   = W - PAD.left - PAD.right;
   const cH   = chartH - PAD.top - PAD.bottom;
   const minY = 0.40, maxY = 0.72, rangeY = maxY - minY;
@@ -848,7 +944,7 @@ function drawQuarter(byQ) {
     ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + cW, y); ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = textC;
-    ctx.font = '500 9px "JetBrains Mono",monospace';
+    ctx.font = '500 11px "IBM Plex Mono",monospace';
     ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
     ctx.fillText((v * 100).toFixed(0) + '%', PAD.left - 6, y);
   });
@@ -874,40 +970,44 @@ function drawQuarter(byQ) {
 
     // WR label
     ctx.fillStyle = col;
-    ctx.font = '800 11px "Syne",sans-serif';
+    ctx.font = '700 12px "Plus Jakarta Sans",sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
     ctx.fillText((wr * 100).toFixed(1) + '%', x + barW / 2, y - 4);
 
     // Quarter label
     ctx.fillStyle = textM;
-    ctx.font = '700 11px "Syne",sans-serif';
+    ctx.font = '700 12px "Plus Jakarta Sans",sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     ctx.fillText(quarters[i], x + barW / 2, chartH - 2);
   });
 
   // Bottom half: stats grid
-  const rowY = chartH + 12;
-  const rowH = 20;
+  const rowY = chartH + 16;
+  const rowH = 26;
+  const mfe1Lbl = _activeModel === 'cashflow_extended' ? 'Avg MFE1' : 'Avg MFE';
   const cols = [
-    { label: 'Trades', fn: d => (d.n || 0).toString(), color: textM },
+    { label: 'Trades',   fn: d => (d.n || 0).toString(), color: textM },
     { label: 'Avg MAE',  fn: d => d.avg_mae_pct  != null ? d.avg_mae_pct.toFixed(3)+'%'  : '—', color: amber },
-    { label: 'Avg MFE1', fn: d => d.avg_mfe1_pct != null ? d.avg_mfe1_pct.toFixed(3)+'%' : '—', color: blue  },
-    { label: 'Avg MFE2', fn: d => d.avg_mfe2_pct != null ? d.avg_mfe2_pct.toFixed(3)+'%' : '—', color: cyan  },
+    { label: mfe1Lbl,    fn: d => d.avg_mfe1_pct != null ? d.avg_mfe1_pct.toFixed(3)+'%' : '—', color: blue  },
+    ...(_activeModel === 'cashflow_extended'
+      ? [{ label: 'Avg MFE2', fn: d => d.avg_mfe2_pct != null ? d.avg_mfe2_pct.toFixed(3)+'%' : '—', color: cyan }]
+      : []),
   ];
 
-  ctx.font = '500 8px "JetBrains Mono",monospace';
   ctx.textBaseline = 'middle';
 
   cols.forEach((col, ri) => {
     const y = rowY + ri * rowH;
     // row label
     ctx.fillStyle = textC;
+    ctx.font = '500 11px "IBM Plex Mono",monospace';
     ctx.textAlign = 'right';
     ctx.fillText(col.label, PAD.left - 6, y + rowH / 2);
 
     data.forEach((d, ci) => {
       const x = PAD.left + ci * step + step / 2;
       ctx.fillStyle = col.color;
+      ctx.font = '500 11px "IBM Plex Mono",monospace';
       ctx.textAlign = 'center';
       ctx.fillText(col.fn(d), x, y + rowH / 2);
     });
@@ -939,20 +1039,26 @@ function renderYearTable(byYear) {
         <th>Year</th>
         <th>N</th>
         <th>TP1 WR%</th>
-        <th>Avg R</th>
+        <th>Avg MAE</th>
+        <th>Med MAE</th>
+        <th>Avg MFE</th>
+        <th>Med MFE</th>
       </tr>
     </thead>
     <tbody>
       ${years.map(yr => {
         const d = byYear[String(yr)];
-        const wr = d.tp1_wr;
+        const wr  = d.tp1_wr;
         const wrC = wrColor(wr);
-        const rC = d.avg_r >= 0 ? 'var(--green)' : 'var(--red)';
+        const f4  = v => v != null ? v.toFixed(4) + '%' : '—';
         return `<tr>
           <td class="yr-label">${yr}</td>
           <td>${d.n}</td>
           <td style="color:${wrC}">${pct(wr)}</td>
-          <td style="color:${rC}">${rnd(d.avg_r, 3)}</td>
+          <td style="color:var(--amber)">${f4(d.avg_mae_pct)}</td>
+          <td style="color:var(--faint)">${f4(d.med_mae_pct)}</td>
+          <td style="color:var(--cyan)">${f4(d.avg_mfe1_pct)}</td>
+          <td style="color:var(--faint)">${f4(d.med_mfe1_pct)}</td>
         </tr>`;
       }).join('')}
     </tbody>
@@ -968,19 +1074,28 @@ function renderTradesTable(allTrades) {
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
     .slice(0, 40);
 
+  const isExtended = _activeModel === 'cashflow_extended';
+  const mfe1Label  = isExtended ? 'MFE1 (%)' : 'MFE (%)';
+
   const cols = [
-    { key: 'date',        label: 'Date' },
-    { key: 'time',        label: 'Entry' },
-    { key: 'c2_ts',       label: 'FVG Time' },
-    { key: 'direction',   label: 'Dir' },
-    { key: 'mae_pct',     label: 'MAE (%)' },
-    { key: 'mfe1_pct',    label: 'MFE1 (%)' },
-    { key: 'mfe2_pct',    label: 'MFE2 (%)' },
-    { key: 'mfe3_pct',    label: 'MFE3 (%)' },
+    { key: 'date',         label: 'Date' },
+    { key: 'time',         label: 'Entry' },
+    { key: 'c2_ts',        label: 'FVG Time' },
+    { key: 'direction',    label: 'Dir' },
+    { key: 'mae_pct',      label: 'MAE (%)' },
+    { key: 'mfe1_pct',     label: mfe1Label },
+    ...(isExtended ? [{ key: 'mfe2_pct', label: 'MFE2 (%)' }] : []),
     { key: 'outcome_main', label: 'TP1' },
   ];
 
   const table = document.getElementById('tradesTable');
+
+  function mfeCell(v) {
+    const num = v != null ? v : 0;
+    return num === 0
+      ? '<span class="val-neg">0</span>'
+      : '<span class="val-pos">' + num.toFixed(4) + '</span>';
+  }
 
   function buildTable(trades) {
     const thead = `<thead><tr>${cols.map(c => `
@@ -997,16 +1112,9 @@ function renderTradesTable(allTrades) {
         : t.outcome_main === 'LOSS'
           ? '<span class="badge badge-loss">LOSS</span>'
           : '<span class="badge badge-open">—</span>';
-      const mae  = t.mae_pct  != null ? t.mae_pct.toFixed(4)  : '0.0000';
-      // FVG time = last 5 chars of c2_ts (HH:MM)
+      const mae     = t.mae_pct != null ? t.mae_pct.toFixed(4) : '0.0000';
       const fvgTime = t.c2_ts ? t.c2_ts.replace('T',' ').slice(-5) : '—';
-      // MFE cells: 0 → red "0", anything else → green value
-      function mfeCell(v) {
-        const num = v != null ? v : 0;
-        return num === 0
-          ? '<span class="val-neg">0</span>'
-          : '<span class="val-pos">' + num.toFixed(4) + '</span>';
-      }
+      const mfe2Cell = isExtended ? `<td>${mfeCell(t.mfe2_pct)}</td>` : '';
       return `<tr>
         <td>${t.date}</td>
         <td>${t.time || (t.fill_hr != null ? String(t.fill_hr).padStart(2,'0') + ':' + String(t.fill_mn||0).padStart(2,'0') : '—')}</td>
@@ -1014,8 +1122,7 @@ function renderTradesTable(allTrades) {
         <td>${dirBadge}</td>
         <td>${mae}</td>
         <td>${mfeCell(t.mfe1_pct)}</td>
-        <td>${mfeCell(t.mfe2_pct)}</td>
-        <td>${mfeCell(t.mfe3_pct)}</td>
+        ${mfe2Cell}
         <td>${tp1Badge}</td>
       </tr>`;
     }).join('');
@@ -1047,6 +1154,84 @@ function renderTradesTable(allTrades) {
   table.querySelectorAll('th[data-col]').forEach(th => {
     th.addEventListener('click', () => sortAndRender(th.dataset.col));
   });
+}
+
+// ─── MODEL COMPARISON ────────────────────────────────────────────────────────
+function renderComparison() {
+  const el = document.getElementById('compSection');
+  if (!el || !_data || !_data.cashflow || !_data.cashflow_extended) return;
+  const cf = _data.cashflow;
+  const cx = _data.cashflow_extended;
+  const cfM = cf.meta  || {};
+  const cxM = cx.meta  || {};
+  const cfR = cf.risk_stats || {};
+  const cxR = cx.risk_stats || {};
+
+  const fmtR   = v => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + 'R' : '—';
+  const fmtPct = v => v != null ? v.toFixed(4) + '%' : '—';
+  const fmtN3  = v => v != null ? (v >= 0 ? '+' : '') + v.toFixed(3) : '—';
+  const dCls   = d => d > 0.0001 ? 'val-pos' : d < -0.0001 ? 'val-neg' : 'val-neutral';
+
+  const rows = [
+    { label: 'TP1 Win Rate',
+      cfVal: pct(cfM.tp1_wr),         cxVal: pct(cxM.tp1_wr),
+      delta: '—', dCls: 'val-neutral' },
+    { label: 'Avg R',
+      cfVal: fmtR(cfM.avg_r),          cxVal: fmtR(cxM.avg_r),
+      delta: fmtR((cxM.avg_r ?? 0) - (cfM.avg_r ?? 0)),
+      dCls:  dCls((cxM.avg_r ?? 0) - (cfM.avg_r ?? 0)) },
+    { label: 'Sharpe Ratio',
+      cfVal: fmtN3(cfR.sharpe),         cxVal: fmtN3(cxR.sharpe),
+      delta: fmtN3((cxR.sharpe ?? 0) - (cfR.sharpe ?? 0)),
+      dCls:  dCls((cxR.sharpe ?? 0) - (cfR.sharpe ?? 0)) },
+    { label: 'Avg MFE2',
+      cfVal: '—',                       cxVal: fmtPct(cxM.avg_mfe2_pct),
+      delta: '—', dCls: 'val-neutral' },
+    { label: 'MFE Median',
+      cfVal: fmtPct(cfR.mfe_median),    cxVal: fmtPct(cxR.mfe_median),
+      delta: fmtPct((cxR.mfe_median ?? 0) - (cfR.mfe_median ?? 0)),
+      dCls:  dCls((cxR.mfe_median ?? 0) - (cfR.mfe_median ?? 0)) },
+    { label: 'MAE Median',
+      cfVal: fmtPct(cfR.mae_median),    cxVal: fmtPct(cxR.mae_median),
+      delta: '—', dCls: 'val-neutral' },
+    { label: 'Max Consec Losses',
+      cfVal: cfR.max_consec_losses ?? '—', cxVal: cxR.max_consec_losses ?? '—',
+      delta: '—', dCls: 'val-neutral' },
+  ];
+
+  const rowsHtml = rows.map(r => `
+    <tr>
+      <td class="comp-metric">${r.label}</td>
+      <td>${r.cfVal}</td>
+      <td>${r.cxVal}</td>
+      <td class="${r.dCls}">${r.delta}</td>
+    </tr>`).join('');
+
+  el.innerHTML = `
+    <div class="sec-head">
+      <span class="sec-label">Model Comparison</span>
+      <span class="sec-line"></span>
+      <span class="sec-pill">Cashflow vs Cashflow + Extended</span>
+    </div>
+    <div class="panel">
+      <div class="panel-hd">
+        <span class="panel-title">Side-by-Side Metrics</span>
+        <span class="panel-note">Δ = CF + Extended minus Cashflow</span>
+      </div>
+      <div class="panel-body" style="padding:0">
+        <table class="model-comp-table">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Cashflow</th>
+              <th>CF + Extended</th>
+              <th>Δ</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+    </div>`;
 }
 
 // ─── RESIZE ──────────────────────────────────────────────────────────────────

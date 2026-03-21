@@ -884,13 +884,36 @@ async function loadStats(project) {
     }
 
     if (project.type === 'ny1') {
-      const m = d.meta || {};
+      const cf  = d.cashflow          || {};
+      const cx  = d.cashflow_extended || {};
+      const cfM = cf.meta             || {};
+      const cxM = cx.meta             || {};
+      const cfR = cf.risk_stats       || {};
+      const cxR = cx.risk_stats       || {};
+      const fmtR = v => v != null ? (v >= 0 ? '+' : '') + v.toFixed(3) + 'R' : '—';
+      const fmtN = v => v != null ? (v >= 0 ? '+' : '') + v.toFixed(3) : '—';
       return {
-        label1: 'TP1 WR',  val1: pct(m.tp1_wr), cls1: wrColor(m.tp1_wr),
-        label2: 'Avg R',   val2: m.avg_r != null ? (m.avg_r >= 0 ? '+' : '') + m.avg_r.toFixed(3) + 'R' : '—',
-                           cls2: m.avg_r > 0 ? 'pos' : 'neg',
-        label3: 'Trades',  val3: num(m.n), cls3: 'neutral',
-        dateRange: m.date_range || '—',
+        label1: 'TP1 WR',  val1: pct(cxM.tp1_wr), cls1: wrColor(cxM.tp1_wr),
+        label2: 'Avg R',   val2: fmtR(cxM.avg_r),
+                           cls2: (cxM.avg_r ?? 0) > 0 ? 'pos' : 'neg',
+        label3: 'Trades',  val3: num(cxM.n), cls3: 'neutral',
+        dateRange: cxM.date_range || '—',
+        compRows: [
+          { metric: 'Avg R',
+            cfVal: fmtR(cfM.avg_r),       cxVal: fmtR(cxM.avg_r),
+            delta: fmtR((cxM.avg_r ?? 0) - (cfM.avg_r ?? 0)),
+            dPos: (cxM.avg_r ?? 0) > (cfM.avg_r ?? 0) },
+          { metric: 'Sharpe',
+            cfVal: fmtN(cfR.sharpe),       cxVal: fmtN(cxR.sharpe),
+            delta: fmtN((cxR.sharpe ?? 0) - (cfR.sharpe ?? 0)),
+            dPos: (cxR.sharpe ?? 0) > (cfR.sharpe ?? 0) },
+          { metric: 'MFE Median',
+            cfVal: cfR.mfe_median != null ? cfR.mfe_median.toFixed(4) + '%' : '—',
+            cxVal: cxR.mfe_median != null ? cxR.mfe_median.toFixed(4) + '%' : '—',
+            delta: cfR.mfe_median != null && cxR.mfe_median != null
+              ? '+' + (cxR.mfe_median - cfR.mfe_median).toFixed(4) + '%' : '—',
+            dPos: true },
+        ],
       };
     }
   } catch(e) {
@@ -925,6 +948,8 @@ function buildCard(p) {
     </div>
   `;
 
+  const compHtml = s?.compRows ? buildNy1CompTable(s.compRows) : '';
+
   return `
   <div class="project-card" id="card-${p.id}">
     <div class="card-accent" style="background:${p.color};"></div>
@@ -937,10 +962,11 @@ function buildCard(p) {
       <div class="card-subtitle">${s?.subtitle2 || p.subtitle}</div>
       <p class="card-desc">${p.desc}</p>
       ${statsHtml}
+      ${compHtml}
     </div>
     <div class="card-footer">
       <div class="card-date-range">${s?.dateRange || '—'}</div>
-      <a class="open-btn" href="${p.link}" target="_blank"
+      <a class="open-btn" href="${p.link}"
          style="background:${p.color};color:#fff;">
         Open Dashboard
         <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
@@ -966,6 +992,28 @@ function buildSweepSubTable(models) {
     <div style="overflow-x:auto;margin-bottom:18px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
       <table class="sweep-sub-table">
         <thead><tr><th>Model</th><th>WR</th><th>EV</th><th>N</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function buildNy1CompTable(compRows) {
+  const rows = compRows.map(r => {
+    const dCls = r.dPos ? 'pos' : 'neg';
+    return `<tr>
+      <td style="color:var(--text-sub);">${r.metric}</td>
+      <td class="stat-val" style="font-size:12px;">${r.cfVal}</td>
+      <td class="stat-val" style="font-size:12px;">${r.cxVal}</td>
+      <td class="stat-val ${dCls}" style="font-size:12px;">${r.delta}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <div style="margin-bottom:18px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+      <div style="padding:8px 10px;border-bottom:1px solid var(--border);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);">
+        Model Comparison
+      </div>
+      <table class="sweep-sub-table">
+        <thead><tr><th>Metric</th><th>Cashflow</th><th>CF + Ext</th><th>Δ</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;

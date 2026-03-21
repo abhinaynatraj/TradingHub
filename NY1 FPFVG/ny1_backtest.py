@@ -4,14 +4,10 @@ ny1_backtest.py — NY1 F.P.FVG Backtest
 ========================================
 Backtests the First Presented Fair Value Gap model on 1-minute NQ futures.
 
-Rules:
-  - Scan 9:31–9:59 ET for the first 3-candle FVG (C1=oldest, C2=gap, C3=newest)
-  - 9:30 FVG is excluded; first valid FVG only (1 shot 1 bullet)
-  - Direction: C2 bullish → LONG, C2 bearish → SHORT
-  - Entry: limit at FVG zone boundary on retrace (C3.low for LONG, C3.high for SHORT)
-  - Stop: C1.low (LONG) or C1.high (SHORT)
-  - TP1 (POTQ): +0.10% from entry (80% of position)
-  - Runner: 20% exits at 16:00 close or stop
+Two model variants:
+  cashflow          — 100% of position exits at TP1 (+0.10%). No runner.
+  cashflow_extended — 80% exits at TP1; 20% runner with stop moved to entry
+                      (breakeven) once TP1 is hit. Runner exits at BE stop or EOD.
 
 Usage:
     python3 ny1_backtest.py
@@ -198,10 +194,16 @@ def scan_fill(arrs: dict, c3_idx: int, fvg: dict, eod_idx: int) -> dict | None:
 
 # ── Outcome resolution ────────────────────────────────────────────────────────
 def resolve_outcome(arrs: dict, fill_idx: int, fvg: dict,
-                    tp1: float, eod_idx: int) -> dict:
+                    tp1: float, eod_idx: int, model: str = 'cashflow_extended') -> dict:
     """
-    Scan from bar after fill for TP1 or stop.
-    TP1 wins on same-bar conflict. After TP1, scan runner until stop or EOD.
+    Scan from bar after fill for TP1 or stop.  TP1 wins on same-bar conflict.
+
+    cashflow:
+        100% exits at TP1.  No runner.  combined_r = tp1_move / risk_pts or -1.
+
+    cashflow_extended:
+        80% exits at TP1.  20% runner with stop moved to entry (breakeven).
+        Runner exits at BE stop or EOD close.
     """
     entry     = fvg['entry']
     stop      = fvg['stop']
@@ -210,9 +212,8 @@ def resolve_outcome(arrs: dict, fill_idx: int, fvg: dict,
 
     outcome_main = 'OPEN'
     tp1_idx      = None
-    stop_idx     = None
 
-    # ── Step 1: scan for TP1 or stop ──────────────────────────────────────────
+    # ── Step 1: scan for TP1 or stop (same for both models) ───────────────────
     for j in range(fill_idx + 1, eod_idx + 1):
         h = arrs['high'][j]
         l = arrs['low'][j]
@@ -225,78 +226,64 @@ def resolve_outcome(arrs: dict, fill_idx: int, fvg: dict,
             hit_stop = h >= stop
 
         if hit_tp1 and hit_stop:
-            # same bar — TP1 wins
-            outcome_main = 'WIN'
-            tp1_idx = j
-            break
+            outcome_main = 'WIN'; tp1_idx = j; break
         if hit_tp1:
-            outcome_main = 'WIN'
-            tp1_idx = j
-            break
+            outcome_main = 'WIN'; tp1_idx = j; break
         if hit_stop:
-            outcome_main = 'LOSS'
-            stop_idx = j
-            break
+            outcome_main = 'LOSS'; break
 
-    # ── Step 2: runner resolution (only if TP1 was hit) ───────────────────────
-    runner_exit_price  = None
-    runner_outcome     = None
-    mfe2_pct           = 0.0
-    mfe3_pct           = 0.0
+    # ── Step 2: model-specific resolution ─────────────────────────────────────
+    mfe2_pct          = 0.0
+    runner_exit_price = None
+    runner_outcome    = None
 
-    if outcome_main == 'WIN':
-        runner_exit_idx   = eod_idx
-        runner_exit_price = float(arrs['close'][eod_idx])
-        runner_outcome    = 'WIN'
-
-        for j in range(tp1_idx + 1, eod_idx + 1):
-            if direction == 'LONG'  and arrs['low'][j]  <= stop:
-                runner_exit_idx   = j
-                runner_exit_price = stop
-                runner_outcome    = 'LOSS'
-                break
-            if direction == 'SHORT' and arrs['high'][j] >= stop:
-                runner_exit_idx   = j
-                runner_exit_price = stop
-                runner_outcome    = 'LOSS'
-                break
-
-        # MFE2: max favorable from fill to runner exit (stop or EOD)
-        mfe2_pts = 0.0
-        for j in range(fill_idx, runner_exit_idx + 1):
-            fav = (float(arrs['high'][j]) - entry) if direction == 'LONG' \
-                  else (entry - float(arrs['low'][j]))
-            if fav > mfe2_pts:
-                mfe2_pts = fav
-        mfe2_pct = round(mfe2_pts / entry * 100, 4) if entry > 0 else 0.0
-
-        # MFE3: EOD close vs entry (%), only if:
-        # 1. Runner was NOT stopped out (exits at EOD, not the stop)
-        # 2. MFE3 > MFE2 (EOD close beats the runner's peak)
-        if runner_outcome == 'WIN':
-            eod_close = float(arrs['close'][eod_idx])
-            mfe3_raw  = (eod_close - entry) / entry * 100 if direction == 'LONG' \
-                        else (entry - eod_close) / entry * 100
-            mfe3_pct  = round(mfe3_raw, 4) if mfe3_raw > mfe2_pct else 0.0
-        else:
-            mfe3_pct  = 0.0
-
-    # ── Step 3: R calculation ─────────────────────────────────────────────────
     if risk_pts <= 0:
         combined_r = None
-    elif outcome_main == 'WIN':
-        tp1_move   = abs(tp1 - entry)
-        tp1_r      = tp1_move / risk_pts
-        main_r     = 0.8 * tp1_r
-
-        if direction == 'LONG':
-            run_move = runner_exit_price - entry
-        else:
-            run_move = entry - runner_exit_price
-        runner_r  = run_move / risk_pts
-        combined_r = round(main_r + 0.2 * runner_r, 4)
     elif outcome_main == 'LOSS':
         combined_r = -1.0
+    elif outcome_main == 'WIN':
+        tp1_move = abs(tp1 - entry)
+        tp1_r    = tp1_move / risk_pts
+
+        if model == 'cashflow':
+            # 100% exits at TP1.  TP1 hit is treated as 1R (symmetric risk/reward).
+            combined_r = 1.0
+
+        else:  # cashflow_extended — runner with BE stop
+            runner_stop       = entry          # stop moves to entry once TP1 hit
+            runner_exit_idx   = eod_idx
+            runner_exit_price = float(arrs['close'][eod_idx])
+            runner_outcome    = 'WIN'
+
+            for j in range(tp1_idx + 1, eod_idx + 1):
+                if direction == 'LONG'  and arrs['low'][j]  <= runner_stop:
+                    runner_exit_idx   = j
+                    runner_exit_price = runner_stop
+                    runner_outcome    = 'BE'
+                    break
+                if direction == 'SHORT' and arrs['high'][j] >= runner_stop:
+                    runner_exit_idx   = j
+                    runner_exit_price = runner_stop
+                    runner_outcome    = 'BE'
+                    break
+
+            # MFE2: max favorable from fill to runner exit
+            mfe2_pts = 0.0
+            for j in range(fill_idx, runner_exit_idx + 1):
+                fav = (float(arrs['high'][j]) - entry) if direction == 'LONG' \
+                      else (entry - float(arrs['low'][j]))
+                if fav > mfe2_pts:
+                    mfe2_pts = fav
+            mfe2_pct = round(mfe2_pts / entry * 100, 4) if entry > 0 else 0.0
+
+            if direction == 'LONG':
+                run_move = runner_exit_price - entry
+            else:
+                run_move = entry - runner_exit_price
+            runner_r   = run_move / risk_pts
+            # TP1 leg = 0.8R (treating TP1 hit as 1R); runner leg = 0.2 × runner_r
+            combined_r = round(0.8 + 0.2 * runner_r, 4)
+
     else:
         combined_r = None
 
@@ -306,7 +293,6 @@ def resolve_outcome(arrs: dict, fill_idx: int, fvg: dict,
         'runner_outcome':     runner_outcome,
         'combined_r':         combined_r,
         'mfe2_pct':           mfe2_pct,
-        'mfe3_pct':           mfe3_pct,
     }
 
 
@@ -324,18 +310,21 @@ def _agg(trades: list[dict]) -> dict:
     mfe1_vals = [t.get('mfe1_pct', 0.0) for t in wl]
     mfe2_vals = [t.get('mfe2_pct', 0.0) for t in wl]
     avg_mae   = round(float(np.mean(mae_vals)),  4) if mae_vals  else None
+    med_mae   = round(float(np.median(mae_vals)), 4) if mae_vals  else None
     avg_mfe1  = round(float(np.mean(mfe1_vals)), 4) if mfe1_vals else None
+    med_mfe1  = round(float(np.median(mfe1_vals)), 4) if mfe1_vals else None
     avg_mfe2  = round(float(np.mean(mfe2_vals)), 4) if mfe2_vals else None
 
     rs    = [t['combined_r'] for t in wl if t['combined_r'] is not None]
     avg_r = round(float(np.mean(rs)), 4) if rs else None
 
     return {'n': n, 'wins': wins, 'tp1_wr': round(wr, 4),
-            'avg_mae_pct': avg_mae, 'avg_mfe1_pct': avg_mfe1,
+            'avg_mae_pct': avg_mae, 'med_mae_pct': med_mae,
+            'avg_mfe1_pct': avg_mfe1, 'med_mfe1_pct': med_mfe1,
             'avg_mfe2_pct': avg_mfe2, 'avg_r': avg_r}
 
 
-def build_stats(trades, meta_extra: dict) -> dict:
+def build_stats(trades, meta_extra: dict, model: str = 'cashflow_extended') -> dict:
     overall = _agg(trades)
 
     by_dow = {}
@@ -391,9 +380,12 @@ def build_stats(trades, meta_extra: dict) -> dict:
         sharpe = None
 
     mae_all  = [t['mae_pct']  for t in wl_resolved if t.get('mae_pct')  is not None]
-    mfe2_all = [t.get('mfe2_pct', 0.0) for t in wl_resolved]
+    if model == 'cashflow':
+        mfe_all = [t.get('mfe1_pct', 0.0) for t in wl_resolved if t['outcome_main'] == 'WIN']
+    else:
+        mfe_all = [t.get('mfe2_pct', 0.0) for t in wl_resolved]
     mae_median  = round(float(np.median(mae_all)),  4) if mae_all  else None
-    mfe_median  = round(float(np.median(mfe2_all)), 4) if mfe2_all else None
+    mfe_median  = round(float(np.median(mfe_all)),  4) if mfe_all  else None
 
     win_rs  = [t['combined_r'] for t in wl_resolved
                if t['outcome_main'] == 'WIN' and t['combined_r'] is not None]
@@ -452,7 +444,7 @@ def main():
     trading_days = df['trade_date'].nunique()
     print(f'{len(df):,} bars  ·  {trading_days:,} trading days')
 
-    trades      = []
+    trades_by_model = {'cashflow': [], 'cashflow_extended': []}
     n_setups    = 0
     n_filled    = 0
     n_no_fill   = 0
@@ -505,9 +497,6 @@ def main():
             continue
         n_filled += 1
 
-        # Resolve outcome
-        outcome = resolve_outcome(arrs, fill['fill_idx'], fvg, tp1, eod_idx)
-
         # C2 timestamp for reference
         c2_ts = arrs['ts_et'][fvg['c2_idx']]
         c1_ts = arrs['ts_et'][fvg['c1_idx']]
@@ -517,7 +506,7 @@ def main():
         mo    = int(day_df['mo'].iloc[0])
 
         fill_time = f"{fill['fill_hr']:02d}:{fill['fill_mn']:02d}"
-        trades.append({
+        base = {
             'date':       str(date.date()) if hasattr(date, 'date') else str(date)[:10],
             'time':       fill_time,
             'dow':        dow,
@@ -535,18 +524,26 @@ def main():
             'tp1':        round(tp1, 4),
             'risk_pts':   round(risk_pts, 2),
             'mae_pct':    mae_pct,
-            'mfe1_pct':   mfe1_pct if outcome['outcome_main'] == 'WIN' else 0.0,
             'fill_hr':    fill['fill_hr'],
             'fill_mn':    fill['fill_mn'],
-            **outcome,
-        })
+        }
+
+        # Resolve outcome for each model
+        for model_key in ('cashflow', 'cashflow_extended'):
+            outcome = resolve_outcome(arrs, fill['fill_idx'], fvg, tp1, eod_idx, model=model_key)
+            trades_by_model[model_key].append({
+                **base,
+                'mfe1_pct': mfe1_pct if outcome['outcome_main'] == 'WIN' else 0.0,
+                **outcome,
+            })
 
     print(f'done\n')
 
-    # ── Print summary ──────────────────────────────────────────────────────────
-    wl   = [t for t in trades if t['outcome_main'] in ('WIN', 'LOSS')]
-    wins = sum(1 for t in wl if t['outcome_main'] == 'WIN')
-    wr   = wins / len(wl) if wl else 0
+    # ── Print summary (use cashflow_extended as reference) ────────────────────
+    trades   = trades_by_model['cashflow_extended']
+    wl       = [t for t in trades if t['outcome_main'] in ('WIN', 'LOSS')]
+    wins     = sum(1 for t in wl if t['outcome_main'] == 'WIN')
+    wr       = wins / len(wl) if wl else 0
     mae_vals = [t['mae_pct'] for t in wl if t.get('mae_pct') is not None]
     avg_mae  = float(np.mean(mae_vals)) if mae_vals else 0
 
@@ -590,7 +587,7 @@ def main():
 
     # ── Recent 40 trades table ─────────────────────────────────────────────────
     recent_40 = sorted(wl, key=lambda t: t['date'], reverse=True)[:40]
-    hdr = f"  {'DATE':<12} {'TIME':<6} {'DIR':<6} {'MAE(%)':>8} {'MFE1(%)':>9} {'MFE2(%)':>9} {'MFE3(%)':>9} {'TP1':>5}"
+    hdr = f"  {'DATE':<12} {'TIME':<6} {'DIR':<6} {'MAE(%)':>8} {'MFE1(%)':>9} {'MFE2(%)':>9} {'TP1':>5}"
     print(f'  RECENT 40 TRADES')
     print(f'  {"-"*74}')
     print(hdr)
@@ -601,25 +598,35 @@ def main():
               f"{t.get('mae_pct', 0):>8.4f} "
               f"{t.get('mfe1_pct', 0.0):>9.4f} "
               f"{t.get('mfe2_pct', 0.0):>9.4f} "
-              f"{t.get('mfe3_pct', 0.0):>9.4f} "
               f"{tp1_str:>5}")
     print()
 
     print(f'{bar}\n')
 
     if not args.no_json:
+        ref = trades_by_model['cashflow_extended']
         meta_extra = {
             'instrument':    args.table.split('_')[0].upper(),
-            'model':         'NY1 F.P.FVG',
             'tp1_bps':       int(TP1_BPS * 10000),
             'table':         args.table,
             'trading_days':  trading_days,
             'total_setups':  n_setups,
             'total_filled':  n_filled,
             'total_no_fill': n_no_fill,
-            'date_range':    f"{trades[0]['date']} – {trades[-1]['date']}" if trades else '',
+            'date_range':    f"{ref[0]['date']} – {ref[-1]['date']}" if ref else '',
         }
-        out = build_stats(trades, meta_extra)
+        out = {
+            'cashflow': build_stats(
+                trades_by_model['cashflow'],
+                {**meta_extra, 'model_name': 'Cashflow'},
+                model='cashflow',
+            ),
+            'cashflow_extended': build_stats(
+                trades_by_model['cashflow_extended'],
+                {**meta_extra, 'model_name': 'Cashflow + Extended'},
+                model='cashflow_extended',
+            ),
+        }
         with open(OUT_JSON, 'w') as f:
             json.dump(out, f, indent=2, default=str)
         print(f'  Saved → {OUT_JSON}')
