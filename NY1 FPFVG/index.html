@@ -10,6 +10,13 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
+:root{
+  --font-display:'Syne',sans-serif;
+  --font-data:'JetBrains Mono',monospace;
+  --font-body:'DM Sans',sans-serif;
+  --ease:cubic-bezier(0.16,1,0.3,1);
+}
+
 :root,[data-theme="dark"]{
   --bg:#0a0e17;--card:#111827;--card-alt:#0d1420;
   --border:#1f2937;--text:#e2e8f0;--subtle:#94a3b8;--faint:#64748b;
@@ -25,11 +32,11 @@
   --grid:rgba(255,255,255,0.04);
 }
 [data-theme="light"]{
-  --bg:#f4f6fb;--card:#ffffff;--card-alt:#eef1f8;
-  --border:#d1d9e6;--text:#0f172a;--subtle:#3d4f6b;--faint:#64748b;
-  --green:#047857;--red:#b91c1c;--amber:#92400e;--blue:#1d4ed8;
-  --orange:#c2410c;--purple:#6d28d9;--cyan:#0e7490;
-  --nav-bg:rgba(244,246,251,0.95);--canvas-bg:#eef1f8;
+  --bg:#f1f5f9;--card:#ffffff;--card-alt:#f8fafc;
+  --border:#e2e8f0;--text:#0f172a;--subtle:#334155;--faint:#475569;
+  --green:#047857;--red:#b91c1c;--amber:#78350f;--blue:#1d4ed8;
+  --orange:#c2410c;--purple:#5b21b6;--cyan:#0e7490;
+  --nav-bg:rgba(241,245,249,0.95);--canvas-bg:#f8fafc;
   --green-dim:rgba(4,120,87,0.08);--red-dim:rgba(185,28,28,0.08);
   --amber-dim:rgba(146,64,14,0.08);--blue-dim:rgba(29,78,216,0.08);
   --green-border:rgba(4,120,87,0.3);--red-border:rgba(185,28,28,0.3);
@@ -41,7 +48,7 @@
 
 html,body{
   background:var(--bg);color:var(--text);
-  font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.6;
+  font-family:var(--font-body);font-size:14px;line-height:1.6;
   min-height:100vh;overflow-x:hidden;
   transition:background .25s ease,color .25s ease;
 }
@@ -56,14 +63,14 @@ nav{
   box-shadow:var(--shadow);
 }
 .nav-logo{
-  font-family:'Syne',sans-serif;font-size:20px;font-weight:800;
+  font-family:var(--font-display);font-size:20px;font-weight:800;
   letter-spacing:-0.03em;color:var(--text);
   display:flex;align-items:center;gap:2px;flex-shrink:0;
 }
 .nav-logo span{color:var(--cyan);}
 .nav-links{display:flex;gap:4px;flex:1;}
 .nav-link{
-  font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;
+  font-family:var(--font-body);font-size:13px;font-weight:500;
   color:var(--subtle);padding:6px 14px;border-radius:7px;
   text-decoration:none;cursor:pointer;border:none;background:none;
   transition:color .15s,background .15s;
@@ -85,23 +92,23 @@ main{max-width:1340px;margin:0 auto;padding:40px 28px 100px;}
 /* LOADING */
 #loading{
   text-align:center;padding:80px 20px;
-  font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--subtle);
+  font-family:var(--font-data);font-size:13px;color:var(--subtle);
 }
 
 /* HERO */
 .hero{margin-bottom:48px;}
 .hero-eyebrow{
-  font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:500;
+  font-family:var(--font-data);font-size:10px;font-weight:500;
   letter-spacing:0.18em;text-transform:uppercase;color:var(--cyan);
   margin-bottom:10px;
 }
 .hero-title{
-  font-family:'Syne',sans-serif;font-size:clamp(32px,5vw,52px);font-weight:800;
+  font-family:var(--font-display);font-size:clamp(32px,5vw,52px);font-weight:800;
   letter-spacing:-0.03em;line-height:1.05;color:var(--text);margin-bottom:8px;
 }
 .hero-title span{color:var(--cyan);}
 .hero-sub{
-  font-family:'DM Sans',sans-serif;font-size:15px;color:var(--subtle);
+  font-family:var(--font-body);font-size:15px;color:var(--subtle);
   margin-bottom:32px;font-weight:400;
 }
 .stats-grid{
@@ -114,20 +121,25 @@ main{max-width:1340px;margin:0 auto;padding:40px 28px 100px;}
 
 .stat-tile{
   background:var(--card);border:1px solid var(--border);
-  border-radius:12px;padding:18px 20px;
+  border-radius:14px;padding:20px 22px;
   box-shadow:var(--shadow);position:relative;overflow:hidden;
-  transition:transform .2s ease,box-shadow .2s ease;
+  transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease;
 }
-.stat-tile:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg);}
-.stat-tile-bar{position:absolute;top:0;left:0;right:0;height:3px;border-radius:12px 12px 0 0;}
+.stat-tile:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg);border-color:rgba(255,255,255,0.1);}
+.stat-tile::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(255,255,255,0.03) 0%,transparent 60%);
+  pointer-events:none;
+}
+.stat-tile-bar{position:absolute;top:0;left:0;right:0;height:3px;border-radius:14px 14px 0 0;}
 .stat-lbl{
-  font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:500;
-  letter-spacing:0.14em;text-transform:uppercase;color:var(--faint);
-  margin-bottom:8px;
+  font-family:var(--font-data);font-size:9px;font-weight:500;
+  letter-spacing:0.16em;text-transform:uppercase;color:var(--faint);
+  margin-bottom:10px;
 }
 .stat-val{
-  font-family:'Syne',sans-serif;font-size:28px;font-weight:700;
-  letter-spacing:-0.02em;line-height:1;margin-bottom:4px;
+  font-family:var(--font-display);font-size:26px;font-weight:800;
+  letter-spacing:-0.03em;line-height:1;margin-bottom:6px;
 }
 .stat-val.green{color:var(--green);}
 .stat-val.red{color:var(--red);}
@@ -135,24 +147,24 @@ main{max-width:1340px;margin:0 auto;padding:40px 28px 100px;}
 .stat-val.amber{color:var(--amber);}
 .stat-val.cyan{color:var(--cyan);}
 .stat-val.neutral{color:var(--text);}
-.stat-hint{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--faint);line-height:1.5;}
+.stat-hint{font-family:var(--font-data);font-size:9px;color:var(--faint);line-height:1.5;}
 
 /* SECTION HEADERS */
 .sec-head{
-  display:flex;align-items:center;gap:14px;
-  margin:48px 0 20px;
+  display:flex;align-items:center;gap:16px;
+  margin:52px 0 22px;
 }
 .sec-label{
-  font-family:'Syne',sans-serif;font-size:11px;font-weight:700;
-  letter-spacing:0.2em;text-transform:uppercase;color:var(--subtle);
+  font-family:var(--font-display);font-size:10px;font-weight:800;
+  letter-spacing:0.25em;text-transform:uppercase;color:var(--subtle);
   white-space:nowrap;
 }
 .sec-line{flex:1;height:1px;background:var(--border);}
 .sec-pill{
-  font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:500;
+  font-family:var(--font-data);font-size:9px;font-weight:500;
   letter-spacing:0.1em;text-transform:uppercase;
-  padding:3px 10px;border-radius:20px;
-  border:1px solid var(--border);color:var(--faint);
+  padding:4px 12px;border-radius:20px;
+  background:var(--card);border:1px solid var(--border);color:var(--faint);
 }
 
 /* HOW IT WORKS */
@@ -164,21 +176,23 @@ main{max-width:1340px;margin:0 auto;padding:40px 28px 100px;}
 
 .how-card{
   background:var(--card);border:1px solid var(--border);
-  border-radius:12px;padding:24px;box-shadow:var(--shadow);
+  border-radius:14px;padding:26px;box-shadow:var(--shadow);
+  transition:transform .2s ease,box-shadow .2s ease;
 }
+.how-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg);}
 .how-num{
-  font-family:'Syne',sans-serif;font-size:36px;font-weight:800;
+  font-family:var(--font-display);font-size:36px;font-weight:800;
   color:var(--border);line-height:1;margin-bottom:12px;
   letter-spacing:-0.04em;
 }
 .how-title{
-  font-family:'Syne',sans-serif;font-size:14px;font-weight:700;
+  font-family:var(--font-display);font-size:14px;font-weight:700;
   color:var(--text);margin-bottom:10px;letter-spacing:-0.01em;
 }
 .how-body{font-size:13px;color:var(--subtle);line-height:1.7;}
 .how-body strong{color:var(--text);font-weight:500;}
 .how-tag{
-  display:inline-block;font-family:'JetBrains Mono',monospace;
+  display:inline-block;font-family:var(--font-data);
   font-size:9px;font-weight:500;letter-spacing:0.1em;
   padding:3px 8px;border-radius:4px;margin-top:12px;
   text-transform:uppercase;
@@ -190,23 +204,23 @@ main{max-width:1340px;margin:0 auto;padding:40px 28px 100px;}
 /* CARDS / PANELS */
 .panel{
   background:var(--card);border:1px solid var(--border);
-  border-radius:12px;overflow:hidden;box-shadow:var(--shadow);
-  margin-bottom:16px;
+  border-radius:14px;overflow:hidden;box-shadow:var(--shadow);
+  margin-bottom:16px;transition:box-shadow .2s;
 }
+.panel:hover{box-shadow:var(--shadow-lg);}
 .panel-hd{
-  padding:14px 20px;border-bottom:1px solid var(--border);
+  padding:16px 22px;border-bottom:1px solid var(--border);
   background:var(--card-alt);
   display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;
 }
 .panel-title{
-  font-family:'Syne',sans-serif;font-size:11px;font-weight:700;
-  letter-spacing:0.14em;text-transform:uppercase;color:var(--subtle);
+  font-family:var(--font-display);font-size:11px;font-weight:700;
+  letter-spacing:0.16em;text-transform:uppercase;color:var(--text);
 }
-.panel-note{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--faint);}
+.panel-note{font-family:var(--font-data);font-size:10px;color:var(--faint);}
 .panel-body{padding:20px;}
 .panel-body.tight{padding:14px 20px;}
 
-/* EQUITY CURVE */
 canvas{display:block;width:100%;}
 
 /* DIRECTION SPLIT */
@@ -214,42 +228,44 @@ canvas{display:block;width:100%;}
 @media(max-width:560px){.dir-grid{grid-template-columns:1fr;}}
 
 .dir-card{
-  background:var(--card-alt);border:1px solid var(--border);
-  border-radius:10px;padding:20px;
+  background:var(--card);border:1px solid var(--border);
+  border-radius:14px;padding:22px;box-shadow:var(--shadow);
+  transition:box-shadow .2s;
 }
+.dir-card:hover{box-shadow:var(--shadow-lg);}
 .dir-label{
-  font-family:'Syne',sans-serif;font-size:11px;font-weight:700;
+  font-family:var(--font-display);font-size:11px;font-weight:700;
   letter-spacing:0.14em;text-transform:uppercase;margin-bottom:14px;
   display:flex;align-items:center;gap:8px;
 }
 .dir-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
 .dir-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
-.dir-stat-lbl{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--faint);margin-bottom:4px;}
-.dir-stat-val{font-family:'Syne',sans-serif;font-size:22px;font-weight:700;letter-spacing:-0.02em;line-height:1;}
+.dir-stat-lbl{font-family:var(--font-data);font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--faint);margin-bottom:4px;}
+.dir-stat-val{font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-0.02em;line-height:1;}
 
 /* YEAR TABLE */
 .yr-table{width:100%;border-collapse:collapse;}
 .yr-table th{
-  font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;
+  font-family:var(--font-data);font-size:9px;font-weight:600;
   letter-spacing:0.12em;text-transform:uppercase;color:var(--faint);
   padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);
 }
 .yr-table th:not(:first-child){text-align:right;}
 .yr-table td{
-  font-family:'JetBrains Mono',monospace;font-size:12px;
+  font-family:var(--font-data);font-size:12px;
   padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text);
 }
 .yr-table td:not(:first-child){text-align:right;}
 .yr-table tr:last-child td{border-bottom:none;}
 .yr-table tr:hover td{background:var(--card-alt);}
-.yr-table .yr-label{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;}
+.yr-table .yr-label{font-family:var(--font-display);font-weight:700;font-size:13px;}
 .wr-bar{display:inline-block;height:2px;border-radius:1px;vertical-align:middle;margin-left:6px;opacity:0.6;}
 
 /* TRADES TABLE */
 .trades-wrap{overflow-x:auto;}
 .trades-table{width:100%;border-collapse:collapse;min-width:800px;}
 .trades-table th{
-  font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;
+  font-family:var(--font-data);font-size:9px;font-weight:600;
   letter-spacing:0.12em;text-transform:uppercase;color:var(--faint);
   padding:10px 12px;text-align:left;border-bottom:1px solid var(--border);
   background:var(--card-alt);cursor:pointer;user-select:none;white-space:nowrap;
@@ -257,12 +273,13 @@ canvas{display:block;width:100%;}
 .trades-table th:hover{color:var(--subtle);}
 .trades-table th.sorted{color:var(--cyan);}
 .trades-table td{
-  font-family:'JetBrains Mono',monospace;font-size:11px;
-  padding:9px 12px;border-bottom:1px solid var(--border);
-  color:var(--subtle);vertical-align:middle;
+  font-family:var(--font-data);font-size:11px;
+  padding:10px 12px;border-bottom:1px solid var(--border);
+  color:var(--subtle);vertical-align:middle;white-space:nowrap;
 }
+.trades-table tbody tr:nth-child(even) td{background:rgba(255,255,255,0.015);}
 .trades-table tr:last-child td{border-bottom:none;}
-.trades-table tr:hover td{background:var(--card-alt);}
+.trades-table tbody tr:hover td{background:var(--card-alt);color:var(--text);}
 .badge{
   display:inline-block;font-size:9px;font-weight:600;letter-spacing:0.08em;
   padding:2px 8px;border-radius:4px;text-transform:uppercase;
@@ -284,7 +301,7 @@ canvas{display:block;width:100%;}
 footer{
   border-top:1px solid var(--border);
   padding:24px 28px;text-align:center;
-  font-family:'JetBrains Mono',monospace;font-size:10px;
+  font-family:var(--font-data);font-size:10px;
   color:var(--faint);letter-spacing:0.06em;
 }
 </style>
@@ -308,10 +325,11 @@ footer{
 
     <!-- HERO -->
     <section class="hero" id="overview">
-      <div class="hero-eyebrow">Backtest · NQ Futures · 2014–2025</div>
+      <div class="hero-eyebrow">NQ Futures · Backtest · 2014 – Present</div>
       <h1 class="hero-title">NY1 <span>F.P.FVG</span></h1>
       <p class="hero-sub">First Presented Fair Value Gap · 1-Minute Data · 11 Years</p>
       <div class="stats-grid" id="heroStats"></div>
+      <div class="stats-grid" style="margin-top:14px;grid-template-columns:repeat(5,1fr)" id="riskStatsGrid"></div>
     </section>
 
     <!-- HOW IT WORKS -->
@@ -363,17 +381,6 @@ footer{
       <span class="sec-pill" id="perfPill"></span>
     </div>
 
-    <!-- EQUITY CURVE -->
-    <div class="panel">
-      <div class="panel-hd">
-        <span class="panel-title">Cumulative Equity Curve</span>
-        <span class="panel-note" id="equityNote"></span>
-      </div>
-      <div class="panel-body tight">
-        <canvas id="cvEquity" height="220"></canvas>
-      </div>
-    </div>
-
     <!-- DIRECTION SPLIT -->
     <div class="dir-grid" id="dirGrid"></div>
 
@@ -385,7 +392,7 @@ footer{
           <span class="panel-note">TP1 outcome only</span>
         </div>
         <div class="panel-body tight">
-          <canvas id="cvDow" height="200"></canvas>
+          <canvas id="cvDow" height="210"></canvas>
         </div>
       </div>
       <div class="panel">
@@ -394,8 +401,19 @@ footer{
           <span class="panel-note">Hour trade was filled</span>
         </div>
         <div class="panel-body tight">
-          <canvas id="cvHour" height="200"></canvas>
+          <canvas id="cvHour" height="210"></canvas>
         </div>
+      </div>
+    </div>
+
+    <!-- QUARTERLY CHART -->
+    <div class="panel">
+      <div class="panel-hd">
+        <span class="panel-title">Performance by Quarter</span>
+        <span class="panel-note">Win Rate · Trades · Avg MAE · Avg MFE1 · Avg MFE2</span>
+      </div>
+      <div class="panel-body tight">
+        <canvas id="cvQuarter" height="260"></canvas>
       </div>
     </div>
 
@@ -425,7 +443,7 @@ footer{
     <div class="sec-head" id="trades">
       <span class="sec-label">Trade Log</span>
       <span class="sec-line"></span>
-      <span class="sec-pill">Last 25 trades</span>
+      <span class="sec-pill">Last 40 trades</span>
     </div>
     <div class="panel">
       <div class="panel-hd">
@@ -536,78 +554,72 @@ window.addEventListener('load', loadData);
 
 // ─── RENDER ALL ──────────────────────────────────────────────────────────────
 function renderAll(d) {
-  renderHero(d.meta);
+  renderHero(d.meta, d.risk_stats);
   renderDirection(d.by_direction);
   renderCharts(d);
   renderYearTable(d.by_year);
   renderTradesTable(d.recent_trades || d.trades);
   // update pills
   document.getElementById('perfPill').textContent = d.meta.n + ' resolved trades';
-  document.getElementById('equityNote').textContent = 'Cumulative combined R · ' + d.meta.date_range;
-  document.getElementById('tradesNote').textContent = 'Most recent 25 of ' + d.meta.n + ' resolved';
+  document.getElementById('tradesNote').textContent = 'Most recent 40 of ' + d.meta.n + ' resolved';
 }
 
 // ─── HERO STATS ──────────────────────────────────────────────────────────────
-function renderHero(meta) {
-  const fillRate = meta.total_filled / meta.total_setups;
-  const setupRate = meta.total_setups / meta.trading_days;
-  const wr = meta.tp1_wr;
-  const avgR = meta.avg_r;
+function renderHero(meta, rs) {
+  const fillRate  = meta.total_filled / meta.total_setups;
+  const setupRate = meta.total_setups  / meta.trading_days;
+  const wr        = meta.tp1_wr;
+  const avgMae    = meta.avg_mae_pct;
+  rs = rs || {};
 
-  const tiles = [
-    {
-      lbl: 'Total Trades',
-      val: meta.n.toLocaleString(),
-      cls: 'neutral',
-      hint: meta.date_range,
-      bar: cssVar('--blue'),
-    },
-    {
-      lbl: 'TP1 Win Rate',
-      val: pct(wr),
+  const primary = [
+    { lbl: 'Total Trades',  val: meta.n.toLocaleString(), cls: 'neutral',
+      hint: meta.date_range, bar: cssVar('--blue') },
+    { lbl: 'TP1 Win Rate',  val: pct(wr),
       cls: wr >= 0.5 ? 'green' : 'red',
       hint: meta.wins + ' wins of ' + meta.n,
-      bar: wr >= 0.5 ? cssVar('--green') : cssVar('--red'),
-    },
-    {
-      lbl: 'Avg Combined R',
-      val: rnd(avgR, 3),
-      cls: avgR >= 0 ? 'green' : 'red',
-      hint: 'Per resolved trade',
-      bar: avgR >= 0 ? cssVar('--green') : cssVar('--red'),
-    },
-    {
-      lbl: 'Avg Risk',
-      val: meta.avg_risk_pts.toFixed(1),
-      cls: 'amber',
-      hint: 'NQ points per trade',
-      bar: cssVar('--amber'),
-    },
-    {
-      lbl: 'Fill Rate',
-      val: pct(fillRate),
-      cls: 'cyan',
-      hint: meta.total_filled + ' / ' + meta.total_setups + ' setups',
-      bar: cssVar('--cyan'),
-    },
-    {
-      lbl: 'Setup Rate',
-      val: pct(setupRate),
-      cls: 'neutral',
-      hint: meta.total_setups + ' / ' + meta.trading_days + ' trading days',
-      bar: cssVar('--subtle'),
-    },
+      bar: wr >= 0.5 ? cssVar('--green') : cssVar('--red') },
+    { lbl: 'Avg MAE',
+      val: avgMae != null ? avgMae.toFixed(4) + '%' : '—',
+      cls: 'amber', hint: 'Avg stop distance from entry', bar: cssVar('--amber') },
+    { lbl: 'Sharpe Ratio',
+      val: rs.sharpe != null ? rs.sharpe.toFixed(3) : '—',
+      cls: rs.sharpe > 0 ? 'green' : rs.sharpe < 0 ? 'red' : 'neutral',
+      hint: 'Annualised per-trade R', bar: cssVar('--purple') },
+    { lbl: 'Fill Rate', val: pct(fillRate), cls: 'cyan',
+      hint: meta.total_filled + ' / ' + meta.total_setups + ' setups', bar: cssVar('--cyan') },
+    { lbl: 'Setup Rate', val: pct(setupRate), cls: 'neutral',
+      hint: meta.total_setups + ' / ' + meta.trading_days + ' days', bar: cssVar('--subtle') },
   ];
 
-  const container = document.getElementById('heroStats');
-  container.innerHTML = tiles.map(t => `
+  const risk = [
+    { lbl: 'Risk of Ruin',
+      val: rs.ror != null ? (rs.ror * 100).toFixed(2) + '%' : '—',
+      cls: rs.ror > 0.1 ? 'red' : rs.ror > 0.02 ? 'amber' : 'green',
+      hint: `Acct $${(rs.account_size||4500).toLocaleString()} · Risk $${rs.risk_per_trade||225}/trade`,
+      bar: cssVar('--red') },
+    { lbl: 'Max Consec Wins',   val: rs.max_consec_wins  ?? '—', cls: 'green',
+      hint: 'Longest winning streak', bar: cssVar('--green') },
+    { lbl: 'Max Consec Losses', val: rs.max_consec_losses ?? '—', cls: 'red',
+      hint: 'Longest losing streak',  bar: cssVar('--red') },
+    { lbl: 'MAE Median',
+      val: rs.mae_median != null ? rs.mae_median.toFixed(4) + '%' : '—',
+      cls: 'amber', hint: 'Median stop distance', bar: cssVar('--amber') },
+    { lbl: 'MFE Median',
+      val: rs.mfe_median != null ? rs.mfe_median.toFixed(4) + '%' : '—',
+      cls: 'cyan', hint: 'Median max favorable (runner)', bar: cssVar('--cyan') },
+  ];
+
+  const tileHTML = t => `
     <div class="stat-tile">
       <div class="stat-tile-bar" style="background:${t.bar}"></div>
       <div class="stat-lbl">${t.lbl}</div>
       <div class="stat-val ${t.cls}">${t.val}</div>
       <div class="stat-hint">${t.hint}</div>
-    </div>
-  `).join('');
+    </div>`;
+
+  document.getElementById('heroStats').innerHTML     = primary.map(tileHTML).join('');
+  document.getElementById('riskStatsGrid').innerHTML = risk.map(tileHTML).join('');
 }
 
 // ─── DIRECTION SPLIT ─────────────────────────────────────────────────────────
@@ -626,8 +638,8 @@ function renderDirection(byDir) {
       <div class="dir-card">
         <div class="dir-label">
           <span class="dir-dot" style="background:${color}"></span>
-          <span style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--text)">${label}</span>
-          <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--faint);margin-left:auto">${d.n} trades</span>
+          <span style="font-family:var(--font-display);font-size:14px;font-weight:700;color:var(--text)">${label}</span>
+          <span style="font-family:var(--font-data);font-size:10px;color:var(--faint);margin-left:auto">${d.n} trades</span>
         </div>
         <div class="dir-stats">
           <div>
@@ -635,12 +647,12 @@ function renderDirection(byDir) {
             <div class="dir-stat-val" style="color:${wrC}">${pct(wr)}</div>
           </div>
           <div>
-            <div class="dir-stat-lbl">Avg R</div>
-            <div class="dir-stat-val" style="color:${rC}">${rnd(d.avg_r, 3)}</div>
+            <div class="dir-stat-lbl">Avg MFE2</div>
+            <div class="dir-stat-val" style="color:var(--green)">${d.avg_mfe2_pct != null ? d.avg_mfe2_pct.toFixed(4)+'%' : '—'}</div>
           </div>
           <div>
-            <div class="dir-stat-lbl">Avg Risk</div>
-            <div class="dir-stat-val" style="color:var(--amber)">${d.avg_risk_pts.toFixed(1)}</div>
+            <div class="dir-stat-lbl">Avg MAE</div>
+            <div class="dir-stat-val" style="color:var(--amber)">${d.avg_mae_pct != null ? d.avg_mae_pct.toFixed(4)+'%' : '—'}</div>
           </div>
         </div>
       </div>
@@ -650,155 +662,24 @@ function renderDirection(byDir) {
 
 // ─── CHARTS ──────────────────────────────────────────────────────────────────
 function renderCharts(d) {
-  drawEquity(d.trades);
   drawDow(d.by_dow);
   drawHour(d.by_hour);
+  drawQuarter(d.by_quarter);
   drawMonth(d.by_month);
-}
-
-// EQUITY CURVE
-function drawEquity(trades) {
-  const ctx = setupCanvas('cvEquity', 220);
-  if (!ctx) return;
-  const W = ctx.W, H = ctx.H;
-
-  // filter resolved trades sorted by date
-  const resolved = trades.filter(t => t.combined_r != null)
-    .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
-
-  if (!resolved.length) return;
-
-  // build cumulative series
-  const series = [];
-  let cumR = 0;
-  for (const t of resolved) {
-    cumR += t.combined_r;
-    series.push(cumR);
-  }
-
-  const minR = Math.min(0, ...series);
-  const maxR = Math.max(0, ...series);
-  const rangeR = maxR - minR || 1;
-
-  const PAD = { top: 20, right: 24, bottom: 30, left: 58 };
-  const cW = W - PAD.left - PAD.right;
-  const cH = H - PAD.top - PAD.bottom;
-
-  const bg = cssVar('--canvas-bg');
-  const gridC = cssVar('--grid');
-  const textC = cssVar('--faint');
-  const green = cssVar('--green');
-  const red = cssVar('--red');
-
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, W, H);
-
-  // grid
-  const yTicks = 5;
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'middle';
-  ctx.font = '500 9px "JetBrains Mono",monospace';
-  ctx.fillStyle = textC;
-  for (let i = 0; i <= yTicks; i++) {
-    const ratio = i / yTicks;
-    const rVal = minR + ratio * rangeR;
-    const y = PAD.top + cH - ratio * cH;
-    ctx.strokeStyle = gridC;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(PAD.left, y);
-    ctx.lineTo(PAD.left + cW, y);
-    ctx.stroke();
-    ctx.fillStyle = textC;
-    ctx.fillText(rVal.toFixed(1) + 'R', PAD.left - 6, y);
-  }
-
-  // zero line
-  const zeroY = PAD.top + cH - ((-minR) / rangeR) * cH;
-  ctx.strokeStyle = cssVar('--border');
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4, 4]);
-  ctx.beginPath();
-  ctx.moveTo(PAD.left, zeroY);
-  ctx.lineTo(PAD.left + cW, zeroY);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  // X axis labels
-  const xStep = Math.max(1, Math.floor(series.length / 8));
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  ctx.fillStyle = textC;
-  for (let i = 0; i < series.length; i += xStep) {
-    const x = PAD.left + (i / (series.length - 1)) * cW;
-    ctx.fillText('#' + (i + 1), x, H - PAD.bottom + 6);
-  }
-
-  // draw line — segment by segment, green above zero, red below
-  function toXY(i, val) {
-    return {
-      x: PAD.left + (i / (series.length - 1)) * cW,
-      y: PAD.top + cH - ((val - minR) / rangeR) * cH,
-    };
-  }
-
-  // fill area
-  ctx.beginPath();
-  ctx.moveTo(toXY(0, series[0]).x, zeroY);
-  for (let i = 0; i < series.length; i++) {
-    const p = toXY(i, series[i]);
-    ctx.lineTo(p.x, p.y);
-  }
-  ctx.lineTo(toXY(series.length - 1, series[series.length - 1]).x, zeroY);
-  ctx.closePath();
-  const lastVal = series[series.length - 1];
-  const gradFill = ctx.createLinearGradient(0, PAD.top, 0, PAD.top + cH);
-  if (lastVal >= 0) {
-    gradFill.addColorStop(0, 'rgba(16,185,129,0.18)');
-    gradFill.addColorStop(1, 'rgba(16,185,129,0.01)');
-  } else {
-    gradFill.addColorStop(0, 'rgba(248,113,113,0.01)');
-    gradFill.addColorStop(1, 'rgba(248,113,113,0.18)');
-  }
-  ctx.fillStyle = gradFill;
-  ctx.fill();
-
-  // line
-  ctx.lineWidth = 1.5;
-  ctx.lineJoin = 'round';
-  for (let i = 1; i < series.length; i++) {
-    const prev = toXY(i - 1, series[i - 1]);
-    const cur = toXY(i, series[i]);
-    const above = series[i] >= 0;
-    ctx.strokeStyle = above ? green : red;
-    ctx.beginPath();
-    ctx.moveTo(prev.x, prev.y);
-    ctx.lineTo(cur.x, cur.y);
-    ctx.stroke();
-  }
-
-  // final value label
-  const lastP = toXY(series.length - 1, lastVal);
-  const finalColor = lastVal >= 0 ? green : red;
-  ctx.fillStyle = finalColor;
-  ctx.font = '600 10px "JetBrains Mono",monospace';
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(lastVal.toFixed(1) + 'R', lastP.x - 4, lastP.y - 10);
 }
 
 // BAR CHART HELPER
 function drawBarChart(ctx, labels, values, opts = {}) {
   if (!ctx) return;
   const W = ctx.W, H = ctx.H;
-  const PAD = opts.pad || { top: 28, right: 16, bottom: 36, left: 48 };
+  const PAD = opts.pad || { top: 32, right: 20, bottom: 38, left: 52 };
   const cW = W - PAD.left - PAD.right;
   const cH = H - PAD.top - PAD.bottom;
 
-  const bg = cssVar('--canvas-bg');
-  const gridC = cssVar('--grid');
-  const textC = cssVar('--faint');
-  const textMid = cssVar('--subtle');
+  const bg     = cssVar('--canvas-bg');
+  const gridC  = cssVar('--grid');
+  const textC  = cssVar('--faint');
+  const textM  = cssVar('--subtle');
 
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H);
@@ -823,67 +704,66 @@ function drawBarChart(ctx, labels, values, opts = {}) {
     ctx.fillStyle = textC;
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
-    ctx.fillText(opts.yFmt ? opts.yFmt(v) : v.toFixed(0), PAD.left - 5, y);
+    ctx.fillText(opts.yFmt ? opts.yFmt(v) : v.toFixed(0), PAD.left - 7, y);
   }
 
-  // 50% dashed line if requested
+  // 50% baseline
   if (opts.baseline50) {
     const b50y = PAD.top + cH - ((0.5 - minV) / rangeV) * cH;
-    ctx.strokeStyle = cssVar('--amber') + '80';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = cssVar('--amber') + '70';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 4]);
     ctx.beginPath();
     ctx.moveTo(PAD.left, b50y);
     ctx.lineTo(PAD.left + cW, b50y);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = cssVar('--amber');
-    ctx.font = '500 8px "JetBrains Mono",monospace';
+    ctx.fillStyle = cssVar('--amber') + 'bb';
+    ctx.font = '600 8px "JetBrains Mono",monospace';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
-    ctx.fillText('50%', PAD.left + 3, b50y - 2);
+    ctx.fillText('50%', PAD.left + 4, b50y - 3);
   }
 
   const n = labels.length;
-  const gap = 6;
-  const barW = (cW - gap * (n - 1)) / n;
+  const gap = 8;
+  const barW = Math.max(20, (cW - gap * (n - 1)) / n);
 
   labels.forEach((lbl, i) => {
     const v = values[i];
     const x = PAD.left + i * (barW + gap);
-    const barH = ((v - minV) / rangeV) * cH;
+    const barH = Math.max(2, ((v - minV) / rangeV) * cH);
     const y = PAD.top + cH - barH;
-
     const color = opts.colorFn ? opts.colorFn(v) : cssVar('--blue');
 
-    // bar
-    ctx.fillStyle = color + '22';
+    // gradient fill
+    const grad = ctx.createLinearGradient(x, y, x, y + barH);
+    grad.addColorStop(0, color + 'cc');
+    grad.addColorStop(1, color + '18');
+    ctx.fillStyle = grad;
     ctx.beginPath();
-    roundRect(ctx, x, y, barW, barH, 3);
-    ctx.fill();
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    roundRect(ctx, x, y, barW, Math.min(barH, 3), 2);
-    ctx.fill();
-    // top portion with opacity
-    ctx.fillStyle = color + 'aa';
-    ctx.beginPath();
-    roundRect(ctx, x, y, barW, barH, 3);
+    roundRect(ctx, x, y, barW, barH, 4);
     ctx.fill();
 
-    // value label
+    // top accent line
     ctx.fillStyle = color;
-    ctx.font = '600 9px "JetBrains Mono",monospace';
+    ctx.beginPath();
+    roundRect(ctx, x, y, barW, 3, 2);
+    ctx.fill();
+
+    // value label above bar
+    ctx.fillStyle = color;
+    ctx.font = '700 10px "JetBrains Mono",monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(opts.valFmt ? opts.valFmt(v) : v.toFixed(1), x + barW / 2, y - 2);
+    ctx.fillText(opts.valFmt ? opts.valFmt(v) : v.toFixed(1), x + barW / 2, y - 4);
 
     // x label
-    ctx.fillStyle = textMid;
-    ctx.font = '500 9px "JetBrains Mono",monospace';
+    ctx.fillStyle = textM;
+    ctx.font = '600 9px "JetBrains Mono",monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(lbl, x + barW / 2, PAD.top + cH + 6);
+    ctx.fillText(lbl, x + barW / 2, PAD.top + cH + 7);
   });
 }
 
@@ -902,7 +782,7 @@ function roundRect(ctx, x, y, w, h, r) {
 
 // DOW CHART
 function drawDow(byDow) {
-  const ctx = setupCanvas('cvDow', 200);
+  const ctx = setupCanvas('cvDow', 210);
   const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
   const values = labels.map(k => byDow[k] ? byDow[k].tp1_wr : 0);
   drawBarChart(ctx, labels, values, {
@@ -917,7 +797,7 @@ function drawDow(byDow) {
 
 // HOUR CHART
 function drawHour(byHour) {
-  const ctx = setupCanvas('cvHour', 200);
+  const ctx = setupCanvas('cvHour', 210);
   const labels = ['9', '10', '11', '12', '13', '14', '15'];
   const values = labels.map(k => byHour[k] ? byHour[k].tp1_wr : 0);
   const displayLabels = labels.map(h => h + ':00');
@@ -928,6 +808,109 @@ function drawHour(byHour) {
     colorFn: wrColorBars,
     baseline50: true,
     pad: { top: 28, right: 16, bottom: 32, left: 48 },
+  });
+}
+
+// QUARTERLY CHART
+function drawQuarter(byQ) {
+  const ctx = setupCanvas('cvQuarter', 260);
+  if (!ctx || !byQ) return;
+  const W = ctx.W, H = ctx.H;
+  const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+  const data = quarters.map(q => byQ[q] || {});
+
+  const bg     = cssVar('--canvas-bg');
+  const gridC  = cssVar('--grid');
+  const textC  = cssVar('--faint');
+  const textM  = cssVar('--subtle');
+  const green  = cssVar('--green');
+  const amber  = cssVar('--amber');
+  const cyan   = cssVar('--cyan');
+  const blue   = cssVar('--blue');
+  const red    = cssVar('--red');
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Top half: WR bars
+  const PAD  = { top: 28, right: 20, bottom: 8, left: 52 };
+  const chartH = H * 0.58;
+  const cW   = W - PAD.left - PAD.right;
+  const cH   = chartH - PAD.top - PAD.bottom;
+  const minY = 0.40, maxY = 0.72, rangeY = maxY - minY;
+
+  // Y grid
+  [0.4, 0.5, 0.6, 0.7].forEach(v => {
+    const y = PAD.top + cH - ((v - minY) / rangeY) * cH;
+    ctx.strokeStyle = v === 0.5 ? cssVar('--amber') + '60' : gridC;
+    ctx.lineWidth   = v === 0.5 ? 1.5 : 1;
+    ctx.setLineDash(v === 0.5 ? [4, 4] : []);
+    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + cW, y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = textC;
+    ctx.font = '500 9px "JetBrains Mono",monospace';
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    ctx.fillText((v * 100).toFixed(0) + '%', PAD.left - 6, y);
+  });
+
+  const n = 4;
+  const barW = cW / n * 0.6;
+  const step = cW / n;
+
+  data.forEach((d, i) => {
+    const wr   = d.tp1_wr || 0;
+    const x    = PAD.left + i * step + (step - barW) / 2;
+    const barH = Math.max(2, ((wr - minY) / rangeY) * cH);
+    const y    = PAD.top + cH - barH;
+    const col  = wr >= 0.58 ? green : wr >= 0.50 ? amber : red;
+
+    const grad = ctx.createLinearGradient(x, y, x, y + barH);
+    grad.addColorStop(0, col + 'cc');
+    grad.addColorStop(1, col + '18');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); roundRect(ctx, x, y, barW, barH, 5); ctx.fill();
+    ctx.fillStyle = col;
+    ctx.beginPath(); roundRect(ctx, x, y, barW, 3, 2); ctx.fill();
+
+    // WR label
+    ctx.fillStyle = col;
+    ctx.font = '800 11px "Syne",sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.fillText((wr * 100).toFixed(1) + '%', x + barW / 2, y - 4);
+
+    // Quarter label
+    ctx.fillStyle = textM;
+    ctx.font = '700 11px "Syne",sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText(quarters[i], x + barW / 2, chartH - 2);
+  });
+
+  // Bottom half: stats grid
+  const rowY = chartH + 12;
+  const rowH = 20;
+  const cols = [
+    { label: 'Trades', fn: d => (d.n || 0).toString(), color: textM },
+    { label: 'Avg MAE',  fn: d => d.avg_mae_pct  != null ? d.avg_mae_pct.toFixed(3)+'%'  : '—', color: amber },
+    { label: 'Avg MFE1', fn: d => d.avg_mfe1_pct != null ? d.avg_mfe1_pct.toFixed(3)+'%' : '—', color: blue  },
+    { label: 'Avg MFE2', fn: d => d.avg_mfe2_pct != null ? d.avg_mfe2_pct.toFixed(3)+'%' : '—', color: cyan  },
+  ];
+
+  ctx.font = '500 8px "JetBrains Mono",monospace';
+  ctx.textBaseline = 'middle';
+
+  cols.forEach((col, ri) => {
+    const y = rowY + ri * rowH;
+    // row label
+    ctx.fillStyle = textC;
+    ctx.textAlign = 'right';
+    ctx.fillText(col.label, PAD.left - 6, y + rowH / 2);
+
+    data.forEach((d, ci) => {
+      const x = PAD.left + ci * step + step / 2;
+      ctx.fillStyle = col.color;
+      ctx.textAlign = 'center';
+      ctx.fillText(col.fn(d), x, y + rowH / 2);
+    });
   });
 }
 
@@ -981,22 +964,20 @@ let _sortCol = 'date';
 let _sortDir = -1; // -1 = desc, 1 = asc
 
 function renderTradesTable(allTrades) {
-  // already sorted newest-first (recent_trades), or fallback to slicing trades array
-  const DOW_NAMES = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
   const sorted = [...(allTrades || [])]
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-    .slice(0, 25);
+    .slice(0, 40);
 
   const cols = [
-    { key: 'date', label: 'Date' },
-    { key: 'dow', label: 'DOW' },
-    { key: 'direction', label: 'Dir' },
-    { key: 'fvg_size', label: 'FVG Size' },
-    { key: 'risk_pts', label: 'Risk Pts' },
-    { key: 'fill_hr', label: 'Fill Hr' },
+    { key: 'date',        label: 'Date' },
+    { key: 'time',        label: 'Entry' },
+    { key: 'c2_ts',       label: 'FVG Time' },
+    { key: 'direction',   label: 'Dir' },
+    { key: 'mae_pct',     label: 'MAE (%)' },
+    { key: 'mfe1_pct',    label: 'MFE1 (%)' },
+    { key: 'mfe2_pct',    label: 'MFE2 (%)' },
+    { key: 'mfe3_pct',    label: 'MFE3 (%)' },
     { key: 'outcome_main', label: 'TP1' },
-    { key: 'runner_outcome', label: 'Runner' },
-    { key: 'combined_r', label: 'Combined R' },
   ];
 
   const table = document.getElementById('tradesTable');
@@ -1008,7 +989,6 @@ function renderTradesTable(allTrades) {
       </th>`).join('')}</tr></thead>`;
 
     const rows = trades.map(t => {
-      const fvgSize = ((t.fvg_top || 0) - (t.fvg_bot || 0)).toFixed(1);
       const dirBadge = t.direction === 'LONG'
         ? '<span class="badge badge-long">L</span>'
         : '<span class="badge badge-short">S</span>';
@@ -1017,25 +997,26 @@ function renderTradesTable(allTrades) {
         : t.outcome_main === 'LOSS'
           ? '<span class="badge badge-loss">LOSS</span>'
           : '<span class="badge badge-open">—</span>';
-      const runnerBadge = t.runner_outcome === 'WIN'
-        ? '<span class="badge badge-win">WIN</span>'
-        : t.runner_outcome === 'LOSS'
-          ? '<span class="badge badge-loss">LOSS</span>'
-          : '<span class="badge badge-open">—</span>';
-      const rCls = t.combined_r == null ? 'val-neutral'
-        : t.combined_r >= 0 ? 'val-pos' : 'val-neg';
-      const rStr = t.combined_r == null ? '—' : rnd(t.combined_r, 3);
-      const dowName = t.dow_name || DOW_NAMES[t.dow] || '';
+      const mae  = t.mae_pct  != null ? t.mae_pct.toFixed(4)  : '0.0000';
+      // FVG time = last 5 chars of c2_ts (HH:MM)
+      const fvgTime = t.c2_ts ? t.c2_ts.replace('T',' ').slice(-5) : '—';
+      // MFE cells: 0 → red "0", anything else → green value
+      function mfeCell(v) {
+        const num = v != null ? v : 0;
+        return num === 0
+          ? '<span class="val-neg">0</span>'
+          : '<span class="val-pos">' + num.toFixed(4) + '</span>';
+      }
       return `<tr>
         <td>${t.date}</td>
-        <td>${dowName}</td>
+        <td>${t.time || (t.fill_hr != null ? String(t.fill_hr).padStart(2,'0') + ':' + String(t.fill_mn||0).padStart(2,'0') : '—')}</td>
+        <td>${fvgTime}</td>
         <td>${dirBadge}</td>
-        <td>${fvgSize}</td>
-        <td>${(t.risk_pts || 0).toFixed(1)}</td>
-        <td>${t.fill_hr}:00</td>
+        <td>${mae}</td>
+        <td>${mfeCell(t.mfe1_pct)}</td>
+        <td>${mfeCell(t.mfe2_pct)}</td>
+        <td>${mfeCell(t.mfe3_pct)}</td>
         <td>${tp1Badge}</td>
-        <td>${runnerBadge}</td>
-        <td class="${rCls}">${rStr}</td>
       </tr>`;
     }).join('');
 
@@ -1051,10 +1032,6 @@ function renderTradesTable(allTrades) {
     }
     const sorted2 = [...sorted].sort((a, b) => {
       let av = a[col], bv = b[col];
-      if (col === 'fvg_size') {
-        av = (a.fvg_top || 0) - (a.fvg_bot || 0);
-        bv = (b.fvg_top || 0) - (b.fvg_bot || 0);
-      }
       if (av == null) av = -Infinity;
       if (bv == null) bv = -Infinity;
       if (typeof av === 'string') return _sortDir * av.localeCompare(bv);

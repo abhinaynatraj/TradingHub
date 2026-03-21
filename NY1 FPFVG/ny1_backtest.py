@@ -33,8 +33,12 @@ import pandas as pd
 DB_PATH  = Path(__file__).parent.parent / 'CandleScience' / 'candle_science.duckdb'
 OUT_JSON = Path(__file__).parent / 'ny1_results.json'
 
-TP1_BPS      = 0.001   # 10 basis points = 0.10%
-MIN_RISK_PTS = 0.25    # guard against zero-risk setups
+TP1_BPS       = 0.001   # 10 basis points = 0.10%
+MIN_RISK_PTS  = 0.25    # guard against zero-risk setups
+MIN_FVG_TICKS = 0       # minimum FVG gap size in ticks (0 = no filter)
+TICK_SIZE     = 0.25    # NQ futures tick size in points
+ACCOUNT_SIZE  = 4500    # account size for risk metrics ($)
+RISK_PER_TRADE = 225    # risk per trade ($)
 DOW_NAMES    = {1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri'}  # DuckDB: 0=Sun
 MONTH_NAMES  = {1:'Jan',2:'Feb',3:'Mar',4:'Apr',5:'May',6:'Jun',
                 7:'Jul',8:'Aug',9:'Sep',10:'Oct',11:'Nov',12:'Dec'}
@@ -132,23 +136,29 @@ def detect_fvg(arrs: dict) -> dict | None:
 
         # Bullish FVG: gap exists upward, C2 is bullish
         if c3_l > c1_h and c2_c > c2_o:
+            if MIN_FVG_TICKS > 0 and (c3_l - c1_h) < MIN_FVG_TICKS * TICK_SIZE:
+                continue
+            c2_l = arrs['low'][c2_idx]
             return {
                 'c1_idx': c1_idx, 'c2_idx': c2_idx, 'c3_idx': c3_idx,
                 'fvg_top': float(c3_l),
                 'fvg_bot': float(c1_h),
-                'entry':   float(c3_l),   # limit buy at top of gap
-                'stop':    float(c1_l),   # stop below C1
+                'entry':   float(c3_l),             # limit buy at top of gap
+                'stop':    float(min(c1_l, c2_l)),  # stop below lowest of C1/C2
                 'direction': 'LONG',
             }
 
         # Bearish FVG: gap exists downward, C2 is bearish
         if c3_h < c1_l and c2_c < c2_o:
+            if MIN_FVG_TICKS > 0 and (c1_l - c3_h) < MIN_FVG_TICKS * TICK_SIZE:
+                continue
+            c2_h = arrs['high'][c2_idx]
             return {
                 'c1_idx': c1_idx, 'c2_idx': c2_idx, 'c3_idx': c3_idx,
                 'fvg_top': float(c1_l),
                 'fvg_bot': float(c3_h),
-                'entry':   float(c3_h),   # limit sell at bottom of gap
-                'stop':    float(c1_h),   # stop above C1
+                'entry':   float(c3_h),             # limit sell at bottom of gap
+                'stop':    float(max(c1_h, c2_h)),  # stop above highest of C1/C2
                 'direction': 'SHORT',
             }
 
@@ -231,20 +241,45 @@ def resolve_outcome(arrs: dict, fill_idx: int, fvg: dict,
     # ── Step 2: runner resolution (only if TP1 was hit) ───────────────────────
     runner_exit_price  = None
     runner_outcome     = None
+    mfe2_pct           = 0.0
+    mfe3_pct           = 0.0
 
     if outcome_main == 'WIN':
+        runner_exit_idx   = eod_idx
         runner_exit_price = float(arrs['close'][eod_idx])
         runner_outcome    = 'WIN'
 
         for j in range(tp1_idx + 1, eod_idx + 1):
             if direction == 'LONG'  and arrs['low'][j]  <= stop:
+                runner_exit_idx   = j
                 runner_exit_price = stop
                 runner_outcome    = 'LOSS'
                 break
             if direction == 'SHORT' and arrs['high'][j] >= stop:
+                runner_exit_idx   = j
                 runner_exit_price = stop
                 runner_outcome    = 'LOSS'
                 break
+
+        # MFE2: max favorable from fill to runner exit (stop or EOD)
+        mfe2_pts = 0.0
+        for j in range(fill_idx, runner_exit_idx + 1):
+            fav = (float(arrs['high'][j]) - entry) if direction == 'LONG' \
+                  else (entry - float(arrs['low'][j]))
+            if fav > mfe2_pts:
+                mfe2_pts = fav
+        mfe2_pct = round(mfe2_pts / entry * 100, 4) if entry > 0 else 0.0
+
+        # MFE3: EOD close vs entry (%), only if:
+        # 1. Runner was NOT stopped out (exits at EOD, not the stop)
+        # 2. MFE3 > MFE2 (EOD close beats the runner's peak)
+        if runner_outcome == 'WIN':
+            eod_close = float(arrs['close'][eod_idx])
+            mfe3_raw  = (eod_close - entry) / entry * 100 if direction == 'LONG' \
+                        else (entry - eod_close) / entry * 100
+            mfe3_pct  = round(mfe3_raw, 4) if mfe3_raw > mfe2_pct else 0.0
+        else:
+            mfe3_pct  = 0.0
 
     # ── Step 3: R calculation ─────────────────────────────────────────────────
     if risk_pts <= 0:
@@ -270,6 +305,8 @@ def resolve_outcome(arrs: dict, fill_idx: int, fvg: dict,
         'runner_exit_price':  runner_exit_price,
         'runner_outcome':     runner_outcome,
         'combined_r':         combined_r,
+        'mfe2_pct':           mfe2_pct,
+        'mfe3_pct':           mfe3_pct,
     }
 
 
@@ -277,15 +314,25 @@ def resolve_outcome(arrs: dict, fill_idx: int, fvg: dict,
 def _agg(trades: list[dict]) -> dict:
     wl   = [t for t in trades if t['outcome_main'] in ('WIN', 'LOSS')]
     if not wl:
-        return {'n': 0, 'wins': 0, 'tp1_wr': None, 'avg_risk_pts': None, 'avg_r': None}
+        return {'n': 0, 'wins': 0, 'tp1_wr': None,
+                'avg_mae_pct': None, 'avg_mfe1_pct': None, 'avg_mfe2_pct': None, 'avg_r': None}
     n    = len(wl)
     wins = sum(1 for t in wl if t['outcome_main'] == 'WIN')
     wr   = wins / n
-    avg_risk = round(np.mean([t['risk_pts'] for t in wl]), 2)
-    rs   = [t['combined_r'] for t in wl if t['combined_r'] is not None]
+
+    mae_vals  = [t['mae_pct']  for t in wl if t.get('mae_pct')  is not None]
+    mfe1_vals = [t.get('mfe1_pct', 0.0) for t in wl]
+    mfe2_vals = [t.get('mfe2_pct', 0.0) for t in wl]
+    avg_mae   = round(float(np.mean(mae_vals)),  4) if mae_vals  else None
+    avg_mfe1  = round(float(np.mean(mfe1_vals)), 4) if mfe1_vals else None
+    avg_mfe2  = round(float(np.mean(mfe2_vals)), 4) if mfe2_vals else None
+
+    rs    = [t['combined_r'] for t in wl if t['combined_r'] is not None]
     avg_r = round(float(np.mean(rs)), 4) if rs else None
+
     return {'n': n, 'wins': wins, 'tp1_wr': round(wr, 4),
-            'avg_risk_pts': avg_risk, 'avg_r': avg_r}
+            'avg_mae_pct': avg_mae, 'avg_mfe1_pct': avg_mfe1,
+            'avg_mfe2_pct': avg_mfe2, 'avg_r': avg_r}
 
 
 def build_stats(trades, meta_extra: dict) -> dict:
@@ -315,7 +362,61 @@ def build_stats(trades, meta_extra: dict) -> dict:
     }
 
     wl_resolved = [t for t in trades if t.get('outcome_main') in ('WIN', 'LOSS')]
-    recent_trades = sorted(wl_resolved, key=lambda t: t['date'], reverse=True)[:25]
+    recent_trades = sorted(wl_resolved, key=lambda t: t['date'], reverse=True)[:40]
+
+    # ── By quarter ────────────────────────────────────────────────────────────
+    def get_q(mo): return (mo - 1) // 3 + 1
+    by_quarter = {f'Q{q}': _agg([t for t in trades if get_q(t['mo']) == q])
+                  for q in range(1, 5)}
+
+    # ── Risk stats ────────────────────────────────────────────────────────────
+    outcomes_seq = [t['outcome_main'] for t in wl_resolved]
+    def max_consec(seq, val):
+        mx = cur = 0
+        for v in seq:
+            cur = cur + 1 if v == val else 0
+            mx  = max(mx, cur)
+        return mx
+    max_cw = max_consec(outcomes_seq, 'WIN')
+    max_cl = max_consec(outcomes_seq, 'LOSS')
+
+    rs = [t['combined_r'] for t in wl_resolved if t['combined_r'] is not None]
+    if len(rs) > 1:
+        mean_r = float(np.mean(rs))
+        std_r  = float(np.std(rs, ddof=1))
+        years  = len({t['yr'] for t in wl_resolved}) or 1
+        tpy    = len(rs) / years
+        sharpe = round(mean_r / std_r * float(np.sqrt(tpy)), 3) if std_r > 0 else None
+    else:
+        sharpe = None
+
+    mae_all  = [t['mae_pct']  for t in wl_resolved if t.get('mae_pct')  is not None]
+    mfe2_all = [t.get('mfe2_pct', 0.0) for t in wl_resolved]
+    mae_median  = round(float(np.median(mae_all)),  4) if mae_all  else None
+    mfe_median  = round(float(np.median(mfe2_all)), 4) if mfe2_all else None
+
+    win_rs  = [t['combined_r'] for t in wl_resolved
+               if t['outcome_main'] == 'WIN' and t['combined_r'] is not None]
+    avg_win_r = float(np.mean(win_rs)) if win_rs else 0.0
+    p_wr   = overall['tp1_wr'] or 0.0
+    edge   = p_wr * avg_win_r - (1 - p_wr) * 1.0
+    N_units = ACCOUNT_SIZE / RISK_PER_TRADE
+    if edge <= 0:
+        ror = 1.0
+    else:
+        a   = (1 - edge) / (1 + edge)
+        ror = round(min(1.0, a ** N_units), 4)
+
+    risk_stats = {
+        'ror':              ror,
+        'max_consec_wins':  max_cw,
+        'max_consec_losses': max_cl,
+        'sharpe':           sharpe,
+        'mae_median':       mae_median,
+        'mfe_median':       mfe_median,
+        'account_size':     ACCOUNT_SIZE,
+        'risk_per_trade':   RISK_PER_TRADE,
+    }
 
     return {
         'meta': {**meta_extra, **overall,
@@ -325,7 +426,9 @@ def build_stats(trades, meta_extra: dict) -> dict:
         'by_hour':       by_hour,
         'by_year':       by_year,
         'by_month':      by_month,
+        'by_quarter':    by_quarter,
         'by_direction':  by_direction,
+        'risk_stats':    risk_stats,
         'recent_trades': recent_trades,
         'trades':        sorted(trades, key=lambda t: t['date']),
     }
@@ -381,6 +484,10 @@ def main():
             n_no_setup += 1
             continue
 
+        # MAE and MFE1 as percentage of entry price
+        mae_pct  = round(risk_pts / fvg['entry'] * 100, 4)
+        mfe1_pct = round(TP1_BPS * 100, 4)  # always 0.10%
+
         # TP1 level
         if fvg['direction'] == 'LONG':
             tp1 = fvg['entry'] * (1 + TP1_BPS)
@@ -409,8 +516,10 @@ def main():
         yr    = int(day_df['yr'].iloc[0])
         mo    = int(day_df['mo'].iloc[0])
 
+        fill_time = f"{fill['fill_hr']:02d}:{fill['fill_mn']:02d}"
         trades.append({
             'date':       str(date.date()) if hasattr(date, 'date') else str(date)[:10],
+            'time':       fill_time,
             'dow':        dow,
             'dow_name':   DOW_NAMES.get(dow, '?'),
             'yr':         yr,
@@ -425,6 +534,8 @@ def main():
             'stop':       round(fvg['stop'],  4),
             'tp1':        round(tp1, 4),
             'risk_pts':   round(risk_pts, 2),
+            'mae_pct':    mae_pct,
+            'mfe1_pct':   mfe1_pct if outcome['outcome_main'] == 'WIN' else 0.0,
             'fill_hr':    fill['fill_hr'],
             'fill_mn':    fill['fill_mn'],
             **outcome,
@@ -436,9 +547,8 @@ def main():
     wl   = [t for t in trades if t['outcome_main'] in ('WIN', 'LOSS')]
     wins = sum(1 for t in wl if t['outcome_main'] == 'WIN')
     wr   = wins / len(wl) if wl else 0
-    avg_risk = np.mean([t['risk_pts'] for t in wl]) if wl else 0
-    rs   = [t['combined_r'] for t in wl if t['combined_r'] is not None]
-    avg_r = float(np.mean(rs)) if rs else 0
+    mae_vals = [t['mae_pct'] for t in wl if t.get('mae_pct') is not None]
+    avg_mae  = float(np.mean(mae_vals)) if mae_vals else 0
 
     print(f'{bar}')
     print(f'  SUMMARY')
@@ -450,8 +560,7 @@ def main():
     print(f'  Resolved (W+L)    : {len(wl):,}')
     print(f'  Wins (TP1 hit)    : {wins:,}')
     print(f'  TP1 Win Rate      : {wr:.1%}')
-    print(f'  Avg Risk          : {avg_risk:.1f} pts')
-    print(f'  Avg R (combined)  : {avg_r:+.3f}R')
+    print(f'  Avg MAE           : {avg_mae:.4f}%')
     print()
 
     print(f'  BY DIRECTION')
@@ -477,6 +586,23 @@ def main():
         w    = sum(1 for t in sub if t['outcome_main'] == 'WIN')
         wr_h = w / len(sub)
         print(f'    {h:02d}:xx  N={len(sub):>4}  WR={wr_h:.1%}')
+    print()
+
+    # ── Recent 40 trades table ─────────────────────────────────────────────────
+    recent_40 = sorted(wl, key=lambda t: t['date'], reverse=True)[:40]
+    hdr = f"  {'DATE':<12} {'TIME':<6} {'DIR':<6} {'MAE(%)':>8} {'MFE1(%)':>9} {'MFE2(%)':>9} {'MFE3(%)':>9} {'TP1':>5}"
+    print(f'  RECENT 40 TRADES')
+    print(f'  {"-"*74}')
+    print(hdr)
+    print(f'  {"-"*74}')
+    for t in recent_40:
+        tp1_str  = 'W' if t['outcome_main'] == 'WIN' else 'L'
+        print(f"  {t['date']:<12} {t.get('time','?'):<6} {t['direction']:<6} "
+              f"{t.get('mae_pct', 0):>8.4f} "
+              f"{t.get('mfe1_pct', 0.0):>9.4f} "
+              f"{t.get('mfe2_pct', 0.0):>9.4f} "
+              f"{t.get('mfe3_pct', 0.0):>9.4f} "
+              f"{tp1_str:>5}")
     print()
 
     print(f'{bar}\n')
