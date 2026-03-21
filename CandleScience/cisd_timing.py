@@ -183,8 +183,8 @@ def stats(g):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--models', nargs='+',
-                        default=['4H_15M', '1H_5M', '1H_3M'],
-                        choices=[k for k in MODELS if k != '1D_1H'])
+                        default=list(MODELS.keys()),
+                        choices=list(MODELS.keys()))
     parser.add_argument('--table', default='nq_1m')
     args = parser.parse_args()
 

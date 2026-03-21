@@ -59,17 +59,28 @@ CISD_FAST_BARS   = 8
 UNSWEPT_LOOKBACK = 10
 
 # ── RISK PROFILES ─────────────────────────────────────────────────────────────
-# Each tuple: (stop_mult, target_mult, display_key)
-# stop_mult  × base_risk = distance from entry to stop
-# target_mult × base_risk = distance from entry to target
-# base_risk = |entry_price − sweep_extreme|  (= 1 full "R unit")
+# Each tuple: (stop_val, target_val, display_key, profile_type)
+#
+# profile_type='mult'  → stop/target distances = val × base_risk
+#                         base_risk = |entry_price − sweep_extreme|
+#
+# profile_type='pct'   → stop/target distances = entry_price × val / 100
+#                         (fixed % of entry price, independent of sweep size)
 RR_PROFILES = [
-    (0.35, 0.35, '0.35:0.35'),
-    (0.35, 0.25, '0.35:0.25'),
-    (0.5,  0.5,  '0.5:0.5'),
-    (1.0,  1.0,  '1:1'),
-    (1.0,  1.5,  '1:1.5'),
-    (1.0,  2.0,  '1:2'),
+    # --- Sweep-relative (multiples of |entry − sweep extreme|) ---
+    (1.0, 0.35, '1:0.35', 'mult'),
+    (1.0, 0.25, '1:0.25', 'mult'),
+    (1.0, 0.5,  '1:0.5',  'mult'),
+    (1.0, 1.0,  '1:1',    'mult'),
+    (1.0, 1.5,  '1:1.5',  'mult'),
+    (1.0, 2.0,  '1:2',    'mult'),
+    # --- Fixed percentage of entry price ---
+    (0.35, 0.35, '0.35%:0.35%', 'pct'),
+    (0.35, 0.25, '0.35%:0.25%', 'pct'),
+    (0.5,  0.5,  '0.5%:0.5%',  'pct'),
+    (1.0,  1.0,  '1%:1%',      'pct'),
+    (1.0,  1.5,  '1%:1.5%',    'pct'),
+    (1.0,  2.0,  '1%:2%',      'pct'),
 ]
 DEFAULT_PROFILE = '1:2'
 
@@ -78,14 +89,6 @@ HR_LABELS = {h: f"{h:02d}:00" for h in range(0, 24)}
 
 # ── MODEL DEFINITIONS ─────────────────────────────────────────────────────────
 MODELS = {
-    '1D_1H': dict(
-        label        = '1D Sweep · 1H CISD',
-        sweep_tf_min = 24 * 60,
-        cisd_tf_min  = 60,
-        q1_min       = 360,
-        min_range    = 80,
-        session_hrs  = None,
-    ),
     '4H_15M': dict(
         label        = '4H Sweep · 15M CISD',
         sweep_tf_min = 4 * 60,
@@ -108,6 +111,14 @@ MODELS = {
         cisd_tf_min  = 3,
         q1_min       = 15,
         min_range    = 12,
+        session_hrs  = (7.0, 16.0),
+    ),
+    '30M_3M': dict(
+        label        = '30M Sweep · 3M CISD',
+        sweep_tf_min = 30,
+        cisd_tf_min  = 3,
+        q1_min       = 8,
+        min_range    = 8,
         session_hrs  = (7.0, 16.0),
     ),
 }
@@ -590,16 +601,19 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
 
 # ── PROFILE OUTCOME RESOLVER ──────────────────────────────────────────────────
 def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
-                               stop_mult, target_mult):
+                               stop_val, target_val, profile_type='mult'):
     """
-    For each detected setup compute stop / target from the profile multipliers
-    (relative to base_risk = |entry − sweep_extreme|), resolve outcomes, and
-    return a complete DataFrame ready for build_model_stats.
+    Compute stop / target for each detected setup and resolve outcomes.
 
-    LONG:   stop  = entry − stop_mult  × base_risk
-            target= entry + target_mult × base_risk
-    SHORT:  stop  = entry + stop_mult  × base_risk
-            target= entry − target_mult × base_risk
+    profile_type='mult'  (sweep-relative):
+        risk_pts   = stop_val  × base_risk   (base_risk = |entry − sweep_extreme|)
+        LONG:  stop = entry − stop_val×base_risk,  target = entry + target_val×base_risk
+        SHORT: stop = entry + stop_val×base_risk,  target = entry − target_val×base_risk
+
+    profile_type='pct'  (fixed % of entry price):
+        risk_pts   = entry_price × stop_val  / 100
+        LONG:  stop = entry × (1 − stop_val/100),   target = entry × (1 + target_val/100)
+        SHORT: stop = entry × (1 + stop_val/100),   target = entry × (1 − target_val/100)
     """
     rows = [dict(r) for r in base_rows]   # shallow copy per profile
 
@@ -610,14 +624,21 @@ def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
         base_risk     = bp['base_risk']
         direction     = bp['direction']
 
-        risk_pts = stop_mult * base_risk
+        if profile_type == 'pct':
+            stop_dist    = entry_price * stop_val   / 100.0
+            target_dist  = entry_price * target_val / 100.0
+        else:  # 'mult'
+            stop_dist    = stop_val   * base_risk
+            target_dist  = target_val * base_risk
+
+        risk_pts = stop_dist
 
         if direction == 'LONG':
-            stop_price   = entry_price - stop_mult  * base_risk
-            target_price = entry_price + target_mult * base_risk
+            stop_price   = entry_price - stop_dist
+            target_price = entry_price + target_dist
         else:
-            stop_price   = entry_price + stop_mult  * base_risk
-            target_price = entry_price - target_mult * base_risk
+            stop_price   = entry_price + stop_dist
+            target_price = entry_price - target_dist
 
         rows[idx]['stop_price']   = round(stop_price,   2)
         rows[idx]['target_price'] = round(target_price, 2)
@@ -651,7 +672,7 @@ def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
     if not df.empty:
         passed = int((df['rejected_by'] == '').sum())
         wl_n   = int(df['outcome'].isin(['WIN','LOSS']).sum())
-        print(f"        [{stop_mult}:{target_mult}]  {passed:,} filtered setups  "
+        print(f"        [{stop_val}:{target_val} {profile_type}]  {passed:,} filtered setups  "
               f"→  {wl_n:,} resolved (WIN/LOSS)")
     return df
 
@@ -955,7 +976,7 @@ def main():
 
     print("\n" + "═"*65)
     print(f"  SWEEP MODEL ENGINE v6.0  ·  {TABLE.upper()}")
-    print(f"  Profiles: {', '.join(pk for *_, pk in RR_PROFILES)}")
+    print(f"  Profiles: {', '.join(pk for _, __, pk, ___ in RR_PROFILES)}")
     print(f"  Models: {', '.join(args.models)}")
     print(f"  Sweep mode: PREV  ·  CISD fast bars: {CISD_FAST_BARS}")
     print("═"*65)
@@ -1006,13 +1027,13 @@ def main():
 
         print(f"      Resolving outcomes across {len(RR_PROFILES)} profiles ...")
         model_profiles = {}
-        for stop_mult, target_mult, pk in RR_PROFILES:
+        for stop_val, target_val, pk, ptype in RR_PROFILES:
             df_p = apply_profile_and_resolve(
-                base_rows, base_pending, m1, stop_mult, target_mult)
+                base_rows, base_pending, m1, stop_val, target_val, ptype)
             if df_p.empty:
                 continue
             stats = build_model_stats(
-                df_p, trading_days, mk, cfg, stop_mult, target_mult, pk)
+                df_p, trading_days, mk, cfg, stop_val, target_val, pk)
             model_profiles[pk] = stats
 
         if not model_profiles:

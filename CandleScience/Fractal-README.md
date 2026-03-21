@@ -23,10 +23,10 @@ The model detects a specific 4-step mechanical setup across four timeframe pairs
 
 | Model Key | Sweep TF | CISD TF | Q1 Window | Typical Risk |
 |-----------|----------|---------|-----------|--------------|
-| `1D_1H`   | 1 Day    | 1 Hour  | First 6h  | ~60–80 pts   |
 | `4H_15M`  | 4 Hour   | 15 Min  | First 1h  | ~28–40 pts   |
 | `1H_5M`   | 1 Hour   | 5 Min   | First 15m | ~14–24 pts   |
 | `1H_3M`   | 1 Hour   | 3 Min   | First 15m | ~10–20 pts   |
+| `30M_3M`  | 30 Min   | 3 Min   | First 8m  | ~8–16 pts    |
 
 All four models run in a single pass and output to one JSON file. The dashboard lets you tab between them and compare at a glance.
 
@@ -62,15 +62,15 @@ Python 3.9+ recommended. No other dependencies. The dashboard is a single HTML f
 Open `model_stats.py` and confirm the path at the top matches your database location:
 
 ```python
-DB_PATH  = Path('/Users/abhi/Downloads/CandleScience/candle_science.duckdb')
-OUT_PATH = Path('/Users/abhi/Downloads/CandleScience/model_stats.json')
+DB_PATH  = Path('/Users/abhi/Downloads/Trading Hub/CandleScience/candle_science.duckdb')
+OUT_PATH = Path('/Users/abhi/Downloads/Trading Hub/CandleScience/model_stats.json')
 TABLE    = 'nq_1m'
 ```
 
 ### 2. Run the engine
 
 ```bash
-cd /Users/abhi/Downloads/CandleScience
+cd /Users/abhi/Downloads/Trading Hub/CandleScience
 python3 model_stats.py
 ```
 
@@ -78,10 +78,10 @@ This runs all four models and prints a comparison table:
 
 ```
   Model         Base WR    Base EV    Base PF  →    WR       EV       PF       N    SPD
-  1D_1H          48.2%    +0.034R     1.068      57.4%  +0.721R   1.910    1,240   0.42
   4H_15M         49.1%    +0.073R     1.147      56.1%  +0.683R   1.840    2,890   0.88
   1H_5M          50.2%    +0.255R     1.263      55.7%  +0.671R   1.820    3,510   1.82
   1H_3M          49.8%    +0.241R     1.252      55.1%  +0.652R   1.780    4,020   2.24
+  30M_3M         49.6%    +0.183R     1.303      49.6%  +0.487R   1.965    2,942   1.18
 ```
 
 ### 3. Start a local server
@@ -156,7 +156,7 @@ All panels are interactive — hover any bar, dot, or cell for detail.
 
 ## Output JSON Schema
 
-`model_stats.json` is a top-level object keyed by model (`1D_1H`, `4H_15M`, `1H_5M`, `1H_3M`). Each model contains:
+`model_stats.json` is a top-level object keyed by model (`4H_15M`, `1H_5M`, `1H_3M`, `30M_3M`). Each model contains:
 
 ```json
 {
@@ -204,4 +204,4 @@ CISD_FAST_BARS   = 8       # CISD must form within 8 CISD-TF bars of return
 - **Expired setups** (neither target nor stop hit within the scan window) are excluded from win rate and EV calculations but counted in the output.
 - **Profit Factor** = (total winning R) ÷ (total losing R). Above 1.5 is generally considered strong; above 2.0 is excellent.
 - **Breakeven win rate** at 1:2 R:R = 33.3%. Any win rate above this is positive EV.
-- The `1D_1H` model uses the full 24-hour feed (not RTH-only) for sweep detection since daily highs/lows form outside RTH. All other models use the RTH 07:00–16:00 ET window.
+- All models use the RTH 07:00–16:00 ET window for both sweep detection and outcome resolution.

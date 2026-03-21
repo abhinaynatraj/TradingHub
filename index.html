@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Trading Research · Project Hub</title>
+<title>Kingline Wolfpack · Quantitative Research Lab</title>
 <style>
 /* ── Reset & base ──────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -119,15 +119,15 @@ body {
 
 /* ── Main layout ───────────────────────────────────────────────────────────── */
 main {
-  max-width: 1200px;
+  max-width: 1000px;
   margin: 0 auto;
-  padding: 48px 32px 80px;
+  padding: 40px 32px 80px;
 }
 
 /* ── Hero ──────────────────────────────────────────────────────────────────── */
 .hero {
   text-align: center;
-  margin-bottom: 56px;
+  margin-bottom: 44px;
 }
 .hero-eyebrow {
   font-family: var(--font-mono);
@@ -136,22 +136,22 @@ main {
   letter-spacing: .12em;
   text-transform: uppercase;
   color: var(--blue);
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 .hero-title {
-  font-size: 40px;
+  font-size: 34px;
   font-weight: 800;
-  letter-spacing: -1px;
-  line-height: 1.15;
+  letter-spacing: -.8px;
+  line-height: 1.18;
   color: var(--text);
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 .hero-title .accent { color: var(--blue); }
 .hero-desc {
-  font-size: 16px;
+  font-size: 14.5px;
   color: var(--text-sub);
-  max-width: 560px;
-  margin: 0 auto 28px;
+  max-width: 500px;
+  margin: 0 auto 24px;
 }
 .hero-meta {
   display: flex;
@@ -185,7 +185,7 @@ main {
   display: flex;
   align-items: center;
   gap: 14px;
-  margin-bottom: 28px;
+  margin-bottom: 20px;
 }
 .sec-label {
   font-size: 11px;
@@ -200,9 +200,9 @@ main {
 /* ── Project grid ──────────────────────────────────────────────────────────── */
 .project-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 24px;
-  margin-bottom: 56px;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 44px;
 }
 
 .project-card {
@@ -344,9 +344,9 @@ main {
 /* ── Model detail section ────────────────────────────────────────────────────── */
 .model-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin-bottom: 56px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 44px;
 }
 .model-panel {
   background: var(--bg-card);
@@ -434,6 +434,104 @@ main {
 .kv-val.blue  { color: var(--blue); }
 .kv-val.amber { color: var(--amber); }
 
+/* ── EV Leaderboard ─────────────────────────────────────────────────────────── */
+.ev-board {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  margin-bottom: 56px;
+}
+.ev-board-hd {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ev-board-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-sub);
+  letter-spacing: .04em;
+}
+.ev-board-note {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.ev-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.ev-table th {
+  padding: 9px 12px;
+  text-align: left;
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ev-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.ev-table tr:last-child td { border-bottom: none; }
+.ev-table tbody tr:hover td { background: var(--bg-raised); cursor: default; }
+.ev-rank {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-muted);
+  width: 28px;
+  text-align: right;
+}
+.ev-rank.gold   { color: #f59e0b; }
+.ev-rank.silver { color: #94a3b8; }
+.ev-rank.bronze { color: #b45309; }
+.ev-model {
+  font-weight: 700;
+  color: var(--text);
+  font-size: 12.5px;
+}
+.ev-profile {
+  color: var(--text-sub);
+}
+.ev-type {
+  display: inline-block;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.ev-type.pct  { background: var(--blue-tint);  border: 1px solid rgba(59,130,246,.25); color: var(--blue); }
+.ev-type.mult { background: var(--bg-raised);   border: 1px solid var(--border-mid);   color: var(--text-muted); }
+.ev-pos { color: var(--green); font-weight: 700; }
+.ev-neg { color: var(--red);   font-weight: 700; }
+.ev-neu { color: var(--text-sub); }
+.ev-edge {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.ev-edge.pos { background: var(--green-tint); color: var(--green); }
+.ev-edge.neg { background: var(--red-tint);   color: var(--red); }
+
 /* ── Sweep model sub-table ───────────────────────────────────────────────────── */
 .sweep-sub-table {
   width: 100%;
@@ -498,13 +596,15 @@ main {
 @keyframes fade { from { opacity: .4 } to { opacity: 1 } }
 
 /* ── Responsive ────────────────────────────────────────────────────────────── */
-@media(max-width: 720px) {
-  main { padding: 28px 16px 60px; }
+@media(max-width: 860px) {
+  .model-grid { grid-template-columns: 1fr 1fr; }
+}
+@media(max-width: 640px) {
+  main { padding: 24px 16px 60px; }
   .project-grid { grid-template-columns: 1fr; }
   .model-grid { grid-template-columns: 1fr; }
   .hdr { padding: 0 16px; }
-  .hero-title { font-size: 28px; }
-  .stats-row { grid-template-columns: repeat(3, 1fr); }
+  .hero-title { font-size: 26px; }
 }
 </style>
 </head>
@@ -512,8 +612,8 @@ main {
 
 <header class="hdr">
   <div class="hdr-brand">
-    <div class="hdr-logo">Trade<em>Research</em></div>
-    <div class="hdr-sub">NQ · ES Futures · Backtesting Hub</div>
+    <div class="hdr-logo">Kingline<em>Wolfpack</em></div>
+    <div class="hdr-sub">NQ · ES Futures · Quantitative Research Lab</div>
   </div>
   <button class="theme-btn" id="themeBtn" title="Toggle theme" onclick="toggleTheme()">☀</button>
 </header>
@@ -522,15 +622,15 @@ main {
 
   <!-- ── Hero ─────────────────────────────────────────────────────────────── -->
   <div class="hero">
-    <div class="hero-eyebrow">NQ / ES Futures · Statistical Research</div>
-    <h1 class="hero-title">Quantitative <span class="accent">Trading</span><br/>Research Hub</h1>
+    <div class="hero-eyebrow">NQ Futures · Quantitative Backtesting</div>
+    <h1 class="hero-title">Kingline Wolfpack <span class="accent">Quantitative</span><br/>Research Lab</h1>
     <p class="hero-desc">
-      Three independent backtesting projects covering sweep patterns, fractal zones,
-      and first-presented fair value gaps — all on 15+ years of 1-minute NQ futures data.
+      Statistical backtesting across sweep fractal setups and first-presented fair value gaps —
+      15+ years of 1-minute NQ data, multiple risk profiles.
     </p>
     <div class="hero-meta">
-      <div class="hero-badge"><div class="dot"></div>Live data · Updated daily</div>
-      <div class="hero-badge">📊 3 Models</div>
+      <div class="hero-badge"><div class="dot"></div>Updated daily</div>
+      <div class="hero-badge">📊 2 Models</div>
       <div class="hero-badge">🕐 2010 – 2026</div>
       <div class="hero-badge">⚡ DuckDB · Python</div>
     </div>
@@ -546,6 +646,13 @@ main {
     <!-- Cards injected by JS -->
     <div class="loading-pill">Loading project stats…</div>
   </div>
+
+  <!-- ── EV Leaderboard ────────────────────────────────────────────────── -->
+  <div class="sec-head">
+    <span class="sec-label">Top Combinations · Model × Profile</span>
+    <div class="sec-line"></div>
+  </div>
+  <div id="ev-leaderboard"><div class="loading-pill">Loading combinations…</div></div>
 
   <!-- ── Model deep-dive ────────────────────────────────────────────────── -->
   <div class="sec-head">
@@ -576,31 +683,6 @@ main {
           <div class="kv-item"><div class="kv-key">Risk:Reward</div><div class="kv-val">1 : 2</div></div>
           <div class="kv-item"><div class="kv-key">Best Model</div><div class="kv-val amber">1H_5M</div></div>
           <div class="kv-item"><div class="kv-key">Instrument</div><div class="kv-val">NQ / ES</div></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- TTFM -->
-    <div class="model-panel">
-      <div class="model-panel-hd">
-        <div class="model-panel-icon">🔷</div>
-        <div>
-          <div class="model-panel-title">TTFM° — TTrades Fractal Model</div>
-          <div class="model-panel-sub">6 T-Spot variants · HTF zone entry logic</div>
-        </div>
-      </div>
-      <div class="model-panel-body">
-        <ul class="rule-list purple" style="margin-bottom:16px;">
-          <li><strong>C1–C2–C3:</strong> Three consecutive 1H candles. C1=context, C2=reference (swept), C3=trigger (most recent)</li>
-          <li><strong>T-Spot Zone:</strong> C3.close ↔ sweep midpoint (log-weighted), activated at C3 close</li>
-          <li><strong>Entry:</strong> Limit at sweep_mid when price retraces into the zone · <strong>Stop:</strong> C3 extreme</li>
-          <li><strong>6 Variants:</strong> Normal / Expansive / ProTrend × BULL / BEAR (classified by C3 sweep percentage)</li>
-        </ul>
-        <div class="kv-grid">
-          <div class="kv-item"><div class="kv-key">Variants</div><div class="kv-val blue">6</div></div>
-          <div class="kv-item"><div class="kv-key">Risk:Reward</div><div class="kv-val">1 : 2</div></div>
-          <div class="kv-item"><div class="kv-key">HTF</div><div class="kv-val amber">60 min</div></div>
-          <div class="kv-item"><div class="kv-key">Instrument</div><div class="kv-val">NQ</div></div>
         </div>
       </div>
     </div>
@@ -662,7 +744,7 @@ main {
     <span class="sec-label">Quick Start</span>
     <div class="sec-line"></div>
   </div>
-  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:22px 26px;margin-bottom:56px;">
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:20px 24px;margin-bottom:56px;">
     <p style="font-size:13px;color:var(--text-sub);margin-bottom:14px;">
       Serve all dashboards from the <code style="font-family:var(--font-mono);background:var(--bg-raised);padding:2px 6px;border-radius:4px;">Downloads</code> directory at <code style="font-family:var(--font-mono);background:var(--bg-raised);padding:2px 6px;border-radius:4px;">http://localhost:9000</code>:
     </p>
@@ -677,7 +759,7 @@ main {
 </main>
 
 <footer style="text-align:center;padding:24px;font-size:11px;color:var(--text-muted);border-top:1px solid var(--border);font-family:var(--font-mono);">
-  Trading Research Hub · NQ &amp; ES Futures · Data: Databento GLBX.MDP3 · Timestamps: America/New_York
+  Kingline Wolfpack Quantitative Research Lab · NQ &amp; ES Futures · Data: Databento GLBX.MDP3 · Timestamps: America/New_York
 </footer>
 
 <script>
@@ -709,26 +791,14 @@ function wrColor(wr) {
 const PROJECTS = [
   {
     id:       'sweep',
-    title:    'CandleScience',
+    title:    'Sweep Fractal Model',
     subtitle: 'Sweep + CISD · 4 Models',
-    desc:     'Detects prior candle sweep → close-back → CISD confirmation across four HTF timeframe pairs (1D/1H, 4H/15M, 1H/5M, 1H/3M). Entry at next 1M open after CISD. Stop at sweep extreme. 2:1 target projected from the manipulation range.',
+    desc:     'Detects prior candle sweep → close-back → CISD confirmation across four timeframe pairs (4H/15M, 1H/5M, 1H/3M, 30M/3M). Entry at next CISD-TF candle open. Stop at sweep extreme. Multiple risk profiles tested from 1:0.35 to 1:2.',
     json:     'CandleScience/model_stats.json',
     link:     'CandleScience/model_dashboard.html',
     color:    '#3b82f6',
     icon:     '🌊',
     type:     'sweep',
-    stats:    null,
-  },
-  {
-    id:       'ttfm',
-    title:    'TTFM°',
-    subtitle: 'TTrades Fractal Model · 6 T-Spot Variants',
-    desc:     'Replicates the TTrades Fractal Model° Pine Script indicator. Identifies 1H candle triples (C1–C2–C3), computes a log-weighted T-Spot zone from C3, and enters on limit when price retraces into the zone. Six variants classified by sweep depth.',
-    json:     'TTrades Fractal Model Analysis/ttfm_results.json',
-    link:     'TTrades Fractal Model Analysis/index.html',
-    color:    '#8b5cf6',
-    icon:     '🔷',
-    type:     'ttfm',
     stats:    null,
   },
   {
@@ -753,24 +823,45 @@ async function loadStats(project) {
     const d = await res.json();
 
     if (project.type === 'sweep') {
-      // Pick best model by EV (exclude 1D_1H which has too few trades)
-      const models = Object.entries(d).filter(([k]) => !k.startsWith('1D'));
-      const best = models.sort((a,b) => b[1].meta.ev_per_trade - a[1].meta.ev_per_trade)[0];
+      // Flatten all model × profile combinations for the leaderboard
+      const combos = [];
+      for (const [modelKey, modelData] of Object.entries(d)) {
+        const profiles = modelData.profiles || {};
+        for (const [profileKey, stats] of Object.entries(profiles)) {
+          const m = stats.meta || {};
+          if ((m.total_wl || 0) < 50) continue;
+          combos.push({
+            modelKey,
+            profileKey,
+            n:    m.total_wl,
+            wr:   m.win_rate,
+            ev:   m.ev_per_trade,
+            pf:   m.profit_factor,
+            be:   m.risk_breakeven_wr,
+            spd:  m.setups_per_day_ny,
+          });
+        }
+      }
+      combos.sort((a, b) => b.ev - a.ev);
+      // Store for leaderboard (accessible after init)
+      project._combos = combos;
+
+      // Card stats: best combo overall
+      const best = combos[0];
+      const allN = combos.reduce((s, c) => s + c.n, 0);
       if (!best) return null;
-      const m = best[1].meta;
-      const allN = Object.values(d).reduce((s, v) => s + (v.meta?.total_wl || 0), 0);
       return {
-        label1: 'Best WR', val1: pct(m.win_rate), cls1: wrColor(m.win_rate),
-        label2: 'Best EV',  val2: sgn(m.ev_per_trade), cls2: m.ev_per_trade > 0 ? 'pos' : 'neg',
-        label3: 'Trades',   val3: num(allN), cls3: 'neutral',
-        dateRange: m.date_range || '—',
-        subtitle2: `Best: ${best[0].replace('_PREV_CISD','').replace('_',' · ')}`,
-        sweepModels: models.map(([k, v]) => ({
-          key: k.replace('_PREV_CISD',''),
-          wr: v.meta.win_rate,
-          ev: v.meta.ev_per_trade,
-          n: v.meta.total_wl,
-        })),
+        label1: 'Best WR', val1: pct(best.wr),  cls1: wrColor(best.wr),
+        label2: 'Best EV', val2: sgn(best.ev),  cls2: best.ev > 0 ? 'pos' : 'neg',
+        label3: 'Combos',  val3: num(combos.length), cls3: 'neutral',
+        dateRange: d[best.modelKey]?.profiles?.[best.profileKey]?.meta?.date_range || '—',
+        subtitle2: `Best: ${best.modelKey.replace('_PREV_CISD','').replace(/_/g,' · ')} · ${best.profileKey}`,
+        sweepModels: Object.entries(d)
+          .filter(([k]) => !k.startsWith('1D'))
+          .map(([k, v]) => {
+            const defProfile = v.profiles?.['1:2'] || Object.values(v.profiles||{})[0] || v;
+            return { key: k.replace('_PREV_CISD',''), wr: defProfile.meta?.win_rate, ev: defProfile.meta?.ev_per_trade, n: defProfile.meta?.total_wl };
+          }),
       };
     }
 
@@ -825,7 +916,6 @@ function buildCard(p) {
         <div class="stat-val ${s.cls3}">${s.val3}</div>
       </div>
     </div>
-    ${p.type === 'sweep' && s.sweepModels ? buildSweepSubTable(s.sweepModels) : ''}
   ` : `
     <div class="stats-row" style="margin-bottom:18px;">
       <div class="stat-cell"><div class="stat-lbl">Status</div>
@@ -881,15 +971,79 @@ function buildSweepSubTable(models) {
     </div>`;
 }
 
+// ── EV Leaderboard ────────────────────────────────────────────────────────────
+function buildEvLeaderboard(combos) {
+  const el = document.getElementById('ev-leaderboard');
+  if (!el) return;
+  if (!combos || !combos.length) {
+    el.innerHTML = '<div class="loading-pill">No data — run <code>python3 model_stats.py</code></div>';
+    return;
+  }
+
+  const MODEL_DISPLAY = {
+    '30M_3M':  '30M · 3M CISD',
+    '4H_15M':  '4H · 15M CISD',
+    '1H_5M':   '1H · 5M CISD',
+    '1H_3M':   '1H · 3M CISD',
+  };
+
+  const top = combos.slice(0, 15);
+  const rankClass = i => i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+  const isPct = pk => pk.includes('%');
+
+  const rows = top.map((c, i) => {
+    const modelShort = c.modelKey.replace('_PREV_CISD', '');
+    const modelLabel = MODEL_DISPLAY[modelShort] || modelShort.replace(/_/g, ' · ');
+    const edge = (c.wr - c.be);
+    const edgeCls = edge >= 0 ? 'pos' : 'neg';
+    const ptype = isPct(c.profileKey) ? 'pct' : 'mult';
+    const ptypeLabel = isPct(c.profileKey) ? '% price' : '× sweep';
+    return `<tr>
+      <td><span class="ev-rank ${rankClass(i)}">${i + 1}</span></td>
+      <td><span class="ev-model">${modelLabel}</span></td>
+      <td>
+        <span class="ev-profile">${c.profileKey}</span>
+        <span class="ev-type ${ptype}">${ptypeLabel}</span>
+      </td>
+      <td class="ev-neu">${num(c.n)}</td>
+      <td class="${c.wr >= c.be ? 'ev-pos' : 'ev-neg'}">${pct(c.wr)}</td>
+      <td class="ev-neu">${pct(c.be)}</td>
+      <td><span class="ev-edge ${edgeCls}">${edge >= 0 ? '+' : ''}${(edge * 100).toFixed(1)}%</span></td>
+      <td class="${c.ev > 0 ? 'ev-pos' : 'ev-neg'}">${sgn(c.ev)}</td>
+      <td class="${c.pf >= 2 ? 'ev-pos' : c.pf >= 1 ? 'ev-neu' : 'ev-neg'}">${c.pf != null ? c.pf.toFixed(2) : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="ev-board">
+      <div class="ev-board-hd">
+        <span class="ev-board-title">Ranked by Expected Value · All Models × All Profiles · min 50 trades</span>
+        <span class="ev-board-note">% price = fixed % of entry · × sweep = multiple of |entry − sweep extreme|</span>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="ev-table">
+          <thead><tr>
+            <th>#</th><th>Model</th><th>Profile</th>
+            <th>N</th><th>Win Rate</th><th>BE WR</th><th>Edge</th><th>EV</th><th>PF</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function init() {
-  // Load all stats in parallel
   const results = await Promise.all(PROJECTS.map(p => loadStats(p)));
   results.forEach((s, i) => { PROJECTS[i].stats = s; });
 
-  // Render cards
+  // Render project cards
   const grid = document.getElementById('projectGrid');
   grid.innerHTML = PROJECTS.map(buildCard).join('');
+
+  // Render EV leaderboard from sweep project combos
+  const sweepProject = PROJECTS.find(p => p.type === 'sweep');
+  buildEvLeaderboard(sweepProject?._combos || []);
 }
 
 init();

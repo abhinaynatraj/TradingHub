@@ -26,10 +26,10 @@ python3 -m http.server 8000         # serve dashboard at localhost:8000
 ```
 
 ## Trading Model
-- 4 timeframe pairs: `1D_1H`, `4H_15M`, `1H_5M`, `1H_3M`
+- 4 timeframe pairs: `4H_15M`, `1H_5M`, `1H_3M`, `30M_3M`
 - Setup: prior candle swept in Q1 → price returns inside range → CISD confirms
 - Entry: next candle open | Stop: sweep extreme | Target: 2R (1:2)
-- RTH window: 07:00–16:00 ET (except `1D_1H` which uses full 24h feed)
+- RTH window: 07:00–16:00 ET (all models)
 
 ## Analysis Scripts Convention
 - Reference point for candle analysis: use `close` of the anchor candle

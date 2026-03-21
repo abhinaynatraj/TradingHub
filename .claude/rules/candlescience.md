@@ -21,17 +21,16 @@ python3 daily_update.py                         # fetch new bars from Databento
 
 | Key | Sweep TF | CISD TF | Q1 Window |
 |-----|----------|---------|-----------|
-| `1D_1H` | 1 Day | 1 Hour | First 6h (full 24h feed) |
 | `4H_15M` | 4 Hour | 15 Min | First 1h |
 | `1H_5M` | 1 Hour | 5 Min | First 15m |
 | `1H_3M` | 1 Hour | 3 Min | First 15m |
+| `30M_3M` | 30 Min | 3 Min | First 8m |
 
 ## Key Constants (model_stats.py)
 
-- `RR = 2.0` — 1:2 risk-reward target
 - `SWEEP_MIN_PCT = 0.10`, `SWEEP_MAX_PCT = 1.50`
 - `CISD_FAST_BARS = 8` — CISD must form within 8 CISD-TF bars
-- RTH window: 07:00–16:00 ET (except `1D_1H`)
+- RTH window: 07:00–16:00 ET (all models)
 
 ## Refinement Filters (F1–F5)
 

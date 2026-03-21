@@ -197,6 +197,16 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 
 @media(max-width:1100px){.meta-row{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:760px){.grid2,.dir-cards{grid-template-columns:1fr}.meta-row{grid-template-columns:repeat(2,1fr)}.risk-grid{grid-template-columns:repeat(3,1fr)}.dir-stats{grid-template-columns:repeat(2,1fr)}.main{padding:16px 16px 80px}.hdr{padding:0 16px}.h2h-stats{grid-template-columns:repeat(2,1fr)}.h2h-body{grid-template-columns:1fr}.h2h-divider{display:none}}
+
+/* SELECTOR BAR */
+.sel-bar{background:var(--bg-card);border-bottom:1px solid var(--border);padding:10px 28px;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+.sel-group{display:flex;align-items:center;gap:8px}
+.sel-label{font-family:var(--font-data);font-size:9px;font-weight:600;letter-spacing:0.12em;color:var(--text-muted);text-transform:uppercase;white-space:nowrap}
+.sel-drop{font-family:var(--font-data);font-size:12px;padding:6px 28px 6px 10px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-primary);cursor:pointer;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238ba4bc'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;transition:border-color .15s}
+.sel-drop:hover{border-color:var(--border-hi)}
+.sel-drop:focus{outline:none;border-color:var(--green)}
+.sel-drop option{background:var(--bg-card);color:var(--text-primary)}
+.sel-note{font-family:var(--font-data);font-size:9px;color:var(--text-muted);letter-spacing:0.04em;margin-left:auto}
 </style>
 </head>
 <body>
@@ -217,10 +227,20 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
   </div>
 </header>
 
-<!-- Model tabs (4 pairs) -->
-<div class="tab-bar" id="tab-bar"></div>
+<!-- Model + Profile selectors -->
+<div class="sel-bar">
+  <div class="sel-group">
+    <label class="sel-label">Model</label>
+    <select id="model-select" class="sel-drop" onchange="switchModel(this.value)"></select>
+  </div>
+  <div class="sel-group">
+    <label class="sel-label">Profile (Stop : Target)</label>
+    <select id="profile-select" class="sel-drop" onchange="switchProfile(this.value)"></select>
+  </div>
+  <span class="sel-note" id="profile-note">Stop &amp; Target as sweep multiples or fixed % of entry price</span>
+</div>
 
-<!-- Sweep Mode + CISD Mode toggles -->
+<!-- Sweep Mode + CISD Mode info strip -->
 <div class="mode-strip">
   <div class="mode-row">
     <span class="mode-strip-label">Sweep</span>
@@ -231,14 +251,6 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
     <div class="mode-pills" id="cisd-pills"></div>
   </div>
   <span class="mode-strip-note" id="mode-note"></span>
-</div>
-<!-- Risk Profile selector -->
-<div class="mode-strip" style="margin-top:2px">
-  <div class="mode-row" style="flex-wrap:wrap;gap:4px;align-items:center">
-    <span class="mode-strip-label">Profile</span>
-    <div id="profile-bar" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-  </div>
-  <span class="mode-strip-note">Stop : Target — both as multiples of |entry − sweep extreme|</span>
 </div>
 
 <main class="main">
@@ -485,13 +497,13 @@ function makeDemoModel(key, label, mode, cisd, wrBase, evBase, pfBase, riskMed, 
 
 // Demo: 4 variants (4 models × PREV sweep × CISD)
 const DEMO = {
-  '1D_1H_PREV_CISD':   makeDemoModel('1D_1H','1D Sweep · 1H CISD','PREV','CISD',0.574,0.721,1.91,68,0.42),
+  '30M_3M_PREV_CISD':  makeDemoModel('30M_3M','30M Sweep · 3M CISD','PREV','CISD',0.551,0.652,1.78,10,2.80),
   '4H_15M_PREV_CISD':  makeDemoModel('4H_15M','4H Sweep · 15M CISD','PREV','CISD',0.561,0.683,1.84,32,0.88),
   '1H_5M_PREV_CISD':   makeDemoModel('1H_5M','1H Sweep · 5M CISD','PREV','CISD',0.557,0.671,1.82,18,1.82),
   '1H_3M_PREV_CISD':   makeDemoModel('1H_3M','1H Sweep · 3M CISD','PREV','CISD',0.551,0.652,1.78,14,2.24),
 };
-const MODEL_KEYS  = ['1D_1H','4H_15M','1H_5M','1H_3M'];
-const MODEL_LABELS= {'1D_1H':'1D · 1H CISD','4H_15M':'4H · 15M CISD','1H_5M':'1H · 5M CISD','1H_3M':'1H · 3M CISD'};
+const MODEL_KEYS  = ['4H_15M','1H_5M','1H_3M','30M_3M'];
+const MODEL_LABELS= {'4H_15M':'4H · 15M CISD','1H_5M':'1H · 5M CISD','1H_3M':'1H · 3M CISD','30M_3M':'30M · 3M CISD'};
 
 let DATA          = DEMO;
 let isDemo        = true;
@@ -500,22 +512,44 @@ let activeMode    = 'PREV';
 let activeCisd    = 'CISD';
 let activeProfile = '1:2';
 
-const RR_PROFILES = ['0.35:0.35','0.35:0.25','0.5:0.5','1:1','1:1.5','1:2'];
+const RR_PROFILES = ['1:0.35','1:0.25','1:0.5','1:1','1:1.5','1:2',
+                     '0.35%:0.35%','0.35%:0.25%','0.5%:0.5%','1%:1%','1%:1.5%','1%:2%'];
 const PROFILE_LABELS = {
-  '0.35:0.35': '0.35 : 0.35',
-  '0.35:0.25': '0.35 : 0.25',
-  '0.5:0.5':   '0.5 : 0.5',
-  '1:1':       '1 : 1',
-  '1:1.5':     '1 : 1.5',
-  '1:2':       '1 : 2',
+  '1:0.35':      '1 : 0.35',
+  '1:0.25':      '1 : 0.25',
+  '1:0.5':       '1 : 0.5',
+  '1:1':         '1 : 1',
+  '1:1.5':       '1 : 1.5',
+  '1:2':         '1 : 2',
+  '0.35%:0.35%': '0.35% : 0.35%',
+  '0.35%:0.25%': '0.35% : 0.25%',
+  '0.5%:0.5%':   '0.5% : 0.5%',
+  '1%:1%':       '1% : 1%',
+  '1%:1.5%':     '1% : 1.5%',
+  '1%:2%':       '1% : 2%',
 };
+// Which profiles are percentage-based
+const PCT_PROFILES = new Set(['0.35%:0.35%','0.35%:0.25%','0.5%:0.5%','1%:1%','1%:1.5%','1%:2%']);
 
-// Helper — resolve active profile data (falls back to any available profile)
+// Helper — resolve active profile data (handles both flat DEMO and {profiles:{}} real JSON)
 function getProfileData(fullKey, profile) {
   const base = DATA[fullKey];
   if (!base) return null;
-  const profiles = base.profiles || base;   // support both old and new JSON
-  return profiles[profile] || profiles[Object.keys(profiles)[0]] || null;
+  if (base.profiles) {
+    // New structure: {profiles: {profile_key: stats_obj}}
+    return base.profiles[profile] || base.profiles[Object.keys(base.profiles)[0]] || null;
+  }
+  // Old flat structure: the value IS the stats object (demo data has .meta directly)
+  if (base.meta) return base;
+  return null;
+}
+
+// Get all available profile keys for a given fullKey
+function getAvailableProfiles(fullKey) {
+  const base = DATA[fullKey];
+  if (!base) return RR_PROFILES;
+  if (base.profiles) return Object.keys(base.profiles);
+  return RR_PROFILES; // demo data — all profiles point to same data
 }
 
 // ── FORMATTERS ─────────────────────────────────────────────────────────────
@@ -744,37 +778,44 @@ function renderTspotSection(){
   }
 }
 
-function renderTabBar(){
-  const bar=document.getElementById('tab-bar');
-  bar.innerHTML=MODEL_KEYS.filter(k=>DATA[`${k}_PREV_CISD`]?.profiles).map(k=>{
+function renderModelDropdown(){
+  const sel = document.getElementById('model-select');
+  if (!sel) return;
+  const availableKeys = MODEL_KEYS.filter(k => DATA[`${k}_PREV_CISD`]);
+  sel.innerHTML = availableKeys.map(k => {
     const d = getProfileData(`${k}_${activeMode}_${activeCisd}`, activeProfile)
            || getProfileData(`${k}_PREV_CISD`, activeProfile);
     const pf = d?.meta?.profit_factor;
-    return `<div class="tab ${k===activeModel?'active':''}" onclick="switchModel('${k}')">
-      ${MODEL_LABELS[k]||k}
-      <span class="tab-badge">PF ${pf!=null?pf.toFixed(2):'—'}</span>
-    </div>`;
+    const label = (MODEL_LABELS[k] || k) + (pf != null ? '  ·  PF ' + pf.toFixed(2) : '');
+    return `<option value="${k}" ${k===activeModel?'selected':''}>${label}</option>`;
   }).join('');
 }
 
-function renderProfileBar(){
-  const bar = document.getElementById('profile-bar');
-  if (!bar) return;
+function renderProfileDropdown(){
+  const sel = document.getElementById('profile-select');
+  if (!sel) return;
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
-  bar.innerHTML = RR_PROFILES.map(pk => {
-    const d    = getProfileData(fullKey, pk);
-    const wr   = d?.meta?.win_rate;
-    const ev   = d?.meta?.ev_per_trade;
-    const active = pk === activeProfile;
-    const evCol  = ev > 0 ? 'var(--green)' : 'var(--red)';
-    return `<div class="profile-pill ${active?'active':''}" onclick="switchProfile('${pk}')">
-      <span class="profile-rr">${PROFILE_LABELS[pk]||pk}</span>
-      ${d ? `<span class="profile-stat" style="color:${ev>0?'var(--green)':'var(--red)'}">EV ${ev!=null?(ev>0?'+':'')+ev.toFixed(3)+'R':'—'}</span>` : ''}
-    </div>`;
-  }).join('');
+  function optHtml(pk){
+    const d  = getProfileData(fullKey, pk);
+    const ev = d?.meta?.ev_per_trade;
+    const label = (PROFILE_LABELS[pk] || pk) + (ev != null ? '  ·  EV ' + (ev>0?'+':'') + ev.toFixed(3) + 'R' : '');
+    return `<option value="${pk}" ${pk===activeProfile?'selected':''}>${label}</option>`;
+  }
+  const multKeys = RR_PROFILES.filter(pk => !PCT_PROFILES.has(pk));
+  const pctKeys  = RR_PROFILES.filter(pk =>  PCT_PROFILES.has(pk));
+  sel.innerHTML =
+    `<optgroup label="Sweep-Relative (× base risk)">${multKeys.map(optHtml).join('')}</optgroup>` +
+    `<optgroup label="Fixed % of Entry Price">${pctKeys.map(optHtml).join('')}</optgroup>`;
 }
 
-function switchProfile(pk){ activeProfile=pk; renderProfileBar(); renderTabBar(); renderActive(); }
+function switchProfile(pk){
+  activeProfile=pk;
+  const note = document.getElementById('profile-note');
+  if(note) note.textContent = PCT_PROFILES.has(pk)
+    ? 'Stop & Target = fixed % of entry price (independent of sweep size)'
+    : 'Stop & Target = multiples of |entry − sweep extreme|';
+  renderProfileDropdown(); renderModelDropdown(); renderActive();
+}
 
 function renderControls(){
   const pills=document.getElementById('mode-pills');
@@ -783,10 +824,10 @@ function renderControls(){
   cpills.innerHTML=`<div class="mode-pill active-cisd">CISD</div>`;
   const note=document.getElementById('mode-note');
   note.textContent='Close beyond the open of the first opposing delivery leg candle';
-  renderProfileBar();
+  renderProfileDropdown();
 }
 
-function switchModel(k){ activeModel=k; renderTabBar(); renderControls(); renderActive(); }
+function switchModel(k){ activeModel=k; renderModelDropdown(); renderControls(); renderActive(); }
 function switchMode(m){  activeMode=m;  renderControls(); renderActive(); }
 function switchCisd(c){  activeCisd=c;  renderControls(); renderActive(); }
 
@@ -1255,7 +1296,7 @@ function render(){
   document.getElementById('infobar').style.display=isDemo?'':'none';
   const D = getProfileData(`${activeModel}_${activeMode}_${activeCisd}`, activeProfile);
   document.getElementById('hdr-sub').textContent=`Multi-TF Probability Engine · ${D?.meta?.instrument||'NQ'} · ${D?.meta?.date_range||''}`;
-  renderTabBar();
+  renderModelDropdown();
   renderControls();
   renderActive();
 }
@@ -1274,27 +1315,32 @@ render();
 showSetup('bull');
 let rt; window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{renderActive();drawSetupViz();},150);});
 
+function applyLoadedData(j){
+  DATA=j; isDemo=false;
+  // Prefer 1H_5M_PREV_CISD as default; fall back to first key in the JSON
+  const preferredKey = '1H_5M_PREV_CISD';
+  const resolvedKey  = j[preferredKey] ? preferredKey : (Object.keys(j)[0] || '');
+  if(resolvedKey){
+    const {model,sweep,cisd}=parseKey(resolvedKey);
+    activeModel=model; activeMode=sweep; activeCisd=cisd;
+    // Keep activeProfile ('1:2') if it exists; otherwise use first available profile
+    const profiles=j[resolvedKey]?.profiles;
+    if(profiles && !profiles[activeProfile]){
+      const fp=Object.keys(profiles)[0]; if(fp) activeProfile=fp;
+    }
+  }
+  render();
+}
+
 fetch('./model_stats.json')
   .then(r=>{console.log('[sweep] fetch status:',r.status,r.ok);return r.ok?r.json():Promise.reject('HTTP '+r.status);})
-  .then(j=>{
-    console.log('[sweep] JSON loaded, keys:',Object.keys(j));
-    DATA=j;isDemo=false;
-    const firstKey=Object.keys(j)[0]||'';
-    if(firstKey){const {model,sweep,cisd}=parseKey(firstKey);activeModel=model;activeMode=sweep;activeCisd=cisd;}
-    render();
-  })
+  .then(j=>{console.log('[sweep] JSON loaded, keys:',Object.keys(j));applyLoadedData(j);})
   .catch(e=>{console.error('[sweep] fetch failed:',e);});
 
 document.getElementById('json-loader').addEventListener('change',e=>{
   const f=e.target.files[0];if(!f)return;
   const fr=new FileReader();
-  fr.onload=ev=>{try{const j=JSON.parse(ev.target.result);DATA=j;isDemo=false;
-    const firstKey=Object.keys(j)[0]||'';
-    if(firstKey){
-      const {model,sweep,cisd}=parseKey(firstKey);
-      activeModel=model; activeMode=sweep; activeCisd=cisd;
-    }
-    render();}catch{alert('Invalid JSON');}};
+  fr.onload=ev=>{try{applyLoadedData(JSON.parse(ev.target.result));}catch{alert('Invalid JSON');}};
   fr.readAsText(f);
 });
 </script>
