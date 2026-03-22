@@ -51,6 +51,8 @@ OUT_PATH = Path(__file__).parent / 'model_stats.json'
 TABLE    = 'nq_1m'
 
 # ── GLOBAL CONSTANTS ──────────────────────────────────────────────────────────
+ACCOUNT_SIZE     = 4500   # $ account size for risk metrics
+RISK_PER_TRADE   = 225    # $ risk per trade
 MIN_RISK_PTS     = 3.0
 OUTCOME_MAX_BARS = 360
 SWEEP_MIN_PCT    = 0.10
@@ -870,9 +872,99 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
             if t[k] is not None:
                 t[k] = round(float(t[k]), 2)
 
+    # ── Risk stats for hero tiles ─────────────────────────────────────────────
+    wl_sorted   = wl.sort_values('date')
+    outcomes_seq = wl_sorted['win'].tolist()
+    def _max_consec(seq, val):
+        mx = cur = 0
+        for v in seq:
+            cur = cur + 1 if v == val else 0
+            mx  = max(mx, cur)
+        return mx
+    rs_max_cw = _max_consec(outcomes_seq, 1)
+    rs_max_cl = _max_consec(outcomes_seq, 0)
+
+    rr_actual   = round(target_mult / stop_mult, 4) if stop_mult > 0 else 2.0
+    wins_df     = wl_sorted[wl_sorted['win'] == 1]
+    losses_df   = wl_sorted[wl_sorted['win'] == 0]
+    avg_win_r   = round(float(wins_df['r'].mean()), 4)   if len(wins_df)   else rr_actual
+    avg_loss_r  = round(float(losses_df['r'].mean()), 4) if len(losses_df) else -1.0
+    avg_win_usd  = round(avg_win_r  * RISK_PER_TRADE, 2)
+    avg_loss_usd = round(avg_loss_r * RISK_PER_TRADE, 2)
+
+    # sl_pct = avg (risk_pts / entry_price * 100); tp_pct = sl_pct * rr_actual
+    entry_col = wl_sorted['entry_price'].replace(0, np.nan).dropna()
+    rp_col    = wl_sorted.loc[entry_col.index, 'risk_pts']
+    if len(entry_col):
+        sl_pct_val = round(float((rp_col / entry_col * 100).mean()), 4)
+        tp_pct_val = round(sl_pct_val * rr_actual, 4)
+    else:
+        sl_pct_val = None
+        tp_pct_val = None
+
+    eq = float(ACCOUNT_SIZE)
+    min_eq = eq
+    for _, row in wl_sorted.iterrows():
+        r_val = row['r']
+        if r_val is not None and not np.isnan(r_val):
+            eq += float(r_val) * RISK_PER_TRADE
+            if eq < min_eq:
+                min_eq = eq
+    min_eq = round(min_eq, 2)
+    blown  = min_eq <= 0.0
+
+    risk_stats = {
+        'account_size':     ACCOUNT_SIZE,
+        'risk_per_trade':   RISK_PER_TRADE,
+        'trades':           overall['n'],
+        'wins':             overall['wins'],
+        'losses':           overall['n'] - overall['wins'],
+        'be_count':         0,
+        'avg_win_usd':      avg_win_usd,
+        'avg_loss_usd':     avg_loss_usd,
+        'blown':            blown,
+        'min_equity_usd':   min_eq,
+        'max_consec_wins':  rs_max_cw,
+        'max_consec_losses': rs_max_cl,
+        'sl_pct':           sl_pct_val,
+        'tp_pct':           tp_pct_val,
+    }
+
+    # CE — Combined Edge: avg(MFE / MAE) for WIN trades
+    wins_wl = wl_sorted[wl_sorted['win'] == 1]
+    ce_mask = (wins_wl['mae_pct'] > 0) & (wins_wl['mfe_pct'] > 0)
+    if ce_mask.sum() > 0:
+        ce = round(float((wins_wl.loc[ce_mask, 'mfe_pct'] /
+                           wins_wl.loc[ce_mask, 'mae_pct']).mean()), 3)
+    else:
+        ce = None
+    risk_stats['ce'] = ce
+
+    # Bell curve of actual MAE distribution
+    mae_vals = wl_sorted['mae_pct'].dropna()
+    mae_vals = mae_vals[mae_vals > 0]
+    if len(mae_vals) > 1 and mae_vals.std() > 0:
+        mae_mu = float(mae_vals.mean())
+        mae_sd = float(mae_vals.std(ddof=1))
+        mae_np = mae_vals.values
+        risk_stats['mae_bell'] = {
+            'mean':      round(mae_mu, 4),
+            'std':       round(mae_sd, 4),
+            'plus_0_5s': round(mae_mu + 0.5 * mae_sd, 4),
+            'plus_1s':   round(mae_mu + mae_sd, 4),
+            'plus_1_5s': round(mae_mu + 1.5 * mae_sd, 4),
+            'plus_2s':   round(mae_mu + 2.0 * mae_sd, 4),
+            'cov_mean':  round(float(np.mean(mae_np <= mae_mu)) * 100, 1),
+            'cov_0_5s':  round(float(np.mean(mae_np <= mae_mu + 0.5*mae_sd)) * 100, 1),
+            'cov_1s':    round(float(np.mean(mae_np <= mae_mu + mae_sd)) * 100, 1),
+            'cov_1_5s':  round(float(np.mean(mae_np <= mae_mu + 1.5*mae_sd)) * 100, 1),
+            'cov_2s':    round(float(np.mean(mae_np <= mae_mu + 2.0*mae_sd)) * 100, 1),
+        }
+    else:
+        risk_stats['mae_bell'] = None
+
     full_key    = f"{model_key}_PREV_CISD"
     be_wr       = round(stop_mult / (stop_mult + target_mult), 4)
-    rr_actual   = round(target_mult / stop_mult, 4) if stop_mult > 0 else 2.0
     return {
         'meta': {
             'model_key':          model_key,
@@ -918,6 +1010,7 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         'mfe_dist':         mfe_dist,
         'tspot_breakdown':  tspot_breakdown,
         'recent_trades':    recent_trades,
+        'risk_stats':       risk_stats,
     }
 
 

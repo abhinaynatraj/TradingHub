@@ -461,6 +461,66 @@ def build_stats(trades, meta_extra: dict, model: str = 'cashflow_extended') -> d
         a   = (1 - edge) / (1 + edge)
         ror = round(min(1.0, a ** N_units), 4)
 
+    # Additional metrics for hero tiles
+    losses_list  = [t for t in wl_resolved if t['outcome_main'] == 'LOSS']
+    loss_rs      = [t['combined_r'] for t in losses_list if t['combined_r'] is not None]
+    avg_loss_r   = round(float(np.mean(loss_rs)), 4) if loss_rs else -1.0
+    avg_win_usd  = round(avg_win_r  * RISK_PER_TRADE, 2)
+    avg_loss_usd = round(avg_loss_r * RISK_PER_TRADE, 2)
+
+    eq = float(ACCOUNT_SIZE)
+    min_eq = eq
+    for t in sorted(wl_resolved, key=lambda x: x['date']):
+        if t['combined_r'] is not None:
+            eq += t['combined_r'] * RISK_PER_TRADE
+            if eq < min_eq:
+                min_eq = eq
+    min_eq = round(min_eq, 2)
+    blown  = min_eq <= 0.0
+
+    if 'stop_pct' in meta_extra:
+        sl_pct_val = meta_extra['stop_pct']
+        tp_pct_val = meta_extra['tp_pct']
+    else:
+        sl_pct_val = overall.get('avg_mae_pct') or round(TP1_BPS * 100, 4)
+        tp_pct_val = round(TP1_BPS * 100, 4)
+
+    # CE — Combined Edge: avg(MFE / MAE) for WIN trades
+    # Uses mfe2_pct (runner max favorable) for cashflow_extended, mfe1_pct otherwise
+    mfe_key = 'mfe2_pct' if model == 'cashflow_extended' else 'mfe1_pct'
+    ce_ratios = []
+    for t in [t for t in wl_resolved if t['outcome_main'] == 'WIN']:
+        mae = t.get('mae_pct') or 0.0
+        mfe = t.get(mfe_key) or 0.0
+        if mae > 0 and mfe > 0:
+            ce_ratios.append(mfe / mae)
+    ce = round(float(np.mean(ce_ratios)), 3) if ce_ratios else None
+
+    # Bell curve of actual MAE distribution — SL candidates per sigma tier
+    mae_raw = [t['mae_pct'] for t in wl_resolved
+               if t.get('mae_pct') is not None and t['mae_pct'] > 0]
+    if len(mae_raw) > 1 and len(set(mae_raw)) > 1:
+        mae_mu = float(np.mean(mae_raw))
+        mae_sd = float(np.std(mae_raw, ddof=1))
+        # Actual empirical percentiles for coverage labels
+        mae_np  = np.array(mae_raw)
+        mae_bell = {
+            'mean':         round(mae_mu, 4),
+            'std':          round(mae_sd, 4),
+            'plus_0_5s':    round(mae_mu + 0.5 * mae_sd, 4),   # ~69th pct
+            'plus_1s':      round(mae_mu + mae_sd, 4),          # ~84th pct
+            'plus_1_5s':    round(mae_mu + 1.5 * mae_sd, 4),   # ~93rd pct
+            'plus_2s':      round(mae_mu + 2.0 * mae_sd, 4),   # ~97.5th pct
+            # Empirical coverage at each candidate
+            'cov_mean':     round(float(np.mean(mae_np <= mae_mu)) * 100, 1),
+            'cov_0_5s':     round(float(np.mean(mae_np <= mae_mu + 0.5*mae_sd)) * 100, 1),
+            'cov_1s':       round(float(np.mean(mae_np <= mae_mu + mae_sd)) * 100, 1),
+            'cov_1_5s':     round(float(np.mean(mae_np <= mae_mu + 1.5*mae_sd)) * 100, 1),
+            'cov_2s':       round(float(np.mean(mae_np <= mae_mu + 2.0*mae_sd)) * 100, 1),
+        }
+    else:
+        mae_bell = None
+
     risk_stats = {
         'ror':              ror,
         'max_consec_wins':  max_cw,
@@ -470,6 +530,18 @@ def build_stats(trades, meta_extra: dict, model: str = 'cashflow_extended') -> d
         'mfe_median':       mfe_median,
         'account_size':     ACCOUNT_SIZE,
         'risk_per_trade':   RISK_PER_TRADE,
+        'trades':           len(wl_resolved),
+        'wins':             overall['wins'],
+        'losses':           len(losses_list),
+        'be_count':         0,
+        'avg_win_usd':      avg_win_usd,
+        'avg_loss_usd':     avg_loss_usd,
+        'min_equity_usd':   min_eq,
+        'blown':            blown,
+        'sl_pct':           sl_pct_val,
+        'tp_pct':           tp_pct_val,
+        'ce':               ce,
+        'mae_bell':         mae_bell,
     }
 
     return {

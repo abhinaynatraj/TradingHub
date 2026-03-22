@@ -272,7 +272,6 @@ main {
   color: var(--text-sub);
   line-height: 1.65;
   margin-bottom: 18px;
-  flex: 1;
 }
 
 /* ── Stats row ─────────────────────────────────────────────────────────────── */
@@ -647,13 +646,6 @@ main {
     <div class="loading-pill">Loading project stats…</div>
   </div>
 
-  <!-- ── EV Leaderboard ────────────────────────────────────────────────── -->
-  <div class="sec-head">
-    <span class="sec-label">Top Combinations · Model × Profile</span>
-    <div class="sec-line"></div>
-  </div>
-  <div id="ev-leaderboard"><div class="loading-pill">Loading combinations…</div></div>
-
   <!-- ── Model deep-dive ────────────────────────────────────────────────── -->
   <div class="sec-head">
     <span class="sec-label">Model Mechanics</span>
@@ -856,12 +848,7 @@ async function loadStats(project) {
         label3: 'Combos',  val3: num(combos.length), cls3: 'neutral',
         dateRange: d[best.modelKey]?.profiles?.[best.profileKey]?.meta?.date_range || '—',
         subtitle2: `Best: ${best.modelKey.replace('_PREV_CISD','').replace(/_/g,' · ')} · ${best.profileKey}`,
-        sweepModels: Object.entries(d)
-          .filter(([k]) => !k.startsWith('1D'))
-          .map(([k, v]) => {
-            const defProfile = v.profiles?.['1:2'] || Object.values(v.profiles||{})[0] || v;
-            return { key: k.replace('_PREV_CISD',''), wr: defProfile.meta?.win_rate, ev: defProfile.meta?.ev_per_trade, n: defProfile.meta?.total_wl };
-          }),
+        top5combos: combos.slice(0, 5),
       };
     }
 
@@ -940,7 +927,9 @@ function buildCard(p) {
     </div>
   `;
 
-  const compHtml = s?.profileRows ? buildNy1ProfileTable(s.profileRows) : '';
+  const compHtml = s?.profileRows    ? buildNy1ProfileTable(s.profileRows)
+                 : s?.top5combos    ? buildSweepTop5Table(s.top5combos)
+                 : '';
 
   return `
   <div class="project-card" id="card-${p.id}">
@@ -1010,61 +999,42 @@ function buildNy1ProfileTable(profileRows) {
     </div>`;
 }
 
-// ── EV Leaderboard ────────────────────────────────────────────────────────────
-function buildEvLeaderboard(combos) {
-  const el = document.getElementById('ev-leaderboard');
-  if (!el) return;
-  if (!combos || !combos.length) {
-    el.innerHTML = '<div class="loading-pill">No data — run <code>python3 model_stats.py</code></div>';
-    return;
-  }
-
+function buildSweepTop5Table(top5) {
   const MODEL_DISPLAY = {
-    '30M_3M':  '30M · 3M CISD',
-    '4H_15M':  '4H · 15M CISD',
-    '1H_5M':   '1H · 5M CISD',
-    '1H_3M':   '1H · 3M CISD',
+    '30M_3M': '30M · 3M',
+    '4H_15M': '4H · 15M',
+    '1H_5M':  '1H · 5M',
+    '1H_3M':  '1H · 3M',
   };
-
-  const top = combos.slice(0, 15);
   const rankClass = i => i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
   const isPct = pk => pk.includes('%');
 
-  const rows = top.map((c, i) => {
+  const rows = top5.map((c, i) => {
     const modelShort = c.modelKey.replace('_PREV_CISD', '');
     const modelLabel = MODEL_DISPLAY[modelShort] || modelShort.replace(/_/g, ' · ');
-    const edge = (c.wr - c.be);
-    const edgeCls = edge >= 0 ? 'pos' : 'neg';
     const ptype = isPct(c.profileKey) ? 'pct' : 'mult';
     const ptypeLabel = isPct(c.profileKey) ? '% price' : '× sweep';
+    const evCls = c.ev > 0 ? 'pos' : 'neg';
     return `<tr>
-      <td><span class="ev-rank ${rankClass(i)}">${i + 1}</span></td>
-      <td><span class="ev-model">${modelLabel}</span></td>
+      <td><span class="ev-rank ${rankClass(i)}" style="font-size:11px;">${i + 1}</span></td>
+      <td style="color:var(--text);font-weight:600;">${modelLabel}</td>
       <td>
-        <span class="ev-profile">${c.profileKey}</span>
+        <span style="color:var(--text-sub);">${c.profileKey}</span>
         <span class="ev-type ${ptype}">${ptypeLabel}</span>
       </td>
-      <td class="ev-neu">${num(c.n)}</td>
       <td class="${c.wr >= c.be ? 'ev-pos' : 'ev-neg'}">${pct(c.wr)}</td>
-      <td class="ev-neu">${pct(c.be)}</td>
-      <td><span class="ev-edge ${edgeCls}">${edge >= 0 ? '+' : ''}${(edge * 100).toFixed(1)}%</span></td>
-      <td class="${c.ev > 0 ? 'ev-pos' : 'ev-neg'}">${sgn(c.ev)}</td>
-      <td class="${c.pf >= 2 ? 'ev-pos' : c.pf >= 1 ? 'ev-neu' : 'ev-neg'}">${c.pf != null ? c.pf.toFixed(2) : '—'}</td>
+      <td class="${evCls}">${sgn(c.ev)}</td>
     </tr>`;
   }).join('');
 
-  el.innerHTML = `
-    <div class="ev-board">
-      <div class="ev-board-hd">
-        <span class="ev-board-title">Ranked by Expected Value · All Models × All Profiles · min 50 trades</span>
-        <span class="ev-board-note">% price = fixed % of entry · × sweep = multiple of |entry − sweep extreme|</span>
+  return `
+    <div style="margin-bottom:18px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+      <div style="padding:8px 10px;border-bottom:1px solid var(--border);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);">
+        Top Combinations · Model × Profile
       </div>
-      <div style="overflow-x:auto">
-        <table class="ev-table">
-          <thead><tr>
-            <th>#</th><th>Model</th><th>Profile</th>
-            <th>N</th><th>Win Rate</th><th>BE WR</th><th>Edge</th><th>EV</th><th>PF</th>
-          </tr></thead>
+      <div style="overflow-x:auto;">
+        <table class="sweep-sub-table">
+          <thead><tr><th>#</th><th>Model</th><th>Profile</th><th>WR%</th><th>EV</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -1079,10 +1049,6 @@ async function init() {
   // Render project cards
   const grid = document.getElementById('projectGrid');
   grid.innerHTML = PROJECTS.map(buildCard).join('');
-
-  // Render EV leaderboard from sweep project combos
-  const sweepProject = PROJECTS.find(p => p.type === 'sweep');
-  buildEvLeaderboard(sweepProject?._combos || []);
 }
 
 init();

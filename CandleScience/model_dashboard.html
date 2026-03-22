@@ -193,7 +193,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 .setup-btn{font-family:var(--font-data);font-size:10px;font-weight:600;padding:5px 14px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-muted);cursor:pointer;letter-spacing:0.06em;transition:all .15s}
 .setup-btn.active-bull{border-color:var(--green);background:var(--green-tint);color:var(--green)}
 .setup-btn.active-bear{border-color:var(--red);background:var(--red-tint);color:var(--red)}
-#setup-canvas{display:block;width:100%}
+#setup-canvas-bull,#setup-canvas-bear{display:block;width:100%}
 
 /* TOOLTIP */
 #tooltip{position:fixed;display:none;background:var(--bg-card);border:1px solid var(--border-mid);border-radius:8px;padding:10px 14px;font-family:var(--font-data);font-size:10.5px;color:var(--text-primary);pointer-events:none;z-index:999;min-width:160px;box-shadow:var(--shadow-lg)}
@@ -241,28 +241,19 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 <!-- Model + Profile selectors -->
 <div class="sel-bar">
   <div class="sel-group">
-    <label class="sel-label">Model</label>
+    <label class="sel-label">Time Frame Combination</label>
     <select id="model-select" class="sel-drop" onchange="switchModel(this.value)"></select>
   </div>
   <div class="sel-group">
-    <label class="sel-label">Profile (Stop : Target)</label>
+    <label class="sel-label">Risk Profile</label>
     <select id="profile-select" class="sel-drop" onchange="switchProfile(this.value)"></select>
   </div>
   <span class="sel-note" id="profile-note">Stop &amp; Target as sweep multiples or fixed % of entry price</span>
 </div>
 
-<!-- Sweep Mode + CISD Mode info strip -->
-<div class="mode-strip">
-  <div class="mode-row">
-    <span class="mode-strip-label">Sweep</span>
-    <div class="mode-pills" id="mode-pills"></div>
-  </div>
-  <div class="mode-row">
-    <span class="mode-strip-label">CISD</span>
-    <div class="mode-pills" id="cisd-pills"></div>
-  </div>
-  <span class="mode-strip-note" id="mode-note"></span>
-</div>
+<span class="mode-strip-note" id="mode-note" style="display:none;"></span>
+<div id="mode-pills" style="display:none;"></div>
+<div id="cisd-pills" style="display:none;"></div>
 
 <main class="main">
   <div class="infobar" id="infobar">
@@ -278,12 +269,17 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
   <div class="panel">
     <div class="ph">
       <span class="ph-title">Entry / Stop / Target · Sweep + CISD Structure</span>
-      <div class="setup-toggle">
-        <button class="setup-btn" id="setup-bull" onclick="showSetup('bull')">▲ LONG</button>
-        <button class="setup-btn" id="setup-bear" onclick="showSetup('bear')">▼ SHORT</button>
+    </div>
+    <div class="pb" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div>
+        <div style="text-align:center;font-family:var(--font-data);font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--green);margin-bottom:6px;">▲ LONG</div>
+        <canvas id="setup-canvas-bull" style="display:block;width:100%" height="340"></canvas>
+      </div>
+      <div>
+        <div style="text-align:center;font-family:var(--font-data);font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--red);margin-bottom:6px;">▼ SHORT</div>
+        <canvas id="setup-canvas-bear" style="display:block;width:100%" height="340"></canvas>
       </div>
     </div>
-    <div class="pb"><canvas id="setup-canvas" height="380"></canvas></div>
   </div>
 
   <div class="sec-label">Win Rate by Hour</div>
@@ -856,16 +852,29 @@ function renderActive(){
 
 function renderModel(D){
   const m=D.meta||{}, be=m.risk_breakeven_wr||0.333;
+  const rs=D.risk_stats||{};
 
-  // Meta cards
+  const fmt$=v=>v!=null?'$'+Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}):'—';
+  const fmtPct=v=>v!=null?v.toFixed(2)+'%':'—';
+  const blown=rs.blown;
+  const minEq=rs.min_equity_usd;
+  const acct=rs.account_size||4500;
+
+  // Meta cards — 12 data-collection-sheet metrics (2 rows × 6)
   const mrEl=document.getElementById('meta-row'); mrEl.innerHTML='';
   [
-    {label:'Win Rate',      val:pct(m.win_rate),           sub:`Breakeven ${pct(be)} · RR 1:${m.rr_target||2}`,      cls:'g',vc:'g'},
-    {label:'EV / Trade',    val:evFmt(m.ev_per_trade),     sub:'Expected value per completed trade',                  cls:m.ev_per_trade>0?'g':'r',vc:m.ev_per_trade>0?'g':'r'},
-    {label:'Profit Factor', val:pfFmt(m.profit_factor),    sub:'Gross wins ÷ gross losses · >1.5 is strong',         cls:m.profit_factor>=1.5?'g':m.profit_factor>=1?'a':'r',vc:m.profit_factor>=1.5?'g':m.profit_factor>=1?'a':'r'},
-    {label:'Setups / Day',  val:m.setups_per_day_ny||'—',  sub:'NY1 + NY2 sessions only',                            cls:'a',vc:'a'},
-    {label:'Sweep Mode',    val:'PREV',                    sub:'Prior candle only',                                   cls:'b',vc:'b'},
-    {label:'CISD Method',   val:'CISD',                    sub:'Close > open of first opposing candle (wicks ignored)',cls:'g',vc:'g'},
+    {label:'SL %',      val:fmtPct(rs.sl_pct),  sub:'Avg stop distance from entry',              cls:'a',vc:'a'},
+    {label:'TP %',      val:fmtPct(rs.tp_pct),  sub:'Avg target distance from entry',            cls:'g',vc:'g'},
+    {label:'Trades',    val:(rs.trades??m.total_wl??0).toLocaleString(), sub:m.date_range||'',   cls:'b',vc:'b'},
+    {label:'Wins',      val:(rs.wins??0).toLocaleString(), sub:m.win_rate!=null?pct(m.win_rate)+' win rate':'',cls:'g',vc:'g'},
+    {label:'Losses',    val:(rs.losses??0).toLocaleString(), sub:'Resolved losses',              cls:'r',vc:'r'},
+    {label:'BE',        val:(rs.be_count??0).toLocaleString(), sub:'Breakeven exits',            cls:'w',vc:'w'},
+    {label:'Avg Win $', val:rs.avg_win_usd!=null?'+'+fmt$(rs.avg_win_usd):'—', sub:'Avg P&L per winning trade',  cls:'g',vc:'g'},
+    {label:'Avg Loss $',val:rs.avg_loss_usd!=null?'−'+fmt$(Math.abs(rs.avg_loss_usd)):'—', sub:'Avg P&L per losing trade', cls:'r',vc:'r'},
+    {label:'Blown',     val:blown==null?'—':blown?'YES':'NO', sub:'Account hit $0 during backtest', cls:blown?'r':'g', vc:blown?'r':'g'},
+    {label:'Low Eq $',  val:minEq!=null?'$'+minEq.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}):'—', sub:`Lowest equity (start $${acct.toLocaleString()})`, cls:minEq!=null&&minEq<acct*0.75?'r':'a',vc:minEq!=null&&minEq<acct*0.75?'r':'a'},
+    {label:'Max W Run', val:rs.max_consec_wins??'—', sub:'Longest winning streak',               cls:'g',vc:'g'},
+    {label:'Max L Run', val:rs.max_consec_losses??'—', sub:'Longest losing streak',              cls:'r',vc:'r'},
   ].forEach(card=>{
     const el=document.createElement('div'); el.className=`mc ${card.cls}`;
     el.innerHTML=`<div class="mc-accent"></div><div class="mc-lbl">${card.label}</div><div class="mc-val ${card.vc}">${card.val}</div><div class="mc-sub">${card.sub}</div>`;
@@ -895,20 +904,163 @@ function renderModel(D){
   ].map(i=>`<div class="rg-cell"><div class="rg-lbl">${i.l}</div><div class="rg-val" style="color:${i.c}">${i.v}<span class="rg-unit">${i.u}</span></div></div>`).join('');
   rn.textContent=`Stop = |entry – sweep extreme|. Median stop = ${m.risk_median||'—'}pt → ~${(m.risk_median||0)*2}pt target at 1:2. Breakeven WR = ${pct(be)}.`;
 
-  const mg=document.getElementById('mae-mfe-grid'), mn2=document.getElementById('mae-mfe-note');
-  const fp = v => v != null ? v.toFixed(4)+'%' : '—';
-  mg.innerHTML=[
-    {l:'MAE Median', v:fp(m.mae_median), c:'var(--green)',     tip:'Typical adverse excursion — most trades breathed at most this much against'},
-    {l:'MAE P80',    v:fp(m.mae_p80),    c:'var(--amber)',     tip:'80% of trades had MAE ≤ this — use as natural SL guide'},
-    {l:'MAE P90',    v:fp(m.mae_p90),    c:'var(--red)',       tip:'90th percentile MAE — conservative SL floor'},
-    {l:'MFE Median', v:fp(m.mfe_median), c:'var(--blue)',      tip:'Typical favorable excursion — median runner before resolution'},
-    {l:'MFE P80',    v:fp(m.mfe_p80),    c:'var(--text-primary)', tip:'80% of trades reached at least this much in your favour'},
-    {l:'MFE P90',    v:fp(m.mfe_p90),    c:'var(--purple)',    tip:'90th percentile MFE — aggressive target ceiling'},
-  ].map(i=>`<div class="rg-cell" title="${i.tip}"><div class="rg-lbl">${i.l}</div><div class="rg-val" style="color:${i.c}">${i.v}</div></div>`).join('');
-  mn2.textContent=`MAE = max move against entry before resolution. MFE = max move in your favour. MAE P80 = ${fp(m.mae_p80)} suggests trades rarely need more room than that — any SL wider is excess risk. MFE P80 = ${fp(m.mfe_p80)} shows the typical runner ceiling before it turns.`;
+  renderSweepMAEAnalysis(D);
 
   renderTspotSection();
   renderRecentTrades();
+}
+
+// ── MAE / MFE ANALYSIS ──────────────────────────────────────────────────────
+function renderSweepMAEAnalysis(D) {
+  const mgEl  = document.getElementById('mae-mfe-grid');
+  const mn2El = document.getElementById('mae-mfe-note');
+  if (!mgEl) return;
+  const rs   = D?.risk_stats || {};
+  const m    = D?.meta       || {};
+  const bell = rs.mae_bell;
+  const ce   = rs.ce;
+  const slPct = rs.sl_pct;
+
+  const fp = v => v != null ? v.toFixed(4) + '%' : '—';
+
+  const ceColor  = ce == null ? 'var(--text-muted)' : ce >= 3.0 ? 'var(--green)' : ce >= 1.5 ? 'var(--amber)' : ce >= 1.0 ? '#fb923c' : 'var(--red)';
+  const ceRating = ce == null ? '—' : ce >= 3.0 ? 'Strong' : ce >= 1.5 ? 'Decent' : ce >= 1.0 ? 'Marginal' : 'Weak';
+
+  const candidates = bell ? [
+    {label:'Mean (μ)',  val:bell.mean,      cov:bell.cov_mean,  color:'#60a5fa'},
+    {label:'+0.5σ',     val:bell.plus_0_5s, cov:bell.cov_0_5s,  color:'#fbbf24'},
+    {label:'+1σ',       val:bell.plus_1s,   cov:bell.cov_1s,    color:'#fb923c'},
+    {label:'+1.5σ',     val:bell.plus_1_5s, cov:bell.cov_1_5s,  color:'#a78bfa'},
+    {label:'+2σ',       val:bell.plus_2s,   cov:bell.cov_2s,    color:'#c084fc'},
+  ] : [];
+
+  const slRow = c => {
+    const isCurrent = slPct != null && Math.abs(c.val - slPct) / slPct < 0.05;
+    return `<tr style="background:${isCurrent?'rgba(16,185,129,0.08)':''}">
+      <td style="font-family:var(--font-data);font-size:11px;color:${c.color};padding:6px 10px;width:80px">${c.label}</td>
+      <td style="font-family:var(--font-data);font-size:12px;color:var(--text-primary);padding:6px 10px;font-weight:600">${c.val.toFixed(4)}%</td>
+      <td style="padding:6px 10px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;height:5px;background:var(--border);border-radius:3px;max-width:100px">
+            <div style="width:${c.cov}%;height:100%;background:${c.color};border-radius:3px;opacity:0.7"></div>
+          </div>
+          <span style="font-family:var(--font-data);font-size:10px;color:var(--text-muted)">${c.cov}%</span>
+        </div>
+      </td>
+      <td style="font-family:var(--font-data);font-size:10px;color:var(--green);padding:6px 10px">${isCurrent?'← current profile':''}</td>
+    </tr>`;
+  };
+
+  mgEl.style.display = 'block';
+  mgEl.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:24px;align-items:start">
+      <!-- Left: CE + R stats -->
+      <div>
+        <div style="background:var(--bg-alt,#0d1420);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:12px">
+          <div style="font-family:var(--font-data);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px">Combined Edge (CE)</div>
+          <div style="font-size:32px;font-weight:700;color:${ceColor};line-height:1;margin-bottom:3px">${ce != null ? ce.toFixed(2) : '—'}</div>
+          <div style="font-family:var(--font-data);font-size:11px;color:${ceColor};margin-bottom:6px">${ceRating} entries</div>
+          <div style="font-size:11px;color:var(--text-muted);line-height:1.5">avg(MFE ÷ MAE) on wins — how hard price runs for you vs. against you</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+          <div style="background:var(--bg-alt,#0d1420);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Avg Win R</div>
+            <div style="font-size:20px;font-weight:700;color:var(--green)">${rs.avg_win_usd != null ? '+' + (rs.avg_win_usd/225).toFixed(2) + 'R' : '—'}</div>
+          </div>
+          <div style="background:var(--bg-alt,#0d1420);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Avg Loss R</div>
+            <div style="font-size:20px;font-weight:700;color:var(--red)">${rs.avg_loss_usd != null ? (rs.avg_loss_usd/225).toFixed(2) + 'R' : '—'}</div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);line-height:1.6">
+          MAE Median: <span style="color:var(--text-primary)">${fp(m.mae_median)}</span> ·
+          MFE Median: <span style="color:var(--text-primary)">${fp(m.mfe_median)}</span><br>
+          MAE P80: <span style="color:var(--amber)">${fp(m.mae_p80)}</span> ·
+          MFE P80: <span style="color:var(--blue)">${fp(m.mfe_p80)}</span>
+        </div>
+      </div>
+      <!-- Right: bell curve + candidates -->
+      <div>
+        ${bell ? `
+        <div style="font-family:var(--font-data);font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:8px">
+          MAE Bell Curve · μ = ${bell.mean.toFixed(4)}% · σ = ${bell.std.toFixed(4)}%
+        </div>
+        <canvas id="sweep-mae-bell-canvas" height="120" style="width:100%;border-radius:6px;background:var(--bg-alt,#0d1420);display:block;margin-bottom:12px"></canvas>
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border)">
+              <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:5px 10px;text-align:left;font-weight:400">Tier</th>
+              <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:5px 10px;text-align:left;font-weight:400">SL Candidate</th>
+              <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:5px 10px;text-align:left;font-weight:400">Trade Coverage</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>${candidates.map(slRow).join('')}</tbody>
+        </table>
+        ` : `<div style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);padding:16px">Bell curve N/A — fixed-% stop profile</div>`}
+      </div>
+    </div>`;
+
+  if (mn2El) mn2El.textContent = '';
+
+  if (bell) {
+    const canvas = document.getElementById('sweep-mae-bell-canvas');
+    if (canvas) drawSweepMAEBell(canvas, bell, slPct);
+  }
+}
+
+function drawSweepMAEBell(canvas, bell, currentSlPct) {
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.offsetWidth || 400, H = 120;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const mu = bell.mean, sd = bell.std;
+  const xMin = Math.max(0, mu - 1.5*sd), xMax = mu + 2.8*sd;
+  const pad = {l:8, r:8, t:12, b:28};
+  const w = W - pad.l - pad.r, h = H - pad.t - pad.b;
+
+  function normPDF(x) {
+    return Math.exp(-0.5*Math.pow((x-mu)/sd,2)) / (sd*Math.sqrt(2*Math.PI));
+  }
+  const maxPDF = normPDF(mu);
+  const px = x => pad.l + Math.max(0,Math.min(1,(x-xMin)/(xMax-xMin)))*w;
+  const py = y => pad.t + h - (y/(maxPDF*1.15))*h;
+
+  const bands = [
+    {from:xMin,to:mu,fill:'rgba(96,165,250,0.06)'},
+    {from:mu,to:mu+0.5*sd,fill:'rgba(251,191,36,0.08)'},
+    {from:mu+0.5*sd,to:mu+sd,fill:'rgba(251,146,60,0.10)'},
+    {from:mu+sd,to:mu+1.5*sd,fill:'rgba(167,139,250,0.12)'},
+    {from:mu+1.5*sd,to:mu+2.5*sd,fill:'rgba(192,132,252,0.12)'},
+  ];
+  bands.forEach(({from,to,fill})=>{
+    ctx.beginPath(); ctx.moveTo(px(from),py(0));
+    for(let i=0;i<=50;i++){const x=from+(to-from)*i/50;ctx.lineTo(px(x),py(normPDF(x)));}
+    ctx.lineTo(px(to),py(0)); ctx.closePath(); ctx.fillStyle=fill; ctx.fill();
+  });
+
+  ctx.beginPath();
+  for(let i=0;i<=300;i++){const x=xMin+(xMax-xMin)*i/300;i===0?ctx.moveTo(px(x),py(normPDF(x))):ctx.lineTo(px(x),py(normPDF(x)));}
+  ctx.strokeStyle='rgba(148,163,184,0.5)'; ctx.lineWidth=1.5; ctx.stroke();
+
+  [{x:mu,c:'#60a5fa',lbl:'μ'},{x:mu+0.5*sd,c:'#fbbf24',lbl:'+½σ'},{x:mu+sd,c:'#fb923c',lbl:'+1σ'},{x:mu+1.5*sd,c:'#a78bfa',lbl:'+1.5σ'},{x:mu+2*sd,c:'#c084fc',lbl:'+2σ'}]
+  .forEach(({x,c,lbl})=>{
+    if(x<xMin||x>xMax)return;
+    ctx.save(); ctx.strokeStyle=c; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(px(x),pad.t); ctx.lineTo(px(x),pad.t+h); ctx.stroke(); ctx.restore();
+    ctx.fillStyle=c; ctx.font='8px monospace';
+    ctx.fillText(lbl, Math.min(px(x)+2,W-24), pad.t+h+10);
+  });
+
+  if(currentSlPct!=null){
+    const cx=px(currentSlPct);
+    ctx.save(); ctx.strokeStyle='#10b981'; ctx.lineWidth=2; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(cx,pad.t); ctx.lineTo(cx,pad.t+h+6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx,pad.t+h+6); ctx.lineTo(cx-4,pad.t+h+14); ctx.lineTo(cx+4,pad.t+h+14); ctx.closePath();
+    ctx.fillStyle='#10b981'; ctx.fill(); ctx.restore();
+  }
 }
 
 // ── RECENT TRADES ──────────────────────────────────────────────────────────
@@ -962,13 +1114,6 @@ function renderRecentTrades() {
 }
 
 // ── SETUP VISUALIZER ───────────────────────────────────────────────────────
-let setupMode = 'bull';
-function showSetup(m){
-  setupMode = m;
-  document.getElementById('setup-bull').className = 'setup-btn' + (m==='bull'?' active-bull':'');
-  document.getElementById('setup-bear').className = 'setup-btn' + (m==='bear'?' active-bear':'');
-  drawSetupViz();
-}
 
 // ── PROFILE COMPARE PANEL ──────────────────────────────────────────────────
 function renderProfileCompare(){
@@ -1014,11 +1159,10 @@ function renderProfileCompare(){
   el.innerHTML = html;
 }
 
-function drawSetupViz(){
-  const cvs = document.getElementById('setup-canvas');
+function drawSetupScene(cvs, dir){
   if(!cvs) return;
   const DPR = window.devicePixelRatio||1;
-  const W = cvs.offsetWidth, H = 380;
+  const W = cvs.offsetWidth, H = 340;
   cvs.width = W*DPR; cvs.height = H*DPR; cvs.style.height = H+'px';
   const ctx = cvs.getContext('2d');
   ctx.scale(DPR,DPR);
@@ -1034,10 +1178,10 @@ function drawSetupViz(){
 
   ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
 
-  const PAD={t:52,b:48,l:52,r:220};
+  const PAD={t:48,b:44,l:36,r:140};
   const cH=H-PAD.t-PAD.b;
   const py=p=>PAD.t+cH*(1-p/100);
-  const CW=16, GAP=6, slot=CW+GAP;
+  const CW=10, GAP=4, slot=CW+GAP;
 
   function hl(y,x1,x2,col,dash=[],lw=1){
     ctx.save();ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.setLineDash(dash);
@@ -1066,99 +1210,89 @@ function drawSetupViz(){
   function ruler(x,y1,y2,col,lines,lw=1.5){
     const mid=(y1+y2)/2;
     ctx.save();ctx.strokeStyle=col;ctx.lineWidth=lw;
-    ctx.beginPath();ctx.moveTo(x+5,y1);ctx.lineTo(x,y1);ctx.lineTo(x,y2);ctx.moveTo(x,y2);ctx.lineTo(x+5,y2);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x+4,y1);ctx.lineTo(x,y1);ctx.lineTo(x,y2);ctx.moveTo(x,y2);ctx.lineTo(x+4,y2);ctx.stroke();
     ctx.restore();
-    lines.forEach((ln,i)=>lbl(ln,x+10,mid+(i-(lines.length-1)/2)*11,col,7.5,'left',i===0));
+    lines.forEach((ln,i)=>lbl(ln,x+8,mid+(i-(lines.length-1)/2)*10,col,7,'left',i===0));
   }
   function badge(n,cx,cy,col){
-    ctx.save();ctx.fillStyle=col;ctx.beginPath();ctx.arc(cx,cy,8,0,Math.PI*2);ctx.fill();
-    ctx.font='700 8px "JetBrains Mono",monospace';ctx.fillStyle=bg;ctx.textAlign='center';
-    ctx.fillText(n,cx,cy+3);ctx.restore();
+    ctx.save();ctx.fillStyle=col;ctx.beginPath();ctx.arc(cx,cy,7,0,Math.PI*2);ctx.fill();
+    ctx.font='700 7px "JetBrains Mono",monospace';ctx.fillStyle=bg;ctx.textAlign='center';
+    ctx.fillText(n,cx,cy+2.5);ctx.restore();
   }
 
-  if(setupMode==='bull'){
+  if(dir==='bull'){
     const STOP_P=10, PHL_P=28, PHH_P=55, CL_P=41, EP_P=44, TP=72;
-    const MR=CL_P-STOP_P, RISK=EP_P-STOP_P, REW=TP-EP_P;
+    const RISK=EP_P-STOP_P, REW=TP-EP_P;
     const RR=(REW/RISK).toFixed(1);
     const stopY=py(STOP_P),phlY=py(PHL_P),phhY=py(PHH_P),cisdY=py(CL_P),entryY=py(EP_P),targetY=py(TP);
 
-    const nPH=1, nQ1=6, nRet=3, nCisd=2, nEnt=4;
     const PHW=CW*3;
-    const xPH=PAD.l+GAP, xQ1=xPH+PHW+GAP*3, xRet=xQ1+nQ1*slot, xCisd=xRet+nRet*slot, xEnt=xCisd+nCisd*slot, xEnd=xEnt+nEnt*slot;
+    const xPH=PAD.l+GAP, xQ1=xPH+PHW+GAP*3, xRet=xQ1+6*slot, xCisd=xRet+3*slot, xEnt=xCisd+2*slot, xEnd=xEnt+4*slot;
     const lineEnd=xEnd+4;
 
-    // zone backgrounds
-    [[xPH,PHW+GAP*2,'rgba(59,130,246,0.06)','① PREV HOUR'],
-     [xQ1,nQ1*slot,'rgba(239,68,68,0.06)','② Q1 SWEEP'],
-     [xRet,nRet*slot,'rgba(16,185,129,0.04)','③ RETURN'],
-     [xCisd,nCisd*slot,'rgba(251,146,60,0.07)','④ CISD'],
-     [xEnt,nEnt*slot,'rgba(245,158,11,0.05)','⑤ TRADE'],
+    [[xPH,PHW+GAP*2,'rgba(59,130,246,0.06)','① PREV HTF'],
+     [xQ1,6*slot,'rgba(239,68,68,0.06)','② Q1 SWEEP'],
+     [xRet,3*slot,'rgba(16,185,129,0.04)','③ RETURN'],
+     [xCisd,2*slot,'rgba(251,146,60,0.07)','④ CISD'],
+     [xEnt,4*slot,'rgba(245,158,11,0.05)','⑤ TRADE'],
     ].forEach(([x,w,col,lbl_])=>{
-      ctx.fillStyle=col;ctx.fillRect(x,PAD.t-12,w,cH+20);
-      lbl(lbl_,x+4,PAD.t-15,muted,7);
+      ctx.fillStyle=col;ctx.fillRect(x,PAD.t-10,w,cH+18);
+      lbl(lbl_,x+3,PAD.t-12,muted,6.5);
     });
 
-    // key lines
-    hl(targetY,xPH-4,lineEnd,teal,  [],    2.5);
-    hl(phhY,   xPH-4,lineEnd,muted, [4,4], 0.75); // prev hour HIGH (range ref)
+    hl(targetY,xPH-4,lineEnd,teal,  [],    2);
+    hl(phhY,   xPH-4,lineEnd,muted, [4,4], 0.75);
     hl(entryY, xPH-4,lineEnd,gold,  [3,2], 1.5);
-    hl(cisdY,  xPH-4,lineEnd,blue,  [5,3], 1.5);  // CISD level (sweep leg open)
+    hl(cisdY,  xPH-4,lineEnd,blue,  [5,3], 1.5);
     hl(phlY,   xPH-4,lineEnd,orange,[5,3], 2);
     hl(stopY,  xPH-4,lineEnd,red,   [],    2);
 
-    // ① prev hour candle (bearish 1H)
     const phMid=xPH+PHW/2;
     ctx.strokeStyle=red;ctx.lineWidth=1.5;
     ctx.beginPath();ctx.moveTo(phMid,phhY);ctx.lineTo(phMid,py(50));ctx.stroke();
     ctx.beginPath();ctx.moveTo(phMid,py(31));ctx.lineTo(phMid,phlY);ctx.stroke();
     ctx.fillStyle=red;ctx.fillRect(xPH,py(50),PHW,Math.max(py(31)-py(50),2));
-    lbl('1H',phMid,py(41),bg,8,'center',true);
-    ruler(xPH-20,phhY,phlY,blue,['PREV','HR','RANGE']);
-    vl(xQ1-GAP,PAD.t-12,PAD.t+cH+8,border,[3,3]);
+    lbl('1H',phMid,py(41),bg,7,'center',true);
+    vl(xQ1-GAP,PAD.t-10,PAD.t+cH+6,border,[3,3]);
 
-    // ② Q1 sweep — bearish delivery starting at CISD level
     let x=xQ1;
-    // first bearish candle opens AT CISD level
     cdl(x,py(41),py(44),py(33),py(35),CW);x+=slot;
     cdl(x,py(35),py(37),py(26),py(28),CW);
     ctx.save();ctx.fillStyle=orange;
-    ctx.beginPath();ctx.moveTo(x+CW/2-3,phlY+3);ctx.lineTo(x+CW/2,phlY+8);ctx.lineTo(x+CW/2+3,phlY+3);ctx.fill();
+    ctx.beginPath();ctx.moveTo(x+CW/2-3,phlY+3);ctx.lineTo(x+CW/2,phlY+7);ctx.lineTo(x+CW/2+3,phlY+3);ctx.fill();
     ctx.restore();
-    lbl('SWEPT',x+CW/2,phlY+17,orange,6.5,'center',true);
+    lbl('SWEPT',x+CW/2,phlY+15,orange,6,'center',true);
     x+=slot;
     cdl(x,py(28),py(30),py(20),py(22),CW);x+=slot;
     cdl(x,py(22),py(24),py(14),py(16),CW);x+=slot;
     cdl(x,py(16),py(18),py(8),stopY,CW);
     ctx.save();ctx.fillStyle=red;
-    ctx.beginPath();ctx.moveTo(x+CW/2-3,stopY-5);ctx.lineTo(x+CW/2,stopY-1);ctx.lineTo(x+CW/2+3,stopY-5);ctx.fill();
+    ctx.beginPath();ctx.moveTo(x+CW/2-3,stopY-4);ctx.lineTo(x+CW/2,stopY-1);ctx.lineTo(x+CW/2+3,stopY-4);ctx.fill();
     ctx.restore();
-    lbl('EXTREME',x+CW/2,stopY+11,red,6.5,'center',true);
+    lbl('EXTREME',x+CW/2,stopY+10,red,6,'center',true);
     x+=slot;
     cdl(x,py(10),py(20),py(8),py(18),CW);x+=slot;
-    vl(xRet-GAP/2,PAD.t-12,PAD.t+cH+8,border,[3,3]);
+    vl(xRet-GAP/2,PAD.t-10,PAD.t+cH+6,border,[3,3]);
 
-    // ③ return — rallies back above prev hr low
     x=xRet;
     cdl(x,py(20),py(32),py(16),py(30),CW);x+=slot;
     cdl(x,py(30),py(40),py(27),py(37),CW);x+=slot;
     cdl(x,py(37),py(44),py(33),py(40),CW);
-    lbl('BACK ABOVE',x+CW/2,phlY-8,orange,6.5,'center',true);
-    lbl('PREV LOW',x+CW/2,phlY-17,orange,6.5,'center',true);
+    lbl('BACK ABOVE',x+CW/2,phlY-7,orange,6,'center',true);
+    lbl('PREV LOW',x+CW/2,phlY-15,orange,6,'center',true);
     x+=slot;
-    vl(xCisd-GAP/2,PAD.t-12,PAD.t+cH+8,border,[3,3]);
+    vl(xCisd-GAP/2,PAD.t-10,PAD.t+cH+6,border,[3,3]);
 
-    // ④ CISD — fires when close > open of first bearish sweep candle (= CISD level)
     x=xCisd;
     cdl(x,py(38),py(44),py(35),py(39),CW);x+=slot;
     cdl(x,py(38),py(48),py(35),py(43),CW);
     ctx.save();ctx.strokeStyle=blue;ctx.lineWidth=1.5;ctx.setLineDash([3,2]);
     ctx.beginPath();ctx.moveTo(x+CW/2,cisdY);ctx.lineTo(x+CW/2,py(43));ctx.stroke();
     ctx.setLineDash([]);ctx.restore();
-    lbl('CISD ↑',x+CW/2,cisdY-8,blue,6.5,'center',true);
+    lbl('CISD ↑',x+CW/2,cisdY-7,blue,6,'center',true);
     x+=slot;
-    vl(xEnt-GAP/2,PAD.t-12,PAD.t+cH+8,border,[3,3]);
+    vl(xEnt-GAP/2,PAD.t-10,PAD.t+cH+6,border,[3,3]);
 
-    // ⑤ trade
     x=xEnt;
     ctx.save();ctx.fillStyle=gold;
     ctx.beginPath();ctx.moveTo(x-3,entryY-3);ctx.lineTo(x+3,entryY);ctx.lineTo(x-3,entryY+3);ctx.fill();
@@ -1168,56 +1302,47 @@ function drawSetupViz(){
     cdl(x,py(58),py(68),py(55),py(66),CW);x+=slot;
     cdl(x,py(66),py(75),py(63),py(72),CW);x+=slot;
 
-    // labels
-    const rx=xEnd+8;
-    lbl('TARGET',                    rx,targetY-4, teal,  7.5,'left',true);
-    lbl('ENTRY',                     rx,entryY-4,  gold,  7.5,'left',true);
-    lbl('CISD LVL (SWEEP LEG OPEN)', rx,cisdY+10,  blue,  7,'left',true);
-    lbl('PREV HR LOW (swept)',        rx,phlY-4,    orange,7.5,'left',true);
-    lbl('STOP = EXTREME',            rx,stopY+10,  red,   7.5,'left',true);
+    const rx=xEnd+6;
+    lbl('TARGET',         rx,targetY-3, teal,  7,'left',true);
+    lbl('ENTRY',          rx,entryY-3,  gold,  7,'left',true);
+    lbl('CISD LVL',       rx,cisdY+9,   blue,  7,'left',true);
+    lbl('PREV LOW (swept)',rx,phlY-3,   orange,7,'left',true);
+    lbl('STOP',           rx,stopY+9,   red,   7,'left',true);
 
-    // rulers
-    const bx=rx+108;
-    ruler(bx,stopY,cisdY,muted,['MANIP','RANGE']);   // stop → cisd level
-    ruler(bx,cisdY,targetY,teal,['×2','PROJ']);      // cisd → target
-    const bx2=bx+52;
-    ruler(bx2,entryY,stopY,red,['RISK','1R']);
-    ruler(bx2,targetY,entryY,teal,['RWD',`${RR}R`]);
+    ruler(rx,stopY,cisdY,muted,['MANIP','RANGE']);
+    ruler(rx,cisdY,targetY,teal,['×2','PROJ']);
 
-    // badges
-    const bY=PAD.t-28;
-    badge('1',xPH+PHW/2,bY,blue);badge('2',xQ1+nQ1*slot/2,bY,red);badge('3',xRet+nRet*slot/2,bY,teal);
-    badge('4',xCisd+nCisd*slot/2,bY,orange);badge('5',xEnt+nEnt*slot/2,bY,gold);
+    const bY=PAD.t-24;
+    badge('1',xPH+PHW/2,bY,blue);badge('2',xQ1+3*slot,bY,red);badge('3',xRet+1.5*slot,bY,teal);
+    badge('4',xCisd+slot,bY,orange);badge('5',xEnt+2*slot,bY,gold);
 
   } else {
     const STOP_P=90, PHH_P=72, PHL_P=45, CL_P=59, EP_P=56, TP=28;
-    const MR=STOP_P-CL_P, RISK=STOP_P-EP_P, REW=EP_P-TP;
+    const RISK=STOP_P-EP_P, REW=EP_P-TP;
     const RR=(REW/RISK).toFixed(1);
     const stopY=py(STOP_P),phhY=py(PHH_P),phlY=py(PHL_P),cisdY=py(CL_P),entryY=py(EP_P),targetY=py(TP);
 
-    const nPH=1,nQ1=6,nRet=3,nCisd=2,nEnt=4;
     const PHW=CW*3;
-    const xPH=PAD.l+GAP,xQ1=xPH+PHW+GAP*3,xRet=xQ1+nQ1*slot,xCisd=xRet+nRet*slot,xEnt=xCisd+nCisd*slot,xEnd=xEnt+nEnt*slot;
+    const xPH=PAD.l+GAP, xQ1=xPH+PHW+GAP*3, xRet=xQ1+6*slot, xCisd=xRet+3*slot, xEnt=xCisd+2*slot, xEnd=xEnt+4*slot;
     const lineEnd=xEnd+4;
 
-    [[xPH,PHW+GAP*2,'rgba(59,130,246,0.06)','① PREV HOUR'],
-     [xQ1,nQ1*slot,'rgba(239,68,68,0.06)','② Q1 SWEEP'],
-     [xRet,nRet*slot,'rgba(16,185,129,0.04)','③ RETURN'],
-     [xCisd,nCisd*slot,'rgba(251,146,60,0.07)','④ CISD'],
-     [xEnt,nEnt*slot,'rgba(245,158,11,0.05)','⑤ TRADE'],
+    [[xPH,PHW+GAP*2,'rgba(59,130,246,0.06)','① PREV HTF'],
+     [xQ1,6*slot,'rgba(239,68,68,0.06)','② Q1 SWEEP'],
+     [xRet,3*slot,'rgba(16,185,129,0.04)','③ RETURN'],
+     [xCisd,2*slot,'rgba(251,146,60,0.07)','④ CISD'],
+     [xEnt,4*slot,'rgba(245,158,11,0.05)','⑤ TRADE'],
     ].forEach(([x,w,col,lbl_])=>{
-      ctx.fillStyle=col;ctx.fillRect(x,PAD.t-12,w,cH+20);
-      lbl(lbl_,x+4,PAD.t-15,muted,7);
+      ctx.fillStyle=col;ctx.fillRect(x,PAD.t-10,w,cH+18);
+      lbl(lbl_,x+3,PAD.t-12,muted,6.5);
     });
 
-    hl(stopY,  xPH-4,lineEnd,red,   [],    2.5);
-    hl(phhY,   xPH-4,lineEnd,orange,[5,3], 2);    // prev hour HIGH (the swept level)
-    hl(cisdY,  xPH-4,lineEnd,blue,  [5,3], 1.5);  // CISD level (sweep leg open)
+    hl(stopY,  xPH-4,lineEnd,red,   [],    2);
+    hl(phhY,   xPH-4,lineEnd,orange,[5,3], 2);
+    hl(cisdY,  xPH-4,lineEnd,blue,  [5,3], 1.5);
     hl(entryY, xPH-4,lineEnd,gold,  [3,2], 1.5);
-    hl(phlY,   xPH-4,lineEnd,muted, [4,4], 0.75); // prev hour LOW (range ref)
-    hl(targetY,xPH-4,lineEnd,teal,  [],    2.5);
+    hl(phlY,   xPH-4,lineEnd,muted, [4,4], 0.75);
+    hl(targetY,xPH-4,lineEnd,teal,  [],    2);
 
-    // ① prev hour candle (bullish 1H)
     const phMid=xPH+PHW/2;
     ctx.strokeStyle=teal;ctx.lineWidth=1.5;
     ctx.beginPath();ctx.moveTo(phMid,phhY);ctx.lineTo(phMid,py(70));ctx.stroke();
@@ -1225,53 +1350,47 @@ function drawSetupViz(){
     ctx.strokeRect(xPH,py(70),PHW,Math.max(py(48)-py(70),2));
     ctx.fillStyle=bg;ctx.fillRect(xPH+1.5,py(70)+1.5,PHW-3,Math.max(py(48)-py(70),2)-3);
     ctx.strokeRect(xPH,py(70),PHW,Math.max(py(48)-py(70),2));
-    lbl('1H',phMid,py(59),teal,8,'center',true);
-    ruler(xPH-20,phlY,phhY,blue,['PREV','HR','RANGE']);
-    vl(xQ1-GAP,PAD.t-12,PAD.t+cH+8,border,[3,3]);
+    lbl('1H',phMid,py(59),teal,7,'center',true);
+    vl(xQ1-GAP,PAD.t-10,PAD.t+cH+6,border,[3,3]);
 
-    // ② Q1 sweep — bullish delivery starting at CISD level, sweeping above PHH
     let x=xQ1;
-    // first bullish candle opens AT CISD level
     cdl(x,py(59),py(66),py(57),py(64),CW);x+=slot;
     cdl(x,py(64),py(71),py(62),py(70),CW);x+=slot;
     cdl(x,py(70),py(78),py(68),py(76),CW);
     ctx.save();ctx.fillStyle=orange;
-    ctx.beginPath();ctx.moveTo(x+CW/2-3,phhY-3);ctx.lineTo(x+CW/2,phhY-8);ctx.lineTo(x+CW/2+3,phhY-3);ctx.fill();
+    ctx.beginPath();ctx.moveTo(x+CW/2-3,phhY-3);ctx.lineTo(x+CW/2,phhY-7);ctx.lineTo(x+CW/2+3,phhY-3);ctx.fill();
     ctx.restore();
-    lbl('SWEPT',x+CW/2,phhY-17,orange,6.5,'center',true);
+    lbl('SWEPT',x+CW/2,phhY-15,orange,6,'center',true);
     x+=slot;
     cdl(x,py(76),py(84),py(73),py(82),CW);x+=slot;
     cdl(x,py(82),stopY,py(78),py(88),CW);
     ctx.save();ctx.fillStyle=red;
-    ctx.beginPath();ctx.moveTo(x+CW/2-3,stopY+5);ctx.lineTo(x+CW/2,stopY+1);ctx.lineTo(x+CW/2+3,stopY+5);ctx.fill();
+    ctx.beginPath();ctx.moveTo(x+CW/2-3,stopY+4);ctx.lineTo(x+CW/2,stopY+1);ctx.lineTo(x+CW/2+3,stopY+4);ctx.fill();
     ctx.restore();
-    lbl('EXTREME',x+CW/2,stopY+13,red,6.5,'center',true);
+    lbl('EXTREME',x+CW/2,stopY+12,red,6,'center',true);
     x+=slot;
     cdl(x,py(90),py(92),py(78),py(80),CW);x+=slot;
-    vl(xRet-GAP/2,PAD.t-12,PAD.t+cH+8,border,[3,3]);
+    vl(xRet-GAP/2,PAD.t-10,PAD.t+cH+6,border,[3,3]);
 
-    // ③ return — drops back below prev hr high, toward CISD level
     x=xRet;
     cdl(x,py(80),py(84),py(68),py(70),CW);x+=slot;
     cdl(x,py(70),py(72),py(62),py(64),CW);x+=slot;
     cdl(x,py(64),py(66),py(58),py(60),CW);
-    lbl('BACK BELOW',x+CW/2,phhY+9,orange,6.5,'center',true);
-    lbl('PREV HIGH',x+CW/2,phhY+18,orange,6.5,'center',true);
+    lbl('BACK BELOW',x+CW/2,phhY+8,orange,6,'center',true);
+    lbl('PREV HIGH',x+CW/2,phhY+16,orange,6,'center',true);
     x+=slot;
-    vl(xCisd-GAP/2,PAD.t-12,PAD.t+cH+8,border,[3,3]);
+    vl(xCisd-GAP/2,PAD.t-10,PAD.t+cH+6,border,[3,3]);
 
-    // ④ CISD — fires when close < open of first bullish sweep candle (= CISD level)
     x=xCisd;
     cdl(x,py(61),py(64),py(56),py(62),CW);x+=slot;
     cdl(x,py(61),py(63),py(52),py(57),CW);
     ctx.save();ctx.strokeStyle=blue;ctx.lineWidth=1.5;ctx.setLineDash([3,2]);
     ctx.beginPath();ctx.moveTo(x+CW/2,cisdY);ctx.lineTo(x+CW/2,py(57));ctx.stroke();
     ctx.setLineDash([]);ctx.restore();
-    lbl('CISD ↓',x+CW/2,cisdY+13,blue,6.5,'center',true);
+    lbl('CISD ↓',x+CW/2,cisdY+11,blue,6,'center',true);
     x+=slot;
-    vl(xEnt-GAP/2,PAD.t-12,PAD.t+cH+8,border,[3,3]);
+    vl(xEnt-GAP/2,PAD.t-10,PAD.t+cH+6,border,[3,3]);
 
-    // ⑤ trade
     x=xEnt;
     ctx.save();ctx.fillStyle=gold;
     ctx.beginPath();ctx.moveTo(x-3,entryY-3);ctx.lineTo(x+3,entryY);ctx.lineTo(x-3,entryY+3);ctx.fill();
@@ -1281,24 +1400,25 @@ function drawSetupViz(){
     cdl(x,py(46),py(49),py(34),py(36),CW);x+=slot;
     cdl(x,py(36),py(39),py(26),py(28),CW);x+=slot;
 
-    const rx=xEnd+8;
-    lbl('STOP = EXTREME',            rx,stopY-4,  red,   7.5,'left',true);
-    lbl('PREV HR HIGH (swept)',       rx,phhY-4,   orange,7.5,'left',true);
-    lbl('CISD LVL (SWEEP LEG OPEN)', rx,cisdY-10, blue,  7,'left',true);
-    lbl('ENTRY',                     rx,entryY+10,gold,  7.5,'left',true);
-    lbl('TARGET',                    rx,targetY-4,teal,  7.5,'left',true);
+    const rx=xEnd+6;
+    lbl('STOP',            rx,stopY-3,   red,   7,'left',true);
+    lbl('PREV HIGH (swept)',rx,phhY-3,   orange,7,'left',true);
+    lbl('CISD LVL',        rx,cisdY-8,   blue,  7,'left',true);
+    lbl('ENTRY',           rx,entryY+9,  gold,  7,'left',true);
+    lbl('TARGET',          rx,targetY-3, teal,  7,'left',true);
 
-    const bx=rx+108;
-    ruler(bx,cisdY,stopY,muted,['MANIP','RANGE']);  // cisd → stop
-    ruler(bx,targetY,cisdY,teal,['×2','PROJ']);     // target → cisd
-    const bx2=bx+52;
-    ruler(bx2,stopY,entryY,red,['RISK','1R']);
-    ruler(bx2,entryY,targetY,teal,['RWD',`${RR}R`]);
+    ruler(rx,cisdY,stopY,muted,['MANIP','RANGE']);
+    ruler(rx,targetY,cisdY,teal,['×2','PROJ']);
 
-    const bY=PAD.t-28;
-    badge('1',xPH+PHW/2,bY,blue);badge('2',xQ1+nQ1*slot/2,bY,red);badge('3',xRet+nRet*slot/2,bY,teal);
-    badge('4',xCisd+nCisd*slot/2,bY,orange);badge('5',xEnt+nEnt*slot/2,bY,gold);
+    const bY=PAD.t-24;
+    badge('1',xPH+PHW/2,bY,blue);badge('2',xQ1+3*slot,bY,red);badge('3',xRet+1.5*slot,bY,teal);
+    badge('4',xCisd+slot,bY,orange);badge('5',xEnt+2*slot,bY,gold);
   }
+}
+
+function drawSetupViz(){
+  drawSetupScene(document.getElementById('setup-canvas-bull'), 'bull');
+  drawSetupScene(document.getElementById('setup-canvas-bear'), 'bear');
 }
 
 // ── FULL RENDER ────────────────────────────────────────────────────────────
@@ -1323,7 +1443,7 @@ function parseKey(k){
 
 // ── INIT ────────────────────────────────────────────────────────────────────
 render();
-showSetup('bull');
+drawSetupViz();
 let rt; window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{renderActive();drawSetupViz();},150);});
 
 function applyLoadedData(j){

@@ -96,34 +96,29 @@ nav{
 }
 .nav-link:hover,.nav-link.active{color:var(--text);background:var(--border);}
 .nav-link.active{color:var(--text);}
-.model-dropdown-wrap{
-  position:relative;display:flex;align-items:center;
-  margin-left:auto;flex-shrink:0;
+.sel-bar{
+  background:var(--card);border-bottom:1px solid var(--border);
+  padding:10px 32px;display:flex;gap:24px;align-items:center;flex-wrap:wrap;
 }
-.model-dropdown-wrap::after{
-  content:'';position:absolute;right:10px;top:50%;transform:translateY(-50%);
-  width:0;height:0;
-  border-left:4px solid transparent;border-right:4px solid transparent;
-  border-top:5px solid var(--faint);pointer-events:none;
+.sel-group{display:flex;align-items:center;gap:8px;}
+.sel-label{
+  font-family:var(--font-data);font-size:11px;font-weight:600;
+  letter-spacing:0.04em;color:var(--faint);text-transform:uppercase;white-space:nowrap;
 }
-.model-dropdown{
-  font-family:var(--font-body);font-size:12px;font-weight:600;
-  color:var(--text);
-  background:var(--bg);
-  border:1.5px solid var(--border);border-radius:10px;
-  padding:7px 30px 7px 13px;
-  cursor:pointer;outline:none;
-  appearance:none;-webkit-appearance:none;
-  box-shadow:inset 0 1px 3px rgba(0,0,0,0.35);
-  transition:border-color .15s,box-shadow .15s;
+.sel-drop{
+  font-family:var(--font-data);font-size:12px;
+  padding:6px 28px 6px 10px;border-radius:6px;
+  border:1px solid var(--border);background:var(--card-alt);color:var(--text);
+  cursor:pointer;appearance:none;-webkit-appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2364748b'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 8px center;
+  transition:border-color .15s;
 }
-[data-theme="light"] .model-dropdown{
-  box-shadow:inset 0 1px 3px rgba(0,0,0,0.10);
-}
-.model-dropdown:focus{border-color:var(--blue);}
-.model-dropdown option{background:var(--card);color:var(--text);}
-.model-dropdown optgroup{
-  font-family:var(--font-body);font-size:11px;font-weight:700;
+.sel-drop:hover{border-color:var(--subtle);}
+.sel-drop:focus{outline:none;border-color:var(--blue);}
+.sel-drop option{background:var(--card);color:var(--text);}
+.sel-drop optgroup{
+  font-family:var(--font-data);font-size:11px;font-weight:700;
   color:var(--faint);letter-spacing:0.04em;text-transform:uppercase;
 }
 .theme-btn{
@@ -392,9 +387,13 @@ footer{
     <a class="nav-link" href="#performance" onclick="smoothNav(event,'performance')">Performance</a>
     <a class="nav-link" href="#trades" onclick="smoothNav(event,'trades')">Trades</a>
     <a class="nav-link" href="#comparison" onclick="smoothNav(event,'comparison')">Compare</a>
-  </div>
-  <div class="model-dropdown-wrap">
-    <select class="model-dropdown" id="modelDropdown" onchange="switchModel(this.value)">
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">☀</button>
+</nav>
+
+<div class="sel-bar">
+  <div class="sel-group">
+    <label class="sel-label">Risk Profile</label>
+    <select class="sel-drop" id="modelDropdown" onchange="switchModel(this.value)">
       <optgroup label="Structural Stop">
         <option value="cashflow">Cashflow</option>
         <option value="cashflow_extended" selected>Cashflow + Extended</option>
@@ -409,8 +408,7 @@ footer{
       </optgroup>
     </select>
   </div>
-  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">☀</button>
-</nav>
+</div>
 
 <main>
   <div id="loading">Loading ny1_results.json…</div>
@@ -422,7 +420,7 @@ footer{
       <h1 class="hero-title">NY1 <span>F.P.FVG</span></h1>
       <p class="hero-sub">First Presented Fair Value Gap · 1-Minute Data · 11 Years</p>
       <div class="stats-grid" id="heroStats"></div>
-      <div class="stats-grid" style="margin-top:14px;grid-template-columns:repeat(4,1fr)" id="riskStatsGrid"></div>
+      <div class="stats-grid" style="margin-top:14px;" id="riskStatsGrid"></div>
     </section>
 
     <!-- HOW IT WORKS -->
@@ -533,6 +531,14 @@ footer{
         </div>
       </div>
     </div>
+
+    <!-- MAE / MFE ANALYSIS -->
+    <div class="sec-head">
+      <span class="sec-label">MAE / MFE Analysis</span>
+      <span class="sec-line"></span>
+      <span class="sec-pill">Bell curve · Combined Edge · SL candidates</span>
+    </div>
+    <div id="mae-analysis-panel"></div>
 
     <!-- TRADES TABLE -->
     <div class="sec-head" id="trades">
@@ -665,6 +671,7 @@ function renderAll(d) {
   renderDirection(d.by_direction);
   renderCharts(d);
   renderYearTable(d.by_year);
+  renderMAEAnalysis(d.risk_stats);
   renderTradesTable(d.recent_trades || d.trades);
   renderComparison();
   // update pills
@@ -672,55 +679,228 @@ function renderAll(d) {
   document.getElementById('tradesNote').textContent = 'Most recent 40 of ' + d.meta.n + ' resolved';
 }
 
+// ─── MAE / MFE ANALYSIS ──────────────────────────────────────────────────────
+function renderMAEAnalysis(rs) {
+  const el = document.getElementById('mae-analysis-panel');
+  if (!el) return;
+  rs = rs || {};
+  const bell = rs.mae_bell;
+  const ce   = rs.ce;
+  const slPct = rs.sl_pct;
+
+  // CE rating
+  const ceColor = ce == null ? 'var(--faint)' : ce >= 3.0 ? 'var(--green)' : ce >= 1.5 ? 'var(--amber)' : ce >= 1.0 ? 'var(--orange)' : 'var(--red)';
+  const ceRating = ce == null ? '—' : ce >= 3.0 ? 'Strong entries' : ce >= 1.5 ? 'Decent entries' : ce >= 1.0 ? 'Marginal' : 'Weak entries';
+  const ceDesc = 'avg(MFE ÷ MAE) on winning trades — measures how hard price runs in your favour vs. how much heat you took';
+
+  // Bell curve SL candidates
+  const candidates = bell ? [
+    {label:'Mean (μ)',  val: bell.mean,      cov: bell.cov_mean,  color:'#60a5fa'},
+    {label:'+0.5σ',     val: bell.plus_0_5s, cov: bell.cov_0_5s,  color:'#fbbf24'},
+    {label:'+1σ',       val: bell.plus_1s,   cov: bell.cov_1s,    color:'#fb923c'},
+    {label:'+1.5σ',     val: bell.plus_1_5s, cov: bell.cov_1_5s,  color:'#a78bfa'},
+    {label:'+2σ',       val: bell.plus_2s,   cov: bell.cov_2s,    color:'#c084fc'},
+  ] : [];
+
+  const slRow = (c) => {
+    const isCurrent = slPct != null && Math.abs(c.val - slPct) / slPct < 0.05;
+    return `<tr style="background:${isCurrent?'rgba(16,185,129,0.08)':''}">
+      <td style="font-family:var(--font-data);font-size:11px;color:${c.color};padding:7px 10px;width:80px">${c.label}</td>
+      <td style="font-family:var(--font-data);font-size:12px;color:var(--text);padding:7px 10px;font-weight:600">${c.val.toFixed(4)}%</td>
+      <td style="padding:7px 10px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;height:5px;background:var(--border);border-radius:3px;max-width:100px">
+            <div style="width:${c.cov}%;height:100%;background:${c.color};border-radius:3px;opacity:0.7"></div>
+          </div>
+          <span style="font-family:var(--font-data);font-size:10px;color:var(--subtle)">${c.cov}%</span>
+        </div>
+      </td>
+      <td style="font-family:var(--font-data);font-size:10px;color:var(--faint);padding:7px 10px">${isCurrent?'← current profile':''}</td>
+    </tr>`;
+  };
+
+  el.innerHTML = `
+    <div class="panel" style="margin-bottom:14px">
+      <div class="panel-hd">
+        <span class="panel-title">MAE / MFE Analysis</span>
+        <span class="panel-note">Bell curve stop sizing · Combined Edge entry quality</span>
+      </div>
+      <div class="panel-body" style="display:grid;grid-template-columns:1fr 1.4fr;gap:24px;align-items:start">
+
+        <!-- Left: CE + avg R -->
+        <div>
+          <div style="background:var(--card-alt);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:14px">
+            <div style="font-family:var(--font-data);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:6px">Combined Edge (CE)</div>
+            <div style="font-family:var(--font-display);font-size:36px;font-weight:700;color:${ceColor};line-height:1;margin-bottom:4px">${ce != null ? ce.toFixed(2) : '—'}</div>
+            <div style="font-family:var(--font-data);font-size:11px;color:${ceColor};margin-bottom:8px">${ceRating}</div>
+            <div style="font-size:11px;color:var(--faint);line-height:1.5">${ceDesc}</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div style="background:var(--card-alt);border:1px solid var(--border);border-radius:8px;padding:12px">
+              <div style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Avg Win R</div>
+              <div style="font-family:var(--font-display);font-size:18px;font-weight:700;color:var(--green)">${rs.avg_win_usd != null ? '+' + (rs.avg_win_usd/225).toFixed(2) + 'R' : '—'}</div>
+            </div>
+            <div style="background:var(--card-alt);border:1px solid var(--border);border-radius:8px;padding:12px">
+              <div style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Avg Loss R</div>
+              <div style="font-family:var(--font-display);font-size:18px;font-weight:700;color:var(--red)">${rs.avg_loss_usd != null ? (rs.avg_loss_usd/225).toFixed(2) + 'R' : '—'}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Bell curve + candidates table -->
+        <div>
+          ${bell ? `
+          <div style="font-family:var(--font-data);font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:8px">
+            MAE Bell Curve  ·  μ = ${bell.mean.toFixed(4)}%  ·  σ = ${bell.std.toFixed(4)}%
+          </div>
+          <canvas id="mae-bell-canvas" height="120" style="width:100%;border-radius:6px;background:var(--card-alt);margin-bottom:12px"></canvas>
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead>
+              <tr style="border-bottom:1px solid var(--border)">
+                <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:5px 10px;text-align:left;font-weight:400">Tier</th>
+                <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:5px 10px;text-align:left;font-weight:400">SL Candidate</th>
+                <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:5px 10px;text-align:left;font-weight:400">Trade Coverage</th>
+                <th style="padding:5px 10px"></th>
+              </tr>
+            </thead>
+            <tbody>${candidates.map(slRow).join('')}</tbody>
+          </table>
+          ` : `<div style="font-family:var(--font-data);font-size:11px;color:var(--faint);padding:16px">
+            Bell curve N/A — fixed-% stop profile (stop is uniform across all trades)
+          </div>`}
+        </div>
+
+      </div>
+    </div>`;
+
+  // Draw bell curve canvas
+  if (bell) {
+    const canvas = document.getElementById('mae-bell-canvas');
+    if (canvas) drawMAEBell(canvas, bell, slPct);
+  }
+}
+
+function drawMAEBell(canvas, bell, currentSlPct) {
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.offsetWidth || 400, H = 120;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const mu = bell.mean, sd = bell.std;
+  const xMin = Math.max(0, mu - 1.5*sd), xMax = mu + 2.8*sd;
+  const pad = {l:8, r:8, t:12, b:28};
+  const w = W - pad.l - pad.r, h = H - pad.t - pad.b;
+
+  function normPDF(x) {
+    return Math.exp(-0.5*Math.pow((x-mu)/sd,2)) / (sd * Math.sqrt(2*Math.PI));
+  }
+  const maxPDF = normPDF(mu);
+  const px = x => pad.l + Math.max(0, Math.min(1, (x-xMin)/(xMax-xMin))) * w;
+  const py = y => pad.t + h - (y / (maxPDF * 1.15)) * h;
+
+  // Shaded bands
+  const bands = [
+    {from:xMin,       to:mu,          fill:'rgba(96,165,250,0.06)'},
+    {from:mu,         to:mu+0.5*sd,   fill:'rgba(251,191,36,0.08)'},
+    {from:mu+0.5*sd,  to:mu+sd,       fill:'rgba(251,146,60,0.10)'},
+    {from:mu+sd,      to:mu+1.5*sd,   fill:'rgba(167,139,250,0.12)'},
+    {from:mu+1.5*sd,  to:mu+2.5*sd,   fill:'rgba(192,132,252,0.12)'},
+  ];
+  bands.forEach(({from, to, fill}) => {
+    ctx.beginPath();
+    ctx.moveTo(px(from), py(0));
+    for (let i=0; i<=50; i++) {
+      const x = from + (to-from)*i/50;
+      ctx.lineTo(px(x), py(normPDF(x)));
+    }
+    ctx.lineTo(px(to), py(0));
+    ctx.closePath();
+    ctx.fillStyle = fill; ctx.fill();
+  });
+
+  // Bell curve
+  ctx.beginPath();
+  for (let i=0; i<=300; i++) {
+    const x = xMin + (xMax-xMin)*i/300;
+    i===0 ? ctx.moveTo(px(x),py(normPDF(x))) : ctx.lineTo(px(x),py(normPDF(x)));
+  }
+  ctx.strokeStyle = 'rgba(148,163,184,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+
+  // Candidate vertical lines + labels
+  const lines = [
+    {x:mu,         c:'#60a5fa', lbl:'μ'},
+    {x:mu+0.5*sd,  c:'#fbbf24', lbl:'+½σ'},
+    {x:mu+sd,      c:'#fb923c', lbl:'+1σ'},
+    {x:mu+1.5*sd,  c:'#a78bfa', lbl:'+1.5σ'},
+    {x:mu+2*sd,    c:'#c084fc', lbl:'+2σ'},
+  ];
+  lines.forEach(({x, c, lbl}) => {
+    if (x < xMin || x > xMax) return;
+    ctx.save(); ctx.strokeStyle = c; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(px(x), pad.t); ctx.lineTo(px(x), pad.t+h); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = c; ctx.font = `8px monospace`;
+    const tx = Math.min(px(x)+2, W-24);
+    ctx.fillText(lbl, tx, pad.t+h+10);
+  });
+
+  // Current SL marker (green solid line + triangle)
+  if (currentSlPct != null) {
+    const cx = px(currentSlPct);
+    ctx.save(); ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(cx, pad.t); ctx.lineTo(cx, pad.t+h+6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, pad.t+h+6); ctx.lineTo(cx-4, pad.t+h+14); ctx.lineTo(cx+4, pad.t+h+14); ctx.closePath();
+    ctx.fillStyle = '#10b981'; ctx.fill(); ctx.restore();
+  }
+}
+
 // ─── HERO STATS ──────────────────────────────────────────────────────────────
 function renderHero(meta, rs) {
-  const fillRate  = meta.total_filled / meta.total_setups;
-  const setupRate = meta.total_setups  / meta.trading_days;
-  const wr        = meta.tp1_wr;
-  const avgMae    = meta.avg_mae_pct;
   rs = rs || {};
+  const wr = meta.tp1_wr;
 
-  const isExt    = _activeModel === 'cashflow_extended';
-  const avgMfe2  = meta.avg_mfe2_pct;
-  const avgMfe1  = meta.avg_mfe1_pct;
-  const mfeStat  = isExt
-    ? { lbl: 'Avg MFE2', val: avgMfe2 != null ? avgMfe2.toFixed(4) + '%' : '—',
-        cls: 'cyan', hint: 'Avg runner max favorable (extended)', bar: cssVar('--cyan') }
-    : { lbl: 'Avg MFE1', val: avgMfe1 != null ? avgMfe1.toFixed(4) + '%' : '—',
-        cls: 'cyan', hint: 'Avg TP1 gain per trade (cashflow)', bar: cssVar('--cyan') };
+  const fmt$ = v => v != null ? '$' + Math.abs(v).toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0}) : '—';
+  const fmtPct = v => v != null ? v.toFixed(2) + '%' : '—';
+
+  const slPct  = rs.sl_pct  != null ? rs.sl_pct  : (meta.avg_mae_pct != null ? meta.avg_mae_pct : null);
+  const tpPct  = rs.tp_pct  != null ? rs.tp_pct  : null;
+  const blown  = rs.blown;
+  const minEq  = rs.min_equity_usd;
+  const avgWin = rs.avg_win_usd;
+  const avgLoss= rs.avg_loss_usd;
 
   const primary = [
-    { lbl: 'Total Trades',  val: meta.n.toLocaleString(), cls: 'neutral',
-      hint: meta.date_range, bar: cssVar('--blue') },
-    { lbl: 'TP1 Win Rate',  val: pct(wr),
-      cls: wr >= 0.5 ? 'green' : 'red',
-      hint: meta.wins + ' wins of ' + meta.n,
-      bar: wr >= 0.5 ? cssVar('--green') : cssVar('--red') },
-    { lbl: 'Avg MAE',
-      val: avgMae != null ? avgMae.toFixed(4) + '%' : '—',
-      cls: 'amber', hint: 'Avg stop distance from entry', bar: cssVar('--amber') },
-    mfeStat,
-    { lbl: 'Sharpe Ratio',
-      val: rs.sharpe != null ? rs.sharpe.toFixed(3) : '—',
-      cls: rs.sharpe > 0 ? 'green' : rs.sharpe < 0 ? 'red' : 'neutral',
-      hint: 'Annualised per-trade R', bar: cssVar('--purple') },
-    { lbl: 'Fill Rate', val: pct(fillRate), cls: 'cyan',
-      hint: meta.total_filled + ' / ' + meta.total_setups + ' setups', bar: cssVar('--cyan') },
+    { lbl: 'SL %', val: fmtPct(slPct), cls: 'amber',
+      hint: 'Avg stop distance from entry', bar: cssVar('--amber') },
+    { lbl: 'TP %', val: fmtPct(tpPct), cls: 'green',
+      hint: 'TP1 target distance from entry', bar: cssVar('--green') },
+    { lbl: 'Trades', val: (rs.trades ?? meta.n ?? 0).toLocaleString(), cls: 'neutral',
+      hint: meta.date_range || '', bar: cssVar('--blue') },
+    { lbl: 'Wins', val: (rs.wins ?? meta.wins ?? 0).toLocaleString(),
+      cls: wr >= 0.5 ? 'green' : 'neutral',
+      hint: wr != null ? pct(wr) + ' win rate' : '', bar: cssVar('--green') },
+    { lbl: 'Losses', val: (rs.losses ?? ((meta.n || 0) - (meta.wins || 0))).toLocaleString(),
+      cls: 'red', hint: 'Resolved losses', bar: cssVar('--red') },
+    { lbl: 'BE', val: (rs.be_count ?? 0).toLocaleString(), cls: 'neutral',
+      hint: 'Breakeven exits', bar: cssVar('--faint') },
   ];
 
   const risk = [
-    { lbl: 'Max Consec Wins',   val: rs.max_consec_wins  ?? '—', cls: 'green',
+    { lbl: 'Avg Win $', val: avgWin != null ? '+' + fmt$(avgWin) : '—',
+      cls: 'green', hint: 'Avg P&L per winning trade', bar: cssVar('--green') },
+    { lbl: 'Avg Loss $', val: avgLoss != null ? '−' + fmt$(Math.abs(avgLoss)) : '—',
+      cls: 'red', hint: 'Avg P&L per losing trade', bar: cssVar('--red') },
+    { lbl: 'Blown', val: blown == null ? '—' : (blown ? 'YES' : 'NO'),
+      cls: blown ? 'red' : 'green',
+      hint: 'Account hit $0 during backtest', bar: blown ? cssVar('--red') : cssVar('--green') },
+    { lbl: 'Low Eq $', val: minEq != null ? '$' + minEq.toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0}) : '—',
+      cls: minEq != null && minEq < (rs.account_size || 4500) * 0.75 ? 'red' : 'amber',
+      hint: 'Lowest equity reached (start $' + (rs.account_size ?? 4500).toLocaleString() + ')', bar: cssVar('--amber') },
+    { lbl: 'Max W Run', val: rs.max_consec_wins  ?? '—', cls: 'green',
       hint: 'Longest winning streak', bar: cssVar('--green') },
-    { lbl: 'Max Consec Losses', val: rs.max_consec_losses ?? '—', cls: 'red',
-      hint: 'Longest losing streak',  bar: cssVar('--red') },
-    { lbl: 'MAE Median',
-      val: rs.mae_median != null ? rs.mae_median.toFixed(4) + '%' : '—',
-      cls: 'amber', hint: 'Median stop distance', bar: cssVar('--amber') },
-    { lbl: 'MFE Median',
-      val: rs.mfe_median != null ? rs.mfe_median.toFixed(4) + '%' : '—',
-      cls: 'cyan',
-      hint: isExt ? 'Median runner max favorable' : 'Median TP1 exit (wins only)',
-      bar: cssVar('--cyan') },
+    { lbl: 'Max L Run', val: rs.max_consec_losses ?? '—', cls: 'red',
+      hint: 'Longest losing streak', bar: cssVar('--red') },
   ];
 
   const tileHTML = t => `
