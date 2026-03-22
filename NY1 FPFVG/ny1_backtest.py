@@ -301,7 +301,8 @@ def _agg(trades: list[dict]) -> dict:
     wl   = [t for t in trades if t['outcome_main'] in ('WIN', 'LOSS')]
     if not wl:
         return {'n': 0, 'wins': 0, 'tp1_wr': None,
-                'avg_mae_pct': None, 'avg_mfe1_pct': None, 'avg_mfe2_pct': None, 'avg_r': None}
+                'avg_mae_pct': None, 'med_mae_pct': None,
+                'avg_mfe1_pct': None, 'med_mfe1_pct': None, 'avg_mfe2_pct': None}
     n    = len(wl)
     wins = sum(1 for t in wl if t['outcome_main'] == 'WIN')
     wr   = wins / n
@@ -315,13 +316,10 @@ def _agg(trades: list[dict]) -> dict:
     med_mfe1  = round(float(np.median(mfe1_vals)), 4) if mfe1_vals else None
     avg_mfe2  = round(float(np.mean(mfe2_vals)), 4) if mfe2_vals else None
 
-    rs    = [t['combined_r'] for t in wl if t['combined_r'] is not None]
-    avg_r = round(float(np.mean(rs)), 4) if rs else None
-
     return {'n': n, 'wins': wins, 'tp1_wr': round(wr, 4),
             'avg_mae_pct': avg_mae, 'med_mae_pct': med_mae,
             'avg_mfe1_pct': avg_mfe1, 'med_mfe1_pct': med_mfe1,
-            'avg_mfe2_pct': avg_mfe2, 'avg_r': avg_r}
+            'avg_mfe2_pct': avg_mfe2}
 
 
 def build_stats(trades, meta_extra: dict, model: str = 'cashflow_extended') -> dict:

@@ -890,19 +890,14 @@ async function loadStats(project) {
       const cxM = cx.meta             || {};
       const cfR = cf.risk_stats       || {};
       const cxR = cx.risk_stats       || {};
-      const fmtR = v => v != null ? (v >= 0 ? '+' : '') + v.toFixed(3) + 'R' : '—';
       const fmtN = v => v != null ? (v >= 0 ? '+' : '') + v.toFixed(3) : '—';
       return {
         label1: 'TP1 WR',  val1: pct(cxM.tp1_wr), cls1: wrColor(cxM.tp1_wr),
-        label2: 'Avg R',   val2: fmtR(cxM.avg_r),
-                           cls2: (cxM.avg_r ?? 0) > 0 ? 'pos' : 'neg',
+        label2: 'Sharpe',  val2: cxR.sharpe != null ? cxR.sharpe.toFixed(2) : '—',
+                           cls2: (cxR.sharpe ?? 0) > 0 ? 'pos' : 'neg',
         label3: 'Trades',  val3: num(cxM.n), cls3: 'neutral',
         dateRange: cxM.date_range || '—',
         compRows: [
-          { metric: 'Avg R',
-            cfVal: fmtR(cfM.avg_r),       cxVal: fmtR(cxM.avg_r),
-            delta: fmtR((cxM.avg_r ?? 0) - (cfM.avg_r ?? 0)),
-            dPos: (cxM.avg_r ?? 0) > (cfM.avg_r ?? 0) },
           { metric: 'Sharpe',
             cfVal: fmtN(cfR.sharpe),       cxVal: fmtN(cxR.sharpe),
             delta: fmtN((cxR.sharpe ?? 0) - (cfR.sharpe ?? 0)),

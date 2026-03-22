@@ -656,13 +656,12 @@ function renderHero(meta, rs) {
 
   const isExt    = _activeModel === 'cashflow_extended';
   const avgMfe2  = meta.avg_mfe2_pct;
-  const avgR     = meta.avg_r;
+  const avgMfe1  = meta.avg_mfe1_pct;
   const mfeStat  = isExt
     ? { lbl: 'Avg MFE2', val: avgMfe2 != null ? avgMfe2.toFixed(4) + '%' : '—',
         cls: 'cyan', hint: 'Avg runner max favorable (extended)', bar: cssVar('--cyan') }
-    : { lbl: 'Avg R',    val: avgR    != null ? avgR.toFixed(4) + 'R'   : '—',
-        cls: avgR >= 0 ? 'green' : 'red',
-        hint: 'Avg combined R per trade (cashflow)', bar: avgR >= 0 ? cssVar('--green') : cssVar('--red') };
+    : { lbl: 'Avg MFE1', val: avgMfe1 != null ? avgMfe1.toFixed(4) + '%' : '—',
+        cls: 'cyan', hint: 'Avg TP1 gain per trade (cashflow)', bar: cssVar('--cyan') };
 
   const primary = [
     { lbl: 'Total Trades',  val: meta.n.toLocaleString(), cls: 'neutral',
@@ -725,11 +724,11 @@ function renderDirection(byDir) {
     const mfeMiddle = isExtended
       ? `<div>
            <div class="dir-stat-lbl">Avg MFE2</div>
-           <div class="dir-stat-val" style="color:var(--green)">${d.avg_mfe2_pct != null ? d.avg_mfe2_pct.toFixed(4)+'%' : '—'}</div>
+           <div class="dir-stat-val" style="color:var(--cyan)">${d.avg_mfe2_pct != null ? d.avg_mfe2_pct.toFixed(4)+'%' : '—'}</div>
          </div>`
       : `<div>
-           <div class="dir-stat-lbl">Avg R</div>
-           <div class="dir-stat-val" style="color:${d.avg_r >= 0 ? cssVar('--green') : cssVar('--red')}">${d.avg_r != null ? rnd(d.avg_r) + 'R' : '—'}</div>
+           <div class="dir-stat-lbl">Avg MFE1</div>
+           <div class="dir-stat-val" style="color:var(--cyan)">${d.avg_mfe1_pct != null ? d.avg_mfe1_pct.toFixed(4)+'%' : '—'}</div>
          </div>`;
     return `
       <div class="dir-card">
@@ -1167,7 +1166,6 @@ function renderComparison() {
   const cfR = cf.risk_stats || {};
   const cxR = cx.risk_stats || {};
 
-  const fmtR   = v => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + 'R' : '—';
   const fmtPct = v => v != null ? v.toFixed(4) + '%' : '—';
   const fmtN3  = v => v != null ? (v >= 0 ? '+' : '') + v.toFixed(3) : '—';
   const dCls   = d => d > 0.0001 ? 'val-pos' : d < -0.0001 ? 'val-neg' : 'val-neutral';
@@ -1176,10 +1174,6 @@ function renderComparison() {
     { label: 'TP1 Win Rate',
       cfVal: pct(cfM.tp1_wr),         cxVal: pct(cxM.tp1_wr),
       delta: '—', dCls: 'val-neutral' },
-    { label: 'Avg R',
-      cfVal: fmtR(cfM.avg_r),          cxVal: fmtR(cxM.avg_r),
-      delta: fmtR((cxM.avg_r ?? 0) - (cfM.avg_r ?? 0)),
-      dCls:  dCls((cxM.avg_r ?? 0) - (cfM.avg_r ?? 0)) },
     { label: 'Sharpe Ratio',
       cfVal: fmtN3(cfR.sharpe),         cxVal: fmtN3(cxR.sharpe),
       delta: fmtN3((cxR.sharpe ?? 0) - (cfR.sharpe ?? 0)),

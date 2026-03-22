@@ -18,8 +18,7 @@
       "avg_mfe1_pct": 0.0562,
       "med_mfe1_pct": 0.1,
       "avg_mfe2_pct": 0.0,
-      "avg_r": 0.1242,
-      "generated_at": "2026-03-21T19:25:38.559554"
+      "generated_at": "2026-03-21T22:20:12.235455"
     },
     "overall": {
       "n": 2713,
@@ -29,8 +28,7 @@
       "med_mae_pct": 0.1427,
       "avg_mfe1_pct": 0.0562,
       "med_mfe1_pct": 0.1,
-      "avg_mfe2_pct": 0.0,
-      "avg_r": 0.1242
+      "avg_mfe2_pct": 0.0
     },
     "by_dow": {
       "Mon": {
@@ -41,8 +39,7 @@
         "med_mae_pct": 0.1327,
         "avg_mfe1_pct": 0.0553,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1065
+        "avg_mfe2_pct": 0.0
       },
       "Tue": {
         "n": 542,
@@ -52,8 +49,7 @@
         "med_mae_pct": 0.1457,
         "avg_mfe1_pct": 0.0574,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1476
+        "avg_mfe2_pct": 0.0
       },
       "Wed": {
         "n": 554,
@@ -63,8 +59,7 @@
         "med_mae_pct": 0.1405,
         "avg_mfe1_pct": 0.0565,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.13
+        "avg_mfe2_pct": 0.0
       },
       "Thu": {
         "n": 545,
@@ -74,8 +69,7 @@
         "med_mae_pct": 0.1457,
         "avg_mfe1_pct": 0.0539,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.0789
+        "avg_mfe2_pct": 0.0
       },
       "Fri": {
         "n": 537,
@@ -85,8 +79,7 @@
         "med_mae_pct": 0.1441,
         "avg_mfe1_pct": 0.0579,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1583
+        "avg_mfe2_pct": 0.0
       }
     },
     "by_hour": {
@@ -98,8 +91,7 @@
         "med_mae_pct": 0.1418,
         "avg_mfe1_pct": 0.0554,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1075
+        "avg_mfe2_pct": 0.0
       },
       "10": {
         "n": 238,
@@ -109,8 +101,7 @@
         "med_mae_pct": 0.1517,
         "avg_mfe1_pct": 0.0639,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.2773
+        "avg_mfe2_pct": 0.0
       },
       "11": {
         "n": 53,
@@ -120,8 +111,7 @@
         "med_mae_pct": 0.1355,
         "avg_mfe1_pct": 0.0547,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.0943
+        "avg_mfe2_pct": 0.0
       },
       "12": {
         "n": 28,
@@ -131,8 +121,7 @@
         "med_mae_pct": 0.1266,
         "avg_mfe1_pct": 0.0643,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.2857
+        "avg_mfe2_pct": 0.0
       },
       "13": {
         "n": 10,
@@ -142,8 +131,7 @@
         "med_mae_pct": 0.1972,
         "avg_mfe1_pct": 0.07,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.4
+        "avg_mfe2_pct": 0.0
       },
       "14": {
         "n": 18,
@@ -153,8 +141,7 @@
         "med_mae_pct": 0.1612,
         "avg_mfe1_pct": 0.0556,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1111
+        "avg_mfe2_pct": 0.0
       },
       "15": {
         "n": 13,
@@ -164,8 +151,7 @@
         "med_mae_pct": 0.1848,
         "avg_mfe1_pct": 0.0462,
         "med_mfe1_pct": 0.0,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": -0.0769
+        "avg_mfe2_pct": 0.0
       }
     },
     "by_year": {
@@ -177,8 +163,7 @@
         "med_mae_pct": 0.1172,
         "avg_mfe1_pct": 0.0461,
         "med_mfe1_pct": 0.0,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": -0.0789
+        "avg_mfe2_pct": 0.0
       },
       "2015": {
         "n": 237,
@@ -188,8 +173,7 @@
         "med_mae_pct": 0.1393,
         "avg_mfe1_pct": 0.0523,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.0464
+        "avg_mfe2_pct": 0.0
       },
       "2016": {
         "n": 233,
@@ -199,8 +183,7 @@
         "med_mae_pct": 0.1103,
         "avg_mfe1_pct": 0.0489,
         "med_mfe1_pct": 0.0,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": -0.0215
+        "avg_mfe2_pct": 0.0
       },
       "2017": {
         "n": 231,
@@ -210,8 +193,7 @@
         "med_mae_pct": 0.0835,
         "avg_mfe1_pct": 0.0463,
         "med_mfe1_pct": 0.0,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": -0.0736
+        "avg_mfe2_pct": 0.0
       },
       "2018": {
         "n": 236,
@@ -221,8 +203,7 @@
         "med_mae_pct": 0.1499,
         "avg_mfe1_pct": 0.0568,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1356
+        "avg_mfe2_pct": 0.0
       },
       "2019": {
         "n": 229,
@@ -232,8 +213,7 @@
         "med_mae_pct": 0.123,
         "avg_mfe1_pct": 0.0576,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1528
+        "avg_mfe2_pct": 0.0
       },
       "2020": {
         "n": 243,
@@ -243,8 +223,7 @@
         "med_mae_pct": 0.2047,
         "avg_mfe1_pct": 0.0601,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.2016
+        "avg_mfe2_pct": 0.0
       },
       "2021": {
         "n": 230,
@@ -254,8 +233,7 @@
         "med_mae_pct": 0.1593,
         "avg_mfe1_pct": 0.0587,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1739
+        "avg_mfe2_pct": 0.0
       },
       "2022": {
         "n": 236,
@@ -265,8 +243,7 @@
         "med_mae_pct": 0.2651,
         "avg_mfe1_pct": 0.0623,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.2458
+        "avg_mfe2_pct": 0.0
       },
       "2023": {
         "n": 236,
@@ -276,8 +253,7 @@
         "med_mae_pct": 0.1573,
         "avg_mfe1_pct": 0.0568,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1356
+        "avg_mfe2_pct": 0.0
       },
       "2024": {
         "n": 242,
@@ -287,8 +263,7 @@
         "med_mae_pct": 0.1224,
         "avg_mfe1_pct": 0.0599,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1983
+        "avg_mfe2_pct": 0.0
       },
       "2025": {
         "n": 239,
@@ -298,8 +273,7 @@
         "med_mae_pct": 0.1401,
         "avg_mfe1_pct": 0.0619,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.2385
+        "avg_mfe2_pct": 0.0
       },
       "2026": {
         "n": 45,
@@ -309,8 +283,7 @@
         "med_mae_pct": 0.1601,
         "avg_mfe1_pct": 0.0533,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.0667
+        "avg_mfe2_pct": 0.0
       }
     },
     "by_month": {
@@ -322,8 +295,7 @@
         "med_mae_pct": 0.1593,
         "avg_mfe1_pct": 0.0588,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1754
+        "avg_mfe2_pct": 0.0
       },
       "Feb": {
         "n": 223,
@@ -333,8 +305,7 @@
         "med_mae_pct": 0.151,
         "avg_mfe1_pct": 0.0561,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1211
+        "avg_mfe2_pct": 0.0
       },
       "Mar": {
         "n": 237,
@@ -344,8 +315,7 @@
         "med_mae_pct": 0.1624,
         "avg_mfe1_pct": 0.0578,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1561
+        "avg_mfe2_pct": 0.0
       },
       "Apr": {
         "n": 203,
@@ -355,8 +325,7 @@
         "med_mae_pct": 0.1539,
         "avg_mfe1_pct": 0.0645,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.2906
+        "avg_mfe2_pct": 0.0
       },
       "May": {
         "n": 221,
@@ -366,8 +335,7 @@
         "med_mae_pct": 0.1383,
         "avg_mfe1_pct": 0.0548,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.095
+        "avg_mfe2_pct": 0.0
       },
       "Jun": {
         "n": 218,
@@ -377,8 +345,7 @@
         "med_mae_pct": 0.1348,
         "avg_mfe1_pct": 0.0528,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.055
+        "avg_mfe2_pct": 0.0
       },
       "Jul": {
         "n": 222,
@@ -388,8 +355,7 @@
         "med_mae_pct": 0.124,
         "avg_mfe1_pct": 0.0527,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.0541
+        "avg_mfe2_pct": 0.0
       },
       "Aug": {
         "n": 220,
@@ -399,8 +365,7 @@
         "med_mae_pct": 0.1324,
         "avg_mfe1_pct": 0.0582,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1636
+        "avg_mfe2_pct": 0.0
       },
       "Sep": {
         "n": 233,
@@ -410,8 +375,7 @@
         "med_mae_pct": 0.1458,
         "avg_mfe1_pct": 0.0554,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1073
+        "avg_mfe2_pct": 0.0
       },
       "Oct": {
         "n": 249,
@@ -421,8 +385,7 @@
         "med_mae_pct": 0.1407,
         "avg_mfe1_pct": 0.0546,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.0924
+        "avg_mfe2_pct": 0.0
       },
       "Nov": {
         "n": 233,
@@ -432,8 +395,7 @@
         "med_mae_pct": 0.1301,
         "avg_mfe1_pct": 0.0541,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.0815
+        "avg_mfe2_pct": 0.0
       },
       "Dec": {
         "n": 226,
@@ -443,8 +405,7 @@
         "med_mae_pct": 0.1441,
         "avg_mfe1_pct": 0.0558,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.115
+        "avg_mfe2_pct": 0.0
       }
     },
     "by_quarter": {
@@ -456,8 +417,7 @@
         "med_mae_pct": 0.1571,
         "avg_mfe1_pct": 0.0576,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1512
+        "avg_mfe2_pct": 0.0
       },
       "Q2": {
         "n": 642,
@@ -467,8 +427,7 @@
         "med_mae_pct": 0.1397,
         "avg_mfe1_pct": 0.0572,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1433
+        "avg_mfe2_pct": 0.0
       },
       "Q3": {
         "n": 675,
@@ -478,8 +437,7 @@
         "med_mae_pct": 0.1335,
         "avg_mfe1_pct": 0.0554,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1081
+        "avg_mfe2_pct": 0.0
       },
       "Q4": {
         "n": 708,
@@ -489,8 +447,7 @@
         "med_mae_pct": 0.1392,
         "avg_mfe1_pct": 0.0548,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.096
+        "avg_mfe2_pct": 0.0
       }
     },
     "by_direction": {
@@ -502,8 +459,7 @@
         "med_mae_pct": 0.1433,
         "avg_mfe1_pct": 0.056,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1192
+        "avg_mfe2_pct": 0.0
       },
       "SHORT": {
         "n": 1312,
@@ -513,8 +469,7 @@
         "med_mae_pct": 0.1419,
         "avg_mfe1_pct": 0.0565,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.0,
-        "avg_r": 0.1296
+        "avg_mfe2_pct": 0.0
       }
     },
     "risk_stats": {
@@ -74990,8 +74945,7 @@
       "avg_mfe1_pct": 0.0562,
       "med_mfe1_pct": 0.1,
       "avg_mfe2_pct": 0.2305,
-      "avg_r": 0.1153,
-      "generated_at": "2026-03-21T19:25:38.573694"
+      "generated_at": "2026-03-21T22:20:12.247589"
     },
     "overall": {
       "n": 2713,
@@ -75001,8 +74955,7 @@
       "med_mae_pct": 0.1427,
       "avg_mfe1_pct": 0.0562,
       "med_mfe1_pct": 0.1,
-      "avg_mfe2_pct": 0.2305,
-      "avg_r": 0.1153
+      "avg_mfe2_pct": 0.2305
     },
     "by_dow": {
       "Mon": {
@@ -75013,8 +74966,7 @@
         "med_mae_pct": 0.1327,
         "avg_mfe1_pct": 0.0553,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2181,
-        "avg_r": 0.1121
+        "avg_mfe2_pct": 0.2181
       },
       "Tue": {
         "n": 542,
@@ -75024,8 +74976,7 @@
         "med_mae_pct": 0.1457,
         "avg_mfe1_pct": 0.0574,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2332,
-        "avg_r": 0.1421
+        "avg_mfe2_pct": 0.2332
       },
       "Wed": {
         "n": 554,
@@ -75035,8 +74986,7 @@
         "med_mae_pct": 0.1405,
         "avg_mfe1_pct": 0.0565,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2322,
-        "avg_r": 0.1104
+        "avg_mfe2_pct": 0.2322
       },
       "Thu": {
         "n": 545,
@@ -75046,8 +74996,7 @@
         "med_mae_pct": 0.1457,
         "avg_mfe1_pct": 0.0539,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2461,
-        "avg_r": 0.0822
+        "avg_mfe2_pct": 0.2461
       },
       "Fri": {
         "n": 537,
@@ -75057,8 +75006,7 @@
         "med_mae_pct": 0.1441,
         "avg_mfe1_pct": 0.0579,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2226,
-        "avg_r": 0.1304
+        "avg_mfe2_pct": 0.2226
       }
     },
     "by_hour": {
@@ -75070,8 +75018,7 @@
         "med_mae_pct": 0.1418,
         "avg_mfe1_pct": 0.0554,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2246,
-        "avg_r": 0.0983
+        "avg_mfe2_pct": 0.2246
       },
       "10": {
         "n": 238,
@@ -75081,8 +75028,7 @@
         "med_mae_pct": 0.1517,
         "avg_mfe1_pct": 0.0639,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2926,
-        "avg_r": 0.2724
+        "avg_mfe2_pct": 0.2926
       },
       "11": {
         "n": 53,
@@ -75092,8 +75038,7 @@
         "med_mae_pct": 0.1355,
         "avg_mfe1_pct": 0.0547,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.194,
-        "avg_r": 0.0876
+        "avg_mfe2_pct": 0.194
       },
       "12": {
         "n": 28,
@@ -75103,8 +75048,7 @@
         "med_mae_pct": 0.1266,
         "avg_mfe1_pct": 0.0643,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.3262,
-        "avg_r": 0.3154
+        "avg_mfe2_pct": 0.3262
       },
       "13": {
         "n": 10,
@@ -75114,8 +75058,7 @@
         "med_mae_pct": 0.1972,
         "avg_mfe1_pct": 0.07,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2449,
-        "avg_r": 0.3641
+        "avg_mfe2_pct": 0.2449
       },
       "14": {
         "n": 18,
@@ -75125,8 +75068,7 @@
         "med_mae_pct": 0.1612,
         "avg_mfe1_pct": 0.0556,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2045,
-        "avg_r": 0.0417
+        "avg_mfe2_pct": 0.2045
       },
       "15": {
         "n": 13,
@@ -75136,8 +75078,7 @@
         "med_mae_pct": 0.1848,
         "avg_mfe1_pct": 0.0462,
         "med_mfe1_pct": 0.0,
-        "avg_mfe2_pct": 0.1312,
-        "avg_r": -0.0914
+        "avg_mfe2_pct": 0.1312
       }
     },
     "by_year": {
@@ -75149,8 +75090,7 @@
         "med_mae_pct": 0.1172,
         "avg_mfe1_pct": 0.0461,
         "med_mfe1_pct": 0.0,
-        "avg_mfe2_pct": 0.2057,
-        "avg_r": -0.0215
+        "avg_mfe2_pct": 0.2057
       },
       "2015": {
         "n": 237,
@@ -75160,8 +75100,7 @@
         "med_mae_pct": 0.1393,
         "avg_mfe1_pct": 0.0523,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.1852,
-        "avg_r": 0.0476
+        "avg_mfe2_pct": 0.1852
       },
       "2016": {
         "n": 233,
@@ -75171,8 +75110,7 @@
         "med_mae_pct": 0.1103,
         "avg_mfe1_pct": 0.0489,
         "med_mfe1_pct": 0.0,
-        "avg_mfe2_pct": 0.1822,
-        "avg_r": -0.0151
+        "avg_mfe2_pct": 0.1822
       },
       "2017": {
         "n": 231,
@@ -75182,8 +75120,7 @@
         "med_mae_pct": 0.0835,
         "avg_mfe1_pct": 0.0463,
         "med_mfe1_pct": 0.0,
-        "avg_mfe2_pct": 0.1344,
-        "avg_r": -0.0495
+        "avg_mfe2_pct": 0.1344
       },
       "2018": {
         "n": 236,
@@ -75193,8 +75130,7 @@
         "med_mae_pct": 0.1499,
         "avg_mfe1_pct": 0.0568,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2296,
-        "avg_r": 0.1076
+        "avg_mfe2_pct": 0.2296
       },
       "2019": {
         "n": 229,
@@ -75204,8 +75140,7 @@
         "med_mae_pct": 0.123,
         "avg_mfe1_pct": 0.0576,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.1999,
-        "avg_r": 0.1246
+        "avg_mfe2_pct": 0.1999
       },
       "2020": {
         "n": 243,
@@ -75215,8 +75150,7 @@
         "med_mae_pct": 0.2047,
         "avg_mfe1_pct": 0.0601,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.3009,
-        "avg_r": 0.1616
+        "avg_mfe2_pct": 0.3009
       },
       "2021": {
         "n": 230,
@@ -75226,8 +75160,7 @@
         "med_mae_pct": 0.1593,
         "avg_mfe1_pct": 0.0587,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2407,
-        "avg_r": 0.1576
+        "avg_mfe2_pct": 0.2407
       },
       "2022": {
         "n": 236,
@@ -75237,8 +75170,7 @@
         "med_mae_pct": 0.2651,
         "avg_mfe1_pct": 0.0623,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.3357,
-        "avg_r": 0.234
+        "avg_mfe2_pct": 0.3357
       },
       "2023": {
         "n": 236,
@@ -75248,8 +75180,7 @@
         "med_mae_pct": 0.1573,
         "avg_mfe1_pct": 0.0568,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2562,
-        "avg_r": 0.1256
+        "avg_mfe2_pct": 0.2562
       },
       "2024": {
         "n": 242,
@@ -75259,8 +75190,7 @@
         "med_mae_pct": 0.1224,
         "avg_mfe1_pct": 0.0599,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.245,
-        "avg_r": 0.2059
+        "avg_mfe2_pct": 0.245
       },
       "2025": {
         "n": 239,
@@ -75270,8 +75200,7 @@
         "med_mae_pct": 0.1401,
         "avg_mfe1_pct": 0.0619,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2386,
-        "avg_r": 0.2257
+        "avg_mfe2_pct": 0.2386
       },
       "2026": {
         "n": 45,
@@ -75281,8 +75210,7 @@
         "med_mae_pct": 0.1601,
         "avg_mfe1_pct": 0.0533,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.1767,
-        "avg_r": 0.0033
+        "avg_mfe2_pct": 0.1767
       }
     },
     "by_month": {
@@ -75294,8 +75222,7 @@
         "med_mae_pct": 0.1593,
         "avg_mfe1_pct": 0.0588,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2125,
-        "avg_r": 0.1429
+        "avg_mfe2_pct": 0.2125
       },
       "Feb": {
         "n": 223,
@@ -75305,8 +75232,7 @@
         "med_mae_pct": 0.151,
         "avg_mfe1_pct": 0.0561,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2586,
-        "avg_r": 0.1393
+        "avg_mfe2_pct": 0.2586
       },
       "Mar": {
         "n": 237,
@@ -75316,8 +75242,7 @@
         "med_mae_pct": 0.1624,
         "avg_mfe1_pct": 0.0578,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2245,
-        "avg_r": 0.0998
+        "avg_mfe2_pct": 0.2245
       },
       "Apr": {
         "n": 203,
@@ -75327,8 +75252,7 @@
         "med_mae_pct": 0.1539,
         "avg_mfe1_pct": 0.0645,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2922,
-        "avg_r": 0.2976
+        "avg_mfe2_pct": 0.2922
       },
       "May": {
         "n": 221,
@@ -75338,8 +75262,7 @@
         "med_mae_pct": 0.1383,
         "avg_mfe1_pct": 0.0548,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2293,
-        "avg_r": 0.0714
+        "avg_mfe2_pct": 0.2293
       },
       "Jun": {
         "n": 218,
@@ -75349,8 +75272,7 @@
         "med_mae_pct": 0.1348,
         "avg_mfe1_pct": 0.0528,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2159,
-        "avg_r": 0.035
+        "avg_mfe2_pct": 0.2159
       },
       "Jul": {
         "n": 222,
@@ -75360,8 +75282,7 @@
         "med_mae_pct": 0.124,
         "avg_mfe1_pct": 0.0527,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2041,
-        "avg_r": 0.0378
+        "avg_mfe2_pct": 0.2041
       },
       "Aug": {
         "n": 220,
@@ -75371,8 +75292,7 @@
         "med_mae_pct": 0.1324,
         "avg_mfe1_pct": 0.0582,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2105,
-        "avg_r": 0.18
+        "avg_mfe2_pct": 0.2105
       },
       "Sep": {
         "n": 233,
@@ -75382,8 +75302,7 @@
         "med_mae_pct": 0.1458,
         "avg_mfe1_pct": 0.0554,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2244,
-        "avg_r": 0.0799
+        "avg_mfe2_pct": 0.2244
       },
       "Oct": {
         "n": 249,
@@ -75393,8 +75312,7 @@
         "med_mae_pct": 0.1407,
         "avg_mfe1_pct": 0.0546,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2227,
-        "avg_r": 0.0779
+        "avg_mfe2_pct": 0.2227
       },
       "Nov": {
         "n": 233,
@@ -75404,8 +75322,7 @@
         "med_mae_pct": 0.1301,
         "avg_mfe1_pct": 0.0541,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2264,
-        "avg_r": 0.0762
+        "avg_mfe2_pct": 0.2264
       },
       "Dec": {
         "n": 226,
@@ -75415,8 +75332,7 @@
         "med_mae_pct": 0.1441,
         "avg_mfe1_pct": 0.0558,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2517,
-        "avg_r": 0.1683
+        "avg_mfe2_pct": 0.2517
       }
     },
     "by_quarter": {
@@ -75428,8 +75344,7 @@
         "med_mae_pct": 0.1571,
         "avg_mfe1_pct": 0.0576,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2316,
-        "avg_r": 0.1269
+        "avg_mfe2_pct": 0.2316
       },
       "Q2": {
         "n": 642,
@@ -75439,8 +75354,7 @@
         "med_mae_pct": 0.1397,
         "avg_mfe1_pct": 0.0572,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2447,
-        "avg_r": 0.1306
+        "avg_mfe2_pct": 0.2447
       },
       "Q3": {
         "n": 675,
@@ -75450,8 +75364,7 @@
         "med_mae_pct": 0.1335,
         "avg_mfe1_pct": 0.0554,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2132,
-        "avg_r": 0.0987
+        "avg_mfe2_pct": 0.2132
       },
       "Q4": {
         "n": 708,
@@ -75461,8 +75374,7 @@
         "med_mae_pct": 0.1392,
         "avg_mfe1_pct": 0.0548,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2332,
-        "avg_r": 0.1062
+        "avg_mfe2_pct": 0.2332
       }
     },
     "by_direction": {
@@ -75474,8 +75386,7 @@
         "med_mae_pct": 0.1433,
         "avg_mfe1_pct": 0.056,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2172,
-        "avg_r": 0.1051
+        "avg_mfe2_pct": 0.2172
       },
       "SHORT": {
         "n": 1312,
@@ -75485,8 +75396,7 @@
         "med_mae_pct": 0.1419,
         "avg_mfe1_pct": 0.0565,
         "med_mfe1_pct": 0.1,
-        "avg_mfe2_pct": 0.2447,
-        "avg_r": 0.1262
+        "avg_mfe2_pct": 0.2447
       }
     },
     "risk_stats": {
