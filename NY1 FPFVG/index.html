@@ -96,19 +96,36 @@ nav{
 }
 .nav-link:hover,.nav-link.active{color:var(--text);background:var(--border);}
 .nav-link.active{color:var(--text);}
-.model-select{
-  display:flex;align-items:center;gap:2px;
-  background:var(--card);border:1px solid var(--border);
-  border-radius:8px;padding:2px;margin-left:auto;flex-shrink:0;
+.model-dropdown-wrap{
+  position:relative;display:flex;align-items:center;
+  margin-left:auto;flex-shrink:0;
 }
-.model-opt{
-  font-family:var(--font-body);font-size:12px;font-weight:500;
-  color:var(--subtle);padding:5px 12px;border-radius:6px;
-  cursor:pointer;border:none;background:none;
-  transition:color .15s,background .15s;white-space:nowrap;
+.model-dropdown-wrap::after{
+  content:'';position:absolute;right:10px;top:50%;transform:translateY(-50%);
+  width:0;height:0;
+  border-left:4px solid transparent;border-right:4px solid transparent;
+  border-top:5px solid var(--faint);pointer-events:none;
 }
-.model-opt:hover{color:var(--text);}
-.model-opt.active{background:var(--border);color:var(--text);}
+.model-dropdown{
+  font-family:var(--font-body);font-size:12px;font-weight:600;
+  color:var(--text);
+  background:var(--bg);
+  border:1.5px solid var(--border);border-radius:10px;
+  padding:7px 30px 7px 13px;
+  cursor:pointer;outline:none;
+  appearance:none;-webkit-appearance:none;
+  box-shadow:inset 0 1px 3px rgba(0,0,0,0.35);
+  transition:border-color .15s,box-shadow .15s;
+}
+[data-theme="light"] .model-dropdown{
+  box-shadow:inset 0 1px 3px rgba(0,0,0,0.10);
+}
+.model-dropdown:focus{border-color:var(--blue);}
+.model-dropdown option{background:var(--card);color:var(--text);}
+.model-dropdown optgroup{
+  font-family:var(--font-body);font-size:11px;font-weight:700;
+  color:var(--faint);letter-spacing:0.04em;text-transform:uppercase;
+}
 .theme-btn{
   width:36px;height:36px;border-radius:8px;
   border:1px solid var(--border);background:var(--card);
@@ -376,9 +393,21 @@ footer{
     <a class="nav-link" href="#trades" onclick="smoothNav(event,'trades')">Trades</a>
     <a class="nav-link" href="#comparison" onclick="smoothNav(event,'comparison')">Compare</a>
   </div>
-  <div class="model-select">
-    <button class="model-opt" data-model="cashflow" onclick="switchModel('cashflow')">Cashflow</button>
-    <button class="model-opt active" data-model="cashflow_extended" onclick="switchModel('cashflow_extended')">Cashflow + Extended</button>
+  <div class="model-dropdown-wrap">
+    <select class="model-dropdown" id="modelDropdown" onchange="switchModel(this.value)">
+      <optgroup label="Structural Stop">
+        <option value="cashflow">Cashflow</option>
+        <option value="cashflow_extended" selected>Cashflow + Extended</option>
+      </optgroup>
+      <optgroup label="Fixed % Stop / TP">
+        <option value="pct_035_035">0.35% Stop / 0.35% TP</option>
+        <option value="pct_035_025">0.35% Stop / 0.25% TP</option>
+        <option value="pct_050_050">0.50% Stop / 0.50% TP</option>
+        <option value="pct_100_100">1.00% Stop / 1.00% TP</option>
+        <option value="pct_100_150">1.00% Stop / 1.50% TP</option>
+        <option value="pct_100_200">1.00% Stop / 2.00% TP</option>
+      </optgroup>
+    </select>
   </div>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">☀</button>
 </nav>
@@ -610,9 +639,6 @@ let _activeModel = 'cashflow_extended';
 
 function switchModel(key) {
   _activeModel = key;
-  document.querySelectorAll('.model-opt').forEach(el => {
-    el.classList.toggle('active', el.dataset.model === key);
-  });
   if (_data) renderAll(_data[key]);
 }
 
@@ -1158,7 +1184,13 @@ function renderTradesTable(allTrades) {
 // ─── MODEL COMPARISON ────────────────────────────────────────────────────────
 function renderComparison() {
   const el = document.getElementById('compSection');
-  if (!el || !_data || !_data.cashflow || !_data.cashflow_extended) return;
+  if (!el) return;
+  // Comparison only relevant for structural models
+  if (!_data || !_data.cashflow || !_data.cashflow_extended
+      || (_activeModel !== 'cashflow' && _activeModel !== 'cashflow_extended')) {
+    el.innerHTML = '';
+    return;
+  }
   const cf = _data.cashflow;
   const cx = _data.cashflow_extended;
   const cfM = cf.meta  || {};

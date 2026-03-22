@@ -36,6 +36,17 @@ TICK_SIZE     = 0.25    # NQ futures tick size in points
 ACCOUNT_SIZE  = 4500    # account size for risk metrics ($)
 RISK_PER_TRADE = 225    # risk per trade ($)
 DOW_NAMES    = {1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri'}  # DuckDB: 0=Sun
+
+# Fixed % stop/TP profiles — same set as Sweep fractal model percentage profiles
+# Each entry: (json_key, stop_pct, tp_pct, display_name)
+PCT_PROFILES = [
+    ('pct_035_035', 0.0035, 0.0035, '0.35% Stop / 0.35% TP'),
+    ('pct_035_025', 0.0035, 0.0025, '0.35% Stop / 0.25% TP'),
+    ('pct_050_050', 0.005,  0.005,  '0.50% Stop / 0.50% TP'),
+    ('pct_100_100', 0.01,   0.01,   '1.00% Stop / 1.00% TP'),
+    ('pct_100_150', 0.01,   0.015,  '1.00% Stop / 1.50% TP'),
+    ('pct_100_200', 0.01,   0.02,   '1.00% Stop / 2.00% TP'),
+]
 MONTH_NAMES  = {1:'Jan',2:'Feb',3:'Mar',4:'Apr',5:'May',6:'Jun',
                 7:'Jul',8:'Aug',9:'Sep',10:'Oct',11:'Nov',12:'Dec'}
 
@@ -296,6 +307,59 @@ def resolve_outcome(arrs: dict, fill_idx: int, fvg: dict,
     }
 
 
+def resolve_pct_profile(arrs: dict, fill_idx: int, fvg: dict,
+                        stop_pct: float, tp_pct: float, eod_idx: int) -> dict:
+    """
+    Fixed-percentage stop/TP profile.  Stop and TP are both computed as a
+    fixed percentage of the entry price, independent of FVG structure.
+
+        stop  = entry ± entry * stop_pct
+        tp    = entry ± entry * tp_pct
+        R:R   = tp_pct / stop_pct  (fixed per profile)
+    """
+    entry     = fvg['entry']
+    direction = fvg['direction']
+
+    if direction == 'LONG':
+        stop = entry * (1.0 - stop_pct)
+        tp   = entry * (1.0 + tp_pct)
+    else:
+        stop = entry * (1.0 + stop_pct)
+        tp   = entry * (1.0 - tp_pct)
+
+    outcome = 'OPEN'
+    for j in range(fill_idx + 1, eod_idx + 1):
+        h = arrs['high'][j]
+        l = arrs['low'][j]
+        if direction == 'LONG':
+            hit_tp   = h >= tp
+            hit_stop = l <= stop
+        else:
+            hit_tp   = l <= tp
+            hit_stop = h >= stop
+
+        if hit_tp and hit_stop:
+            outcome = 'WIN'; break   # TP wins on same-bar conflict
+        if hit_tp:
+            outcome = 'WIN'; break
+        if hit_stop:
+            outcome = 'LOSS'; break
+
+    if outcome == 'WIN':
+        combined_r = round(tp_pct / stop_pct, 4)
+    elif outcome == 'LOSS':
+        combined_r = -1.0
+    else:
+        combined_r = None
+
+    return {
+        'outcome_main': outcome,
+        'combined_r':   combined_r,
+        'pct_stop':     round(stop, 4),
+        'pct_tp':       round(tp,   4),
+    }
+
+
 # ── Stats helpers ─────────────────────────────────────────────────────────────
 def _agg(trades: list[dict]) -> dict:
     wl   = [t for t in trades if t['outcome_main'] in ('WIN', 'LOSS')]
@@ -443,6 +507,7 @@ def main():
     print(f'{len(df):,} bars  ·  {trading_days:,} trading days')
 
     trades_by_model = {'cashflow': [], 'cashflow_extended': []}
+    trades_by_pct   = {key: [] for key, *_ in PCT_PROFILES}
     n_setups    = 0
     n_filled    = 0
     n_no_fill   = 0
@@ -526,13 +591,27 @@ def main():
             'fill_mn':    fill['fill_mn'],
         }
 
-        # Resolve outcome for each model
+        # Resolve outcome for each structural model
         for model_key in ('cashflow', 'cashflow_extended'):
             outcome = resolve_outcome(arrs, fill['fill_idx'], fvg, tp1, eod_idx, model=model_key)
             trades_by_model[model_key].append({
                 **base,
                 'mfe1_pct': mfe1_pct if outcome['outcome_main'] == 'WIN' else 0.0,
                 **outcome,
+            })
+
+        # Resolve outcome for each fixed-% profile
+        for pct_key, stop_pct, tp_pct, _ in PCT_PROFILES:
+            pct_out = resolve_pct_profile(arrs, fill['fill_idx'], fvg,
+                                          stop_pct, tp_pct, eod_idx)
+            trades_by_pct[pct_key].append({
+                **base,
+                'mae_pct':  round(stop_pct * 100, 4),   # fixed stop distance
+                'mfe1_pct': round(tp_pct * 100, 4) if pct_out['outcome_main'] == 'WIN' else 0.0,
+                'mfe2_pct': 0.0,
+                'runner_exit_price': None,
+                'runner_outcome':    None,
+                **pct_out,
             })
 
     print(f'done\n')
@@ -625,6 +704,15 @@ def main():
                 model='cashflow_extended',
             ),
         }
+        for pct_key, stop_pct, tp_pct, display_name in PCT_PROFILES:
+            out[pct_key] = build_stats(
+                trades_by_pct[pct_key],
+                {**meta_extra,
+                 'model_name': display_name,
+                 'stop_pct':   round(stop_pct * 100, 4),
+                 'tp_pct':     round(tp_pct  * 100, 4)},
+                model='cashflow',   # single-exit, same mfe_median logic
+            )
         with open(OUT_JSON, 'w') as f:
             json.dump(out, f, indent=2, default=str)
         print(f'  Saved → {OUT_JSON}')
