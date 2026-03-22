@@ -884,31 +884,28 @@ async function loadStats(project) {
     }
 
     if (project.type === 'ny1') {
-      const cf  = d.cashflow          || {};
       const cx  = d.cashflow_extended || {};
-      const cfM = cf.meta             || {};
       const cxM = cx.meta             || {};
-      const cfR = cf.risk_stats       || {};
       const cxR = cx.risk_stats       || {};
-      const fmtN = v => v != null ? (v >= 0 ? '+' : '') + v.toFixed(3) : '—';
+      // Collect all profiles in order
+      const profileOrder = [
+        'cashflow', 'cashflow_extended',
+        'pct_035_035', 'pct_035_025', 'pct_050_050',
+        'pct_100_100', 'pct_100_150', 'pct_100_200',
+      ];
+      const profileRows = profileOrder
+        .filter(k => d[k])
+        .map(k => {
+          const m = d[k].meta || {};
+          return { name: m.model_name || k, wr: m.tp1_wr, n: m.n };
+        });
       return {
         label1: 'TP1 WR',  val1: pct(cxM.tp1_wr), cls1: wrColor(cxM.tp1_wr),
         label2: 'Sharpe',  val2: cxR.sharpe != null ? cxR.sharpe.toFixed(2) : '—',
                            cls2: (cxR.sharpe ?? 0) > 0 ? 'pos' : 'neg',
         label3: 'Trades',  val3: num(cxM.n), cls3: 'neutral',
         dateRange: cxM.date_range || '—',
-        compRows: [
-          { metric: 'Sharpe',
-            cfVal: fmtN(cfR.sharpe),       cxVal: fmtN(cxR.sharpe),
-            delta: fmtN((cxR.sharpe ?? 0) - (cfR.sharpe ?? 0)),
-            dPos: (cxR.sharpe ?? 0) > (cfR.sharpe ?? 0) },
-          { metric: 'MFE Median',
-            cfVal: cfR.mfe_median != null ? cfR.mfe_median.toFixed(4) + '%' : '—',
-            cxVal: cxR.mfe_median != null ? cxR.mfe_median.toFixed(4) + '%' : '—',
-            delta: cfR.mfe_median != null && cxR.mfe_median != null
-              ? '+' + (cxR.mfe_median - cfR.mfe_median).toFixed(4) + '%' : '—',
-            dPos: true },
-        ],
+        profileRows,
       };
     }
   } catch(e) {
@@ -943,7 +940,7 @@ function buildCard(p) {
     </div>
   `;
 
-  const compHtml = s?.compRows ? buildNy1CompTable(s.compRows) : '';
+  const compHtml = s?.profileRows ? buildNy1ProfileTable(s.profileRows) : '';
 
   return `
   <div class="project-card" id="card-${p.id}">
@@ -992,23 +989,22 @@ function buildSweepSubTable(models) {
     </div>`;
 }
 
-function buildNy1CompTable(compRows) {
-  const rows = compRows.map(r => {
-    const dCls = r.dPos ? 'pos' : 'neg';
+function buildNy1ProfileTable(profileRows) {
+  const rows = profileRows.map(r => {
+    const wrCls = r.wr >= 0.55 ? 'pos' : r.wr <= 0.42 ? 'neg' : '';
     return `<tr>
-      <td style="color:var(--text-sub);">${r.metric}</td>
-      <td class="stat-val" style="font-size:12px;">${r.cfVal}</td>
-      <td class="stat-val" style="font-size:12px;">${r.cxVal}</td>
-      <td class="stat-val ${dCls}" style="font-size:12px;">${r.delta}</td>
+      <td style="color:var(--text-sub);">${r.name}</td>
+      <td class="stat-val ${wrCls}" style="font-size:12px;">${pct(r.wr)}</td>
+      <td style="color:var(--text-muted);font-size:12px;">${num(r.n)}</td>
     </tr>`;
   }).join('');
   return `
     <div style="margin-bottom:18px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
       <div style="padding:8px 10px;border-bottom:1px solid var(--border);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);">
-        Model Comparison
+        Risk Profiles
       </div>
       <table class="sweep-sub-table">
-        <thead><tr><th>Metric</th><th>Cashflow</th><th>CF + Ext</th><th>Δ</th></tr></thead>
+        <thead><tr><th>Profile</th><th>WR%</th><th>N</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
