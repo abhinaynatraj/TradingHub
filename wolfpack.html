@@ -1535,7 +1535,7 @@ class InlineEditor {
     const blob = new Blob([html], { type: 'text/html' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'wolfpack-trading-hub-edited.html';
+    a.download = 'wolfpack-edited.html';
     a.click();
     URL.revokeObjectURL(a.href);
   }
