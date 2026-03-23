@@ -3,8 +3,10 @@ Run this on your machine to diagnose classification distributions.
 Usage: python3 check_classification.py
 """
 import duckdb
+from pathlib import Path
 
-con = duckdb.connect('/Users/abhi/Downloads/CandleScience/candle_science.duckdb', read_only=True)
+DB_PATH = Path(__file__).parent / 'candle_science.duckdb'
+con = duckdb.connect(str(DB_PATH), read_only=True)
 
 con.execute("""
 CREATE OR REPLACE TEMP TABLE intraday_feat AS

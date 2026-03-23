@@ -1,5 +1,8 @@
 import duckdb
-con = duckdb.connect('/Users/abhi/Downloads/CandleScience/candle_science.duckdb')
+from pathlib import Path
+
+DB_PATH = Path(__file__).parent / 'candle_science.duckdb'
+con = duckdb.connect(str(DB_PATH))
 
 for tbl in ["daily","intraday_feat","hourly","hourly2","r1_touch"]:
     con.execute(f"DROP TABLE IF EXISTS {tbl}")
