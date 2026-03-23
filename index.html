@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Edgeful Research Lab</title>
+<title>Statistic.ally</title>
 <style>
 /* ── Reset & base ──────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -611,7 +611,7 @@ main {
 
 <header class="hdr">
   <div class="hdr-brand">
-    <div class="hdr-logo">Edgeful<em>Research</em></div>
+    <div class="hdr-logo">Statistic<em>.ally</em></div>
     <div class="hdr-sub">NQ · ES Futures · Research Lab</div>
   </div>
   <button class="theme-btn" id="themeBtn" title="Toggle theme" onclick="toggleTheme()">☀</button>
@@ -622,7 +622,7 @@ main {
   <!-- ── Hero ─────────────────────────────────────────────────────────────── -->
   <div class="hero">
     <div class="hero-eyebrow">NQ Futures · Quantitative Backtesting</div>
-    <h1 class="hero-title">Edgeful <span class="accent">Research</span> Lab</h1>
+    <h1 class="hero-title">Statistic<span class="accent">.ally</span></h1>
     <p class="hero-desc">
       Statistical backtesting across sweep fractal setups and first-presented fair value gaps —
       15+ years of 1-minute NQ data, multiple risk profiles.
@@ -654,12 +654,12 @@ main {
 
   <div class="model-grid">
 
-    <!-- CandleScience Sweep Model -->
+    <!-- Fractal Sweep Model -->
     <div class="model-panel">
       <div class="model-panel-hd">
         <div class="model-panel-icon">🌊</div>
         <div>
-          <div class="model-panel-title">CandleScience — Sweep + CISD</div>
+          <div class="model-panel-title">Fractal Sweep — Sweep + CISD</div>
           <div class="model-panel-sub">4 timeframe pairs · Prior candle sweep logic</div>
         </div>
       </div>
@@ -751,7 +751,7 @@ main {
 </main>
 
 <footer style="text-align:center;padding:24px;font-size:11px;color:var(--text-muted);border-top:1px solid var(--border);font-family:var(--font-mono);">
-  Edgeful Research Lab · NQ &amp; ES Futures · Data: Databento GLBX.MDP3 · Timestamps: America/New_York
+  Statistic.ally · NQ &amp; ES Futures · Data: Databento GLBX.MDP3 · Timestamps: America/New_York
 </footer>
 
 <script>
@@ -786,8 +786,8 @@ const PROJECTS = [
     title:    'Sweep Fractal Model',
     subtitle: 'Sweep + CISD · 4 Models',
     desc:     'Detects prior candle sweep → close-back → CISD confirmation across four timeframe pairs (4H/15M, 1H/5M, 1H/3M, 30M/3M). Entry at next CISD-TF candle open. Stop at sweep extreme. Multiple risk profiles tested from 1:0.35 to 1:2.',
-    json:     'CandleScience/model_stats.json',
-    link:     'CandleScience/model_dashboard.html',
+    json:     'Fractal Sweep/model_stats.json',
+    link:     'Fractal Sweep/model_dashboard.html',
     color:    '#3b82f6',
     icon:     '🌊',
     type:     'sweep',

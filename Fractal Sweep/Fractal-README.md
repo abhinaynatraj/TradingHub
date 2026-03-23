@@ -35,7 +35,7 @@ All four models run in a single pass and output to one JSON file. The dashboard 
 ## Files
 
 ```
-CandleScience/
+Fractal Sweep/
 ├── candle_science.duckdb     ← your existing NQ 1m database
 ├── model_stats.py            ← detection + statistics engine
 ├── model_dashboard.html      ← probability dashboard (zero dependencies)
@@ -62,15 +62,15 @@ Python 3.9+ recommended. No other dependencies. The dashboard is a single HTML f
 Open `model_stats.py` and confirm the path at the top matches your database location:
 
 ```python
-DB_PATH  = Path('/Users/abhi/Downloads/Trading Hub/CandleScience/candle_science.duckdb')
-OUT_PATH = Path('/Users/abhi/Downloads/Trading Hub/CandleScience/model_stats.json')
+DB_PATH  = Path(__file__).parent / 'candle_science.duckdb'
+OUT_PATH = Path(__file__).parent / 'model_stats.json'
 TABLE    = 'nq_1m'
 ```
 
 ### 2. Run the engine
 
 ```bash
-cd /Users/abhi/Downloads/Trading Hub/CandleScience
+cd path/to/TradingHub/Fractal\ Sweep
 python3 model_stats.py
 ```
 

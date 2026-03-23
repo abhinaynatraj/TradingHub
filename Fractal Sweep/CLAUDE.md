@@ -1,4 +1,4 @@
-# CandleScience
+# Fractal Sweep
 
 Statistical backtesting engine for NQ and ES futures. Detects sweep + CISD setups across 15 years of 1-minute data and outputs probability dashboards.
 

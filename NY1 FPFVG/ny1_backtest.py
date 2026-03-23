@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-DB_PATH  = Path(__file__).parent.parent / 'CandleScience' / 'candle_science.duckdb'
+DB_PATH  = Path(__file__).parent.parent / 'Fractal Sweep' / 'candle_science.duckdb'
 OUT_JSON = Path(__file__).parent / 'ny1_results.json'
 
 TP1_BPS       = 0.001   # 10 basis points = 0.10%

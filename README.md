@@ -1,4 +1,4 @@
-# Edgeful Research Lab
+# Statistic.ally
 
 A personal trading research hub for NQ and ES futures. Three statistical backtesting models run against 11+ years of 1-minute bar data, each with an interactive dashboard you open in a browser.
 
@@ -10,7 +10,7 @@ A personal trading research hub for NQ and ES futures. Three statistical backtes
 
 | Folder | What it does |
 |---|---|
-| `CandleScience/` | **Fractal Sweep Model** — detects sweep + structure break setups across four timeframe combinations |
+| `Fractal Sweep/` | **Fractal Sweep Model** — detects sweep + structure break setups across four timeframe combinations |
 | `NY1 FPFVG/` | **NY1 Fair Value Gap Model** — first presented FVG in the 9:31–9:59 ET opening window on NQ 1-minute |
 | `TTrades Fractal Model Analysis/` | **TTrades Fractal Model** — T-Spot zone entry backtest based on sweep + zone-touch mechanic |
 
@@ -124,7 +124,7 @@ Open your web browser (Chrome, Firefox, Safari, Edge — any of them) and go to:
 http://localhost:8001
 ```
 
-You'll see the **Edgeful Research Lab** hub page with links to all three dashboards.
+You'll see the **Statistic.ally** hub page with links to all three dashboards.
 
 > **Tip:** Bookmark `http://localhost:8001` so you can come back to it easily.
 
@@ -144,7 +144,7 @@ If you want to re-run the backtests yourself (to update with newer data), see th
 TradingHub/
 ├── index.html                          ← Hub page (open this in browser)
 ├── mae_mfe_guide.html                  ← MAE/MFE reference guide
-├── CandleScience/
+├── Fractal Sweep/
 │   ├── model_dashboard.html            ← Sweep model dashboard
 │   ├── model_stats.py                  ← Backtest engine
 │   ├── model_stats.json                ← Pre-computed results (loaded by dashboard)

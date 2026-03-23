@@ -1,9 +1,9 @@
 ---
 paths:
-  - "CandleScience/**"
+  - "Fractal Sweep/**"
 ---
 
-# CandleScience Rules
+# Fractal Sweep Rules
 
 ## Engines
 

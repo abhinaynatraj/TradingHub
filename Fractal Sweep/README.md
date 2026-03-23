@@ -1,4 +1,4 @@
-# Fractal Sweep Model — CandleScience
+# Fractal Sweep Model — Fractal Sweep
 
 This folder contains the **Fractal Sweep Model** — a backtest that scans 11+ years of 1-minute NQ/ES futures data looking for a specific price action setup: a sweep of a prior candle's high or low, followed by a structural shift (CISD). The results are displayed in an interactive dashboard.
 
@@ -64,7 +64,7 @@ The dashboard already has pre-computed results included — you don't need to ru
 
 2. Open your browser and go to:
    ```
-   http://localhost:8001/CandleScience/model_dashboard.html
+   http://localhost:8001/Fractal Sweep/model_dashboard.html
    ```
 
    Or navigate there from the hub page at `http://localhost:8001`.
@@ -77,13 +77,13 @@ If you have the database file (`candle_science.duckdb`) and want to regenerate t
 
 **Mac:**
 ```
-cd path/to/TradingHub/CandleScience
+cd path/to/TradingHub/Fractal Sweep
 python3 model_stats.py
 ```
 
 **Windows:**
 ```
-cd C:\path\to\TradingHub\CandleScience
+cd C:\path\to\TradingHub\Fractal Sweep
 python model_stats.py
 ```
 
@@ -127,10 +127,10 @@ The dashboard lets you switch between all four and shows stats broken down by da
 ## Common Problems
 
 **Dashboard shows no data**
-→ Make sure the web server is running and you're opening `http://localhost:8001/CandleScience/model_dashboard.html` (not the file directly).
+→ Make sure the web server is running and you're opening `http://localhost:8001/Fractal Sweep/model_dashboard.html` (not the file directly).
 
 **`python3 model_stats.py` gives a database error**
 → The `candle_science.duckdb` database file isn't included in the repo. The pre-computed `model_stats.json` is already there — you don't need to re-run the backtest.
 
 **Port already in use**
-→ Change the port: `python3 -m http.server 8002`, then go to `http://localhost:8002/CandleScience/model_dashboard.html`.
+→ Change the port: `python3 -m http.server 8002`, then go to `http://localhost:8002/Fractal Sweep/model_dashboard.html`.

@@ -20,11 +20,11 @@ Python 3.9+. No web framework. Dashboards are standalone HTML (zero CDN deps).
 
 ## Database
 
-- `CandleScience/candle_science.duckdb` — shared DB for all engines (gitignored)
+- `Fractal Sweep/candle_science.duckdb` — shared DB for all engines (gitignored)
 - Tables: `nq_1m`, `es_1m`
 - Schema: `timestamp TIMESTAMPTZ, open, high, low, close DOUBLE, volume BIGINT`
 - **Always convert to ET:** `timezone('America/New_York', timestamp)`
-- All backtest scripts connect read-only via `Path(__file__).parent.parent / 'CandleScience' / 'candle_science.duckdb'`
+- All backtest scripts connect read-only via `Path(__file__).parent.parent / 'Fractal Sweep' / 'candle_science.duckdb'`
 
 ## Theme System
 

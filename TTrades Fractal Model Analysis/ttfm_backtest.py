@@ -31,7 +31,7 @@ import numpy as np
 import pandas as pd
 
 # ── Paths & constants ─────────────────────────────────────────────────────────
-DB_PATH    = Path(__file__).parent.parent / 'CandleScience' / 'candle_science.duckdb'
+DB_PATH    = Path(__file__).parent.parent / 'Fractal Sweep' / 'candle_science.duckdb'
 OUT_JSON   = Path(__file__).parent / 'ttfm_results.json'
 
 DEFAULT_HTF      = 60      # minutes  (1-hour HTF)
