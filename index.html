@@ -891,7 +891,7 @@ async function loadStats(project) {
         label2: 'Best WR',  val2: pct(0.793),           cls2: 'pos',
         label3: 'Trades',   val3: num(m1.n || 2721),    cls3: 'neutral',
         dateRange: m1.date_range || '2014–2026',
-        combos10: NY1_COMBOS,
+        combos10: NY1_COMBOS.slice(0, 4),
       };
     }
   } catch(e) {
