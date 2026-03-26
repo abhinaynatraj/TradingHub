@@ -37,15 +37,20 @@ ACCOUNT_SIZE  = 4500    # account size for risk metrics ($)
 RISK_PER_TRADE = 225    # risk per trade ($)
 DOW_NAMES    = {1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri'}  # DuckDB: 0=Sun
 
-# Fixed % stop/TP profiles — same set as Sweep fractal model percentage profiles
+# Fixed % stop/TP profiles — top 10 from brute-force scan (fixed_profile_scan.py)
 # Each entry: (json_key, stop_pct, tp_pct, display_name)
 PCT_PROFILES = [
-    ('pct_035_035', 0.0035, 0.0035, '0.35% Stop / 0.35% TP'),
-    ('pct_035_025', 0.0035, 0.0025, '0.35% Stop / 0.25% TP'),
-    ('pct_050_050', 0.005,  0.005,  '0.50% Stop / 0.50% TP'),
-    ('pct_100_100', 0.01,   0.01,   '1.00% Stop / 1.00% TP'),
-    ('pct_100_150', 0.01,   0.015,  '1.00% Stop / 1.50% TP'),
-    ('pct_100_200', 0.01,   0.02,   '1.00% Stop / 2.00% TP'),
+    # Top 10 from master backtester (ranked by CE)
+    ('pct_004_008', 0.0004, 0.0008, '#1  0.04% Stop / 0.08% TP  (2:1)'),
+    ('pct_010_005', 0.0010, 0.0005, '#2  0.10% Stop / 0.05% TP  (0.5:1)'),
+    ('pct_003_006', 0.0003, 0.0006, '#3  0.03% Stop / 0.06% TP  (2:1)'),
+    ('pct_005_009', 0.0005, 0.0009, '#4  0.05% Stop / 0.09% TP  (1.8:1)'),
+    ('pct_004_007', 0.0004, 0.0007, '#5  0.04% Stop / 0.07% TP  (1.75:1)'),
+    ('pct_005_008', 0.0005, 0.0008, '#6  0.05% Stop / 0.08% TP  (1.6:1)'),
+    ('pct_004_006', 0.0004, 0.0006, '#7  0.04% Stop / 0.06% TP  (1.5:1)'),
+    ('pct_005_007', 0.0005, 0.0007, '#8  0.05% Stop / 0.07% TP  (1.4:1)'),
+    ('pct_005_006', 0.0005, 0.0006, '#9  0.05% Stop / 0.06% TP  (1.2:1)'),
+    ('pct_010_006', 0.0010, 0.0006, '#10 0.10% Stop / 0.06% TP  (0.6:1)'),
 ]
 MONTH_NAMES  = {1:'Jan',2:'Feb',3:'Mar',4:'Apr',5:'May',6:'Jun',
                 7:'Jul',8:'Aug',9:'Sep',10:'Oct',11:'Nov',12:'Dec'}

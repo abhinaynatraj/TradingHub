@@ -364,6 +364,10 @@ canvas{display:block;width:100%;}
 .model-comp-table tr:last-child td{border-bottom:none;}
 .model-comp-table tr:hover td{background:var(--card-alt);}
 
+/* CLASSIFICATION GRID RESPONSIVE */
+@media(max-width:900px){#classGrid [style*="grid-template-columns:repeat(5"]{grid-template-columns:repeat(3,1fr)!important;}}
+@media(max-width:560px){#classGrid [style*="grid-template-columns:repeat(5"]{grid-template-columns:repeat(2,1fr)!important;}}
+
 /* FOOTER */
 footer{
   border-top:1px solid var(--border);
@@ -386,25 +390,28 @@ footer{
     <a class="nav-link active" href="#overview" onclick="smoothNav(event,'overview')">Overview</a>
     <a class="nav-link" href="#performance" onclick="smoothNav(event,'performance')">Performance</a>
     <a class="nav-link" href="#trades" onclick="smoothNav(event,'trades')">Trades</a>
-    <a class="nav-link" href="#comparison" onclick="smoothNav(event,'comparison')">Compare</a>
+    <a class="nav-link" href="#comparison" onclick="smoothNav(event,'comparison')">Rankings</a>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">☀</button>
 </nav>
 
 <div class="sel-bar">
   <div class="sel-group">
-    <label class="sel-label">Risk Profile</label>
+    <label class="sel-label">Combo</label>
     <select class="sel-drop" id="modelDropdown" onchange="switchModel(this.value)">
-      <optgroup label="Structural Stop">
-        <option value="cashflow">Cashflow</option>
-        <option value="cashflow_extended" selected>Cashflow + Extended</option>
+      <optgroup label="── Fixed % Stop Combos ──">
+        <option value="pct_004_008" selected>#1  SL 0.04% / TP 0.08%  (2:1)   — CE 0.370</option>
+        <option value="pct_010_005">#2  SL 0.10% / TP 0.05%  (0.5:1) — CE 0.365</option>
+        <option value="pct_003_006">#3  SL 0.03% / TP 0.06%  (2:1)   — CE 0.362</option>
+        <option value="pct_005_009">#4  SL 0.05% / TP 0.09%  (1.8:1) — CE 0.357</option>
+        <option value="pct_004_007">#5  SL 0.04% / TP 0.07%  (1.75:1) — CE 0.351</option>
+        <option value="pct_005_008">#6  SL 0.05% / TP 0.08%  (1.6:1) — CE 0.351</option>
+        <option value="pct_004_006">#7  SL 0.04% / TP 0.06%  (1.5:1) — CE 0.342</option>
+        <option value="pct_005_007">#8  SL 0.05% / TP 0.07%  (1.4:1) — CE 0.341</option>
+        <option value="pct_005_006">#9  SL 0.05% / TP 0.06%  (1.2:1) — CE 0.339</option>
+        <option value="pct_010_006">#10 SL 0.10% / TP 0.06%  (0.6:1) — CE 0.338</option>
       </optgroup>
-      <optgroup label="Fixed % Stop / TP">
-        <option value="pct_035_035">0.35% Stop / 0.35% TP</option>
-        <option value="pct_035_025">0.35% Stop / 0.25% TP</option>
-        <option value="pct_050_050">0.50% Stop / 0.50% TP</option>
-        <option value="pct_100_100">1.00% Stop / 1.00% TP</option>
-        <option value="pct_100_150">1.00% Stop / 1.50% TP</option>
-        <option value="pct_100_200">1.00% Stop / 2.00% TP</option>
+      <optgroup label="── Reference Models ──">
+        <option value="cashflow">Cashflow  (Structural Stop · 10bps TP · 1:1 R)</option>
       </optgroup>
     </select>
   </div>
@@ -421,6 +428,7 @@ footer{
       <p class="hero-sub">First Presented Fair Value Gap · 1-Minute Data · 11 Years</p>
       <div class="stats-grid" id="heroStats"></div>
       <div class="stats-grid" style="margin-top:14px;" id="riskStatsGrid"></div>
+      <div id="classGrid" style="margin-top:28px;"></div>
     </section>
 
     <!-- HOW IT WORKS -->
@@ -445,23 +453,23 @@ footer{
         <div class="how-num">02</div>
         <div class="how-title">Entry &amp; Stop</div>
         <div class="how-body">
-          A <strong>limit order</strong> is placed at the FVG boundary on the retrace side — the near
-          edge of the gap. The position is sized such that the stop is the <strong>C1 extreme</strong>
-          (the wick that originated the gap), giving a defined monetary risk per trade.
-          Risk is expressed in NQ points.
+          Fill is confirmed at <strong>C3</strong> — the candle that closes the FVG. Entry is at
+          C3 open. The stop is placed at a <strong>fixed % below/above entry</strong> (e.g. 0.04%
+          for combo #1). Contracts are sized so a full stop-out = exactly <strong>$225</strong>.
+          Trade triggers from C3+1 bar through 16:00 ET.
         </div>
-        <span class="how-tag green">Limit at FVG Edge</span>
+        <span class="how-tag green">C3 Fill · Fixed % Stop</span>
       </div>
       <div class="how-card">
         <div class="how-num">03</div>
         <div class="how-title">Exit Rules</div>
         <div class="how-body">
-          Position is split: <strong>80% exits at TP1</strong> — the POTQ (Point of Target Quarter)
-          level at 10 bps from entry. The remaining <strong>20% runner</strong> is held to end-of-day
-          close (16:00 ET) or stopped out at the original stop level, whichever comes first.
-          Combined R reflects both legs.
+          Full position exits at the <strong>fixed % TP</strong> target from entry (WIN) or at the
+          <strong>fixed % SL</strong> (LOSS). If neither is touched by <strong>16:00 ET</strong>,
+          the trade expires with R = 0. Position is sized so a stop-out costs exactly
+          <strong>$225</strong> (5% of $4,500 account) regardless of stop size.
         </div>
-        <span class="how-tag amber">POTQ 10bps + Runner EOD</span>
+        <span class="how-tag amber">Fixed % TP · Fixed % SL · EOD Expire</span>
       </div>
     </div>
 
@@ -640,8 +648,68 @@ function wrColorBars(wr) {
 function pct(v, dp = 1) { return (v * 100).toFixed(dp) + '%'; }
 function rnd(v, dp = 2) { return v >= 0 ? '+' + v.toFixed(dp) : v.toFixed(dp); }
 
+// ─── SLTP ANALYZER + MASTER BACKTESTER RESULTS ───────────────────────────────
+const SLTP_DATA = {
+  pct_004_008: { label:'#1  SL 0.04% / TP 0.08%', sl:0.04, tp:0.08, rr:2.00, ev_r:0.257, pf:1.442, ce:0.370, mcl:15, mcw:9,
+    combined:{n:2721,wr:0.419,pl:157275,sharpe:9.05,blown:false},
+    DWP:{n:975,wr:0.452,pl:78300,sharpe:7.46,blown:false}, DNP:{n:436,wr:0.385,pl:15300,sharpe:2.23,blown:false},
+    R1:{n:656,wr:0.372,pl:17100,sharpe:2.04,blown:true},   R2:{n:562,wr:0.470,pl:51750,sharpe:6.47,blown:false},
+    Unclassified:{n:92,wr:0.250,pl:-5175,sharpe:-1.84,blown:true} },
+  pct_010_005: { label:'#2  SL 0.10% / TP 0.05%', sl:0.10, tp:0.05, rr:0.50, ev_r:0.190, pf:1.921, ce:0.365, mcl:6, mcw:32,
+    combined:{n:2721,wr:0.793,pl:116438,sharpe:16.33,blown:false},
+    DWP:{n:975,wr:0.818,pl:49950,sharpe:12.29,blown:false}, DNP:{n:436,wr:0.800,pl:19688,sharpe:6.98,blown:false},
+    R1:{n:656,wr:0.762,pl:21150,sharpe:5.74,blown:false},   R2:{n:562,wr:0.808,pl:26775,sharpe:8.49,blown:false},
+    Unclassified:{n:92,wr:0.630,pl:-1125,sharpe:-0.72,blown:false} },
+  pct_003_006: { label:'#3  SL 0.03% / TP 0.06%', sl:0.03, tp:0.06, rr:2.00, ev_r:0.252, pf:1.433, ce:0.362, mcl:15, mcw:9,
+    combined:{n:2721,wr:0.417,pl:154575,sharpe:8.90,blown:false},
+    DWP:{n:975,wr:0.422,pl:58050,sharpe:5.57,blown:false}, DNP:{n:436,wr:0.381,pl:13950,sharpe:2.04,blown:false},
+    R1:{n:656,wr:0.422,pl:39375,sharpe:4.61,blown:false},   R2:{n:562,wr:0.457,pl:47025,sharpe:5.89,blown:false},
+    Unclassified:{n:92,wr:0.272,pl:-3825,sharpe:-1.32,blown:true} },
+  pct_005_009: { label:'#4  SL 0.05% / TP 0.09%', sl:0.05, tp:0.09, rr:1.80, ev_r:0.247, pf:1.446, ce:0.357, mcl:14, mcw:9,
+    combined:{n:2721,wr:0.445,pl:151335,sharpe:9.26,blown:false},
+    DWP:{n:975,wr:0.486,pl:79245,sharpe:8.06,blown:false}, DNP:{n:436,wr:0.440,pl:22860,sharpe:3.50,blown:false},
+    R1:{n:656,wr:0.378,pl:8640,sharpe:1.10,blown:true},    R2:{n:562,wr:0.484,pl:44910,sharpe:6.01,blown:false},
+    Unclassified:{n:92,wr:0.283,pl:-4320,sharpe:-1.58,blown:true} },
+  pct_004_007: { label:'#5  SL 0.04% / TP 0.07%', sl:0.04, tp:0.07, rr:1.75, ev_r:0.243, pf:1.444, ce:0.351, mcl:14, mcw:9,
+    combined:{n:2721,wr:0.452,pl:148838,sharpe:9.26,blown:false},
+    DWP:{n:975,wr:0.476,pl:67725,sharpe:7.02,blown:false}, DNP:{n:436,wr:0.417,pl:14512,sharpe:2.28,blown:false},
+    R1:{n:656,wr:0.418,pl:21938,sharpe:2.80,blown:false},   R2:{n:562,wr:0.509,pl:50512,sharpe:6.88,blown:false},
+    Unclassified:{n:92,wr:0.261,pl:-5850,sharpe:-2.23,blown:true} },
+  pct_005_008: { label:'#6  SL 0.05% / TP 0.08%', sl:0.05, tp:0.08, rr:1.60, ev_r:0.240, pf:1.459, ce:0.351, mcl:13, mcw:10,
+    combined:{n:2721,wr:0.477,pl:147105,sharpe:9.65,blown:false},
+    DWP:{n:975,wr:0.511,pl:71955,sharpe:7.88,blown:false}, DNP:{n:436,wr:0.477,pl:23580,sharpe:3.86,blown:false},
+    R1:{n:656,wr:0.413,pl:10935,sharpe:1.48,blown:false},   R2:{n:562,wr:0.521,pl:44955,sharpe:6.48,blown:false},
+    Unclassified:{n:92,wr:0.304,pl:-4320,sharpe:-1.66,blown:true} },
+  pct_004_006: { label:'#7  SL 0.04% / TP 0.06%', sl:0.04, tp:0.06, rr:1.50, ev_r:0.234, pf:1.462, ce:0.342, mcl:12, mcw:9,
+    combined:{n:2721,wr:0.494,pl:143212,sharpe:9.76,blown:false},
+    DWP:{n:975,wr:0.513,pl:61875,sharpe:7.04,blown:false}, DNP:{n:436,wr:0.459,pl:14400,sharpe:2.46,blown:false},
+    R1:{n:656,wr:0.477,pl:28462,sharpe:3.95,blown:false},   R2:{n:562,wr:0.539,pl:43988,sharpe:6.61,blown:false},
+    Unclassified:{n:92,wr:0.293,pl:-5512,sharpe:-2.23,blown:true} },
+  pct_005_007: { label:'#8  SL 0.05% / TP 0.07%', sl:0.05, tp:0.07, rr:1.40, ev_r:0.231, pf:1.475, ce:0.341, mcl:11, mcw:12,
+    combined:{n:2721,wr:0.513,pl:141615,sharpe:10.06,blown:false},
+    DWP:{n:975,wr:0.538,pl:64125,sharpe:7.62,blown:false}, DNP:{n:436,wr:0.518,pl:23940,sharpe:4.24,blown:false},
+    R1:{n:656,wr:0.460,pl:15480,sharpe:2.24,blown:false},   R2:{n:562,wr:0.559,pl:43110,sharpe:6.78,blown:false},
+    Unclassified:{n:92,wr:0.315,pl:-5040,sharpe:-2.08,blown:true} },
+  pct_005_006: { label:'#9  SL 0.05% / TP 0.06%', sl:0.05, tp:0.06, rr:1.20, ev_r:0.225, pf:1.507, ce:0.339, mcl:10, mcw:12,
+    combined:{n:2721,wr:0.557,pl:137700,sharpe:10.73,blown:false},
+    DWP:{n:975,wr:0.578,pl:59805,sharpe:7.83,blown:false}, DNP:{n:436,wr:0.555,pl:21690,sharpe:4.22,blown:false},
+    R1:{n:656,wr:0.524,pl:22680,sharpe:3.58,blown:false},   R2:{n:562,wr:0.593,pl:38385,sharpe:6.65,blown:false},
+    Unclassified:{n:92,wr:0.348,pl:-4860,sharpe:-2.14,blown:true} },
+  pct_010_006: { label:'#10 SL 0.10% / TP 0.06%', sl:0.10, tp:0.06, rr:0.60, ev_r:0.193, pf:1.756, ce:0.338, mcl:6, mcw:24,
+    combined:{n:2721,wr:0.745,pl:117855,sharpe:14.40,blown:false},
+    DWP:{n:975,wr:0.776,pl:53145,sharpe:11.34,blown:false}, DNP:{n:436,wr:0.745,pl:18900,sharpe:5.77,blown:false},
+    R1:{n:656,wr:0.709,pl:19800,sharpe:4.72,blown:false},   R2:{n:562,wr:0.763,pl:27990,sharpe:7.71,blown:false},
+    Unclassified:{n:92,wr:0.565,pl:-1980,sharpe:-1.15,blown:false} },
+  // ── Reference: Cashflow model (structural stop · 10 bps TP · 1:1 R) ──
+  cashflow: { label:'Cashflow — Structural Stop · 10bps TP', sl:null, tp:0.10, rr:1.00, ev_r:0.309, pf:1.893, ce:-0.144, mcl:null, mcw:null,
+    combined:{n:2719,wr:0.654,pl:188775,sharpe:5.15,blown:false},
+    DWP:{n:975,wr:0.713,pl:93375,sharpe:7.46,blown:false}, DNP:{n:436,wr:0.656,pl:30600,sharpe:5.21,blown:false},
+    R1:{n:656,wr:0.598,pl:28800,sharpe:3.16,blown:false},  R2:{n:562,wr:0.676,pl:44550,sharpe:5.97,blown:false},
+    Unclassified:{n:90,wr:0.289,pl:-8550,sharpe:-7.35,blown:true} },
+};
+
 // ─── MODEL SELECTION ─────────────────────────────────────────────────────────
-let _activeModel = 'cashflow_extended';
+let _activeModel = 'pct_004_008';
 
 function switchModel(key) {
   _activeModel = key;
@@ -668,12 +736,13 @@ window.addEventListener('load', loadData);
 // ─── RENDER ALL ──────────────────────────────────────────────────────────────
 function renderAll(d) {
   renderHero(d.meta, d.risk_stats);
+  renderClassificationGrid();
   renderDirection(d.by_direction);
   renderCharts(d);
   renderYearTable(d.by_year);
   renderMAEAnalysis(d.risk_stats);
   renderTradesTable(d.recent_trades || d.trades);
-  renderComparison();
+  renderRankingsTable();
   // update pills
   document.getElementById('perfPill').textContent = d.meta.n + ' resolved trades';
   document.getElementById('tradesNote').textContent = 'Most recent 40 of ' + d.meta.n + ' resolved';
@@ -857,50 +926,46 @@ function drawMAEBell(canvas, bell, currentSlPct) {
 
 // ─── HERO STATS ──────────────────────────────────────────────────────────────
 function renderHero(meta, rs) {
-  rs = rs || {};
-  const wr = meta.tp1_wr;
+  const sd = SLTP_DATA[_activeModel] || {};
+  const c  = sd.combined || {};
 
-  const fmt$ = v => v != null ? '$' + Math.abs(v).toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0}) : '—';
-  const fmtPct = v => v != null ? v.toFixed(2) + '%' : '—';
-
-  const slPct  = rs.sl_pct  != null ? rs.sl_pct  : (meta.avg_mae_pct != null ? meta.avg_mae_pct : null);
-  const tpPct  = rs.tp_pct  != null ? rs.tp_pct  : null;
-  const blown  = rs.blown;
-  const minEq  = rs.min_equity_usd;
-  const avgWin = rs.avg_win_usd;
-  const avgLoss= rs.avg_loss_usd;
+  const fmtPL = v => v == null ? '—' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toLocaleString('en-US', {maximumFractionDigits:0});
 
   const primary = [
-    { lbl: 'SL %', val: fmtPct(slPct), cls: 'amber',
-      hint: 'Avg stop distance from entry', bar: cssVar('--amber') },
-    { lbl: 'TP %', val: fmtPct(tpPct), cls: 'green',
-      hint: 'TP1 target distance from entry', bar: cssVar('--green') },
-    { lbl: 'Trades', val: (rs.trades ?? meta.n ?? 0).toLocaleString(), cls: 'neutral',
-      hint: meta.date_range || '', bar: cssVar('--blue') },
-    { lbl: 'Wins', val: (rs.wins ?? meta.wins ?? 0).toLocaleString(),
-      cls: wr >= 0.5 ? 'green' : 'neutral',
-      hint: wr != null ? pct(wr) + ' win rate' : '', bar: cssVar('--green') },
-    { lbl: 'Losses', val: (rs.losses ?? ((meta.n || 0) - (meta.wins || 0))).toLocaleString(),
-      cls: 'red', hint: 'Resolved losses', bar: cssVar('--red') },
-    { lbl: 'BE', val: (rs.be_count ?? 0).toLocaleString(), cls: 'neutral',
-      hint: 'Breakeven exits', bar: cssVar('--faint') },
+    { lbl: 'Win Rate',  val: c.wr != null ? (c.wr*100).toFixed(1)+'%' : '—',
+      cls: c.wr >= 0.55 ? 'green' : c.wr >= 0.45 ? 'amber' : 'red',
+      hint: c.n ? c.n.toLocaleString()+' trades · 2014–2026' : '', bar: cssVar('--cyan') },
+    { lbl: 'EV (R)',    val: sd.ev_r != null ? (sd.ev_r >= 0 ? '+' : '')+sd.ev_r.toFixed(3) : '—',
+      cls: sd.ev_r > 0 ? 'green' : 'red',
+      hint: 'Expected value per R risked', bar: cssVar('--green') },
+    { lbl: 'Prof Factor', val: sd.pf != null ? sd.pf.toFixed(3) : '—',
+      cls: sd.pf >= 1.5 ? 'green' : sd.pf >= 1.2 ? 'amber' : 'red',
+      hint: 'Gross profit ÷ gross loss', bar: cssVar('--blue') },
+    { lbl: 'CE',        val: sd.ce != null ? sd.ce.toFixed(3) : '—',
+      cls: sd.ce >= 0.36 ? 'green' : sd.ce >= 0.30 ? 'amber' : 'red',
+      hint: 'Certainty Equivalent — rank metric', bar: cssVar('--purple') },
+    { lbl: 'Total P&L', val: fmtPL(c.pl),
+      cls: c.pl > 0 ? 'green' : 'red',
+      hint: '$4,500 account · $225/trade risk', bar: cssVar('--green') },
+    { lbl: 'Sharpe',    val: c.sharpe != null ? c.sharpe.toFixed(2) : '—',
+      cls: c.sharpe >= 10 ? 'green' : c.sharpe >= 5 ? 'amber' : 'red',
+      hint: 'Annualised Sharpe ratio (by day)', bar: cssVar('--cyan') },
   ];
 
   const risk = [
-    { lbl: 'Avg Win $', val: avgWin != null ? '+' + fmt$(avgWin) : '—',
-      cls: 'green', hint: 'Avg P&L per winning trade', bar: cssVar('--green') },
-    { lbl: 'Avg Loss $', val: avgLoss != null ? '−' + fmt$(Math.abs(avgLoss)) : '—',
-      cls: 'red', hint: 'Avg P&L per losing trade', bar: cssVar('--red') },
-    { lbl: 'Blown', val: blown == null ? '—' : (blown ? 'YES' : 'NO'),
-      cls: blown ? 'red' : 'green',
-      hint: 'Account hit $0 during backtest', bar: blown ? cssVar('--red') : cssVar('--green') },
-    { lbl: 'Low Eq $', val: minEq != null ? '$' + minEq.toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0}) : '—',
-      cls: minEq != null && minEq < (rs.account_size || 4500) * 0.75 ? 'red' : 'amber',
-      hint: 'Lowest equity reached (start $' + (rs.account_size ?? 4500).toLocaleString() + ')', bar: cssVar('--amber') },
-    { lbl: 'Max W Run', val: rs.max_consec_wins  ?? '—', cls: 'green',
-      hint: 'Longest winning streak', bar: cssVar('--green') },
-    { lbl: 'Max L Run', val: rs.max_consec_losses ?? '—', cls: 'red',
-      hint: 'Longest losing streak', bar: cssVar('--red') },
+    { lbl: 'SL %',      val: sd.sl != null ? sd.sl.toFixed(2)+'%' : 'Struct',
+      cls: 'amber', hint: sd.sl != null ? 'Fixed stop-loss % from entry' : 'Structural stop: min(C1.low, C2.low) / max(C1.high, C2.high)', bar: cssVar('--amber') },
+    { lbl: 'TP %',      val: sd.tp != null ? sd.tp.toFixed(2)+'%' : '—',
+      cls: 'green', hint: 'Fixed take-profit % from entry', bar: cssVar('--green') },
+    { lbl: 'R:R',       val: sd.rr != null ? sd.rr.toFixed(2)+':1' : '—',
+      cls: 'neutral', hint: 'Reward-to-risk ratio (TP÷SL)', bar: cssVar('--blue') },
+    { lbl: 'Blown',     val: c.blown == null ? '—' : (c.blown ? 'YES' : 'NO'),
+      cls: c.blown ? 'red' : 'green',
+      hint: 'Combined bucket blew account?', bar: c.blown ? cssVar('--red') : cssVar('--green') },
+    { lbl: 'Max W Run', val: sd.mcw ?? '—',
+      cls: 'green', hint: 'Longest winning streak', bar: cssVar('--green') },
+    { lbl: 'Max L Run', val: sd.mcl ?? '—',
+      cls: 'red', hint: 'Longest losing streak', bar: cssVar('--red') },
   ];
 
   const tileHTML = t => `
@@ -915,25 +980,79 @@ function renderHero(meta, rs) {
   document.getElementById('riskStatsGrid').innerHTML = risk.map(tileHTML).join('');
 }
 
+// ─── CLASSIFICATION GRID ─────────────────────────────────────────────────────
+function renderClassificationGrid() {
+  const el = document.getElementById('classGrid');
+  if (!el) return;
+  const sd = SLTP_DATA[_activeModel] || {};
+
+  const buckets = [
+    { key:'DWP',  label:'DWP',           desc:'Directional With Pullback', color:'var(--cyan)',   dot:'#22d3ee' },
+    { key:'DNP',  label:'DNP',           desc:'Directional No Pullback',   color:'var(--amber)',  dot:'#fbbf24' },
+    { key:'R1',   label:'R1',            desc:'Range Day Type 1',          color:'var(--blue)',   dot:'#60a5fa' },
+    { key:'R2',   label:'R2',            desc:'Range Day Type 2',          color:'var(--orange)', dot:'#fb923c' },
+    { key:'Unclassified', label:'Unclas', desc:'Unclassified Days',        color:'var(--faint)',  dot:'#64748b' },
+  ];
+
+  const fmtPL = v => v == null ? '—' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toLocaleString('en-US', {maximumFractionDigits:0});
+
+  const cards = buckets.map(b => {
+    const d = sd[b.key] || {};
+    const wrVal  = d.wr  != null ? (d.wr*100).toFixed(1)+'%' : '—';
+    const wrCol  = d.wr >= 0.55 ? 'var(--green)' : d.wr >= 0.45 ? 'var(--amber)' : 'var(--red)';
+    const plVal  = fmtPL(d.pl);
+    const plCol  = d.pl > 0 ? 'var(--green)' : 'var(--red)';
+    const shVal  = d.sharpe != null ? d.sharpe.toFixed(2) : '—';
+    const shCol  = d.sharpe >= 8 ? 'var(--green)' : d.sharpe >= 4 ? 'var(--amber)' : d.sharpe >= 0 ? 'var(--orange)' : 'var(--red)';
+    const blownBadge = d.blown
+      ? `<span style="font-family:var(--font-data);font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px;background:var(--red-dim);color:var(--red);border:1px solid var(--red-border)">BLOWN</span>`
+      : `<span style="font-family:var(--font-data);font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px;background:var(--green-dim);color:var(--green);border:1px solid var(--green-border)">SAFE</span>`;
+
+    return `<div class="stat-tile" style="border-top:2px solid ${b.dot}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div>
+          <div style="font-family:var(--font-display);font-size:15px;font-weight:800;color:${b.color};letter-spacing:-0.02em">${b.label}</div>
+          <div style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-top:1px">${b.desc}</div>
+        </div>
+        ${blownBadge}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <div style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Win Rate</div>
+          <div style="font-family:var(--font-display);font-size:22px;font-weight:800;color:${wrCol};line-height:1">${wrVal}</div>
+          <div style="font-family:var(--font-data);font-size:10px;color:var(--faint);margin-top:2px">${d.n ? d.n.toLocaleString()+' trades' : '—'}</div>
+        </div>
+        <div>
+          <div style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Total P&L</div>
+          <div style="font-family:var(--font-display);font-size:18px;font-weight:800;color:${plCol};line-height:1">${plVal}</div>
+          <div style="font-family:var(--font-data);font-size:10px;color:var(--faint);margin-top:2px">Sharpe <span style="color:${shCol}">${shVal}</span></div>
+        </div>
+      </div>
+    </div>`;
+  });
+
+  el.innerHTML = `
+    <div style="font-family:var(--font-data);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:10px">
+      Classification Breakdown
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px">
+      ${cards.join('')}
+    </div>`;
+}
+
 // ─── DIRECTION SPLIT ─────────────────────────────────────────────────────────
 function renderDirection(byDir) {
   const dirs = [
     { key: 'LONG', color: cssVar('--blue'), label: 'Long' },
     { key: 'SHORT', color: cssVar('--red'), label: 'Short' },
   ];
-  const isExtended = _activeModel === 'cashflow_extended';
   const container = document.getElementById('dirGrid');
   container.innerHTML = dirs.map(({ key, color, label }) => {
     const d = byDir[key];
     const wr = d.tp1_wr;
     const wrC = wr >= 0.5 ? cssVar('--green') : cssVar('--red');
-    const mfeMiddle = isExtended
-      ? `<div>
-           <div class="dir-stat-lbl">Avg MFE2</div>
-           <div class="dir-stat-val" style="color:var(--cyan)">${d.avg_mfe2_pct != null ? d.avg_mfe2_pct.toFixed(4)+'%' : '—'}</div>
-         </div>`
-      : `<div>
-           <div class="dir-stat-lbl">Avg MFE1</div>
+    const mfeMiddle = `<div>
+           <div class="dir-stat-lbl">Avg MFE</div>
            <div class="dir-stat-val" style="color:var(--cyan)">${d.avg_mfe1_pct != null ? d.avg_mfe1_pct.toFixed(4)+'%' : '—'}</div>
          </div>`;
     return `
@@ -1112,8 +1231,7 @@ function drawHour(byHour) {
 
 // QUARTERLY CHART
 function drawQuarter(byQ) {
-  const nStatRows = _activeModel === 'cashflow_extended' ? 4 : 3;
-  const canvasH   = 168 + nStatRows * 26 + 16;
+  const canvasH   = 168 + 3 * 26 + 16;
   const ctx = setupCanvas('cvQuarter', canvasH);
   if (!ctx || !byQ) return;
   const W = ctx.W, H = ctx.H;
@@ -1189,14 +1307,10 @@ function drawQuarter(byQ) {
   // Bottom half: stats grid
   const rowY = chartH + 16;
   const rowH = 26;
-  const mfe1Lbl = _activeModel === 'cashflow_extended' ? 'Avg MFE1' : 'Avg MFE';
   const cols = [
     { label: 'Trades',   fn: d => (d.n || 0).toString(), color: textM },
     { label: 'Avg MAE',  fn: d => d.avg_mae_pct  != null ? d.avg_mae_pct.toFixed(3)+'%'  : '—', color: amber },
-    { label: mfe1Lbl,    fn: d => d.avg_mfe1_pct != null ? d.avg_mfe1_pct.toFixed(3)+'%' : '—', color: blue  },
-    ...(_activeModel === 'cashflow_extended'
-      ? [{ label: 'Avg MFE2', fn: d => d.avg_mfe2_pct != null ? d.avg_mfe2_pct.toFixed(3)+'%' : '—', color: cyan }]
-      : []),
+    { label: 'Avg MFE',  fn: d => d.avg_mfe1_pct != null ? d.avg_mfe1_pct.toFixed(3)+'%' : '—', color: blue  },
   ];
 
   ctx.textBaseline = 'middle';
@@ -1279,17 +1393,13 @@ function renderTradesTable(allTrades) {
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
     .slice(0, 40);
 
-  const isExtended = _activeModel === 'cashflow_extended';
-  const mfe1Label  = isExtended ? 'MFE1 (%)' : 'MFE (%)';
-
   const cols = [
     { key: 'date',         label: 'Date' },
     { key: 'time',         label: 'Entry' },
     { key: 'c2_ts',        label: 'FVG Time' },
     { key: 'direction',    label: 'Dir' },
     { key: 'mae_pct',      label: 'MAE (%)' },
-    { key: 'mfe1_pct',     label: mfe1Label },
-    ...(isExtended ? [{ key: 'mfe2_pct', label: 'MFE2 (%)' }] : []),
+    { key: 'mfe1_pct',     label: 'MFE (%)' },
     { key: 'outcome_main', label: 'TP1' },
   ];
 
@@ -1319,7 +1429,6 @@ function renderTradesTable(allTrades) {
           : '<span class="badge badge-open">—</span>';
       const mae     = t.mae_pct != null ? t.mae_pct.toFixed(4) : '0.0000';
       const fvgTime = t.c2_ts ? t.c2_ts.replace('T',' ').slice(-5) : '—';
-      const mfe2Cell = isExtended ? `<td>${mfeCell(t.mfe2_pct)}</td>` : '';
       return `<tr>
         <td>${t.date}</td>
         <td>${t.time || (t.fill_hr != null ? String(t.fill_hr).padStart(2,'0') + ':' + String(t.fill_mn||0).padStart(2,'0') : '—')}</td>
@@ -1327,7 +1436,6 @@ function renderTradesTable(allTrades) {
         <td>${dirBadge}</td>
         <td>${mae}</td>
         <td>${mfeCell(t.mfe1_pct)}</td>
-        ${mfe2Cell}
         <td>${tp1Badge}</td>
       </tr>`;
     }).join('');
@@ -1361,80 +1469,92 @@ function renderTradesTable(allTrades) {
   });
 }
 
-// ─── MODEL COMPARISON ────────────────────────────────────────────────────────
-function renderComparison() {
+// ─── TOP 10 RANKINGS TABLE ───────────────────────────────────────────────────
+function renderRankingsTable() {
   const el = document.getElementById('compSection');
   if (!el) return;
-  // Comparison only relevant for structural models
-  if (!_data || !_data.cashflow || !_data.cashflow_extended
-      || (_activeModel !== 'cashflow' && _activeModel !== 'cashflow_extended')) {
-    el.innerHTML = '';
-    return;
-  }
-  const cf = _data.cashflow;
-  const cx = _data.cashflow_extended;
-  const cfM = cf.meta  || {};
-  const cxM = cx.meta  || {};
-  const cfR = cf.risk_stats || {};
-  const cxR = cx.risk_stats || {};
 
-  const fmtPct = v => v != null ? v.toFixed(4) + '%' : '—';
-  const fmtN3  = v => v != null ? (v >= 0 ? '+' : '') + v.toFixed(3) : '—';
-  const dCls   = d => d > 0.0001 ? 'val-pos' : d < -0.0001 ? 'val-neg' : 'val-neutral';
+  const keys = ['pct_004_008','pct_010_005','pct_003_006','pct_005_009','pct_004_007',
+                 'pct_005_008','pct_004_006','pct_005_007','pct_005_006','pct_010_006'];
 
-  const rows = [
-    { label: 'TP1 Win Rate',
-      cfVal: pct(cfM.tp1_wr),         cxVal: pct(cxM.tp1_wr),
-      delta: '—', dCls: 'val-neutral' },
-    { label: 'Sharpe Ratio',
-      cfVal: fmtN3(cfR.sharpe),         cxVal: fmtN3(cxR.sharpe),
-      delta: fmtN3((cxR.sharpe ?? 0) - (cfR.sharpe ?? 0)),
-      dCls:  dCls((cxR.sharpe ?? 0) - (cfR.sharpe ?? 0)) },
-    { label: 'Avg MFE2',
-      cfVal: '—',                       cxVal: fmtPct(cxM.avg_mfe2_pct),
-      delta: '—', dCls: 'val-neutral' },
-    { label: 'MFE Median',
-      cfVal: fmtPct(cfR.mfe_median),    cxVal: fmtPct(cxR.mfe_median),
-      delta: fmtPct((cxR.mfe_median ?? 0) - (cfR.mfe_median ?? 0)),
-      dCls:  dCls((cxR.mfe_median ?? 0) - (cfR.mfe_median ?? 0)) },
-    { label: 'MAE Median',
-      cfVal: fmtPct(cfR.mae_median),    cxVal: fmtPct(cxR.mae_median),
-      delta: '—', dCls: 'val-neutral' },
-    { label: 'Max Consec Losses',
-      cfVal: cfR.max_consec_losses ?? '—', cxVal: cxR.max_consec_losses ?? '—',
-      delta: '—', dCls: 'val-neutral' },
-  ];
+  const fmtPL = v => v == null ? '—' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toLocaleString('en-US', {maximumFractionDigits:0});
+  const vcls  = v => v > 0 ? 'val-pos' : v < 0 ? 'val-neg' : 'val-neutral';
 
-  const rowsHtml = rows.map(r => `
-    <tr>
-      <td class="comp-metric">${r.label}</td>
-      <td>${r.cfVal}</td>
-      <td>${r.cxVal}</td>
-      <td class="${r.dCls}">${r.delta}</td>
-    </tr>`).join('');
+  const fmtSL  = s => s.sl != null ? s.sl.toFixed(2)+'% / '+s.tp.toFixed(2)+'%' : 'Struct / '+s.tp.toFixed(2)+'%';
+  const fmtRR  = s => s.rr != null ? s.rr.toFixed(2)+':1' : '1:1';
+
+  const rows = keys.map((k, i) => {
+    const s = SLTP_DATA[k];
+    const c = s.combined;
+    const isActive = k === _activeModel;
+    const rowStyle = isActive ? 'background:rgba(34,211,238,0.06);' : '';
+    const labelStyle = isActive ? 'color:var(--cyan);font-weight:700;' : '';
+    const anyBlown = c.blown || s.R1?.blown || s.Unclassified?.blown;
+    const blownVal = c.blown ? 'Yes' : anyBlown ? 'Partial' : 'No';
+    const blownCls = c.blown ? 'val-neg' : anyBlown ? '' : 'val-pos';
+    return `<tr style="${rowStyle}">
+      <td style="font-family:var(--font-display);font-weight:700;font-size:13px;${labelStyle}">${i+1}</td>
+      <td style="font-family:var(--font-data);font-size:11px;${labelStyle}">${fmtSL(s)}</td>
+      <td style="text-align:right;font-family:var(--font-data);font-size:11px">${fmtRR(s)}</td>
+      <td style="text-align:right;font-family:var(--font-data);font-size:11px">${(c.wr*100).toFixed(1)}%</td>
+      <td style="text-align:right;font-family:var(--font-data);font-size:11px" class="${vcls(s.ev_r)}">${s.ev_r >= 0 ? '+' : ''}${s.ev_r.toFixed(3)}</td>
+      <td style="text-align:right;font-family:var(--font-data);font-size:11px">${s.pf.toFixed(3)}</td>
+      <td style="text-align:right;font-family:var(--font-data);font-size:11px" class="${vcls(s.ce)}">${s.ce.toFixed(3)}</td>
+      <td style="text-align:right;font-family:var(--font-data);font-size:11px" class="${vcls(c.pl)}">${fmtPL(c.pl)}</td>
+      <td style="text-align:right;font-family:var(--font-data);font-size:11px">${c.sharpe.toFixed(2)}</td>
+      <td style="text-align:right;font-family:var(--font-data);font-size:11px" class="${blownCls}">${blownVal}</td>
+    </tr>`;
+  });
+
+  // Cashflow reference row (always shown at bottom of rankings table)
+  const cf = SLTP_DATA['cashflow'];
+  const cfc = cf.combined;
+  const cfActive = _activeModel === 'cashflow';
+  const cfRowStyle = cfActive ? 'background:rgba(34,211,238,0.06);' : 'background:rgba(255,255,255,0.02);';
+  const cfLabelStyle = cfActive ? 'color:var(--cyan);font-weight:700;' : 'color:var(--faint);';
+  const cfAnyBlown = cfc.blown || cf.Unclassified?.blown;
+  const cfBlownVal = cfc.blown ? 'Yes' : cfAnyBlown ? 'Partial' : 'No';
+  const cfBlownCls = cfc.blown ? 'val-neg' : cfAnyBlown ? '' : 'val-pos';
+  const cfRow = `<tr style="${cfRowStyle}">
+    <td style="font-family:var(--font-display);font-weight:700;font-size:13px;${cfLabelStyle}">CF</td>
+    <td style="font-family:var(--font-data);font-size:11px;${cfLabelStyle}">Struct / 0.10%</td>
+    <td style="text-align:right;font-family:var(--font-data);font-size:11px">1:1</td>
+    <td style="text-align:right;font-family:var(--font-data);font-size:11px">${(cfc.wr*100).toFixed(1)}%</td>
+    <td style="text-align:right;font-family:var(--font-data);font-size:11px" class="${vcls(cf.ev_r)}">${cf.ev_r >= 0 ? '+' : ''}${cf.ev_r.toFixed(3)}</td>
+    <td style="text-align:right;font-family:var(--font-data);font-size:11px">${cf.pf.toFixed(3)}</td>
+    <td style="text-align:right;font-family:var(--font-data);font-size:11px" class="${vcls(cf.ce)}">${cf.ce.toFixed(3)}</td>
+    <td style="text-align:right;font-family:var(--font-data);font-size:11px" class="${vcls(cfc.pl)}">${fmtPL(cfc.pl)}</td>
+    <td style="text-align:right;font-family:var(--font-data);font-size:11px">${cfc.sharpe.toFixed(2)}</td>
+    <td style="text-align:right;font-family:var(--font-data);font-size:11px" class="${cfBlownCls}">${cfBlownVal}</td>
+  </tr>`;
 
   el.innerHTML = `
-    <div class="sec-head">
-      <span class="sec-label">Model Comparison</span>
+    <div class="sec-head" id="comparison">
+      <span class="sec-label">Top 10 Rankings</span>
       <span class="sec-line"></span>
-      <span class="sec-pill">Cashflow vs Cashflow + Extended</span>
+      <span class="sec-pill">168 survivors · ranked by CE</span>
     </div>
     <div class="panel">
       <div class="panel-hd">
-        <span class="panel-title">Side-by-Side Metrics</span>
-        <span class="panel-note">Δ = CF + Extended minus Cashflow</span>
+        <span class="panel-title">All 10 Combos Side-by-Side</span>
+        <span class="panel-note">$4,500 account · $225/trade · 2,721 trades · 2014–2026 · highlighted row = active combo</span>
       </div>
-      <div class="panel-body" style="padding:0">
-        <table class="model-comp-table">
+      <div class="panel-body" style="padding:0;overflow-x:auto">
+        <table class="model-comp-table" style="min-width:700px">
           <thead>
             <tr>
-              <th>Metric</th>
-              <th>Cashflow</th>
-              <th>CF + Extended</th>
-              <th>Δ</th>
+              <th>#</th><th>SL / TP</th>
+              <th style="text-align:right">R:R</th>
+              <th style="text-align:right">Win%</th>
+              <th style="text-align:right">EV(R)</th>
+              <th style="text-align:right">PF</th>
+              <th style="text-align:right">CE ↓</th>
+              <th style="text-align:right">Total P&L</th>
+              <th style="text-align:right">Sharpe</th>
+              <th style="text-align:right">Blown</th>
             </tr>
           </thead>
-          <tbody>${rowsHtml}</tbody>
+          <tbody>${rows.join('')}${cfRow}</tbody>
         </table>
       </div>
     </div>`;
@@ -1444,7 +1564,7 @@ function renderComparison() {
 let _resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(_resizeTimer);
-  _resizeTimer = setTimeout(() => { if (_data) renderCharts(_data); }, 150);
+  _resizeTimer = setTimeout(() => { if (_data) renderCharts(_data[_activeModel]); }, 150);
 });
 </script>
 </body>
