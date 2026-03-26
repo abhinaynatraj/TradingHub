@@ -396,6 +396,17 @@ footer{
 
 <div class="sel-bar">
   <div class="sel-group">
+    <label class="sel-label">Timeframe</label>
+    <select class="sel-drop" id="tfDropdown" onchange="switchTF(this.value)">
+      <option value="all" selected>All Time (2014–2026)</option>
+      <option value="2y">Last 2 Years</option>
+      <option value="1y">Last 1 Year</option>
+      <option value="6m">Last 6 Months</option>
+      <option value="3m">Last 3 Months</option>
+      <option value="1m">Last 1 Month</option>
+    </select>
+  </div>
+  <div class="sel-group">
     <label class="sel-label">Combo</label>
     <select class="sel-drop" id="modelDropdown" onchange="switchModel(this.value)">
       <optgroup label="── Fixed % Stop Combos ──">
@@ -594,7 +605,7 @@ function toggleTheme() {
 // Re-render charts when theme changes
 let _data = null;
 const themeObserver = new MutationObserver(() => {
-  if (_data) renderCharts(_data[_activeModel]);
+  if (_data) renderCharts(_data[_activeTF][_activeModel]);
 });
 themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
@@ -708,12 +719,18 @@ const SLTP_DATA = {
     Unclassified:{n:90,wr:0.289,pl:-8550,sharpe:-7.35,blown:true} },
 };
 
-// ─── MODEL SELECTION ─────────────────────────────────────────────────────────
+// ─── MODEL / TIMEFRAME SELECTION ─────────────────────────────────────────────
 let _activeModel = 'pct_004_008';
+let _activeTF    = 'all';
 
 function switchModel(key) {
   _activeModel = key;
-  if (_data) renderAll(_data[key]);
+  if (_data) renderAll(_data[_activeTF][key]);
+}
+
+function switchTF(tf) {
+  _activeTF = tf;
+  if (_data) renderAll(_data[tf][_activeModel]);
 }
 
 // ─── LOAD DATA ───────────────────────────────────────────────────────────────
@@ -725,7 +742,7 @@ async function loadData() {
     _data = raw;
     document.getElementById('loading').style.display = 'none';
     document.getElementById('app').style.display = '';
-    renderAll(_data[_activeModel]);
+    renderAll(_data[_activeTF][_activeModel]);
   } catch (e) {
     document.getElementById('loading').innerHTML =
       '<span style="color:var(--red)">&#9888; Could not load ny1_results.json — run python3 ny1_backtest.py first</span>';
@@ -1534,6 +1551,7 @@ function renderRankingsTable() {
       <span class="sec-line"></span>
       <span class="sec-pill">168 survivors · ranked by CE</span>
     </div>
+    ${_activeTF !== 'all' ? `<div id="tfNote" style="margin-bottom:12px;padding:8px 12px;border-radius:6px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.25);font-size:11px;color:var(--amber);">⚠ Rankings &amp; Classification data reflect the full 2014–2026 dataset. Only the hero stats, charts, and trade log above change with timeframe.</div>` : ''}
     <div class="panel">
       <div class="panel-hd">
         <span class="panel-title">All 10 Combos Side-by-Side</span>
@@ -1564,7 +1582,7 @@ function renderRankingsTable() {
 let _resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(_resizeTimer);
-  _resizeTimer = setTimeout(() => { if (_data) renderCharts(_data[_activeModel]); }, 150);
+  _resizeTimer = setTimeout(() => { if (_data) renderCharts(_data[_activeTF][_activeModel]); }, 150);
 });
 </script>
 </body>

@@ -55,6 +55,16 @@ PCT_PROFILES = [
 MONTH_NAMES  = {1:'Jan',2:'Feb',3:'Mar',4:'Apr',5:'May',6:'Jun',
                 7:'Jul',8:'Aug',9:'Sep',10:'Oct',11:'Nov',12:'Dec'}
 
+# Timeframes: key → days to look back (None = all time)
+TIMEFRAMES = [
+    ('all', None),
+    ('2y',  730),
+    ('1y',  365),
+    ('6m',  180),
+    ('3m',   90),
+    ('1m',   30),
+]
+
 
 # ── Database ──────────────────────────────────────────────────────────────────
 def connect_db():
@@ -91,6 +101,15 @@ def load_bars(con, table: str) -> pd.DataFrame:
     # Exclude the 16:xx bars except exactly 16:00 (used only for runner exit)
     df = df[~((df['hr'] == 16) & (df['mn'] > 0))].reset_index(drop=True)
     return df
+
+
+# ── Timeframe filter ──────────────────────────────────────────────────────────
+def filter_by_tf(trades: list, max_date: str, days: int | None) -> list:
+    """Return trades on or after (max_date - days).  days=None → all trades."""
+    if days is None or not trades:
+        return trades
+    cutoff = (pd.Timestamp(max_date) - pd.Timedelta(days=days)).strftime('%Y-%m-%d')
+    return [t for t in trades if t['date'] >= cutoff]
 
 
 # ── Per-day array builder ──────────────────────────────────────────────────────
@@ -391,7 +410,8 @@ def _agg(trades: list[dict]) -> dict:
             'avg_mfe2_pct': avg_mfe2}
 
 
-def build_stats(trades, meta_extra: dict, model: str = 'cashflow_extended') -> dict:
+def build_stats(trades, meta_extra: dict, model: str = 'cashflow_extended',
+                include_full_trades: bool = True) -> dict:
     overall = _agg(trades)
 
     by_dow = {}
@@ -549,7 +569,7 @@ def build_stats(trades, meta_extra: dict, model: str = 'cashflow_extended') -> d
         'mae_bell':         mae_bell,
     }
 
-    return {
+    result = {
         'meta': {**meta_extra, **overall,
                  'generated_at': datetime.now().isoformat()},
         'overall':       overall,
@@ -561,8 +581,10 @@ def build_stats(trades, meta_extra: dict, model: str = 'cashflow_extended') -> d
         'by_direction':  by_direction,
         'risk_stats':    risk_stats,
         'recent_trades': recent_trades,
-        'trades':        sorted(trades, key=lambda t: t['date']),
     }
+    if include_full_trades:
+        result['trades'] = sorted(trades, key=lambda t: t['date'])
+    return result
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -758,8 +780,9 @@ def main():
     print(f'{bar}\n')
 
     if not args.no_json:
-        ref = trades_by_model['cashflow_extended']
-        meta_extra = {
+        ref_all = trades_by_model['cashflow_extended']
+        max_date = ref_all[-1]['date'] if ref_all else ''
+        base_meta = {
             'instrument':    args.table.split('_')[0].upper(),
             'tp1_bps':       int(TP1_BPS * 10000),
             'table':         args.table,
@@ -767,29 +790,48 @@ def main():
             'total_setups':  n_setups,
             'total_filled':  n_filled,
             'total_no_fill': n_no_fill,
-            'date_range':    f"{ref[0]['date']} – {ref[-1]['date']}" if ref else '',
         }
-        out = {
-            'cashflow': build_stats(
-                trades_by_model['cashflow'],
-                {**meta_extra, 'model_name': 'Cashflow'},
-                model='cashflow',
-            ),
-            'cashflow_extended': build_stats(
-                trades_by_model['cashflow_extended'],
-                {**meta_extra, 'model_name': 'Cashflow + Extended'},
-                model='cashflow_extended',
-            ),
-        }
-        for pct_key, stop_pct, tp_pct, display_name in PCT_PROFILES:
-            out[pct_key] = build_stats(
-                trades_by_pct[pct_key],
-                {**meta_extra,
-                 'model_name': display_name,
-                 'stop_pct':   round(stop_pct * 100, 4),
-                 'tp_pct':     round(tp_pct  * 100, 4)},
-                model='cashflow',   # single-exit, same mfe_median logic
-            )
+
+        out = {}
+        for tf_key, tf_days in TIMEFRAMES:
+            is_full = tf_days is None   # only 'all' includes full trades array
+            print(f'  Building timeframe: {tf_key}...', end=' ', flush=True)
+
+            cf_t  = filter_by_tf(trades_by_model['cashflow'],          max_date, tf_days)
+            cfe_t = filter_by_tf(trades_by_model['cashflow_extended'],  max_date, tf_days)
+            ref   = cfe_t or cf_t
+            dr    = f"{ref[0]['date']} – {ref[-1]['date']}" if ref else ''
+            meta_extra = {**base_meta, 'date_range': dr, 'timeframe': tf_key}
+
+            tf_out = {
+                'cashflow': build_stats(
+                    cf_t,
+                    {**meta_extra, 'model_name': 'Cashflow'},
+                    model='cashflow',
+                    include_full_trades=is_full,
+                ),
+                'cashflow_extended': build_stats(
+                    cfe_t,
+                    {**meta_extra, 'model_name': 'Cashflow + Extended'},
+                    model='cashflow_extended',
+                    include_full_trades=is_full,
+                ),
+            }
+            for pct_key, stop_pct, tp_pct, display_name in PCT_PROFILES:
+                pct_t = filter_by_tf(trades_by_pct[pct_key], max_date, tf_days)
+                tf_out[pct_key] = build_stats(
+                    pct_t,
+                    {**meta_extra,
+                     'model_name': display_name,
+                     'stop_pct':   round(stop_pct * 100, 4),
+                     'tp_pct':     round(tp_pct  * 100, 4)},
+                    model='cashflow',
+                    include_full_trades=is_full,
+                )
+            out[tf_key] = tf_out
+            n_trades = len(cf_t)
+            print(f'{n_trades} trades')
+
         with open(OUT_JSON, 'w') as f:
             json.dump(out, f, indent=2, default=str)
         print(f'  Saved → {OUT_JSON}')
