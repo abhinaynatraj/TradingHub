@@ -121,6 +121,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 
 /* META CARDS */
 .meta-row{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px}
+.meta-row .mc:nth-child(13){grid-column:span 2}
 .mc{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px 18px;box-shadow:var(--shadow);position:relative;overflow:hidden;transition:transform .2s var(--ease),box-shadow .2s}
 .mc:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
 .mc-accent{position:absolute;top:0;left:0;width:100%;height:3px;border-radius:10px 10px 0 0}
@@ -205,6 +206,14 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 @media(max-width:1100px){.meta-row{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:760px){.grid2,.dir-cards{grid-template-columns:1fr}.meta-row{grid-template-columns:repeat(2,1fr)}.risk-grid{grid-template-columns:repeat(3,1fr)}.dir-stats{grid-template-columns:repeat(2,1fr)}.main{padding:16px 16px 80px}.hdr{padding:0 16px}.h2h-stats{grid-template-columns:repeat(2,1fr)}.h2h-body{grid-template-columns:1fr}.h2h-divider{display:none}}
 
+/* CLASSIFICATION BREAKDOWN */
+.cls-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:12px}
+.cls-tile{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:18px 20px;box-shadow:var(--shadow);position:relative;overflow:hidden;transition:transform .2s var(--ease),box-shadow .2s var(--ease),border-color .2s}
+.cls-tile:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg);border-color:var(--border-hi)}
+.cls-tile::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.03) 0%,transparent 60%);pointer-events:none}
+@media(max-width:1100px){.cls-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:760px){.cls-grid{grid-template-columns:1fr 1fr}}
+
 /* SELECTOR BAR */
 .sel-bar{background:var(--bg-card);border-bottom:1px solid var(--border);padding:10px 28px;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
 .sel-group{display:flex;align-items:center;gap:8px}
@@ -238,8 +247,19 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
   </div>
 </header>
 
-<!-- Model + Profile selectors -->
+<!-- Model + Profile + Timeframe selectors -->
 <div class="sel-bar">
+  <div class="sel-group">
+    <label class="sel-label">Period</label>
+    <select id="tf-select" class="sel-drop" onchange="switchTF(this.value)">
+      <option value="all" selected>All Time (2014–2026)</option>
+      <option value="2y">Last 2 Years</option>
+      <option value="1y">Last 1 Year</option>
+      <option value="6m">Last 6 Months</option>
+      <option value="3m">Last 3 Months</option>
+      <option value="1m">Last 1 Month</option>
+    </select>
+  </div>
   <div class="sel-group">
     <label class="sel-label">Time Frame Combination</label>
     <select id="model-select" class="sel-drop" onchange="switchModel(this.value)"></select>
@@ -248,7 +268,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
     <label class="sel-label">Risk Profile</label>
     <select id="profile-select" class="sel-drop" onchange="switchProfile(this.value)"></select>
   </div>
-  <span class="sel-note" id="profile-note">Stop &amp; Target as sweep multiples or fixed % of entry price</span>
+  <span class="sel-note" id="profile-note">Stop &amp; Target = fixed % of entry price · DDLI weighted ranking</span>
 </div>
 
 <span class="mode-strip-note" id="mode-note" style="display:none;"></span>
@@ -264,6 +284,9 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 
 
   <div class="meta-row" id="meta-row"></div>
+
+  <div class="sec-label">Classification Breakdown</div>
+  <div id="classification-breakdown"></div>
 
   <div class="sec-label">Trade Setup Anatomy</div>
   <div class="panel">
@@ -316,20 +339,6 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
   <div class="panel">
     <div class="ph"><span class="ph-title">Win Rate % · Hour × Day · All Directions</span><span class="ph-note">Darker green = stronger edge</span></div>
     <div class="pb"><div id="heatmap"></div></div>
-  </div>
-
-  <div class="sec-label">T-Spot Variant Breakdown</div>
-  <div class="panel">
-    <div class="ph">
-      <span class="ph-title">Hit Rate by DOW × Hour · T-Spot Variant Type</span>
-      <div class="tspot-pills" id="tspot-pills"></div>
-    </div>
-    <div class="pb">
-      <div class="tspot-desc" id="tspot-desc"></div>
-      <div class="tspot-summary-row" id="tspot-summary"></div>
-      <div id="tspot-heatmap"></div>
-      <div id="tspot-combos" style="margin-top:16px"></div>
-    </div>
   </div>
 
   <div class="sec-label">Best & Worst Setups</div>
@@ -517,26 +526,27 @@ let isDemo        = true;
 let activeModel   = '1H_5M';
 let activeMode    = 'PREV';
 let activeCisd    = 'CISD';
-let activeProfile = '1:2';
+let activeProfile = 'sl_026_tp_018';
+let activeTF      = 'all';  // 'all' | '2y' | '1y' | '6m' | '3m' | '1m'
 
-const RR_PROFILES = ['1:0.35','1:0.25','1:0.5','1:1','1:1.5','1:2',
-                     '0.35%:0.35%','0.35%:0.25%','0.5%:0.5%','1%:1%','1%:1.5%','1%:2%'];
+const RR_PROFILES = [
+  'sl_026_tp_018','sl_026_tp_019','sl_021_tp_018','sl_020_tp_018','sl_018_tp_018',
+  'sl_019_tp_018','sl_020_tp_021','sl_020_tp_019','sl_018_tp_019','sl_019_tp_019',
+];
 const PROFILE_LABELS = {
-  '1:0.35':      '1 : 0.35',
-  '1:0.25':      '1 : 0.25',
-  '1:0.5':       '1 : 0.5',
-  '1:1':         '1 : 1',
-  '1:1.5':       '1 : 1.5',
-  '1:2':         '1 : 2',
-  '0.35%:0.35%': '0.35% : 0.35%',
-  '0.35%:0.25%': '0.35% : 0.25%',
-  '0.5%:0.5%':   '0.5% : 0.5%',
-  '1%:1%':       '1% : 1%',
-  '1%:1.5%':     '1% : 1.5%',
-  '1%:2%':       '1% : 2%',
+  'sl_026_tp_018': 'SL 0.26% / TP 0.18%  (R:R 0.69)',
+  'sl_026_tp_019': 'SL 0.26% / TP 0.19%  (R:R 0.73)',
+  'sl_021_tp_018': 'SL 0.21% / TP 0.18%  (R:R 0.86)',
+  'sl_020_tp_018': 'SL 0.20% / TP 0.18%  (R:R 0.90)',
+  'sl_018_tp_018': 'SL 0.18% / TP 0.18%  (R:R 1.00)',
+  'sl_019_tp_018': 'SL 0.19% / TP 0.18%  (R:R 0.95)',
+  'sl_020_tp_021': 'SL 0.20% / TP 0.21%  (R:R 1.05)',
+  'sl_020_tp_019': 'SL 0.20% / TP 0.19%  (R:R 0.95)',
+  'sl_018_tp_019': 'SL 0.18% / TP 0.19%  (R:R 1.06)',
+  'sl_019_tp_019': 'SL 0.19% / TP 0.19%  (R:R 1.00)',
 };
-// Which profiles are percentage-based
-const PCT_PROFILES = new Set(['0.35%:0.35%','0.35%:0.25%','0.5%:0.5%','1%:1%','1%:1.5%','1%:2%']);
+// All profiles are percentage-based
+const PCT_PROFILES = new Set(RR_PROFILES);
 
 // Helper — resolve active profile data (handles both flat DEMO and {profiles:{}} real JSON)
 function getProfileData(fullKey, profile) {
@@ -550,6 +560,99 @@ function getProfileData(fullKey, profile) {
   if (base.meta) return base;
   return null;
 }
+
+// ── CLASSIFICATION DATA (from FractalSweep2_0327_0555_DDLI.xlsx) ────────────
+// null = combo was blown/filtered on that day type
+const CLASSIFICATION_DATA = {
+  sl_026_tp_018: {
+    combined:     {trades:8050, wr:64.5, pf:1.260, pnl:166846, sharpe:5.38, max_dd:6.71},
+    dwp:          {trades:3256, wr:66.6, pf:1.379, pnl:92908,  sharpe:4.75, max_dd:9.12},
+    dnp:          {trades:1167, wr:63.8, pf:1.218, pnl:20717,  sharpe:1.85, max_dd:21.33},
+    r1:           {trades:2009, wr:63.1, pf:1.182, pnl:30410,  sharpe:1.88, max_dd:17.15},
+    r2:           null,
+    unclassified: null,
+  },
+  sl_026_tp_019: {
+    combined:     {trades:8050, wr:63.2, pf:1.253, pnl:168966, sharpe:5.29, max_dd:6.39},
+    dwp:          {trades:3256, wr:65.1, pf:1.366, pnl:93366,  sharpe:4.62, max_dd:9.90},
+    dnp:          {trades:1167, wr:63.1, pf:1.248, pnl:24040,  sharpe:2.09, max_dd:17.88},
+    r1:           {trades:2009, wr:61.1, pf:1.149, pnl:26187,  sharpe:1.57, max_dd:24.32},
+    r2:           null,
+    unclassified: null,
+  },
+  sl_021_tp_018: {
+    combined:     {trades:8050, wr:59.2, pf:1.246, pnl:181511, sharpe:5.20, max_dd:8.00},
+    dwp:          {trades:3256, wr:61.9, pf:1.390, pnl:108964, sharpe:4.93, max_dd:6.23},
+    dnp:          {trades:1167, wr:58.3, pf:1.197, pnl:21568,  sharpe:1.71, max_dd:26.72},
+    r1:           {trades:2009, wr:56.9, pf:1.131, pnl:25586,  sharpe:1.41, max_dd:23.79},
+    r2:           null,
+    unclassified: null,
+  },
+  sl_020_tp_018: {
+    combined:     {trades:8050, wr:58.0, pf:1.243, pnl:184748, sharpe:5.15, max_dd:7.23},
+    dwp:          {trades:3256, wr:60.6, pf:1.386, pnl:111285, sharpe:4.89, max_dd:5.87},
+    dnp:          {trades:1167, wr:57.1, pf:1.196, pnl:22140,  sharpe:1.71, max_dd:27.36},
+    r1:           {trades:2009, wr:55.5, pf:1.125, pnl:25065,  sharpe:1.34, max_dd:26.29},
+    r2:           null,
+    unclassified: null,
+  },
+  sl_018_tp_018: {
+    combined:     {trades:8050, wr:55.3, pf:1.237, pnl:191700, sharpe:5.04, max_dd:5.60},
+    dwp:          {trades:3256, wr:58.1, pf:1.385, pnl:118350, sharpe:4.89, max_dd:5.31},
+    dnp:          {trades:1167, wr:54.1, pf:1.177, pnl:21375,  sharpe:1.56, max_dd:26.00},
+    r1:           {trades:2009, wr:52.7, pf:1.113, pnl:24075,  sharpe:1.22, max_dd:36.43},
+    r2:           null,
+    unclassified: null,
+  },
+  sl_019_tp_018: {
+    combined:     {trades:8050, wr:56.6, pf:1.237, pnl:186312, sharpe:5.04, max_dd:6.03},
+    dwp:          {trades:3256, wr:59.3, pf:1.379, pnl:113045, sharpe:4.82, max_dd:5.50},
+    dnp:          {trades:1167, wr:55.2, pf:1.167, pnl:19599,  sharpe:1.47, max_dd:31.57},
+    r1:           {trades:2009, wr:54.2, pf:1.121, pnl:25129,  sharpe:1.31, max_dd:26.46},
+    r2:           null,
+    unclassified: null,
+  },
+  sl_020_tp_021: {
+    combined:     {trades:8050, wr:54.0, pf:1.234, pnl:194726, sharpe:4.98, max_dd:6.57},
+    dwp:          {trades:3256, wr:56.5, pf:1.364, pnl:116100, sharpe:4.66, max_dd:6.16},
+    dnp:          {trades:1167, wr:53.8, pf:1.223, pnl:27090,  sharpe:1.93, max_dd:25.95},
+    r1:           {trades:2009, wr:50.3, pf:1.062, pnl:13838,  sharpe:0.68, max_dd:54.99},
+    r2:           null,
+    unclassified: null,
+  },
+  sl_020_tp_019: {
+    combined:     {trades:8050, wr:56.6, pf:1.238, pnl:187256, sharpe:5.06, max_dd:7.44},
+    dwp:          {trades:3256, wr:59.4, pf:1.388, pnl:115504, sharpe:4.92, max_dd:6.37},
+    dnp:          {trades:1167, wr:55.7, pf:1.194, pnl:22612,  sharpe:1.70, max_dd:25.50},
+    r1:           {trades:2009, wr:53.7, pf:1.100, pnl:20948,  sharpe:1.09, max_dd:41.35},
+    r2:           null,
+    unclassified: null,
+  },
+  sl_018_tp_019: {
+    combined:     {trades:8050, wr:53.9, pf:1.233, pnl:194612, sharpe:4.96, max_dd:7.03},
+    dwp:          {trades:3256, wr:56.8, pf:1.389, pnl:123025, sharpe:4.93, max_dd:5.55},
+    dnp:          {trades:1167, wr:52.8, pf:1.180, pnl:22325,  sharpe:1.58, max_dd:25.02},
+    r1:           null,
+    r2:           null,
+    unclassified: null,
+  },
+  sl_019_tp_019: {
+    combined:     {trades:8050, wr:55.2, pf:1.234, pnl:189900, sharpe:4.99, max_dd:6.58},
+    dwp:          {trades:3256, wr:58.0, pf:1.382, pnl:117450, sharpe:4.86, max_dd:5.90},
+    dnp:          {trades:1167, wr:54.0, pf:1.173, pnl:20925,  sharpe:1.52, max_dd:28.67},
+    r1:           {trades:2009, wr:52.4, pf:1.099, pnl:21375,  sharpe:1.08, max_dd:37.31},
+    r2:           null,
+    unclassified: null,
+  },
+};
+
+const CLS_META = {
+  dwp:          {label:'DWP',    sub:'Directional With Pullback', dot:'#22d3ee', color:'var(--blue)'},
+  dnp:          {label:'DNP',    sub:'Directional No Pullback',   dot:'#f59e0b', color:'var(--amber)'},
+  r1:           {label:'R1',     sub:'Range Day Type 1',          dot:'#3b82f6', color:'var(--blue)'},
+  r2:           {label:'R2',     sub:'Range Day Type 2',          dot:'#8b5cf6', color:'var(--purple)'},
+  unclassified: {label:'Unclas', sub:'Unclassified Days',         dot:'#4a6480', color:'var(--text-muted)'},
+};
 
 // Get all available profile keys for a given fullKey
 function getAvailableProfiles(fullKey) {
@@ -591,31 +694,49 @@ document.addEventListener('mousemove',e=>{if(tip.style.display==='block')moveTip
 // ── CHART PRIMITIVES ────────────────────────────────────────────────────────
 function barChart(container,data,H,yMin,yMax){
   const W=container.clientWidth||600,c=C();
-  const ml=42,mr=8,mt=12,mb=30,cw=W-ml-mr,ch=H-mt-mb,range=yMax-yMin;
+  const ml=44,mr=18,mt=20,mb=36,cw=W-ml-mr,ch=H-mt-mb,range=yMax-yMin;
   const yS=v=>(1-(v-yMin)/range)*ch;
   const groups=[...new Set(data.map(d=>d.group))];
   const keys=[...new Set(data.map(d=>d.key))];
   const clrs={LONG:c.green,SHORT:c.red};
-  const gw=cw/groups.length,bw=Math.min(18,gw/(keys.length+1.2)),bgap=3;
-  let s='',xl='',yl='';
-  [33.3,40,50,60,70].forEach(yv=>{
+  const gw=cw/groups.length,bw=Math.min(24,gw/(keys.length+0.8)),bgap=4;
+  let defs='',grid='',bars='',vlbls='',xl='',yl='';
+
+  // Edge zone highlight (>55%)
+  if(55>=yMin&&55<=yMax){
+    const y55=yS(55),yTop=yS(yMax);
+    grid+=`<rect x="0" y="${yTop}" width="${cw}" height="${y55-yTop}" fill="${isDark?'rgba(16,185,129,.04)':'rgba(16,185,129,.03)'}" rx="0"/>`;
+  }
+  // Grid lines
+  [33.3,40,50,55,60,70].forEach(yv=>{
     if(yv<yMin||yv>yMax)return;
-    const y=yS(yv),isBe=yv===33.3;
-    s+=`<line x1="0" y1="${y}" x2="${cw}" y2="${y}" stroke="${isBe?c.beLine:c.gridLine}" stroke-width="${isBe?1.5:1}" stroke-dasharray="${isBe?'6,3':'2,4'}"/>`;
-    if(isBe)s+=`<text x="${cw-2}" y="${y-5}" text-anchor="end" font-size="8" fill="${c.amber}" font-family="${SVG_FONT}" font-weight="500">BE</text>`;
-    yl+=`<text x="-6" y="${y+4}" text-anchor="end" font-size="9" fill="${c.axisText}" font-family="${SVG_FONT}">${yv}%</text>`;
+    const y=yS(yv),isBe=yv===33.3,isEdge=yv===55;
+    const col=isBe?c.beLine:isEdge?'rgba(16,185,129,.35)':c.gridLine;
+    const dash=isBe?'6,3':isEdge?'5,3':'2,4';
+    const lw=isBe?1.5:1;
+    grid+=`<line x1="0" y1="${y}" x2="${cw}" y2="${y}" stroke="${col}" stroke-width="${lw}" stroke-dasharray="${dash}"/>`;
+    const tag=isBe?'BE':isEdge?'55%':`${yv}%`;
+    if(isBe||isEdge) grid+=`<text x="${cw+6}" y="${y+4}" text-anchor="start" font-size="8" font-weight="600" fill="${isBe?c.amber:c.green}" font-family="${SVG_FONT}">${tag}</text>`;
+    yl+=`<text x="-7" y="${y+4}" text-anchor="end" font-size="9" fill="${c.axisText}" font-family="${SVG_FONT}">${yv===33.3?'33':yv}%</text>`;
   });
+
+  // Bars
   groups.forEach((g,gi)=>{
     const gx=gi*gw+gw/2,tw=keys.length*(bw+bgap)-bgap;
     keys.forEach((k,ki)=>{
       const d=data.find(r=>r.group===g&&r.key===k);
       if(!d)return;
-      const x=gx-tw/2+ki*(bw+bgap),y=yS(d.val),bh=ch-y,fill=clrs[k]||c.blue;
-      s+=`<rect x="${x}" y="${y}" width="${bw}" height="${bh}" fill="${fill}" fill-opacity="0.85" rx="2" onmouseenter="showTip(event,[['${g} ${k}','${d.val.toFixed(1)}%','g'],['EV','${d.ev!=null?(d.ev>0?'+':'')+d.ev.toFixed(3)+'R':'—'}','g'],['PF','${d.pf!=null?d.pf.toFixed(2):'—'}','a'],['n','${d.n||0}','']])" onmouseleave="hideTip()" style="cursor:default"/>`;
+      const x=gx-tw/2+ki*(bw+bgap),y=yS(d.val),bh=ch-y;
+      const baseCol=clrs[k]||c.blue;
+      const alpha=d.val>=60?0.92:d.val>=50?0.78:d.val>=40?0.58:0.42;
+      const gId=`bcg${gi}_${ki}`;
+      defs+=`<linearGradient id="${gId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${baseCol}" stop-opacity="${alpha}"/><stop offset="100%" stop-color="${baseCol}" stop-opacity="${Math.max(alpha-0.22,0.18)}"/></linearGradient>`;
+      bars+=`<rect x="${x}" y="${y}" width="${bw}" height="${bh}" fill="url(#${gId})" rx="3" onmouseenter="showTip(event,[['${g} ${k}','${d.val.toFixed(1)}%','g'],['EV','${d.ev!=null?(d.ev>0?'+':'')+d.ev.toFixed(3)+'R':'—'}','g'],['PF','${d.pf!=null?d.pf.toFixed(2):'—'}','a'],['n','${d.n||0}','']])" onmouseleave="hideTip()" style="cursor:default"/>`;
+      if(bh>20) vlbls+=`<text x="${x+bw/2}" y="${y-5}" text-anchor="middle" font-size="8" font-weight="600" fill="${baseCol}" font-family="${SVG_FONT}">${d.val.toFixed(0)}%</text>`;
     });
-    xl+=`<text x="${gx}" y="${ch+22}" text-anchor="middle" font-size="9" fill="${c.axisText}" font-family="${SVG_FONT}">${g}</text>`;
+    xl+=`<text x="${gx}" y="${ch+26}" text-anchor="middle" font-size="9" fill="${c.axisText}" font-family="${SVG_FONT}">${g}</text>`;
   });
-  container.innerHTML=`<svg width="${W}" height="${H}" style="overflow:visible;display:block"><g transform="translate(${ml},${mt})">${s}${yl}${xl}</g></svg>`;
+  container.innerHTML=`<svg width="${W}" height="${H}" style="overflow:visible;display:block"><defs>${defs}</defs><g transform="translate(${ml},${mt})">${grid}${bars}${vlbls}${yl}${xl}</g></svg>`;
 }
 
 function lineChart(container,data,H,yMin,yMax,key,labelKey){
@@ -718,71 +839,67 @@ function dirCards(container,data){
 
 
 // ── T-SPOT VARIANT ──────────────────────────────────────────────────────────
-let activeTspotType = 'Normal_BULL';
-const TSPOT_TYPES = [
-  {key:'Normal_BULL',    label:'Normal Bull',      dir:'bull', desc:'Sweep of prior candle extreme (0.30–0.80× range) → CISD → Long. Standard pro-reversal setup; the most common T-Spot pattern.'},
-  {key:'Normal_BEAR',    label:'Normal Bear',      dir:'bear', desc:'Sweep of prior candle extreme (0.30–0.80× range) → CISD → Short. Mirror of Normal Bull.'},
-  {key:'Expansive_BULL', label:'Expansive Bull',   dir:'bull', desc:'Deep sweep (>0.80× range) beyond prior candle extreme → CISD → Long. Price drives further into liquidity before reversing.'},
-  {key:'Expansive_BEAR', label:'Expansive Bear',   dir:'bear', desc:'Deep sweep (>0.80× range) → CISD → Short. Larger manipulation range; wider stop but proportionally larger target.'},
-  {key:'ProTrend_BULL',  label:'Pro-Trend Bull',   dir:'bull', desc:'Shallow sweep (<0.30× range) through midpoint region → CISD → Long. Price barely breaches the level; often a continuation pullback.'},
-  {key:'ProTrend_BEAR',  label:'Pro-Trend Bear',   dir:'bear', desc:'Shallow sweep (<0.30× range) → CISD → Short. Minimal displacement; tighter entry conditions.'},
-];
-
-function switchTspotType(key){
-  activeTspotType = key;
-  renderTspotSection();
-}
-
-function renderTspotSection(){
+function renderClassificationBreakdown(){
+  const el = document.getElementById('classification-breakdown');
+  if (!el) return;
+  // Prefer live by_classification from model_stats.json; fall back to static CLASSIFICATION_DATA
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
-  const D = getProfileData(fullKey, activeProfile);
-  const breakdown = D?.tspot_breakdown || {};
-
-  // Pills
-  const pillsCt = document.getElementById('tspot-pills');
-  pillsCt.innerHTML = TSPOT_TYPES.map(t => {
-    const d   = breakdown[t.key];
-    const n   = d?.overall?.n || 0;
-    const isA = t.key === activeTspotType;
-    const cls = isA ? (t.dir==='bull' ? 'active-bull' : 'active-bear') : '';
-    return `<div class="tspot-pill ${cls}" onclick="switchTspotType('${t.key}')">${t.label}<span style="font-size:10px;opacity:.55;margin-left:4px">${n}</span></div>`;
-  }).join('');
-
-  const tinfo = TSPOT_TYPES.find(t => t.key === activeTspotType);
-  const data  = breakdown[activeTspotType];
-
-  // Description
-  document.getElementById('tspot-desc').textContent = tinfo?.desc || '';
-
-  if (!data || data.overall.n === 0){
-    document.getElementById('tspot-summary').innerHTML = `<div style="grid-column:1/-1;font-family:var(--font-data);font-size:10px;color:var(--text-muted);padding:8px">No data for this variant. Run model_stats.py to generate.</div>`;
-    document.getElementById('tspot-heatmap').innerHTML = '';
-    document.getElementById('tspot-combos').innerHTML  = '';
-    return;
-  }
-
-  const ov = data.overall;
+  const D  = getActiveTFData(getProfileData(fullKey, activeProfile));
+  const live = D?.by_classification;
+  const cd = live
+    ? { dwp: live.DWP, dnp: live.DNP, r1: live.R1, r2: live.R2, unclassified: live.Unclassified }
+    : CLASSIFICATION_DATA[activeProfile];
   const c  = C();
-  const wrCol = ov.wr >= 0.55 ? c.green : ov.wr >= 0.45 ? c.amber : c.red;
-  document.getElementById('tspot-summary').innerHTML = [
-    {l:'Setups',        v: ov.n.toLocaleString(),  col:'var(--text-primary)'},
-    {l:'Win Rate',      v: pct(ov.wr),              col: wrCol},
-    {l:'EV / Trade',    v: evFmt(ov.ev),            col: ov.ev > 0 ? c.green : c.red},
-    {l:'Profit Factor', v: pfFmt(ov.pf),            col: ov.pf >= 2 ? c.green : ov.pf >= 1.5 ? c.amber : c.red},
-  ].map(i => `<div class="rg-cell"><div class="rg-lbl">${i.l}</div><div class="rg-val" style="color:${i.col};font-size:20px">${i.v}</div></div>`).join('');
 
-  renderHeatmap(document.getElementById('tspot-heatmap'), data.heatmap || []);
+  const fmt$ = v => v >= 0 ? '+$'+v.toLocaleString('en-US',{maximumFractionDigits:0}) : '-$'+Math.abs(v).toLocaleString('en-US',{maximumFractionDigits:0});
+  const safeBadge  = `<span style="font-family:var(--font-data);font-size:10px;font-weight:700;letter-spacing:.06em;padding:3px 8px;border-radius:4px;background:var(--green-tint);border:1px solid var(--green-border);color:var(--green);text-transform:uppercase">SAFE</span>`;
+  const blownBadge = `<span style="font-family:var(--font-data);font-size:10px;font-weight:700;letter-spacing:.06em;padding:3px 8px;border-radius:4px;background:var(--red-tint);border:1px solid var(--red-border);color:var(--red);text-transform:uppercase">BLOWN</span>`;
 
-  const tc = data.top_combos || [];
-  if (tc.length > 0){
-    const tcCt = document.getElementById('tspot-combos');
-    tcCt.innerHTML = `<div style="font-family:var(--font-data);font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px">Top Combos · DOW × Hour</div>`;
-    const tbl = document.createElement('div');
-    tcCt.appendChild(tbl);
-    comboTable(tbl, tc);
-  } else {
-    document.getElementById('tspot-combos').innerHTML = '';
-  }
+  const cards = Object.entries(CLS_META).map(([key, meta]) => {
+    const d = cd?.[key] ?? null;
+    if (!d) {
+      return `<div class="cls-tile" style="border-top:2px solid ${meta.dot};opacity:0.55">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">
+          <div>
+            <div style="font-family:var(--font-display);font-size:15px;font-weight:800;color:${meta.color};letter-spacing:-0.02em;line-height:1">${meta.label}</div>
+            <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-top:3px">${meta.sub}</div>
+          </div>
+          ${blownBadge}
+        </div>
+        <div style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);text-align:center;padding:12px 0">Not in DDLI leaderboard</div>
+      </div>`;
+    }
+    const wrCol  = d.wr >= 55 ? 'var(--green)' : d.wr >= 48 ? 'var(--amber)' : 'var(--red)';
+    const pnlCol = d.pnl > 0  ? 'var(--green)' : 'var(--red)';
+    const shCol  = d.sharpe == null ? 'var(--text-muted)' : d.sharpe >= 3 ? 'var(--green)' : d.sharpe >= 1.5 ? 'var(--amber)' : d.sharpe >= 0 ? 'var(--red)' : 'var(--red)';
+    return `<div class="cls-tile" style="border-top:2px solid ${meta.dot}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
+        <div>
+          <div style="font-family:var(--font-display);font-size:15px;font-weight:800;color:${meta.color};letter-spacing:-0.02em;line-height:1">${meta.label}</div>
+          <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-top:3px">${meta.sub}</div>
+        </div>
+        ${d.blown ? blownBadge : safeBadge}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Win Rate</div>
+          <div style="font-family:var(--font-display);font-size:22px;font-weight:800;color:${wrCol};line-height:1">${d.wr.toFixed(1)}%</div>
+          <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-top:3px">${d.trades.toLocaleString()} trades</div>
+        </div>
+        <div>
+          <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Total P&amp;L</div>
+          <div style="font-family:var(--font-display);font-size:18px;font-weight:800;color:${pnlCol};line-height:1">${fmt$(d.pnl)}</div>
+          <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-top:3px">Sharpe <span style="color:${shCol}">${d.sharpe.toFixed(2)}</span></div>
+        </div>
+      </div>
+    </div>`;
+  });
+
+  el.innerHTML = `
+    <div style="font-family:var(--font-data);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px">
+      DDLI Classification Breakdown · FractalSweep2 Full Dataset
+    </div>
+    <div class="cls-grid">${cards.join('')}</div>`;
 }
 
 function renderModelDropdown(){
@@ -808,20 +925,27 @@ function renderProfileDropdown(){
     const label = (PROFILE_LABELS[pk] || pk) + (ev != null ? '  ·  EV ' + (ev>0?'+':'') + ev.toFixed(3) + 'R' : '');
     return `<option value="${pk}" ${pk===activeProfile?'selected':''}>${label}</option>`;
   }
-  const multKeys = RR_PROFILES.filter(pk => !PCT_PROFILES.has(pk));
-  const pctKeys  = RR_PROFILES.filter(pk =>  PCT_PROFILES.has(pk));
-  sel.innerHTML =
-    `<optgroup label="Sweep-Relative (× base risk)">${multKeys.map(optHtml).join('')}</optgroup>` +
-    `<optgroup label="Fixed % of Entry Price">${pctKeys.map(optHtml).join('')}</optgroup>`;
+  const availProfiles = isDemo ? RR_PROFILES : (getAvailableProfiles(`${activeModel}_${activeMode}_${activeCisd}`) || RR_PROFILES);
+  sel.innerHTML = availProfiles.map(optHtml).join('');
 }
 
 function switchProfile(pk){
   activeProfile=pk;
   const note = document.getElementById('profile-note');
-  if(note) note.textContent = PCT_PROFILES.has(pk)
-    ? 'Stop & Target = fixed % of entry price (independent of sweep size)'
-    : 'Stop & Target = multiples of |entry − sweep extreme|';
+  if(note) note.textContent = 'Stop & Target = fixed % of entry price · DDLI weighted ranking';
   renderProfileDropdown(); renderModelDropdown(); renderActive();
+}
+function switchTF(tf){ activeTF=tf; renderActive(); }
+
+// Return the stats object for the current model/profile/TF
+// For non-all TFs merges the tf slice (hero+charts) with the full profile (heatmap, combos, etc.)
+function getActiveTFData(fullProfileData){
+  if (!fullProfileData) return null;
+  if (activeTF === 'all') return fullProfileData;
+  const slice = fullProfileData.by_tf?.[activeTF];
+  if (!slice) return fullProfileData; // no data for this TF — fall back to all
+  // Merge: slice provides meta/risk_stats/charts, full profile provides heatmap/combos/filter_impact
+  return Object.assign({}, fullProfileData, slice);
 }
 
 function renderControls(){
@@ -841,11 +965,18 @@ function switchCisd(c){  activeCisd=c;  renderControls(); renderActive(); }
 // ── MAIN RENDER ────────────────────────────────────────────────────────────
 function renderActive(){
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
-  const D = getProfileData(fullKey, activeProfile);
-  if(!D){
+  const baseD = getProfileData(fullKey, activeProfile);
+  if(!baseD){
     document.getElementById('meta-row').innerHTML=`<div style="grid-column:1/-1;font-family:var(--font-data);font-size:11px;color:var(--text-muted);padding:8px">No data for ${fullKey} / ${activeProfile}. Run model_stats.py to generate.</div>`;
     return;
   }
+  const D = getActiveTFData(baseD);
+  // Show TF note in profile-note when not viewing all time
+  const tfLabels = {'all':'All Time (2014–2026)','2y':'Last 2 Years','1y':'Last 1 Year','6m':'Last 6 Months','3m':'Last 3 Months','1m':'Last 1 Month'};
+  const note = document.getElementById('profile-note');
+  if(note) note.textContent = activeTF === 'all'
+    ? 'Stop & Target = fixed % of entry price · DDLI weighted ranking'
+    : `Showing: ${tfLabels[activeTF]} · ${D.meta?.date_range || ''}`;
   renderModel(D);
   renderProfileCompare();
 }
@@ -860,21 +991,41 @@ function renderModel(D){
   const minEq=rs.min_equity_usd;
   const acct=rs.account_size||4500;
 
-  // Meta cards — 12 data-collection-sheet metrics (2 rows × 6)
+  // Hero tiles — Row 1: performance, Row 2: risk
   const mrEl=document.getElementById('meta-row'); mrEl.innerHTML='';
+  const rrTarget = m.rr_target != null ? m.rr_target : (rs.tp_pct != null && rs.sl_pct != null && rs.sl_pct > 0 ? rs.tp_pct / rs.sl_pct : null);
+  const rrStr = rrTarget != null ? rrTarget.toFixed(2)+':1' : '—';
+  const totalPnl = rs.total_pnl_usd;
+  const totalPnlStr = totalPnl != null ? (totalPnl >= 0 ? '+$' : '-$') + Math.abs(totalPnl).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}) : '—';
+  const maxDdPct = rs.max_dd_pct;
+  const maxDdStr = maxDdPct != null ? maxDdPct.toFixed(1)+'%' : '—';
+  const sharpeVal = rs.sharpe;
+  const sharpeStr = sharpeVal != null ? sharpeVal.toFixed(2) : '—';
+  const sharpeCls = sharpeVal == null ? 'w' : sharpeVal >= 2 ? 'g' : sharpeVal >= 1 ? 'a' : 'r';
+  const ddCls = maxDdPct == null ? 'w' : maxDdPct <= 15 ? 'g' : maxDdPct <= 30 ? 'a' : 'r';
+  const wrVal = m.win_rate;
+  const wrCls = wrVal == null ? 'w' : wrVal >= 0.55 ? 'g' : wrVal >= 0.45 ? 'a' : 'r';
+  const evVal = m.ev_per_trade;
+  const pfVal = m.profit_factor;
+  const pfCls = pfVal == null ? 'w' : pfVal >= 1.5 ? 'g' : pfVal >= 1.2 ? 'a' : pfVal >= 1.0 ? 'b' : 'r';
+  const ceVal = rs.ce;
+  const ceCls = ceVal == null ? 'w' : ceVal >= 3 ? 'g' : ceVal >= 1.5 ? 'a' : ceVal >= 1 ? 'b' : 'r';
+  const pnlCls = totalPnl == null ? 'w' : totalPnl > 0 ? 'g' : 'r';
+  const tradesStr = (rs.trades ?? m.total_wl ?? 0).toLocaleString() + ' trades · ' + (m.date_range || '');
   [
-    {label:'SL %',      val:fmtPct(rs.sl_pct),  sub:'Avg stop distance from entry',              cls:'a',vc:'a'},
-    {label:'TP %',      val:fmtPct(rs.tp_pct),  sub:'Avg target distance from entry',            cls:'g',vc:'g'},
-    {label:'Trades',    val:(rs.trades??m.total_wl??0).toLocaleString(), sub:m.date_range||'',   cls:'b',vc:'b'},
-    {label:'Wins',      val:(rs.wins??0).toLocaleString(), sub:m.win_rate!=null?pct(m.win_rate)+' win rate':'',cls:'g',vc:'g'},
-    {label:'Losses',    val:(rs.losses??0).toLocaleString(), sub:'Resolved losses',              cls:'r',vc:'r'},
-    {label:'BE',        val:(rs.be_count??0).toLocaleString(), sub:'Breakeven exits',            cls:'w',vc:'w'},
-    {label:'Avg Win $', val:rs.avg_win_usd!=null?'+'+fmt$(rs.avg_win_usd):'—', sub:'Avg P&L per winning trade',  cls:'g',vc:'g'},
-    {label:'Avg Loss $',val:rs.avg_loss_usd!=null?'−'+fmt$(Math.abs(rs.avg_loss_usd)):'—', sub:'Avg P&L per losing trade', cls:'r',vc:'r'},
-    {label:'Blown',     val:blown==null?'—':blown?'YES':'NO', sub:'Account hit $0 during backtest', cls:blown?'r':'g', vc:blown?'r':'g'},
-    {label:'Low Eq $',  val:minEq!=null?'$'+minEq.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}):'—', sub:`Lowest equity (start $${acct.toLocaleString()})`, cls:minEq!=null&&minEq<acct*0.75?'r':'a',vc:minEq!=null&&minEq<acct*0.75?'r':'a'},
-    {label:'Max W Run', val:rs.max_consec_wins??'—', sub:'Longest winning streak',               cls:'g',vc:'g'},
-    {label:'Max L Run', val:rs.max_consec_losses??'—', sub:'Longest losing streak',              cls:'r',vc:'r'},
+    {label:'Win Rate',    val:m.win_rate!=null?pct(m.win_rate):'—',           sub:tradesStr,                                      cls:wrCls,  vc:wrCls},
+    {label:'EV (R)',      val:evVal!=null?(evVal>0?'+':'')+evVal.toFixed(3)+'R':'—', sub:'Expected value per R risked',             cls:evVal==null?'w':evVal>0?'g':'r', vc:evVal==null?'w':evVal>0?'g':'r'},
+    {label:'Prof Factor', val:pfVal!=null?pfVal.toFixed(3):'—',               sub:'Gross profit ÷ gross loss',                    cls:pfCls,  vc:pfCls},
+    {label:'CE',          val:ceVal!=null?ceVal.toFixed(3):'—',               sub:'Certainty Equivalent · MFE/MAE ratio',         cls:ceCls,  vc:ceCls},
+    {label:'Total P&L',   val:totalPnlStr,                                    sub:`$${acct.toLocaleString()} account · $${(rs.risk_per_trade??225).toLocaleString()}/trade · ${m.date_range||''}`, cls:pnlCls, vc:pnlCls},
+    {label:'Sharpe',      val:sharpeStr,                                      sub:'Annualised Sharpe ratio',                      cls:sharpeCls, vc:sharpeCls},
+    {label:'SL %',        val:rs.sl_pct!=null?rs.sl_pct.toFixed(2)+'%':'—',  sub:'Fixed stop-loss % from entry',                 cls:'a',    vc:'a'},
+    {label:'TP %',        val:rs.tp_pct!=null?rs.tp_pct.toFixed(2)+'%':'—',  sub:'Fixed take-profit % from entry',               cls:'g',    vc:'g'},
+    {label:'R:R',         val:rrStr,                                          sub:'Reward-to-risk ratio (TP÷SL)',                 cls:'b',    vc:'b'},
+    {label:'Blown',       val:blown==null?'—':blown?'YES':'NO',               sub:`Account blown in ${m.date_range||'backtest'}?`,cls:blown?'r':'g', vc:blown?'r':'g'},
+    {label:'Max DD',      val:maxDdStr,                                       sub:`-$${minEq!=null?Math.round(acct-minEq).toLocaleString():'—'} from $${acct.toLocaleString()} initial · ${m.date_range||''}`, cls:ddCls, vc:ddCls},
+    {label:'Max W Run',   val:rs.max_consec_wins??'—',                        sub:'Longest winning streak · '+( m.date_range||''),cls:'g',    vc:'g'},
+    {label:'Max L Run',   val:rs.max_consec_losses??'—',                      sub:'Longest losing streak · '+(m.date_range||''), cls:'r',    vc:'r'},
   ].forEach(card=>{
     const el=document.createElement('div'); el.className=`mc ${card.cls}`;
     el.innerHTML=`<div class="mc-accent"></div><div class="mc-lbl">${card.label}</div><div class="mc-val ${card.vc}">${card.val}</div><div class="mc-sub">${card.sub}</div>`;
@@ -906,7 +1057,7 @@ function renderModel(D){
 
   renderSweepMAEAnalysis(D);
 
-  renderTspotSection();
+  renderClassificationBreakdown();
   renderRecentTrades();
 }
 
@@ -1067,7 +1218,8 @@ function drawSweepMAEBell(canvas, bell, currentSlPct) {
 function renderRecentTrades() {
   const el = document.getElementById('recent-trades-table');
   if (!el) return;
-  const D = getProfileData(`${activeModel}_${activeMode}_${activeCisd}`, activeProfile);
+  const baseD2 = getProfileData(`${activeModel}_${activeMode}_${activeCisd}`, activeProfile);
+  const D = getActiveTFData(baseD2);
   const trades = D?.recent_trades;
   if (!trades || !trades.length) {
     el.innerHTML = '<p style="color:var(--text-muted);font-size:13px;padding:8px 0;">No trades data. Run <code>python3 model_stats.py</code> to generate.</p>';
@@ -1159,10 +1311,11 @@ function renderProfileCompare(){
   el.innerHTML = html;
 }
 
-function drawSetupScene(cvs, dir){
+function drawSetupScene(cvs, dir, slPct, tpPct){
   if(!cvs) return;
+  slPct = slPct||0.26; tpPct = tpPct||0.18;
   const DPR = window.devicePixelRatio||1;
-  const W = cvs.offsetWidth, H = 340;
+  const W = cvs.offsetWidth, H = 370;
   cvs.width = W*DPR; cvs.height = H*DPR; cvs.style.height = H+'px';
   const ctx = cvs.getContext('2d');
   ctx.scale(DPR,DPR);
@@ -1175,13 +1328,21 @@ function drawSetupScene(cvs, dir){
   const orange= '#fb923c';
   const muted = isDark ? '#4a6480' : '#94a3b8';
   const border= isDark ? '#1e2d42' : '#e2e8f0';
+  const textBg= isDark ? 'rgba(17,24,39,0.92)' : 'rgba(255,255,255,0.92)';
 
   ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
 
-  const PAD={t:48,b:44,l:36,r:140};
+  const PAD={t:52,b:46,l:36,r:172};
   const cH=H-PAD.t-PAD.b;
   const py=p=>PAD.t+cH*(1-p/100);
   const CW=10, GAP=4, slot=CW+GAP;
+
+  // SL/TP are fixed % — scale visually so SL_UNITS is constant
+  const SL_UNITS = 20;
+  const TP_UNITS = SL_UNITS * (tpPct / slPct);
+  const rrStr    = (tpPct/slPct).toFixed(2)+':1';
+  const slStr    = slPct.toFixed(2)+'%';
+  const tpStr    = tpPct.toFixed(2)+'%';
 
   function hl(y,x1,x2,col,dash=[],lw=1){
     ctx.save();ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.setLineDash(dash);
@@ -1195,7 +1356,7 @@ function drawSetupScene(cvs, dir){
   }
   function lbl(s,x,y,col,sz=8,align='left',bold=false){
     ctx.save();ctx.fillStyle=col;ctx.textAlign=align;
-    ctx.font=`${bold?'700':'400'} ${sz}px "JetBrains Mono",monospace`;
+    ctx.font=`${bold?'600':'400'} ${sz}px "IBM Plex Mono",monospace`;
     ctx.fillText(s,x,y);ctx.restore();
   }
   function cdl(x,o,h,l,c,w){
@@ -1207,120 +1368,175 @@ function drawSetupScene(cvs, dir){
     if(bull){ctx.strokeRect(x,bt,w,bh);ctx.fillStyle=bg;ctx.fillRect(x+1.5,bt+1.5,w-3,bh-3);ctx.strokeRect(x,bt,w,bh);}
     else{ctx.fillStyle=red;ctx.fillRect(x,bt,w,bh);}
   }
-  function ruler(x,y1,y2,col,lines,lw=1.5){
+  function ruler(x,y1,y2,col,topLbl,lw=1.5){
     const mid=(y1+y2)/2;
     ctx.save();ctx.strokeStyle=col;ctx.lineWidth=lw;
     ctx.beginPath();ctx.moveTo(x+4,y1);ctx.lineTo(x,y1);ctx.lineTo(x,y2);ctx.moveTo(x,y2);ctx.lineTo(x+4,y2);ctx.stroke();
     ctx.restore();
-    lines.forEach((ln,i)=>lbl(ln,x+8,mid+(i-(lines.length-1)/2)*10,col,7,'left',i===0));
+    lbl(topLbl,x+7,mid+3,col,7,'left',true);
   }
   function badge(n,cx,cy,col){
     ctx.save();ctx.fillStyle=col;ctx.beginPath();ctx.arc(cx,cy,7,0,Math.PI*2);ctx.fill();
-    ctx.font='700 7px "JetBrains Mono",monospace';ctx.fillStyle=bg;ctx.textAlign='center';
+    ctx.font='700 7px "IBM Plex Mono",monospace';ctx.fillStyle=bg;ctx.textAlign='center';
     ctx.fillText(n,cx,cy+2.5);ctx.restore();
+  }
+  function chip(text,x,y,bgcol,textcol){
+    ctx.save();ctx.font='600 7px "IBM Plex Mono",monospace';
+    const tw=ctx.measureText(text).width;
+    ctx.fillStyle=bgcol;ctx.globalAlpha=0.15;ctx.fillRect(x-4,y-9,tw+10,13);
+    ctx.globalAlpha=1;ctx.fillStyle=textcol;ctx.textAlign='left';ctx.fillText(text,x,y);
+    ctx.restore();
   }
 
   if(dir==='bull'){
-    const STOP_P=10, PHL_P=28, PHH_P=55, CL_P=41, EP_P=44, TP=72;
-    const RISK=EP_P-STOP_P, REW=TP-EP_P;
-    const RR=(REW/RISK).toFixed(1);
-    const stopY=py(STOP_P),phlY=py(PHL_P),phhY=py(PHH_P),cisdY=py(CL_P),entryY=py(EP_P),targetY=py(TP);
+    const EP_P = 46;
+    const STOP_P = EP_P - SL_UNITS;
+    const TP_P   = EP_P + TP_UNITS;
+    const SWP_P  = STOP_P - 12;
+    const PHL_P  = STOP_P - 5;
+    const PHH_P  = EP_P + SL_UNITS*1.7;
+
+    const stopY=py(STOP_P), swpY=py(SWP_P), phlY=py(PHL_P), phhY=py(PHH_P);
+    const entryY=py(EP_P), targetY=py(TP_P);
+    const cisdLow=py(EP_P-3);
 
     const PHW=CW*3;
     const xPH=PAD.l+GAP, xQ1=xPH+PHW+GAP*3, xRet=xQ1+6*slot, xCisd=xRet+3*slot, xEnt=xCisd+2*slot, xEnd=xEnt+4*slot;
     const lineEnd=xEnd+4;
 
+    // Phase bands
     [[xPH,PHW+GAP*2,'rgba(59,130,246,0.06)','① PREV HTF'],
      [xQ1,6*slot,'rgba(239,68,68,0.06)','② Q1 SWEEP'],
      [xRet,3*slot,'rgba(16,185,129,0.04)','③ RETURN'],
      [xCisd,2*slot,'rgba(251,146,60,0.07)','④ CISD'],
      [xEnt,4*slot,'rgba(245,158,11,0.05)','⑤ TRADE'],
     ].forEach(([x,w,col,lbl_])=>{
-      ctx.fillStyle=col;ctx.fillRect(x,PAD.t-10,w,cH+18);
-      lbl(lbl_,x+3,PAD.t-12,muted,6.5);
+      ctx.fillStyle=col;ctx.fillRect(x,PAD.t-12,w,cH+20);
+      lbl(lbl_,x+3,PAD.t-14,muted,6.5);
     });
 
-    hl(targetY,xPH-4,lineEnd,teal,  [],    2);
-    hl(phhY,   xPH-4,lineEnd,muted, [4,4], 0.75);
-    hl(entryY, xPH-4,lineEnd,gold,  [3,2], 1.5);
-    hl(cisdY,  xPH-4,lineEnd,blue,  [5,3], 1.5);
-    hl(phlY,   xPH-4,lineEnd,orange,[5,3], 2);
-    hl(stopY,  xPH-4,lineEnd,red,   [],    2);
+    // Risk/reward zones in trade phase
+    const tzX=xEnt-4, tzW=lineEnd-xEnt+8;
+    ctx.save();
+    ctx.fillStyle='rgba(239,68,68,0.10)';ctx.fillRect(tzX,stopY,tzW,entryY-stopY);
+    ctx.fillStyle='rgba(16,185,129,0.13)';ctx.fillRect(tzX,targetY,tzW,entryY-targetY);
+    ctx.restore();
 
+    // Key price lines
+    hl(targetY, xPH-4, lineEnd, teal,   [], 2.5);
+    hl(entryY,  xPH-4, lineEnd, gold,   [4,3], 2);
+    hl(stopY,   xPH-4, lineEnd, red,    [], 2.5);
+    hl(phlY,    xPH-4, lineEnd, orange, [6,3], 1.5);
+    hl(swpY,    xPH-4, lineEnd, red,    [2,5], 1);
+    hl(phhY,    xPH-4, lineEnd, muted,  [4,4], 0.7);
+    hl(cisdLow, xPH-4, xCisd+2*slot+4, blue, [5,3], 1);
+
+    // HTF prior candle
     const phMid=xPH+PHW/2;
     ctx.strokeStyle=red;ctx.lineWidth=1.5;
-    ctx.beginPath();ctx.moveTo(phMid,phhY);ctx.lineTo(phMid,py(50));ctx.stroke();
-    ctx.beginPath();ctx.moveTo(phMid,py(31));ctx.lineTo(phMid,phlY);ctx.stroke();
-    ctx.fillStyle=red;ctx.fillRect(xPH,py(50),PHW,Math.max(py(31)-py(50),2));
-    lbl('1H',phMid,py(41),bg,7,'center',true);
-    vl(xQ1-GAP,PAD.t-10,PAD.t+cH+6,border,[3,3]);
+    ctx.beginPath();ctx.moveTo(phMid,phhY);ctx.lineTo(phMid,py(EP_P+SL_UNITS*2));ctx.stroke();
+    ctx.beginPath();ctx.moveTo(phMid,py(EP_P-SL_UNITS*0.3));ctx.lineTo(phMid,phlY);ctx.stroke();
+    ctx.fillStyle=red;ctx.fillRect(xPH,py(EP_P+SL_UNITS*2),PHW,Math.max(py(EP_P-SL_UNITS*0.3)-py(EP_P+SL_UNITS*2),2));
+    lbl('HTF',phMid,py(EP_P+SL_UNITS*0.7),bg,7,'center',true);
+    vl(xQ1-GAP,PAD.t-12,PAD.t+cH+8,border,[3,3]);
 
+    // Sweep candles (going down)
     let x=xQ1;
-    cdl(x,py(41),py(44),py(33),py(35),CW);x+=slot;
-    cdl(x,py(35),py(37),py(26),py(28),CW);
+    const s0=EP_P+2;
+    cdl(x,py(s0),py(s0+3),py(s0-7),py(s0-5),CW);x+=slot;
+    cdl(x,py(s0-5),py(s0-3),py(s0-14),py(s0-12),CW);
     ctx.save();ctx.fillStyle=orange;
     ctx.beginPath();ctx.moveTo(x+CW/2-3,phlY+3);ctx.lineTo(x+CW/2,phlY+7);ctx.lineTo(x+CW/2+3,phlY+3);ctx.fill();
     ctx.restore();
-    lbl('SWEPT',x+CW/2,phlY+15,orange,6,'center',true);
+    chip('SWEPT',x+CW/2-12,phlY+18,orange,orange);
     x+=slot;
-    cdl(x,py(28),py(30),py(20),py(22),CW);x+=slot;
-    cdl(x,py(22),py(24),py(14),py(16),CW);x+=slot;
-    cdl(x,py(16),py(18),py(8),stopY,CW);
+    cdl(x,py(s0-12),py(s0-10),py(s0-20),py(s0-17),CW);x+=slot;
+    cdl(x,py(s0-17),py(s0-15),py(SWP_P+3),py(SWP_P+1),CW);
     ctx.save();ctx.fillStyle=red;
-    ctx.beginPath();ctx.moveTo(x+CW/2-3,stopY-4);ctx.lineTo(x+CW/2,stopY-1);ctx.lineTo(x+CW/2+3,stopY-4);ctx.fill();
+    ctx.beginPath();ctx.moveTo(x+CW/2-3,swpY-4);ctx.lineTo(x+CW/2,swpY-1);ctx.lineTo(x+CW/2+3,swpY-4);ctx.fill();
     ctx.restore();
-    lbl('EXTREME',x+CW/2,stopY+10,red,6,'center',true);
+    chip('EXTREME',x+CW/2-14,swpY+11,red,red);
     x+=slot;
-    cdl(x,py(10),py(20),py(8),py(18),CW);x+=slot;
-    vl(xRet-GAP/2,PAD.t-10,PAD.t+cH+6,border,[3,3]);
+    cdl(x,py(SWP_P+1),py(SWP_P+11),py(SWP_P),py(SWP_P+9),CW);x+=slot;
+    vl(xRet-GAP/2,PAD.t-12,PAD.t+cH+8,border,[3,3]);
 
+    // Return candles (going up, back above prior low)
     x=xRet;
-    cdl(x,py(20),py(32),py(16),py(30),CW);x+=slot;
-    cdl(x,py(30),py(40),py(27),py(37),CW);x+=slot;
-    cdl(x,py(37),py(44),py(33),py(40),CW);
-    lbl('BACK ABOVE',x+CW/2,phlY-7,orange,6,'center',true);
-    lbl('PREV LOW',x+CW/2,phlY-15,orange,6,'center',true);
+    cdl(x,py(SWP_P+9),py(SWP_P+19),py(SWP_P+6),py(SWP_P+17),CW);x+=slot;
+    cdl(x,py(SWP_P+17),py(SWP_P+26),py(SWP_P+13),py(SWP_P+23),CW);x+=slot;
+    cdl(x,py(SWP_P+23),py(EP_P-2),py(SWP_P+20),py(EP_P-3),CW);
+    chip('BACK ABOVE',x+CW/2-18,phlY-14,orange,orange);
+    chip('PREV LOW',x+CW/2-12,phlY-5,orange,orange);
     x+=slot;
-    vl(xCisd-GAP/2,PAD.t-10,PAD.t+cH+6,border,[3,3]);
+    vl(xCisd-GAP/2,PAD.t-12,PAD.t+cH+8,border,[3,3]);
 
+    // CISD candles
     x=xCisd;
-    cdl(x,py(38),py(44),py(35),py(39),CW);x+=slot;
-    cdl(x,py(38),py(48),py(35),py(43),CW);
+    cdl(x,py(EP_P-5),py(EP_P-2),py(EP_P-8),py(EP_P-6),CW);x+=slot;
+    cdl(x,py(EP_P-5),py(EP_P-1),py(EP_P-7),py(EP_P-2),CW);
     ctx.save();ctx.strokeStyle=blue;ctx.lineWidth=1.5;ctx.setLineDash([3,2]);
-    ctx.beginPath();ctx.moveTo(x+CW/2,cisdY);ctx.lineTo(x+CW/2,py(43));ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x+CW/2,cisdLow);ctx.lineTo(x+CW/2,py(EP_P-2));ctx.stroke();
     ctx.setLineDash([]);ctx.restore();
-    lbl('CISD ↑',x+CW/2,cisdY-7,blue,6,'center',true);
+    chip('CISD ↑',x+CW/2-14,cisdLow-6,blue,blue);
     x+=slot;
-    vl(xEnt-GAP/2,PAD.t-10,PAD.t+cH+6,border,[3,3]);
+    vl(xEnt-GAP/2,PAD.t-12,PAD.t+cH+8,border,[3,3]);
 
+    // Trade phase — entry arrow + 4 candles heading to target
     x=xEnt;
     ctx.save();ctx.fillStyle=gold;
-    ctx.beginPath();ctx.moveTo(x-3,entryY-3);ctx.lineTo(x+3,entryY);ctx.lineTo(x-3,entryY+3);ctx.fill();
+    ctx.beginPath();ctx.moveTo(x-4,entryY-3);ctx.lineTo(x+2,entryY);ctx.lineTo(x-4,entryY+3);ctx.fill();
     ctx.restore();
-    cdl(x,entryY,py(52),py(41),py(50),CW);x+=slot;
-    cdl(x,py(50),py(60),py(47),py(58),CW);x+=slot;
-    cdl(x,py(58),py(68),py(55),py(66),CW);x+=slot;
-    cdl(x,py(66),py(75),py(63),py(72),CW);x+=slot;
+    cdl(x,entryY,py(EP_P+2),py(EP_P-1),py(EP_P+1.5),CW);x+=slot;
+    cdl(x,py(EP_P+1.5),py(EP_P+4),py(EP_P+0.5),py(EP_P+3.5),CW);x+=slot;
+    cdl(x,py(EP_P+3.5),py(EP_P+6.5),py(EP_P+2.5),py(EP_P+5.5),CW);x+=slot;
+    cdl(x,py(EP_P+5.5),py(TP_P+0.5),py(EP_P+4),py(TP_P-0.5),CW);
+    // TP hit dot
+    ctx.save();ctx.fillStyle=teal;ctx.beginPath();ctx.arc(x+CW/2,targetY,5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=bg;ctx.beginPath();ctx.arc(x+CW/2,targetY,2.5,0,Math.PI*2);ctx.fill();
+    ctx.restore();
 
-    const rx=xEnd+6;
-    lbl('TARGET',         rx,targetY-3, teal,  7,'left',true);
-    lbl('ENTRY',          rx,entryY-3,  gold,  7,'left',true);
-    lbl('CISD LVL',       rx,cisdY+9,   blue,  7,'left',true);
-    lbl('PREV LOW (swept)',rx,phlY-3,   orange,7,'left',true);
-    lbl('STOP',           rx,stopY+9,   red,   7,'left',true);
+    // Right-side labels
+    const rx=lineEnd+10;
+    lbl('TARGET',rx,targetY-4,teal,8,'left',true);
+    lbl(`+${tpStr} from entry`,rx,targetY+8,muted,7,'left');
+    lbl('ENTRY',rx,entryY-4,gold,8,'left',true);
+    lbl('(next candle open)',rx,entryY+8,muted,7,'left');
+    lbl('STOP',rx,stopY+8,red,8,'left',true);
+    lbl(`-${slStr} from entry`,rx,stopY+19,muted,7,'left');
+    lbl('SWEEP EXTREME',rx,swpY+5,isDark?'#3d5266':'#9ca3af',7,'left');
+    lbl('(not the stop)',rx,swpY+14,muted,6,'left');
 
-    ruler(rx,stopY,cisdY,muted,['MANIP','RANGE']);
-    ruler(rx,cisdY,targetY,teal,['×2','PROJ']);
+    // Rulers: TP bracket (green) and SL bracket (red)
+    ruler(rx-8,targetY,entryY,teal,`TP ${tpStr}`);
+    ruler(rx-8,entryY,stopY,red,`SL ${slStr}`);
 
-    const bY=PAD.t-24;
+    // R:R chip in top-right
+    const rrText=`R:R  ${rrStr}`;
+    ctx.save();ctx.font='600 8px "IBM Plex Mono",monospace';
+    const rrW=ctx.measureText(rrText).width+16,rrH=18,rrX=W-rrW-8,rrY=PAD.t-30;
+    ctx.fillStyle=isDark?'rgba(30,45,66,0.95)':'rgba(241,245,249,0.95)';
+    ctx.strokeStyle=border;ctx.lineWidth=1;
+    ctx.fillRect(rrX,rrY,rrW,rrH);ctx.strokeRect(rrX,rrY,rrW,rrH);
+    ctx.fillStyle=gold;ctx.textAlign='center';
+    ctx.fillText(rrText,rrX+rrW/2,rrY+12);
+    ctx.restore();
+
+    const bY=PAD.t-28;
     badge('1',xPH+PHW/2,bY,blue);badge('2',xQ1+3*slot,bY,red);badge('3',xRet+1.5*slot,bY,teal);
     badge('4',xCisd+slot,bY,orange);badge('5',xEnt+2*slot,bY,gold);
 
   } else {
-    const STOP_P=90, PHH_P=72, PHL_P=45, CL_P=59, EP_P=56, TP=28;
-    const RISK=STOP_P-EP_P, REW=EP_P-TP;
-    const RR=(REW/RISK).toFixed(1);
-    const stopY=py(STOP_P),phhY=py(PHH_P),phlY=py(PHL_P),cisdY=py(CL_P),entryY=py(EP_P),targetY=py(TP);
+    // ── BEAR setup (mirror) ──────────────────────────────────────────────────
+    const EP_P = 54;
+    const STOP_P = EP_P + SL_UNITS;
+    const TP_P   = EP_P - TP_UNITS;
+    const SWP_P  = STOP_P + 12;
+    const PHH_P  = STOP_P + 5;
+    const PHL_P  = EP_P - SL_UNITS*1.7;
+
+    const stopY=py(STOP_P), swpY=py(SWP_P), phhY=py(PHH_P), phlY=py(PHL_P);
+    const entryY=py(EP_P), targetY=py(TP_P);
+    const cisdHigh=py(EP_P+3);
 
     const PHW=CW*3;
     const xPH=PAD.l+GAP, xQ1=xPH+PHW+GAP*3, xRet=xQ1+6*slot, xCisd=xRet+3*slot, xEnt=xCisd+2*slot, xEnd=xEnt+4*slot;
@@ -1332,93 +1548,121 @@ function drawSetupScene(cvs, dir){
      [xCisd,2*slot,'rgba(251,146,60,0.07)','④ CISD'],
      [xEnt,4*slot,'rgba(245,158,11,0.05)','⑤ TRADE'],
     ].forEach(([x,w,col,lbl_])=>{
-      ctx.fillStyle=col;ctx.fillRect(x,PAD.t-10,w,cH+18);
-      lbl(lbl_,x+3,PAD.t-12,muted,6.5);
+      ctx.fillStyle=col;ctx.fillRect(x,PAD.t-12,w,cH+20);
+      lbl(lbl_,x+3,PAD.t-14,muted,6.5);
     });
 
-    hl(stopY,  xPH-4,lineEnd,red,   [],    2);
-    hl(phhY,   xPH-4,lineEnd,orange,[5,3], 2);
-    hl(cisdY,  xPH-4,lineEnd,blue,  [5,3], 1.5);
-    hl(entryY, xPH-4,lineEnd,gold,  [3,2], 1.5);
-    hl(phlY,   xPH-4,lineEnd,muted, [4,4], 0.75);
-    hl(targetY,xPH-4,lineEnd,teal,  [],    2);
+    // Risk/reward zones in trade phase
+    const tzX=xEnt-4, tzW=lineEnd-xEnt+8;
+    ctx.save();
+    ctx.fillStyle='rgba(239,68,68,0.10)';ctx.fillRect(tzX,entryY,tzW,stopY-entryY);
+    ctx.fillStyle='rgba(16,185,129,0.13)';ctx.fillRect(tzX,targetY,tzW,entryY-targetY);
+    ctx.restore();
+
+    hl(stopY,   xPH-4, lineEnd, red,    [], 2.5);
+    hl(phhY,    xPH-4, lineEnd, orange, [6,3], 1.5);
+    hl(swpY,    xPH-4, lineEnd, red,    [2,5], 1);
+    hl(entryY,  xPH-4, lineEnd, gold,   [4,3], 2);
+    hl(phlY,    xPH-4, lineEnd, muted,  [4,4], 0.7);
+    hl(targetY, xPH-4, lineEnd, teal,   [], 2.5);
+    hl(cisdHigh,xPH-4, xCisd+2*slot+4, blue, [5,3], 1);
 
     const phMid=xPH+PHW/2;
     ctx.strokeStyle=teal;ctx.lineWidth=1.5;
-    ctx.beginPath();ctx.moveTo(phMid,phhY);ctx.lineTo(phMid,py(70));ctx.stroke();
-    ctx.beginPath();ctx.moveTo(phMid,py(48));ctx.lineTo(phMid,phlY);ctx.stroke();
-    ctx.strokeRect(xPH,py(70),PHW,Math.max(py(48)-py(70),2));
-    ctx.fillStyle=bg;ctx.fillRect(xPH+1.5,py(70)+1.5,PHW-3,Math.max(py(48)-py(70),2)-3);
-    ctx.strokeRect(xPH,py(70),PHW,Math.max(py(48)-py(70),2));
-    lbl('1H',phMid,py(59),teal,7,'center',true);
-    vl(xQ1-GAP,PAD.t-10,PAD.t+cH+6,border,[3,3]);
+    ctx.beginPath();ctx.moveTo(phMid,phhY);ctx.lineTo(phMid,py(EP_P-SL_UNITS*2));ctx.stroke();
+    ctx.beginPath();ctx.moveTo(phMid,py(EP_P+SL_UNITS*0.3));ctx.lineTo(phMid,phlY);ctx.stroke();
+    ctx.strokeRect(xPH,py(EP_P-SL_UNITS*2),PHW,Math.max(py(EP_P+SL_UNITS*0.3)-py(EP_P-SL_UNITS*2),2));
+    ctx.fillStyle=bg;ctx.fillRect(xPH+1.5,py(EP_P-SL_UNITS*2)+1.5,PHW-3,Math.max(py(EP_P+SL_UNITS*0.3)-py(EP_P-SL_UNITS*2),2)-3);
+    ctx.strokeRect(xPH,py(EP_P-SL_UNITS*2),PHW,Math.max(py(EP_P+SL_UNITS*0.3)-py(EP_P-SL_UNITS*2),2));
+    lbl('HTF',phMid,py(EP_P-SL_UNITS*0.7),teal,7,'center',true);
+    vl(xQ1-GAP,PAD.t-12,PAD.t+cH+8,border,[3,3]);
 
     let x=xQ1;
-    cdl(x,py(59),py(66),py(57),py(64),CW);x+=slot;
-    cdl(x,py(64),py(71),py(62),py(70),CW);x+=slot;
-    cdl(x,py(70),py(78),py(68),py(76),CW);
+    const s0=EP_P-2;
+    cdl(x,py(s0),py(s0+7),py(s0-3),py(s0+5),CW);x+=slot;
+    cdl(x,py(s0+5),py(s0+14),py(s0+3),py(s0+12),CW);
     ctx.save();ctx.fillStyle=orange;
     ctx.beginPath();ctx.moveTo(x+CW/2-3,phhY-3);ctx.lineTo(x+CW/2,phhY-7);ctx.lineTo(x+CW/2+3,phhY-3);ctx.fill();
     ctx.restore();
-    lbl('SWEPT',x+CW/2,phhY-15,orange,6,'center',true);
+    chip('SWEPT',x+CW/2-12,phhY-14,orange,orange);
     x+=slot;
-    cdl(x,py(76),py(84),py(73),py(82),CW);x+=slot;
-    cdl(x,py(82),stopY,py(78),py(88),CW);
+    cdl(x,py(s0+12),py(s0+20),py(s0+10),py(s0+18),CW);x+=slot;
+    cdl(x,py(s0+18),py(SWP_P-2),py(s0+16),py(SWP_P-3),CW);
     ctx.save();ctx.fillStyle=red;
-    ctx.beginPath();ctx.moveTo(x+CW/2-3,stopY+4);ctx.lineTo(x+CW/2,stopY+1);ctx.lineTo(x+CW/2+3,stopY+4);ctx.fill();
+    ctx.beginPath();ctx.moveTo(x+CW/2-3,swpY+4);ctx.lineTo(x+CW/2,swpY+1);ctx.lineTo(x+CW/2+3,swpY+4);ctx.fill();
     ctx.restore();
-    lbl('EXTREME',x+CW/2,stopY+12,red,6,'center',true);
+    chip('EXTREME',x+CW/2-14,swpY+14,red,red);
     x+=slot;
-    cdl(x,py(90),py(92),py(78),py(80),CW);x+=slot;
-    vl(xRet-GAP/2,PAD.t-10,PAD.t+cH+6,border,[3,3]);
+    cdl(x,py(SWP_P-3),py(SWP_P-9),py(SWP_P),py(SWP_P-10),CW);x+=slot;
+    vl(xRet-GAP/2,PAD.t-12,PAD.t+cH+8,border,[3,3]);
 
     x=xRet;
-    cdl(x,py(80),py(84),py(68),py(70),CW);x+=slot;
-    cdl(x,py(70),py(72),py(62),py(64),CW);x+=slot;
-    cdl(x,py(64),py(66),py(58),py(60),CW);
-    lbl('BACK BELOW',x+CW/2,phhY+8,orange,6,'center',true);
-    lbl('PREV HIGH',x+CW/2,phhY+16,orange,6,'center',true);
+    cdl(x,py(SWP_P-10),py(SWP_P-7),py(SWP_P-19),py(SWP_P-17),CW);x+=slot;
+    cdl(x,py(SWP_P-17),py(SWP_P-14),py(SWP_P-25),py(SWP_P-23),CW);x+=slot;
+    cdl(x,py(SWP_P-23),py(EP_P+2),py(SWP_P-27),py(EP_P+3),CW);
+    chip('BACK BELOW',x+CW/2-18,phhY+8,orange,orange);
+    chip('PREV HIGH',x+CW/2-14,phhY+17,orange,orange);
     x+=slot;
-    vl(xCisd-GAP/2,PAD.t-10,PAD.t+cH+6,border,[3,3]);
+    vl(xCisd-GAP/2,PAD.t-12,PAD.t+cH+8,border,[3,3]);
 
     x=xCisd;
-    cdl(x,py(61),py(64),py(56),py(62),CW);x+=slot;
-    cdl(x,py(61),py(63),py(52),py(57),CW);
+    cdl(x,py(EP_P+5),py(EP_P+8),py(EP_P+2),py(EP_P+6),CW);x+=slot;
+    cdl(x,py(EP_P+5),py(EP_P+2),py(EP_P+1),py(EP_P+2),CW);
     ctx.save();ctx.strokeStyle=blue;ctx.lineWidth=1.5;ctx.setLineDash([3,2]);
-    ctx.beginPath();ctx.moveTo(x+CW/2,cisdY);ctx.lineTo(x+CW/2,py(57));ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x+CW/2,cisdHigh);ctx.lineTo(x+CW/2,py(EP_P+2));ctx.stroke();
     ctx.setLineDash([]);ctx.restore();
-    lbl('CISD ↓',x+CW/2,cisdY+11,blue,6,'center',true);
+    chip('CISD ↓',x+CW/2-14,cisdHigh+14,blue,blue);
     x+=slot;
-    vl(xEnt-GAP/2,PAD.t-10,PAD.t+cH+6,border,[3,3]);
+    vl(xEnt-GAP/2,PAD.t-12,PAD.t+cH+8,border,[3,3]);
 
     x=xEnt;
     ctx.save();ctx.fillStyle=gold;
-    ctx.beginPath();ctx.moveTo(x-3,entryY-3);ctx.lineTo(x+3,entryY);ctx.lineTo(x-3,entryY+3);ctx.fill();
+    ctx.beginPath();ctx.moveTo(x-4,entryY-3);ctx.lineTo(x+2,entryY);ctx.lineTo(x-4,entryY+3);ctx.fill();
     ctx.restore();
-    cdl(x,entryY,py(62),py(52),py(54),CW);x+=slot;
-    cdl(x,py(54),py(57),py(44),py(46),CW);x+=slot;
-    cdl(x,py(46),py(49),py(34),py(36),CW);x+=slot;
-    cdl(x,py(36),py(39),py(26),py(28),CW);x+=slot;
+    cdl(x,entryY,py(EP_P+1),py(EP_P-2),py(EP_P-1.5),CW);x+=slot;
+    cdl(x,py(EP_P-1.5),py(EP_P-0.5),py(EP_P-4),py(EP_P-3.5),CW);x+=slot;
+    cdl(x,py(EP_P-3.5),py(EP_P-2.5),py(EP_P-6.5),py(EP_P-5.5),CW);x+=slot;
+    cdl(x,py(EP_P-5.5),py(EP_P-4),py(TP_P-0.5),py(TP_P+0.5),CW);
+    ctx.save();ctx.fillStyle=teal;ctx.beginPath();ctx.arc(x+CW/2,targetY,5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=bg;ctx.beginPath();ctx.arc(x+CW/2,targetY,2.5,0,Math.PI*2);ctx.fill();
+    ctx.restore();
 
-    const rx=xEnd+6;
-    lbl('STOP',            rx,stopY-3,   red,   7,'left',true);
-    lbl('PREV HIGH (swept)',rx,phhY-3,   orange,7,'left',true);
-    lbl('CISD LVL',        rx,cisdY-8,   blue,  7,'left',true);
-    lbl('ENTRY',           rx,entryY+9,  gold,  7,'left',true);
-    lbl('TARGET',          rx,targetY-3, teal,  7,'left',true);
+    const rx=lineEnd+10;
+    lbl('STOP',rx,stopY-4,red,8,'left',true);
+    lbl(`+${slStr} from entry`,rx,stopY+7,muted,7,'left');
+    lbl('SWEEP EXTREME',rx,swpY-4,isDark?'#3d5266':'#9ca3af',7,'left');
+    lbl('(not the stop)',rx,swpY+6,muted,6,'left');
+    lbl('ENTRY',rx,entryY-4,gold,8,'left',true);
+    lbl('(next candle open)',rx,entryY+7,muted,7,'left');
+    lbl('TARGET',rx,targetY-4,teal,8,'left',true);
+    lbl(`-${tpStr} from entry`,rx,targetY+7,muted,7,'left');
 
-    ruler(rx,cisdY,stopY,muted,['MANIP','RANGE']);
-    ruler(rx,targetY,cisdY,teal,['×2','PROJ']);
+    ruler(rx-8,stopY,entryY,red,`SL ${slStr}`);
+    ruler(rx-8,entryY,targetY,teal,`TP ${tpStr}`);
 
-    const bY=PAD.t-24;
+    const rrText=`R:R  ${rrStr}`;
+    ctx.save();ctx.font='600 8px "IBM Plex Mono",monospace';
+    const rrW=ctx.measureText(rrText).width+16,rrH=18,rrX=W-rrW-8,rrY=PAD.t-30;
+    ctx.fillStyle=isDark?'rgba(30,45,66,0.95)':'rgba(241,245,249,0.95)';
+    ctx.strokeStyle=border;ctx.lineWidth=1;
+    ctx.fillRect(rrX,rrY,rrW,rrH);ctx.strokeRect(rrX,rrY,rrW,rrH);
+    ctx.fillStyle=gold;ctx.textAlign='center';
+    ctx.fillText(rrText,rrX+rrW/2,rrY+12);
+    ctx.restore();
+
+    const bY=PAD.t-28;
     badge('1',xPH+PHW/2,bY,blue);badge('2',xQ1+3*slot,bY,red);badge('3',xRet+1.5*slot,bY,teal);
     badge('4',xCisd+slot,bY,orange);badge('5',xEnt+2*slot,bY,gold);
   }
 }
 
 function drawSetupViz(){
-  drawSetupScene(document.getElementById('setup-canvas-bull'), 'bull');
-  drawSetupScene(document.getElementById('setup-canvas-bear'), 'bear');
+  // Parse sl/tp from active profile key: 'sl_026_tp_018' → sl=0.26%, tp=0.18%
+  let slPct=0.26, tpPct=0.18;
+  const m=activeProfile.match(/sl_(\d+)_tp_(\d+)/);
+  if(m){ slPct=parseInt(m[1],10)/100; tpPct=parseInt(m[2],10)/100; }
+  drawSetupScene(document.getElementById('setup-canvas-bull'), 'bull', slPct, tpPct);
+  drawSetupScene(document.getElementById('setup-canvas-bear'), 'bear', slPct, tpPct);
 }
 
 // ── FULL RENDER ────────────────────────────────────────────────────────────
@@ -1454,7 +1698,7 @@ function applyLoadedData(j){
   if(resolvedKey){
     const {model,sweep,cisd}=parseKey(resolvedKey);
     activeModel=model; activeMode=sweep; activeCisd=cisd;
-    // Keep activeProfile ('1:2') if it exists; otherwise use first available profile
+    // Keep activeProfile ('sl_026_tp_018') if it exists; otherwise use first available profile
     const profiles=j[resolvedKey]?.profiles;
     if(profiles && !profiles[activeProfile]){
       const fp=Object.keys(profiles)[0]; if(fp) activeProfile=fp;

@@ -46,9 +46,46 @@ import json
 from pathlib import Path
 
 # ── PATHS ─────────────────────────────────────────────────────────────────────
-DB_PATH  = Path(__file__).parent / 'candle_science.duckdb'
-OUT_PATH = Path(__file__).parent / 'model_stats.json'
-TABLE    = 'nq_1m'
+DB_PATH   = Path(__file__).parent / 'candle_science.duckdb'
+OUT_PATH  = Path(__file__).parent / 'model_stats.json'
+TABLE     = 'nq_1m'
+PHASE1_XL = Path(__file__).parent / 'fractal_phase1_results.xlsx'
+
+# ── DATE → CLASSIFICATION MAP (from fractal_phase1_results.xlsx) ──────────────
+def _load_date_classification():
+    """Build {date_str: cls_key} from phase1 classification data sheets."""
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(PHASE1_XL, read_only=True, data_only=True)
+        mapping = {}
+        for cls_key, sheet_name in [('DWP','DWP Data'),('DNP','DNP Data'),
+                                     ('R1','R1 Data'),('R2','R2 Data'),
+                                     ('Unclassified','Unclassified Data')]:
+            if sheet_name not in wb.sheetnames:
+                continue
+            ws = wb[sheet_name]
+            rows = list(ws.iter_rows(values_only=True))
+            hdr = rows[2]
+            ci  = {h: i for i, h in enumerate(hdr) if h}
+            date_col = ci.get('Date')
+            if date_col is None:
+                continue
+            for row in rows[3:]:
+                if not row[0]:
+                    continue
+                try:
+                    d = str(row[date_col])[:10]
+                    if d and d not in mapping:
+                        mapping[d] = cls_key
+                except Exception:
+                    continue
+        return mapping
+    except Exception as e:
+        print(f'  [warn] Could not load classification map: {e}')
+        return {}
+
+DATE_CLASSIFICATION = _load_date_classification()
+print(f'  Loaded {len(DATE_CLASSIFICATION)} date→classification mappings')
 
 # ── GLOBAL CONSTANTS ──────────────────────────────────────────────────────────
 ACCOUNT_SIZE     = 4500   # $ account size for risk metrics
@@ -69,22 +106,19 @@ UNSWEPT_LOOKBACK = 10
 # profile_type='pct'   → stop/target distances = entry_price × val / 100
 #                         (fixed % of entry price, independent of sweep size)
 RR_PROFILES = [
-    # --- Sweep-relative (multiples of |entry − sweep extreme|) ---
-    (1.0, 0.35, '1:0.35', 'mult'),
-    (1.0, 0.25, '1:0.25', 'mult'),
-    (1.0, 0.5,  '1:0.5',  'mult'),
-    (1.0, 1.0,  '1:1',    'mult'),
-    (1.0, 1.5,  '1:1.5',  'mult'),
-    (1.0, 2.0,  '1:2',    'mult'),
-    # --- Fixed percentage of entry price ---
-    (0.35, 0.35, '0.35%:0.35%', 'pct'),
-    (0.35, 0.25, '0.35%:0.25%', 'pct'),
-    (0.5,  0.5,  '0.5%:0.5%',  'pct'),
-    (1.0,  1.0,  '1%:1%',      'pct'),
-    (1.0,  1.5,  '1%:1.5%',    'pct'),
-    (1.0,  2.0,  '1%:2%',      'pct'),
+    # --- DDLI Weighted Top 10 (Sharpe 25% · PF 20% · EV 15% · SQN 15% · MaxDD 10% · RoR 10% · CE 5%) ---
+    (0.26, 0.18, 'sl_026_tp_018', 'pct'),
+    (0.26, 0.19, 'sl_026_tp_019', 'pct'),
+    (0.21, 0.18, 'sl_021_tp_018', 'pct'),
+    (0.20, 0.18, 'sl_020_tp_018', 'pct'),
+    (0.18, 0.18, 'sl_018_tp_018', 'pct'),
+    (0.19, 0.18, 'sl_019_tp_018', 'pct'),
+    (0.20, 0.21, 'sl_020_tp_021', 'pct'),
+    (0.20, 0.19, 'sl_020_tp_019', 'pct'),
+    (0.18, 0.19, 'sl_018_tp_019', 'pct'),
+    (0.19, 0.19, 'sl_019_tp_019', 'pct'),
 ]
-DEFAULT_PROFILE = '1:2'
+DEFAULT_PROFILE = 'sl_026_tp_018'
 
 DOW_NAMES = {0:'Sun', 1:'Mon', 2:'Tue', 3:'Wed', 4:'Thu', 5:'Fri', 6:'Sat'}
 HR_LABELS = {h: f"{h:02d}:00" for h in range(0, 24)}
@@ -903,15 +937,42 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         tp_pct_val = None
 
     eq = float(ACCOUNT_SIZE)
+    peak_eq = eq
     min_eq = eq
+    max_dd_abs = 0.0
+    # Daily P&L for Sharpe: accumulate by date
+    daily_pnl: dict = {}
     for _, row in wl_sorted.iterrows():
         r_val = row['r']
         if r_val is not None and not np.isnan(r_val):
-            eq += float(r_val) * RISK_PER_TRADE
+            trade_pnl = float(r_val) * RISK_PER_TRADE
+            eq += trade_pnl
             if eq < min_eq:
                 min_eq = eq
+            if eq > peak_eq:
+                peak_eq = eq
+            dd = (peak_eq - eq) / peak_eq if peak_eq > 0 else 0.0
+            if dd > max_dd_abs:
+                max_dd_abs = dd
+            # date bucket for Sharpe
+            try:
+                trade_date = str(row['date'])[:10]
+                if trade_date:
+                    daily_pnl[trade_date] = daily_pnl.get(trade_date, 0.0) + trade_pnl
+            except Exception:
+                pass
     min_eq = round(min_eq, 2)
+    max_dd_pct = round(max_dd_abs * 100, 2)
+    total_pnl_usd = round(eq - ACCOUNT_SIZE, 2)
     blown  = min_eq <= 0.0
+
+    # Annualised Sharpe (daily returns, 252 trading days)
+    if len(daily_pnl) > 1:
+        dpnl_arr = np.array(list(daily_pnl.values()))
+        sharpe_val = round(float(dpnl_arr.mean() / dpnl_arr.std(ddof=1) * np.sqrt(252)), 2) \
+                     if dpnl_arr.std(ddof=1) > 0 else None
+    else:
+        sharpe_val = None
 
     risk_stats = {
         'account_size':     ACCOUNT_SIZE,
@@ -928,6 +989,9 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         'max_consec_losses': rs_max_cl,
         'sl_pct':           sl_pct_val,
         'tp_pct':           tp_pct_val,
+        'max_dd_pct':       max_dd_pct,
+        'total_pnl_usd':    total_pnl_usd,
+        'sharpe':           sharpe_val,
     }
 
     # CE — Combined Edge: avg(MFE / MAE) for WIN trades
@@ -1011,7 +1075,241 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         'tspot_breakdown':  tspot_breakdown,
         'recent_trades':    recent_trades,
         'risk_stats':       risk_stats,
+        'by_classification': _compute_by_classification(wl_sorted),
+        'by_tf':            _compute_by_tf(wl, wl_sorted, stop_mult, target_mult,
+                                           sl_pct_val, tp_pct_val, agg,
+                                           HR_LABELS, DOW_NAMES),
     }
+
+
+def _compute_by_classification(wl_sorted: 'pd.DataFrame') -> dict:
+    """Compute WR / PF / PnL / Sharpe / MaxDD per day classification."""
+    if not DATE_CLASSIFICATION or wl_sorted is None or len(wl_sorted) == 0:
+        return {}
+    cls_order = ['DWP', 'DNP', 'R1', 'R2', 'Unclassified']
+    result = {}
+    for cls in cls_order:
+        dates = {d for d, c in DATE_CLASSIFICATION.items() if c == cls}
+        sub = wl_sorted[wl_sorted['date'].astype(str).str[:10].isin(dates)].copy()
+        n = len(sub)
+        if n == 0:
+            result[cls] = None
+            continue
+        wins   = int((sub['win'] == 1).sum())
+        losses = n - wins
+        wr     = round(wins / n * 100, 2)
+        gross_win  = float(sub.loc[sub['win'] == 1, 'r'].sum()) * RISK_PER_TRADE
+        gross_loss = abs(float(sub.loc[sub['win'] == 0, 'r'].sum())) * RISK_PER_TRADE
+        pf     = round(gross_win / gross_loss, 3) if gross_loss > 0 else 0.0
+        # Equity curve
+        eq = float(ACCOUNT_SIZE)
+        peak_eq = eq
+        max_dd = 0.0
+        daily_pnl: dict = {}
+        for _, row in sub.iterrows():
+            r_val = row['r']
+            if r_val is None or np.isnan(float(r_val)):
+                continue
+            trade_pnl = float(r_val) * RISK_PER_TRADE
+            eq += trade_pnl
+            if eq > peak_eq:
+                peak_eq = eq
+            dd = (peak_eq - eq) / peak_eq if peak_eq > 0 else 0.0
+            if dd > max_dd:
+                max_dd = dd
+            try:
+                td = str(row['date'])[:10]
+                daily_pnl[td] = daily_pnl.get(td, 0.0) + trade_pnl
+            except Exception:
+                pass
+        total_pnl = round(eq - ACCOUNT_SIZE, 0)
+        max_dd_pct = round(max_dd * 100, 2)
+        blown = eq <= 0
+        if len(daily_pnl) > 1:
+            dpnl = np.array(list(daily_pnl.values()))
+            sharpe = round(float(dpnl.mean() / dpnl.std(ddof=1) * np.sqrt(252)), 2) \
+                     if dpnl.std(ddof=1) > 0 else None
+        else:
+            sharpe = None
+        result[cls] = {
+            'trades':    n,
+            'wins':      wins,
+            'losses':    losses,
+            'wr':        wr,
+            'pf':        pf,
+            'pnl':       total_pnl,
+            'sharpe':    sharpe,
+            'max_dd':    max_dd_pct,
+            'blown':     blown,
+        }
+    return result
+
+
+def _compute_by_tf(wl_full, wl_sorted_full, stop_mult, target_mult,
+                   sl_pct_val, tp_pct_val, agg_fn, hr_labels, dow_names) -> dict:
+    """Compute compact hero+chart stats for each sub-timeframe slice."""
+    from datetime import date, timedelta
+    import pandas as pd
+
+    if wl_full is None or len(wl_full) == 0:
+        return {}
+
+    # Determine reference date from data (latest trade date)
+    max_date_str = str(wl_sorted_full['date'].max())[:10]
+    try:
+        ref = date.fromisoformat(max_date_str)
+    except Exception:
+        return {}
+
+    TF_CUTOFFS = {
+        '2y': ref - timedelta(days=730),
+        '1y': ref - timedelta(days=365),
+        '6m': ref - timedelta(days=182),
+        '3m': ref - timedelta(days=91),
+        '1m': ref - timedelta(days=30),
+    }
+
+    def _slice_stats(wl_sub):
+        if len(wl_sub) == 0:
+            return None
+        wl_sub = wl_sub.copy()
+        n     = len(wl_sub)
+        wins  = int((wl_sub['win'] == 1).sum())
+        wr    = round(wins / n, 4)
+        ev    = round(float(wl_sub['r'].sum()) / n, 3)
+        win_r = float(wl_sub.loc[wl_sub['win'] == 1, 'r'].sum())
+        los_r = float(abs(wl_sub.loc[wl_sub['win'] == 0, 'r'].sum()))
+        pf    = round(win_r / max(los_r, 0.001), 3)
+        date_range = f"{str(wl_sub['date'].min())[:10]} – {str(wl_sub['date'].max())[:10]}"
+
+        # Equity / risk stats
+        ws_sorted = wl_sub.sort_values('date')
+        eq = float(ACCOUNT_SIZE); peak_eq = eq; max_dd = 0.0
+        daily_pnl: dict = {}
+        def _mc(seq, val):
+            mx = cur = 0
+            for v in seq:
+                cur = cur + 1 if v == val else 0; mx = max(mx, cur)
+            return mx
+        for _, row in ws_sorted.iterrows():
+            r_val = row['r']
+            if r_val is None or np.isnan(float(r_val)): continue
+            tp = float(r_val) * RISK_PER_TRADE
+            eq += tp
+            if eq > peak_eq: peak_eq = eq
+            dd = (peak_eq - eq) / peak_eq if peak_eq > 0 else 0.0
+            if dd > max_dd: max_dd = dd
+            try:
+                td = str(row['date'])[:10]
+                daily_pnl[td] = daily_pnl.get(td, 0.0) + tp
+            except Exception:
+                pass
+        outcomes_seq = ws_sorted['win'].tolist()
+        mcw = _mc(outcomes_seq, 1); mcl = _mc(outcomes_seq, 0)
+        total_pnl = round(eq - ACCOUNT_SIZE, 2)
+        max_dd_pct = round(max_dd * 100, 2)
+        blown = eq <= 0.0
+        if len(daily_pnl) > 1:
+            dpnl = np.array(list(daily_pnl.values()))
+            sharpe = round(float(dpnl.mean() / dpnl.std(ddof=1) * np.sqrt(252)), 2) \
+                     if dpnl.std(ddof=1) > 0 else None
+        else:
+            sharpe = None
+        # CE
+        wins_wl = wl_sub[wl_sub['win'] == 1]
+        ce_mask = (wins_wl['mae_pct'] > 0) & (wins_wl['mfe_pct'] > 0)
+        ce = round(float((wins_wl.loc[ce_mask, 'mfe_pct'] /
+                          wins_wl.loc[ce_mask, 'mae_pct']).mean()), 3) \
+             if ce_mask.sum() > 0 else None
+        # by_hour
+        bh = []
+        for (hr, direction), g in wl_sub.groupby(['hr', 'direction']):
+            s = agg_fn(g)
+            if s['n'] >= 3:
+                s.update(hr=int(hr), hr_label=hr_labels.get(int(hr), f'{int(hr):02d}:00'))
+                bh.append(s)
+        # by_session
+        def get_sess(hr):
+            h = float(hr)
+            if 8.5 <= h < 11.5: return 'NY1'
+            if 11.5 <= h < 16.0: return 'NY2'
+            return 'Other'
+        wl_sub2 = wl_sub.copy()
+        wl_sub2['session2'] = wl_sub2['hr'].apply(get_sess)
+        bs = []
+        for (sess, direction), g in wl_sub2.groupby(['session2', 'direction']):
+            if sess == 'Other': continue
+            s = agg_fn(g); s.update(session=sess, direction=direction); bs.append(s)
+        # by_dow
+        bd = []
+        for (dow, direction), g in wl_sub.groupby(['dow', 'direction']):
+            s = agg_fn(g)
+            if s['n'] >= 3:
+                s.update(dow=int(dow), dow_name=dow_names.get(int(dow), '?'))
+                bd.append(s)
+        # dir_summary
+        ds = []
+        for direction, g in wl_sub.groupby('direction'):
+            s = agg_fn(g); s['direction'] = direction; ds.append(s)
+        # by_year
+        wl_sub['year'] = wl_sub['date'].astype(str).str[:4].astype(int)
+        by_yr = []
+        for yr, g in wl_sub.groupby('year'):
+            s = agg_fn(g); s['yr'] = int(yr); by_yr.append(s)
+        # r_hist (simplified)
+        rr_actual = round(target_mult / stop_mult, 4) if stop_mult > 0 else 2.0
+        r_hist = [
+            {'bucket': f'-1R (loss)', 'n': n - wins, 'fill': 'loss'},
+            {'bucket': f'{rr_actual}R (target)', 'n': wins, 'fill': 'win'},
+        ]
+        # recent_trades (last 40 in slice)
+        recent_cols = ['date','direction','hr','mn','session','dow','entry_price',
+                       'sweep_extreme','target_price','risk_pts','r','outcome']
+        available = [c for c in recent_cols if c in wl_sub.columns]
+        rt = wl_sub[available].sort_values('date', ascending=False).head(40).copy()
+        rt['dow_name'] = rt['dow'].map(lambda d: dow_names.get(int(d), '?'))
+        recent_trades = rt.to_dict('records')
+        for t in recent_trades:
+            t['date'] = str(t['date'])[:10]
+            for k in ['dow','hr','mn']:
+                if k in t: t[k] = int(t[k])
+            for k in ['entry_price','sweep_extreme','target_price','risk_pts','r']:
+                if k in t and t[k] is not None:
+                    t[k] = round(float(t[k]), 2)
+
+        return {
+            'meta': {
+                'total_wl': n, 'win_rate': wr, 'ev_per_trade': ev,
+                'profit_factor': pf, 'date_range': date_range,
+                'rr_target': round(target_mult / stop_mult, 4) if stop_mult > 0 else 2.0,
+            },
+            'risk_stats': {
+                'account_size': ACCOUNT_SIZE, 'risk_per_trade': RISK_PER_TRADE,
+                'trades': n, 'wins': wins, 'losses': n - wins, 'be_count': 0,
+                'blown': blown, 'min_equity_usd': round(eq, 2),
+                'max_consec_wins': mcw, 'max_consec_losses': mcl,
+                'sl_pct': sl_pct_val, 'tp_pct': tp_pct_val,
+                'max_dd_pct': max_dd_pct, 'total_pnl_usd': total_pnl,
+                'sharpe': sharpe, 'ce': ce,
+            },
+            'by_hour':         bh,
+            'by_session':      bs,
+            'by_dow':          bd,
+            'dir_summary':     ds,
+            'by_year':         by_yr,
+            'r_hist':          r_hist,
+            'by_classification': _compute_by_classification(ws_sorted),
+            'recent_trades':   recent_trades,
+        }
+
+    result = {}
+    dates_str = wl_full['date'].astype(str).str[:10]
+    for tf_key, cutoff in TF_CUTOFFS.items():
+        mask = dates_str >= cutoff.isoformat()
+        sub  = wl_full[mask]
+        result[tf_key] = _slice_stats(sub)
+
+    return result
 
 
 def compute_filter_impact(df_all):
