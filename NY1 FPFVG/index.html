@@ -391,6 +391,7 @@ footer{
     <a class="nav-link" href="#performance" onclick="smoothNav(event,'performance')">Performance</a>
     <a class="nav-link" href="#trades" onclick="smoothNav(event,'trades')">Trades</a>
     <a class="nav-link" href="#comparison" onclick="smoothNav(event,'comparison')">Rankings</a>
+  </div>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">☀</button>
 </nav>
 
@@ -410,16 +411,16 @@ footer{
     <label class="sel-label">Combo</label>
     <select class="sel-drop" id="modelDropdown" onchange="switchModel(this.value)">
       <optgroup label="── Fixed % Stop Combos ──">
-        <option value="pct_004_008" selected>#1  SL 0.04% / TP 0.08%  (2:1)   — CE 0.370</option>
-        <option value="pct_010_005">#2  SL 0.10% / TP 0.05%  (0.5:1) — CE 0.365</option>
-        <option value="pct_003_006">#3  SL 0.03% / TP 0.06%  (2:1)   — CE 0.362</option>
-        <option value="pct_005_009">#4  SL 0.05% / TP 0.09%  (1.8:1) — CE 0.357</option>
+        <option value="pct_005_006" selected>#1  SL 0.05% / TP 0.06%  (1.2:1)  — CE 0.339</option>
+        <option value="pct_004_006">#2  SL 0.04% / TP 0.06%  (1.5:1)  — CE 0.342</option>
+        <option value="pct_005_008">#3  SL 0.05% / TP 0.08%  (1.6:1)  — CE 0.351</option>
+        <option value="pct_004_008">#4  SL 0.04% / TP 0.08%  (2:1)    — CE 0.370</option>
         <option value="pct_004_007">#5  SL 0.04% / TP 0.07%  (1.75:1) — CE 0.351</option>
-        <option value="pct_005_008">#6  SL 0.05% / TP 0.08%  (1.6:1) — CE 0.351</option>
-        <option value="pct_004_006">#7  SL 0.04% / TP 0.06%  (1.5:1) — CE 0.342</option>
-        <option value="pct_005_007">#8  SL 0.05% / TP 0.07%  (1.4:1) — CE 0.341</option>
-        <option value="pct_005_006">#9  SL 0.05% / TP 0.06%  (1.2:1) — CE 0.339</option>
-        <option value="pct_010_006">#10 SL 0.10% / TP 0.06%  (0.6:1) — CE 0.338</option>
+        <option value="pct_005_009">#6  SL 0.05% / TP 0.09%  (1.8:1)  — CE 0.357</option>
+        <option value="pct_003_006">#7  SL 0.03% / TP 0.06%  (2:1)    — CE 0.362</option>
+        <option value="pct_005_005">#8  SL 0.05% / TP 0.05%  (1:1)    — CE 0.313</option>
+        <option value="pct_004_005">#9  SL 0.04% / TP 0.05%  (1.25:1) — CE 0.295</option>
+        <option value="pct_003_005">#10 SL 0.03% / TP 0.05%  (1.67:1) — CE 0.284</option>
       </optgroup>
       <optgroup label="── Reference Models ──">
         <option value="cashflow">Cashflow  (Structural Stop · 10bps TP · 1:1 R)</option>
@@ -661,56 +662,56 @@ function rnd(v, dp = 2) { return v >= 0 ? '+' + v.toFixed(dp) : v.toFixed(dp); }
 
 // ─── SLTP ANALYZER + MASTER BACKTESTER RESULTS ───────────────────────────────
 const SLTP_DATA = {
-  pct_004_008: { label:'#1  SL 0.04% / TP 0.08%', sl:0.04, tp:0.08, rr:2.00, ev_r:0.257, pf:1.442, ce:0.370, mcl:15, mcw:9,
+  pct_005_006: { label:'#1  SL 0.05% / TP 0.06%', sl:0.05, tp:0.06, rr:1.20, ev_r:0.225, pf:1.507, ce:0.339, mcl:10, mcw:12,
+    combined:{n:2721,wr:0.557,pl:137700,sharpe:10.73,blown:false},
+    DWP:{n:975,wr:0.578,pl:59805,sharpe:7.83,blown:false}, DNP:{n:436,wr:0.555,pl:21690,sharpe:4.22,blown:false},
+    R1:{n:656,wr:0.524,pl:22680,sharpe:3.58,blown:false},   R2:{n:562,wr:0.593,pl:38385,sharpe:6.65,blown:false},
+    Unclassified:{n:92,wr:0.348,pl:-4860,sharpe:-2.14,blown:true} },
+  pct_004_006: { label:'#2  SL 0.04% / TP 0.06%', sl:0.04, tp:0.06, rr:1.50, ev_r:0.234, pf:1.462, ce:0.342, mcl:12, mcw:9,
+    combined:{n:2721,wr:0.494,pl:143212,sharpe:9.76,blown:false},
+    DWP:{n:975,wr:0.513,pl:61875,sharpe:7.04,blown:false}, DNP:{n:436,wr:0.459,pl:14400,sharpe:2.46,blown:false},
+    R1:{n:656,wr:0.477,pl:28462,sharpe:3.95,blown:false},   R2:{n:562,wr:0.539,pl:43988,sharpe:6.61,blown:false},
+    Unclassified:{n:92,wr:0.293,pl:-5512,sharpe:-2.23,blown:true} },
+  pct_005_008: { label:'#3  SL 0.05% / TP 0.08%', sl:0.05, tp:0.08, rr:1.60, ev_r:0.240, pf:1.459, ce:0.351, mcl:13, mcw:10,
+    combined:{n:2721,wr:0.477,pl:147105,sharpe:9.65,blown:false},
+    DWP:{n:975,wr:0.511,pl:71955,sharpe:7.88,blown:false}, DNP:{n:436,wr:0.477,pl:23580,sharpe:3.86,blown:false},
+    R1:{n:656,wr:0.413,pl:10935,sharpe:1.48,blown:false},   R2:{n:562,wr:0.521,pl:44955,sharpe:6.48,blown:false},
+    Unclassified:{n:92,wr:0.304,pl:-4320,sharpe:-1.66,blown:true} },
+  pct_004_008: { label:'#4  SL 0.04% / TP 0.08%', sl:0.04, tp:0.08, rr:2.00, ev_r:0.257, pf:1.442, ce:0.370, mcl:15, mcw:9,
     combined:{n:2721,wr:0.419,pl:157275,sharpe:9.05,blown:false},
     DWP:{n:975,wr:0.452,pl:78300,sharpe:7.46,blown:false}, DNP:{n:436,wr:0.385,pl:15300,sharpe:2.23,blown:false},
     R1:{n:656,wr:0.372,pl:17100,sharpe:2.04,blown:true},   R2:{n:562,wr:0.470,pl:51750,sharpe:6.47,blown:false},
     Unclassified:{n:92,wr:0.250,pl:-5175,sharpe:-1.84,blown:true} },
-  pct_010_005: { label:'#2  SL 0.10% / TP 0.05%', sl:0.10, tp:0.05, rr:0.50, ev_r:0.190, pf:1.921, ce:0.365, mcl:6, mcw:32,
-    combined:{n:2721,wr:0.793,pl:116438,sharpe:16.33,blown:false},
-    DWP:{n:975,wr:0.818,pl:49950,sharpe:12.29,blown:false}, DNP:{n:436,wr:0.800,pl:19688,sharpe:6.98,blown:false},
-    R1:{n:656,wr:0.762,pl:21150,sharpe:5.74,blown:false},   R2:{n:562,wr:0.808,pl:26775,sharpe:8.49,blown:false},
-    Unclassified:{n:92,wr:0.630,pl:-1125,sharpe:-0.72,blown:false} },
-  pct_003_006: { label:'#3  SL 0.03% / TP 0.06%', sl:0.03, tp:0.06, rr:2.00, ev_r:0.252, pf:1.433, ce:0.362, mcl:15, mcw:9,
-    combined:{n:2721,wr:0.417,pl:154575,sharpe:8.90,blown:false},
-    DWP:{n:975,wr:0.422,pl:58050,sharpe:5.57,blown:false}, DNP:{n:436,wr:0.381,pl:13950,sharpe:2.04,blown:false},
-    R1:{n:656,wr:0.422,pl:39375,sharpe:4.61,blown:false},   R2:{n:562,wr:0.457,pl:47025,sharpe:5.89,blown:false},
-    Unclassified:{n:92,wr:0.272,pl:-3825,sharpe:-1.32,blown:true} },
-  pct_005_009: { label:'#4  SL 0.05% / TP 0.09%', sl:0.05, tp:0.09, rr:1.80, ev_r:0.247, pf:1.446, ce:0.357, mcl:14, mcw:9,
-    combined:{n:2721,wr:0.445,pl:151335,sharpe:9.26,blown:false},
-    DWP:{n:975,wr:0.486,pl:79245,sharpe:8.06,blown:false}, DNP:{n:436,wr:0.440,pl:22860,sharpe:3.50,blown:false},
-    R1:{n:656,wr:0.378,pl:8640,sharpe:1.10,blown:true},    R2:{n:562,wr:0.484,pl:44910,sharpe:6.01,blown:false},
-    Unclassified:{n:92,wr:0.283,pl:-4320,sharpe:-1.58,blown:true} },
   pct_004_007: { label:'#5  SL 0.04% / TP 0.07%', sl:0.04, tp:0.07, rr:1.75, ev_r:0.243, pf:1.444, ce:0.351, mcl:14, mcw:9,
     combined:{n:2721,wr:0.452,pl:148838,sharpe:9.26,blown:false},
     DWP:{n:975,wr:0.476,pl:67725,sharpe:7.02,blown:false}, DNP:{n:436,wr:0.417,pl:14512,sharpe:2.28,blown:false},
     R1:{n:656,wr:0.418,pl:21938,sharpe:2.80,blown:false},   R2:{n:562,wr:0.509,pl:50512,sharpe:6.88,blown:false},
     Unclassified:{n:92,wr:0.261,pl:-5850,sharpe:-2.23,blown:true} },
-  pct_005_008: { label:'#6  SL 0.05% / TP 0.08%', sl:0.05, tp:0.08, rr:1.60, ev_r:0.240, pf:1.459, ce:0.351, mcl:13, mcw:10,
-    combined:{n:2721,wr:0.477,pl:147105,sharpe:9.65,blown:false},
-    DWP:{n:975,wr:0.511,pl:71955,sharpe:7.88,blown:false}, DNP:{n:436,wr:0.477,pl:23580,sharpe:3.86,blown:false},
-    R1:{n:656,wr:0.413,pl:10935,sharpe:1.48,blown:false},   R2:{n:562,wr:0.521,pl:44955,sharpe:6.48,blown:false},
-    Unclassified:{n:92,wr:0.304,pl:-4320,sharpe:-1.66,blown:true} },
-  pct_004_006: { label:'#7  SL 0.04% / TP 0.06%', sl:0.04, tp:0.06, rr:1.50, ev_r:0.234, pf:1.462, ce:0.342, mcl:12, mcw:9,
-    combined:{n:2721,wr:0.494,pl:143212,sharpe:9.76,blown:false},
-    DWP:{n:975,wr:0.513,pl:61875,sharpe:7.04,blown:false}, DNP:{n:436,wr:0.459,pl:14400,sharpe:2.46,blown:false},
-    R1:{n:656,wr:0.477,pl:28462,sharpe:3.95,blown:false},   R2:{n:562,wr:0.539,pl:43988,sharpe:6.61,blown:false},
-    Unclassified:{n:92,wr:0.293,pl:-5512,sharpe:-2.23,blown:true} },
-  pct_005_007: { label:'#8  SL 0.05% / TP 0.07%', sl:0.05, tp:0.07, rr:1.40, ev_r:0.231, pf:1.475, ce:0.341, mcl:11, mcw:12,
-    combined:{n:2721,wr:0.513,pl:141615,sharpe:10.06,blown:false},
-    DWP:{n:975,wr:0.538,pl:64125,sharpe:7.62,blown:false}, DNP:{n:436,wr:0.518,pl:23940,sharpe:4.24,blown:false},
-    R1:{n:656,wr:0.460,pl:15480,sharpe:2.24,blown:false},   R2:{n:562,wr:0.559,pl:43110,sharpe:6.78,blown:false},
-    Unclassified:{n:92,wr:0.315,pl:-5040,sharpe:-2.08,blown:true} },
-  pct_005_006: { label:'#9  SL 0.05% / TP 0.06%', sl:0.05, tp:0.06, rr:1.20, ev_r:0.225, pf:1.507, ce:0.339, mcl:10, mcw:12,
-    combined:{n:2721,wr:0.557,pl:137700,sharpe:10.73,blown:false},
-    DWP:{n:975,wr:0.578,pl:59805,sharpe:7.83,blown:false}, DNP:{n:436,wr:0.555,pl:21690,sharpe:4.22,blown:false},
-    R1:{n:656,wr:0.524,pl:22680,sharpe:3.58,blown:false},   R2:{n:562,wr:0.593,pl:38385,sharpe:6.65,blown:false},
-    Unclassified:{n:92,wr:0.348,pl:-4860,sharpe:-2.14,blown:true} },
-  pct_010_006: { label:'#10 SL 0.10% / TP 0.06%', sl:0.10, tp:0.06, rr:0.60, ev_r:0.193, pf:1.756, ce:0.338, mcl:6, mcw:24,
-    combined:{n:2721,wr:0.745,pl:117855,sharpe:14.40,blown:false},
-    DWP:{n:975,wr:0.776,pl:53145,sharpe:11.34,blown:false}, DNP:{n:436,wr:0.745,pl:18900,sharpe:5.77,blown:false},
-    R1:{n:656,wr:0.709,pl:19800,sharpe:4.72,blown:false},   R2:{n:562,wr:0.763,pl:27990,sharpe:7.71,blown:false},
-    Unclassified:{n:92,wr:0.565,pl:-1980,sharpe:-1.15,blown:false} },
+  pct_005_009: { label:'#6  SL 0.05% / TP 0.09%', sl:0.05, tp:0.09, rr:1.80, ev_r:0.247, pf:1.446, ce:0.357, mcl:14, mcw:9,
+    combined:{n:2721,wr:0.445,pl:151335,sharpe:9.26,blown:false},
+    DWP:{n:975,wr:0.486,pl:79245,sharpe:8.06,blown:false}, DNP:{n:436,wr:0.440,pl:22860,sharpe:3.50,blown:false},
+    R1:{n:656,wr:0.378,pl:8640,sharpe:1.10,blown:true},    R2:{n:562,wr:0.484,pl:44910,sharpe:6.01,blown:false},
+    Unclassified:{n:92,wr:0.283,pl:-4320,sharpe:-1.58,blown:true} },
+  pct_003_006: { label:'#7  SL 0.03% / TP 0.06%', sl:0.03, tp:0.06, rr:2.00, ev_r:0.252, pf:1.433, ce:0.362, mcl:15, mcw:9,
+    combined:{n:2721,wr:0.417,pl:154575,sharpe:8.90,blown:false},
+    DWP:{n:975,wr:0.422,pl:58050,sharpe:5.57,blown:false}, DNP:{n:436,wr:0.381,pl:13950,sharpe:2.04,blown:false},
+    R1:{n:656,wr:0.422,pl:39375,sharpe:4.61,blown:false},   R2:{n:562,wr:0.457,pl:47025,sharpe:5.89,blown:false},
+    Unclassified:{n:92,wr:0.272,pl:-3825,sharpe:-1.32,blown:true} },
+  pct_005_005: { label:'#8  SL 0.05% / TP 0.05%', sl:0.05, tp:0.05, rr:1.00, ev_r:0.206, pf:1.519, ce:0.313, mcl:8, mcw:15,
+    combined:{n:2721,wr:0.603,pl:126225,sharpe:10.99,blown:false},
+    DWP:{n:975,wr:0.624,pl:54225,sharpe:7.96,blown:false}, DNP:{n:436,wr:0.596,pl:18900,sharpe:4.09,blown:false},
+    R1:{n:656,wr:0.579,pl:23400,sharpe:4.11,blown:false},   R2:{n:562,wr:0.634,pl:33750,sharpe:6.56,blown:false},
+    Unclassified:{n:92,wr:0.348,pl:-2700,sharpe:-1.45,blown:true} },
+  pct_004_005: { label:'#9  SL 0.04% / TP 0.05%', sl:0.04, tp:0.05, rr:1.25, ev_r:0.205, pf:1.441, ce:0.295, mcl:9, mcw:14,
+    combined:{n:2721,wr:0.536,pl:125381,sharpe:9.52,blown:false},
+    DWP:{n:975,wr:0.554,pl:54000,sharpe:6.87,blown:false}, DNP:{n:436,wr:0.500,pl:12263,sharpe:2.32,blown:false},
+    R1:{n:656,wr:0.524,pl:26550,sharpe:4.10,blown:false},   R2:{n:562,wr:0.573,pl:36563,sharpe:6.15,blown:false},
+    Unclassified:{n:92,wr:0.359,pl:-3994,sharpe:-1.71,blown:false} },
+  pct_003_005: { label:'#10 SL 0.03% / TP 0.05%', sl:0.03, tp:0.05, rr:1.67, ev_r:0.206, pf:1.377, ce:0.284, mcl:12, mcw:10,
+    combined:{n:2721,wr:0.452,pl:126375,sharpe:8.11,blown:false},
+    DWP:{n:975,wr:0.459,pl:48825,sharpe:5.23,blown:false}, DNP:{n:436,wr:0.413,pl:9900,sharpe:1.60,blown:false},
+    R1:{n:656,wr:0.459,pl:33000,sharpe:4.31,blown:false},   R2:{n:562,wr:0.484,pl:36750,sharpe:5.17,blown:false},
+    Unclassified:{n:92,wr:0.337,pl:-2100,sharpe:-0.77,blown:false} },
   // ── Reference: Cashflow model (structural stop · 10 bps TP · 1:1 R) ──
   cashflow: { label:'Cashflow — Structural Stop · 10bps TP', sl:null, tp:0.10, rr:1.00, ev_r:0.309, pf:1.893, ce:-0.144, mcl:null, mcw:null,
     combined:{n:2719,wr:0.654,pl:188775,sharpe:5.15,blown:false},
@@ -720,7 +721,7 @@ const SLTP_DATA = {
 };
 
 // ─── MODEL / TIMEFRAME SELECTION ─────────────────────────────────────────────
-let _activeModel = 'pct_004_008';
+let _activeModel = 'pct_005_006';
 let _activeTF    = 'all';
 
 function switchModel(key) {
@@ -961,8 +962,12 @@ function renderHero(meta, rs) {
   const ev_r   = wr != null ? +(wr * rr - (1 - wr)).toFixed(3) : null;
   const pf     = losses > 0 ? +((wins * rr) / losses).toFixed(3) : null;
   const pl_usd = rs ? Math.round(wins * (rs.avg_win_usd ?? 0) + losses * (rs.avg_loss_usd ?? 0)) : null;
-  const sharpe = rs?.sharpe ?? null;
-  const blown  = rs?.blown  ?? null;
+  const sharpe    = rs?.sharpe ?? null;
+  const blown     = rs?.blown  ?? null;
+  const minEq     = rs?.min_equity_usd ?? null;
+  const accSize   = rs?.account_size   ?? 4500;
+  const maxDDUsd  = minEq != null ? Math.max(0, accSize - minEq) : null;
+  const maxDDPct  = maxDDUsd != null ? (maxDDUsd / accSize * 100) : null;
   const tfHint = _activeTF === 'all' ? '2014–2026' : ({
     '2y':'last 2 years','1y':'last 1 year','6m':'last 6 months','3m':'last 3 months','1m':'last 1 month'
   }[_activeTF] || _activeTF);
@@ -998,6 +1003,10 @@ function renderHero(meta, rs) {
     { lbl: 'Blown',     val: blown == null ? '—' : (blown ? 'YES' : 'NO'),
       cls: blown ? 'red' : 'green',
       hint: 'Account blown in '+tfHint+'?', bar: blown ? cssVar('--red') : cssVar('--green') },
+    { lbl: 'Max DD',    val: maxDDPct != null ? (maxDDPct >= 100 ? maxDDPct.toFixed(0) : maxDDPct.toFixed(1))+'%' : '—',
+      cls: maxDDPct == null ? 'neutral' : maxDDPct >= 50 ? 'red' : maxDDPct >= 20 ? 'amber' : 'green',
+      hint: maxDDUsd != null ? '-$'+maxDDUsd.toLocaleString('en-US',{maximumFractionDigits:0})+' from $'+accSize.toLocaleString()+' initial · '+tfHint : '',
+      bar: maxDDPct == null ? cssVar('--faint') : maxDDPct >= 50 ? cssVar('--red') : maxDDPct >= 20 ? cssVar('--amber') : cssVar('--green') },
     { lbl: 'Max W Run', val: rs?.max_consec_wins  ?? '—',
       cls: 'green', hint: 'Longest winning streak · '+tfHint, bar: cssVar('--green') },
     { lbl: 'Max L Run', val: rs?.max_consec_losses ?? '—',
@@ -1424,6 +1433,20 @@ function renderYearTable(byYear) {
 let _sortCol = 'date';
 let _sortDir = -1; // -1 = desc, 1 = asc
 
+function nqContract(dateStr) {
+  // Returns front-month NQ contract label for a given date (e.g. "NQH26")
+  // Rolls on the 3rd Friday of Mar/Jun/Sep/Dec (expiry day)
+  const d = new Date(dateStr + 'T12:00:00');
+  const y = d.getFullYear();
+  for (const [mo, code] of [[2,'H'],[5,'M'],[8,'U'],[11,'Z']]) {
+    const first = new Date(y, mo, 1);
+    const fri1  = (5 - first.getDay() + 7) % 7;
+    const tf    = new Date(y, mo, 1 + fri1 + 14); // 3rd Friday
+    if (d < tf) return `NQ${code}${String(y).slice(-2)}`;
+  }
+  return `NQH${String(y + 1).slice(-2)}`;
+}
+
 function renderTradesTable(allTrades) {
   const sorted = [...(allTrades || [])]
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
@@ -1431,6 +1454,7 @@ function renderTradesTable(allTrades) {
 
   const cols = [
     { key: 'date',         label: 'Date' },
+    { key: '_contract',    label: 'Contract' },
     { key: 'c2_ts',        label: 'FVG Time' },
     { key: 'time',         label: 'Entry' },
     { key: 'entry',        label: 'Entry $' },
@@ -1468,11 +1492,13 @@ function renderTradesTable(allTrades) {
           : '<span class="badge badge-open">—</span>';
       const mae      = t.mae_pct != null ? t.mae_pct.toFixed(4) : '0.0000';
       const fvgTime  = t.c2_ts ? t.c2_ts.replace('T',' ').slice(-5) : '—';
+      const contract = nqContract(t.date);
       const fmtPx    = v => v != null ? Number(v).toFixed(2) : '—';
       const stopPx   = fmtPx(t.pct_stop ?? t.stop);
       const tpPx     = fmtPx(t.pct_tp   ?? t.tp1);
       return `<tr>
         <td>${t.date}</td>
+        <td style="font-family:var(--font-data);color:var(--faint)">${contract}</td>
         <td>${fvgTime}</td>
         <td>${t.time || (t.fill_hr != null ? String(t.fill_hr).padStart(2,'0') + ':' + String(t.fill_mn||0).padStart(2,'0') : '—')}</td>
         <td style="font-family:var(--font-data)">${fmtPx(t.entry)}</td>
@@ -1519,8 +1545,8 @@ function renderRankingsTable() {
   const el = document.getElementById('compSection');
   if (!el) return;
 
-  const keys = ['pct_004_008','pct_010_005','pct_003_006','pct_005_009','pct_004_007',
-                 'pct_005_008','pct_004_006','pct_005_007','pct_005_006','pct_010_006'];
+  const keys = ['pct_005_006','pct_004_006','pct_005_008','pct_004_008','pct_004_007',
+                 'pct_005_009','pct_003_006','pct_005_005','pct_004_005','pct_003_005'];
 
   const fmtPL = v => v == null ? '—' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toLocaleString('en-US', {maximumFractionDigits:0});
   const vcls  = v => v > 0 ? 'val-pos' : v < 0 ? 'val-neg' : 'val-neutral';
@@ -1612,6 +1638,7 @@ window.addEventListener('resize', () => {
   clearTimeout(_resizeTimer);
   _resizeTimer = setTimeout(() => { if (_data) renderCharts(_data[_activeTF][_activeModel]); }, 150);
 });
+
 </script>
 </body>
 </html>
