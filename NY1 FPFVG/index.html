@@ -552,6 +552,15 @@ footer{
       </div>
     </div>
 
+    <!-- EQUITY CURVE -->
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-hd">
+        <span class="panel-title">Equity Curve · Cumulative P&amp;L</span>
+        <span class="panel-note" id="ny1EqNote">$4,500 account · $225/trade · yearly resolution · drawdown shaded</span>
+      </div>
+      <div class="panel-body tight"><div id="ny1EquityCurve"></div></div>
+    </div>
+
     <!-- MAE / MFE ANALYSIS -->
     <div class="sec-head">
       <span class="sec-label">MAE / MFE Analysis</span>
@@ -758,6 +767,7 @@ function renderAll(d) {
   renderDirection(d.by_direction);
   renderCharts(d);
   renderYearTable(d.by_year);
+  renderNy1EquityCurve(d);
   renderMAEAnalysis(d.risk_stats);
   renderTradesTable(d.recent_trades || d.trades);
   renderRankingsTable();
@@ -1632,11 +1642,131 @@ function renderRankingsTable() {
     </div>`;
 }
 
+// ─── EQUITY CURVE ────────────────────────────────────────────────────────────
+function renderNy1EquityCurve(d) {
+  const container = document.getElementById('ny1EquityCurve');
+  if (!container) return;
+  const rs = d?.risk_stats || {};
+  const byYear = d?.by_year || {};
+  const avgWin  = rs.avg_win_usd;
+  const avgLoss = rs.avg_loss_usd;
+  const acctSize = rs.account_size || 4500;
+  const rpt = rs.risk_per_trade || 225;
+
+  const note = document.getElementById('ny1EqNote');
+  if (note) note.textContent = `$${acctSize.toLocaleString()} account · $${rpt.toLocaleString()}/trade · yearly resolution · drawdown shaded`;
+
+  const years = Object.keys(byYear).map(Number).sort((a, b) => a - b);
+  if (!years.length || avgWin == null || avgLoss == null) {
+    container.innerHTML = `<div style="font-family:var(--font-data);font-size:11px;color:var(--faint);padding:8px">No data to display.</div>`;
+    return;
+  }
+
+  // Build yearly equity points
+  let eq = acctSize, peak = eq;
+  const pts = [{ yr: 'Start', eq, dd: 0, pnl: null }];
+  years.forEach(yr => {
+    const row = byYear[yr];
+    const losses = row.n - row.wins;
+    const pnl = row.wins * avgWin + losses * avgLoss;
+    eq += pnl;
+    if (eq > peak) peak = eq;
+    const dd = (peak - eq) / peak * 100;
+    pts.push({ yr, eq, dd, pnl });
+  });
+
+  // Draw SVG
+  const isDk = document.documentElement.getAttribute('data-theme') !== 'light';
+  const green  = cssVar('--green'),  red    = cssVar('--red');
+  const amber  = cssVar('--amber'),  axisC  = isDk ? '#4a6480' : '#94a3b8';
+  const gridC  = isDk ? 'rgba(255,255,255,.04)' : 'rgba(0,0,0,.06)';
+  const beC    = isDk ? 'rgba(245,158,11,.5)'   : 'rgba(217,119,6,.5)';
+  const bgCard = isDk ? '#111827' : '#ffffff';
+  const FONT   = "'JetBrains Mono',monospace";
+
+  const W = container.clientWidth || 680, H = 280;
+  const ml = 70, mr = 24, mt = 20, mb = 36, cw = W - ml - mr, ch = H - mt - mb;
+  const n = pts.length;
+  const equities = pts.map(p => p.eq);
+  const minEq = Math.min(...equities, acctSize), maxEq = Math.max(...equities);
+  const range = Math.max(maxEq - minEq, 500);
+  const pad = range * 0.12;
+  const yLo = minEq - pad, yHi = maxEq + pad, yRange = yHi - yLo;
+  const yS = v => ((yHi - v) / yRange) * ch;
+  const xS = i => i / (n - 1) * cw;
+
+  const linePath = pts.map((p, i) => `${i===0?'M':'L'}${xS(i).toFixed(1)},${yS(p.eq).toFixed(1)}`).join(' ');
+  const yStart = yS(acctSize);
+  const greenFill = 'M' + pts.map((p, i) => `${xS(i).toFixed(1)},${Math.min(yS(p.eq),yStart).toFixed(1)}`).join(' L') +
+    ` L${xS(n-1)},${yStart} L${xS(0)},${yStart} Z`;
+  const redFill = 'M' + pts.map((p, i) => `${xS(i).toFixed(1)},${Math.max(yS(p.eq),yStart).toFixed(1)}`).join(' L') +
+    ` L${xS(n-1)},${yStart} L${xS(0)},${yStart} Z`;
+
+  // Drawdown polygon
+  let pkEq = acctSize;
+  const ddTop = pts.map((p, i) => { if (p.eq > pkEq) pkEq = p.eq; return `${xS(i).toFixed(1)},${yS(pkEq).toFixed(1)}`; });
+  const ddBot = [...pts].reverse().map((p, i) => `${xS(n-1-i).toFixed(1)},${yS(p.eq).toFixed(1)}`);
+  const ddPath = 'M' + ddTop.join(' L') + ' ' + ddBot.map((s, i) => (i===0?'L ':' L')+s).join('') + ' Z';
+
+  // Y-axis ticks
+  function niceTick(v) { const o = Math.pow(10, Math.floor(Math.log10(Math.max(v,1)))); const r = v/o; return r<1.5?o:r<3?2*o:r<7?5*o:10*o; }
+  function fmtEqLbl(v) { const a = Math.abs(v); if (a>=10000) return '$'+(v/1000).toFixed(0)+'k'; if (a>=1000) return '$'+(v/1000).toFixed(1)+'k'; return '$'+Math.round(v); }
+  const tickStep = niceTick(yRange / 5);
+  let grid = '', yl = '', t = Math.ceil(yLo / tickStep) * tickStep;
+  while (t <= yHi) {
+    const y = yS(t);
+    const isStart = Math.abs(t - acctSize) < tickStep * 0.3;
+    grid += `<line x1="0" y1="${y.toFixed(1)}" x2="${cw}" y2="${y.toFixed(1)}" stroke="${isStart?beC:gridC}" stroke-width="${isStart?1.5:1}" stroke-dasharray="${isStart?'5,3':'2,4'}"/>`;
+    yl += `<text x="-6" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="9" fill="${isStart?amber:axisC}" font-family="${FONT}">${fmtEqLbl(t)}</text>`;
+    t += tickStep;
+  }
+
+  // Dots + x-labels
+  let dots = '', xl = '';
+  pts.forEach((p, i) => {
+    const x = xS(i), y = yS(p.eq);
+    const col = p.eq >= acctSize ? green : red;
+    const isFinal = i === n - 1;
+    const pnlStr = p.pnl != null ? (p.pnl >= 0 ? '+$' : '-$') + Math.abs(Math.round(p.pnl)).toLocaleString() : '';
+    const tip = `Year: ${p.yr}&#10;Equity: $${Math.round(p.eq).toLocaleString()}${pnlStr?'&#10;P&L: '+pnlStr:''}&#10;Drawdown: ${p.dd.toFixed(1)}%`;
+    dots += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${isFinal?4.5:3.5}" fill="${col}" stroke="${bgCard}" stroke-width="2" style="cursor:default">
+      <title>${tip}</title></circle>`;
+    if (isFinal) {
+      const totalPnl = p.eq - acctSize;
+      const lbl = (totalPnl >= 0 ? '+$' : '-$') + Math.abs(Math.round(totalPnl)).toLocaleString();
+      dots += `<text x="${(x-6).toFixed(1)}" y="${(y-10).toFixed(1)}" text-anchor="end" font-size="10" font-weight="700" fill="${col}" font-family="${FONT}">${lbl}</text>`;
+    }
+    xl += `<text x="${x.toFixed(1)}" y="${(ch+22).toFixed(1)}" text-anchor="middle" font-size="${p.yr==='Start'?8:9}" fill="${axisC}" font-family="${FONT}">${p.yr}</text>`;
+  });
+
+  const gId = 'ny1eq' + Math.random().toString(36).slice(2);
+  const ddGid = 'ny1dd' + Math.random().toString(36).slice(2);
+  container.innerHTML = `<svg width="${W}" height="${H}" style="overflow:visible;display:block">
+    <defs>
+      <linearGradient id="${gId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${green}" stop-opacity="0.25"/><stop offset="100%" stop-color="${green}" stop-opacity="0.03"/></linearGradient>
+      <linearGradient id="${ddGid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${red}" stop-opacity="0.28"/><stop offset="100%" stop-color="${red}" stop-opacity="0.05"/></linearGradient>
+    </defs>
+    <g transform="translate(${ml},${mt})">
+      ${grid}
+      <path d="${ddPath}" fill="url(#${ddGid})"/>
+      <path d="${greenFill}" fill="url(#${gId})"/>
+      <path d="${redFill}" fill="${red}" fill-opacity="0.06"/>
+      <path d="${linePath}" fill="none" stroke="${green}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      ${dots}${yl}${xl}
+    </g>
+  </svg>`;
+}
+
 // ─── RESIZE ──────────────────────────────────────────────────────────────────
 let _resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(_resizeTimer);
-  _resizeTimer = setTimeout(() => { if (_data) renderCharts(_data[_activeTF][_activeModel]); }, 150);
+  _resizeTimer = setTimeout(() => {
+    if (!_data) return;
+    const d = _data[_activeTF][_activeModel];
+    renderCharts(d);
+    renderNy1EquityCurve(d);
+  }, 150);
 });
 
 </script>

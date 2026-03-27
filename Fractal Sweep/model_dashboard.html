@@ -372,6 +372,14 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
   </div>
 
   <div class="panel">
+    <div class="ph">
+      <span class="ph-title">Equity Curve · Cumulative P&amp;L</span>
+      <span class="ph-note">$<span id="eq-acct-size">4,500</span> account · $<span id="eq-risk-per-trade">225</span>/trade · yearly resolution · drawdown shaded</span>
+    </div>
+    <div class="pb"><div id="equity-curve-chart"></div></div>
+  </div>
+
+  <div class="panel">
     <div class="ph"><span class="ph-title">Stop Size Distribution</span><span class="ph-note">Points</span></div>
     <div class="pb">
       <div class="risk-grid" id="risk-grid"></div>
@@ -1056,9 +1064,126 @@ function renderModel(D){
   rn.textContent=`Stop = |entry – sweep extreme|. Median stop = ${m.risk_median||'—'}pt → ~${(m.risk_median||0)*2}pt target at 1:2. Breakeven WR = ${pct(be)}.`;
 
   renderSweepMAEAnalysis(D);
+  renderEquityCurveFS(D);
 
   renderClassificationBreakdown();
   renderRecentTrades();
+}
+
+// ── EQUITY CURVE ─────────────────────────────────────────────────────────────
+function renderEquityCurveFS(D){
+  const container=document.getElementById('equity-curve-chart');
+  if(!container) return;
+  const rs=D?.risk_stats||{}, m=D?.meta||{};
+  const byYear=D?.by_year||[];
+  const avgWin=rs.avg_win_usd, avgLoss=rs.avg_loss_usd;
+  const acctSize=rs.account_size||4500, rpt=rs.risk_per_trade||225;
+
+  // Update header note
+  const an=document.getElementById('eq-acct-size');
+  const rn2=document.getElementById('eq-risk-per-trade');
+  if(an) an.textContent=acctSize.toLocaleString();
+  if(rn2) rn2.textContent=rpt.toLocaleString();
+
+  if(!byYear.length||avgWin==null||avgLoss==null){
+    container.innerHTML=`<div style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);padding:8px">Load real model_stats.json to see the equity curve.</div>`;
+    return;
+  }
+
+  // Build yearly equity points
+  let eq=acctSize, peak=eq;
+  const pts=[{yr:'Start',eq,dd:0,pnl:null,label:'Start'}];
+  byYear.forEach(d=>{
+    const losses=d.n-d.wins;
+    const pnl=d.wins*avgWin+losses*avgLoss;
+    eq+=pnl;
+    if(eq>peak) peak=eq;
+    const dd=(peak-eq)/peak*100;
+    pts.push({yr:d.yr,eq,dd,pnl});
+  });
+
+  _drawEquityCurveSVG(container,pts,acctSize);
+}
+
+function _drawEquityCurveSVG(container,pts,acctSize){
+  const W=container.clientWidth||700,H=280,c=C();
+  const ml=70,mr=24,mt=20,mb=36,cw=W-ml-mr,ch=H-mt-mb;
+  const n=pts.length;
+  const equities=pts.map(p=>p.eq);
+  const minEq=Math.min(...equities,acctSize),maxEq=Math.max(...equities);
+  const range=Math.max(maxEq-minEq,500);
+  const pad=range*0.12;
+  const yLo=minEq-pad, yHi=maxEq+pad, yRange=yHi-yLo;
+  const yS=v=>((yHi-v)/yRange)*ch;
+  const xS=i=>i/(n-1)*cw;
+
+  // Line path
+  const linePath=pts.map((p,i)=>`${i===0?'M':'L'}${xS(i).toFixed(1)},${yS(p.eq).toFixed(1)}`).join(' ');
+
+  // Green fill above starting equity
+  const yStart=yS(acctSize);
+  const greenFill='M'+pts.map((p,i)=>`${xS(i).toFixed(1)},${Math.min(yS(p.eq),yStart).toFixed(1)}`).join(' L')+
+    ` L${xS(n-1)},${yStart} L${xS(0)},${yStart} Z`;
+
+  // Red fill below starting equity (underwater)
+  const redFill='M'+pts.map((p,i)=>`${xS(i).toFixed(1)},${Math.max(yS(p.eq),yStart).toFixed(1)}`).join(' L')+
+    ` L${xS(n-1)},${yStart} L${xS(0)},${yStart} Z`;
+
+  // Drawdown shading (peak-to-trough)
+  let pkEq=acctSize;
+  const ddTop=pts.map((p,i)=>{if(p.eq>pkEq)pkEq=p.eq;return`${xS(i).toFixed(1)},${yS(pkEq).toFixed(1)}`;});
+  const ddBot=[...pts].reverse().map((p,i)=>`${xS(n-1-i).toFixed(1)},${yS(p.eq).toFixed(1)}`);
+  const ddPath='M'+ddTop.join(' L')+' '+ddBot.map((s,i)=>(i===0?'L':' L')+s).join('')+' Z';
+
+  // Y-axis ticks
+  function niceTick(v){const o=Math.pow(10,Math.floor(Math.log10(Math.max(v,1))));const r=v/o;return r<1.5?o:r<3?2*o:r<7?5*o:10*o;}
+  function fmtEqLbl(v){const a=Math.abs(v);if(a>=10000)return'$'+(v/1000).toFixed(0)+'k';if(a>=1000)return'$'+(v/1000).toFixed(1)+'k';return'$'+Math.round(v);}
+  const tickStep=niceTick(yRange/5);
+  let grid='',yl='',t=Math.ceil(yLo/tickStep)*tickStep;
+  while(t<=yHi){
+    const y=yS(t);
+    const isStart=Math.abs(t-acctSize)<tickStep*0.3;
+    grid+=`<line x1="0" y1="${y.toFixed(1)}" x2="${cw}" y2="${y.toFixed(1)}" stroke="${isStart?c.beLine:c.gridLine}" stroke-width="${isStart?1.5:1}" stroke-dasharray="${isStart?'5,3':'2,4'}"/>`;
+    yl+=`<text x="-6" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="9" fill="${isStart?c.amber:c.axisText}" font-family="${SVG_FONT}">${fmtEqLbl(t)}</text>`;
+    t+=tickStep;
+  }
+
+  // Dots + x-labels
+  let dots='',xl='';
+  pts.forEach((p,i)=>{
+    const x=xS(i),y=yS(p.eq);
+    const col=p.eq>=acctSize?c.green:c.red;
+    const isFinal=i===n-1;
+    const tipData=[
+      [String(p.yr), '$'+Math.round(p.eq).toLocaleString(), p.eq>=acctSize?'g':'r'],
+      ['P&L', p.pnl!=null?(p.pnl>=0?'+$':'-$')+Math.abs(Math.round(p.pnl)).toLocaleString():'Start', p.pnl==null?'':p.pnl>=0?'g':'r'],
+      ['DD', '-'+p.dd.toFixed(1)+'%', p.dd>0?'r':''],
+    ];
+    dots+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${isFinal?4.5:3.5}" fill="${col}" stroke="${isDark?'#111827':'#fff'}" stroke-width="2" onmouseenter="showTip(event,${JSON.stringify(tipData)})" onmouseleave="hideTip()" style="cursor:default"/>`;
+    if(isFinal){
+      const totalPnl=p.eq-acctSize;
+      const lbl=(totalPnl>=0?'+$':'-$')+Math.abs(Math.round(totalPnl)).toLocaleString();
+      dots+=`<text x="${(x-6).toFixed(1)}" y="${(y-10).toFixed(1)}" text-anchor="end" font-size="10" font-weight="700" fill="${col}" font-family="${SVG_FONT}">${lbl}</text>`;
+    }
+    xl+=`<text x="${x.toFixed(1)}" y="${(ch+22).toFixed(1)}" text-anchor="middle" font-size="${p.yr==='Start'?8:9}" fill="${c.axisText}" font-family="${SVG_FONT}">${p.yr}</text>`;
+  });
+
+  const gId='eqfs'+Math.random().toString(36).slice(2);
+  const ddGid='ddfs'+Math.random().toString(36).slice(2);
+  container.innerHTML=`<svg width="${W}" height="${H}" style="overflow:visible;display:block">
+    <defs>
+      <linearGradient id="${gId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${c.green}" stop-opacity="0.25"/><stop offset="100%" stop-color="${c.green}" stop-opacity="0.03"/></linearGradient>
+      <linearGradient id="${ddGid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${c.red}" stop-opacity="0.28"/><stop offset="100%" stop-color="${c.red}" stop-opacity="0.05"/></linearGradient>
+    </defs>
+    <g transform="translate(${ml},${mt})">
+      ${grid}
+      <path d="${ddPath}" fill="url(#${ddGid})"/>
+      <path d="${greenFill}" fill="url(#${gId})"/>
+      <path d="${redFill}" fill="${c.red}" fill-opacity="0.06"/>
+      <path d="${linePath}" fill="none" stroke="${c.green}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      ${dots}${yl}${xl}
+    </g>
+  </svg>`;
 }
 
 // ── MAE / MFE ANALYSIS ──────────────────────────────────────────────────────
