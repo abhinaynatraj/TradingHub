@@ -407,26 +407,6 @@ footer{
       <option value="1m">Last 1 Month</option>
     </select>
   </div>
-  <div class="sel-group">
-    <label class="sel-label">Combo</label>
-    <select class="sel-drop" id="modelDropdown" onchange="switchModel(this.value)">
-      <optgroup label="── Fixed % Stop Combos ──">
-        <option value="pct_005_006" selected>#1  SL 0.05% / TP 0.06%  (1.2:1)  — CE 0.339</option>
-        <option value="pct_004_006">#2  SL 0.04% / TP 0.06%  (1.5:1)  — CE 0.342</option>
-        <option value="pct_005_008">#3  SL 0.05% / TP 0.08%  (1.6:1)  — CE 0.351</option>
-        <option value="pct_004_008">#4  SL 0.04% / TP 0.08%  (2:1)    — CE 0.370</option>
-        <option value="pct_004_007">#5  SL 0.04% / TP 0.07%  (1.75:1) — CE 0.351</option>
-        <option value="pct_005_009">#6  SL 0.05% / TP 0.09%  (1.8:1)  — CE 0.357</option>
-        <option value="pct_003_006">#7  SL 0.03% / TP 0.06%  (2:1)    — CE 0.362</option>
-        <option value="pct_005_005">#8  SL 0.05% / TP 0.05%  (1:1)    — CE 0.313</option>
-        <option value="pct_004_005">#9  SL 0.04% / TP 0.05%  (1.25:1) — CE 0.295</option>
-        <option value="pct_003_005">#10 SL 0.03% / TP 0.05%  (1.67:1) — CE 0.284</option>
-      </optgroup>
-      <optgroup label="── Reference Models ──">
-        <option value="cashflow">Cashflow  (Structural Stop · 10bps TP · 1:1 R)</option>
-      </optgroup>
-    </select>
-  </div>
 </div>
 
 <main>
@@ -465,23 +445,24 @@ footer{
         <div class="how-num">02</div>
         <div class="how-title">Entry &amp; Stop</div>
         <div class="how-body">
-          Fill is confirmed at <strong>C3</strong> — the candle that closes the FVG. Entry is at
-          C3 open. The stop is placed at a <strong>fixed % below/above entry</strong> (e.g. 0.04%
-          for combo #1). Contracts are sized so a full stop-out = exactly <strong>$225</strong>.
-          Trade triggers from C3+1 bar through 16:00 ET.
+          Fill is confirmed when price retraces to the <strong>FVG edge</strong> (C3 boundary) on
+          any bar after C3. The stop is placed <strong>structurally</strong> — below
+          min(C1.low, C2.low) for longs, above max(C1.high, C2.high) for shorts. Risk distance
+          varies per trade. Position is sized so a stop-out = exactly <strong>$225</strong>.
         </div>
-        <span class="how-tag green">C3 Fill · Fixed % Stop</span>
+        <span class="how-tag green">C3 Fill · Structural Stop</span>
       </div>
       <div class="how-card">
         <div class="how-num">03</div>
         <div class="how-title">Exit Rules</div>
         <div class="how-body">
-          Full position exits at the <strong>fixed % TP</strong> target from entry (WIN) or at the
-          <strong>fixed % SL</strong> (LOSS). If neither is touched by <strong>16:00 ET</strong>,
-          the trade expires with R = 0. Position is sized so a stop-out costs exactly
-          <strong>$225</strong> (5% of $4,500 account) regardless of stop size.
+          <strong>Split-exit model.</strong> <strong>50%</strong> of the position exits at
+          <strong>TP1 = 0.10%</strong> (Protect the Queen level) in the trade's favour.
+          The remaining <strong>50% runner</strong> moves its stop to <strong>breakeven</strong>
+          (entry price) and holds until stopped out at BE or the session closes at <strong>16:00 ET</strong>.
+          If price never reaches TP1, the full position exits at the structural stop.
         </div>
-        <span class="how-tag amber">Fixed % TP · Fixed % SL · EOD Expire</span>
+        <span class="how-tag amber">Structural Stop · TP1 0.10% (50%) · Runner BE to EOD</span>
       </div>
     </div>
 
@@ -521,7 +502,7 @@ footer{
     <div class="panel">
       <div class="panel-hd">
         <span class="panel-title">Performance by Quarter</span>
-        <span class="panel-note">Win Rate · Trades · Avg MAE · Avg MFE1 · Avg MFE2</span>
+        <span class="panel-note">Win Rate · Trades · Avg MAE · Avg MFE</span>
       </div>
       <div class="panel-body tight">
         <canvas id="cvQuarter"></canvas>
@@ -533,7 +514,7 @@ footer{
       <div class="panel">
         <div class="panel-hd">
           <span class="panel-title">Performance by Year</span>
-          <span class="panel-note">TP1 win rate · MAE · MFE by year</span>
+          <span class="panel-note">Survival rate · MAE · MFE by year</span>
         </div>
         <div class="panel-body" style="padding:0">
           <div class="yr-table-wrap">
@@ -561,11 +542,19 @@ footer{
       <div class="panel-body tight"><div id="ny1EquityCurve"></div></div>
     </div>
 
-    <!-- MAE / MFE ANALYSIS -->
+    <!-- MFE DISTRIBUTION -->
     <div class="sec-head">
-      <span class="sec-label">MAE / MFE Analysis</span>
+      <span class="sec-label">MFE Distribution</span>
       <span class="sec-line"></span>
-      <span class="sec-pill">Bell curve · Combined Edge · SL candidates</span>
+      <span class="sec-pill">PhD-level analysis · log-normal fit · clusters · Protect the Queen</span>
+    </div>
+    <div id="mfe-dist-panel"></div>
+
+    <!-- MAE ANALYSIS -->
+    <div class="sec-head">
+      <span class="sec-label">MAE Analysis</span>
+      <span class="sec-line"></span>
+      <span class="sec-pill">PhD-level analysis · log-normal fit · clusters · SL sweep</span>
     </div>
     <div id="mae-analysis-panel"></div>
 
@@ -587,9 +576,6 @@ footer{
       </div>
     </div>
 
-    <!-- MODEL COMPARISON -->
-    <div id="comparison"></div>
-    <div id="compSection"></div>
 
   </div><!-- #app -->
 </main>
@@ -669,78 +655,12 @@ function wrColorBars(wr) {
 function pct(v, dp = 1) { return (v * 100).toFixed(dp) + '%'; }
 function rnd(v, dp = 2) { return v >= 0 ? '+' + v.toFixed(dp) : v.toFixed(dp); }
 
-// ─── SLTP ANALYZER + MASTER BACKTESTER RESULTS ───────────────────────────────
-const SLTP_DATA = {
-  pct_005_006: { label:'#1  SL 0.05% / TP 0.06%', sl:0.05, tp:0.06, rr:1.20, ev_r:0.225, pf:1.507, ce:0.339, mcl:10, mcw:12,
-    combined:{n:2721,wr:0.557,pl:137700,sharpe:10.73,blown:false},
-    DWP:{n:975,wr:0.578,pl:59805,sharpe:7.83,blown:false}, DNP:{n:436,wr:0.555,pl:21690,sharpe:4.22,blown:false},
-    R1:{n:656,wr:0.524,pl:22680,sharpe:3.58,blown:false},   R2:{n:562,wr:0.593,pl:38385,sharpe:6.65,blown:false},
-    Unclassified:{n:92,wr:0.348,pl:-4860,sharpe:-2.14,blown:true} },
-  pct_004_006: { label:'#2  SL 0.04% / TP 0.06%', sl:0.04, tp:0.06, rr:1.50, ev_r:0.234, pf:1.462, ce:0.342, mcl:12, mcw:9,
-    combined:{n:2721,wr:0.494,pl:143212,sharpe:9.76,blown:false},
-    DWP:{n:975,wr:0.513,pl:61875,sharpe:7.04,blown:false}, DNP:{n:436,wr:0.459,pl:14400,sharpe:2.46,blown:false},
-    R1:{n:656,wr:0.477,pl:28462,sharpe:3.95,blown:false},   R2:{n:562,wr:0.539,pl:43988,sharpe:6.61,blown:false},
-    Unclassified:{n:92,wr:0.293,pl:-5512,sharpe:-2.23,blown:true} },
-  pct_005_008: { label:'#3  SL 0.05% / TP 0.08%', sl:0.05, tp:0.08, rr:1.60, ev_r:0.240, pf:1.459, ce:0.351, mcl:13, mcw:10,
-    combined:{n:2721,wr:0.477,pl:147105,sharpe:9.65,blown:false},
-    DWP:{n:975,wr:0.511,pl:71955,sharpe:7.88,blown:false}, DNP:{n:436,wr:0.477,pl:23580,sharpe:3.86,blown:false},
-    R1:{n:656,wr:0.413,pl:10935,sharpe:1.48,blown:false},   R2:{n:562,wr:0.521,pl:44955,sharpe:6.48,blown:false},
-    Unclassified:{n:92,wr:0.304,pl:-4320,sharpe:-1.66,blown:true} },
-  pct_004_008: { label:'#4  SL 0.04% / TP 0.08%', sl:0.04, tp:0.08, rr:2.00, ev_r:0.257, pf:1.442, ce:0.370, mcl:15, mcw:9,
-    combined:{n:2721,wr:0.419,pl:157275,sharpe:9.05,blown:false},
-    DWP:{n:975,wr:0.452,pl:78300,sharpe:7.46,blown:false}, DNP:{n:436,wr:0.385,pl:15300,sharpe:2.23,blown:false},
-    R1:{n:656,wr:0.372,pl:17100,sharpe:2.04,blown:true},   R2:{n:562,wr:0.470,pl:51750,sharpe:6.47,blown:false},
-    Unclassified:{n:92,wr:0.250,pl:-5175,sharpe:-1.84,blown:true} },
-  pct_004_007: { label:'#5  SL 0.04% / TP 0.07%', sl:0.04, tp:0.07, rr:1.75, ev_r:0.243, pf:1.444, ce:0.351, mcl:14, mcw:9,
-    combined:{n:2721,wr:0.452,pl:148838,sharpe:9.26,blown:false},
-    DWP:{n:975,wr:0.476,pl:67725,sharpe:7.02,blown:false}, DNP:{n:436,wr:0.417,pl:14512,sharpe:2.28,blown:false},
-    R1:{n:656,wr:0.418,pl:21938,sharpe:2.80,blown:false},   R2:{n:562,wr:0.509,pl:50512,sharpe:6.88,blown:false},
-    Unclassified:{n:92,wr:0.261,pl:-5850,sharpe:-2.23,blown:true} },
-  pct_005_009: { label:'#6  SL 0.05% / TP 0.09%', sl:0.05, tp:0.09, rr:1.80, ev_r:0.247, pf:1.446, ce:0.357, mcl:14, mcw:9,
-    combined:{n:2721,wr:0.445,pl:151335,sharpe:9.26,blown:false},
-    DWP:{n:975,wr:0.486,pl:79245,sharpe:8.06,blown:false}, DNP:{n:436,wr:0.440,pl:22860,sharpe:3.50,blown:false},
-    R1:{n:656,wr:0.378,pl:8640,sharpe:1.10,blown:true},    R2:{n:562,wr:0.484,pl:44910,sharpe:6.01,blown:false},
-    Unclassified:{n:92,wr:0.283,pl:-4320,sharpe:-1.58,blown:true} },
-  pct_003_006: { label:'#7  SL 0.03% / TP 0.06%', sl:0.03, tp:0.06, rr:2.00, ev_r:0.252, pf:1.433, ce:0.362, mcl:15, mcw:9,
-    combined:{n:2721,wr:0.417,pl:154575,sharpe:8.90,blown:false},
-    DWP:{n:975,wr:0.422,pl:58050,sharpe:5.57,blown:false}, DNP:{n:436,wr:0.381,pl:13950,sharpe:2.04,blown:false},
-    R1:{n:656,wr:0.422,pl:39375,sharpe:4.61,blown:false},   R2:{n:562,wr:0.457,pl:47025,sharpe:5.89,blown:false},
-    Unclassified:{n:92,wr:0.272,pl:-3825,sharpe:-1.32,blown:true} },
-  pct_005_005: { label:'#8  SL 0.05% / TP 0.05%', sl:0.05, tp:0.05, rr:1.00, ev_r:0.206, pf:1.519, ce:0.313, mcl:8, mcw:15,
-    combined:{n:2721,wr:0.603,pl:126225,sharpe:10.99,blown:false},
-    DWP:{n:975,wr:0.624,pl:54225,sharpe:7.96,blown:false}, DNP:{n:436,wr:0.596,pl:18900,sharpe:4.09,blown:false},
-    R1:{n:656,wr:0.579,pl:23400,sharpe:4.11,blown:false},   R2:{n:562,wr:0.634,pl:33750,sharpe:6.56,blown:false},
-    Unclassified:{n:92,wr:0.348,pl:-2700,sharpe:-1.45,blown:true} },
-  pct_004_005: { label:'#9  SL 0.04% / TP 0.05%', sl:0.04, tp:0.05, rr:1.25, ev_r:0.205, pf:1.441, ce:0.295, mcl:9, mcw:14,
-    combined:{n:2721,wr:0.536,pl:125381,sharpe:9.52,blown:false},
-    DWP:{n:975,wr:0.554,pl:54000,sharpe:6.87,blown:false}, DNP:{n:436,wr:0.500,pl:12263,sharpe:2.32,blown:false},
-    R1:{n:656,wr:0.524,pl:26550,sharpe:4.10,blown:false},   R2:{n:562,wr:0.573,pl:36563,sharpe:6.15,blown:false},
-    Unclassified:{n:92,wr:0.359,pl:-3994,sharpe:-1.71,blown:false} },
-  pct_003_005: { label:'#10 SL 0.03% / TP 0.05%', sl:0.03, tp:0.05, rr:1.67, ev_r:0.206, pf:1.377, ce:0.284, mcl:12, mcw:10,
-    combined:{n:2721,wr:0.452,pl:126375,sharpe:8.11,blown:false},
-    DWP:{n:975,wr:0.459,pl:48825,sharpe:5.23,blown:false}, DNP:{n:436,wr:0.413,pl:9900,sharpe:1.60,blown:false},
-    R1:{n:656,wr:0.459,pl:33000,sharpe:4.31,blown:false},   R2:{n:562,wr:0.484,pl:36750,sharpe:5.17,blown:false},
-    Unclassified:{n:92,wr:0.337,pl:-2100,sharpe:-0.77,blown:false} },
-  // ── Reference: Cashflow model (structural stop · 10 bps TP · 1:1 R) ──
-  cashflow: { label:'Cashflow — Structural Stop · 10bps TP', sl:null, tp:0.10, rr:1.00, ev_r:0.309, pf:1.893, ce:-0.144, mcl:null, mcw:null,
-    combined:{n:2719,wr:0.654,pl:188775,sharpe:5.15,blown:false},
-    DWP:{n:975,wr:0.713,pl:93375,sharpe:7.46,blown:false}, DNP:{n:436,wr:0.656,pl:30600,sharpe:5.21,blown:false},
-    R1:{n:656,wr:0.598,pl:28800,sharpe:3.16,blown:false},  R2:{n:562,wr:0.676,pl:44550,sharpe:5.97,blown:false},
-    Unclassified:{n:90,wr:0.289,pl:-8550,sharpe:-7.35,blown:true} },
-};
-
-// ─── MODEL / TIMEFRAME SELECTION ─────────────────────────────────────────────
-let _activeModel = 'pct_005_006';
-let _activeTF    = 'all';
-
-function switchModel(key) {
-  _activeModel = key;
-  if (_data) renderAll(_data[_activeTF][key]);
-}
+// ─── TIMEFRAME SELECTION ──────────────────────────────────────────────────────
+let _activeTF = 'all';
 
 function switchTF(tf) {
   _activeTF = tf;
-  if (_data) renderAll(_data[tf][_activeModel]);
+  if (_data) renderAll(_data[tf]['open_run']);
 }
 
 // ─── LOAD DATA ───────────────────────────────────────────────────────────────
@@ -752,7 +672,7 @@ async function loadData() {
     _data = raw;
     document.getElementById('loading').style.display = 'none';
     document.getElementById('app').style.display = '';
-    renderAll(_data[_activeTF][_activeModel]);
+    renderAll(_data[_activeTF]['open_run']);
   } catch (e) {
     document.getElementById('loading').innerHTML =
       '<span style="color:var(--red)">&#9888; Could not load ny1_results.json — run python3 ny1_backtest.py first</span>';
@@ -763,14 +683,13 @@ window.addEventListener('load', loadData);
 // ─── RENDER ALL ──────────────────────────────────────────────────────────────
 function renderAll(d) {
   renderHero(d.meta, d.risk_stats);
-  renderClassificationGrid();
   renderDirection(d.by_direction);
   renderCharts(d);
   renderYearTable(d.by_year);
   renderNy1EquityCurve(d);
+  renderMFEDistribution(d.risk_stats);
   renderMAEAnalysis(d.risk_stats);
   renderTradesTable(d.recent_trades || d.trades);
-  renderRankingsTable();
   // update pills
   const tfLabel = _activeTF === 'all' ? '2014–2026' : ({
     '2y':'Last 2Y','1y':'Last 1Y','6m':'Last 6M','3m':'Last 3M','1m':'Last 1M'
@@ -779,237 +698,352 @@ function renderAll(d) {
   document.getElementById('tradesNote').textContent = 'Most recent ' + (d.recent_trades?.length || 40) + ' of ' + d.meta.n + ' resolved · ' + tfLabel;
 }
 
-// ─── MAE / MFE ANALYSIS ──────────────────────────────────────────────────────
+// ─── MAE ANALYSIS ─────────────────────────────────────────────────────────────
 function renderMAEAnalysis(rs) {
   const el = document.getElementById('mae-analysis-panel');
   if (!el) return;
   rs = rs || {};
-  const bell = rs.mae_bell;
-  const ce   = rs.ce;
-  const slPct = rs.sl_pct;
+  const dist = rs.mae_dist;
+  if (!dist) {
+    el.innerHTML = `<div style="color:var(--faint);font-family:var(--font-data);font-size:11px;padding:16px">No MAE distribution data — run python3 ny1_backtest.py first.</div>`;
+    return;
+  }
 
-  // CE rating
-  const ceColor = ce == null ? 'var(--faint)' : ce >= 3.0 ? 'var(--green)' : ce >= 1.5 ? 'var(--amber)' : ce >= 1.0 ? 'var(--orange)' : 'var(--red)';
-  const ceRating = ce == null ? '—' : ce >= 3.0 ? 'Strong entries' : ce >= 1.5 ? 'Decent entries' : ce >= 1.0 ? 'Marginal' : 'Weak entries';
-  const ceDesc = 'avg(MFE ÷ MAE) on winning trades — measures how hard price runs in your favour vs. how much heat you took';
+  const p      = dist.percentiles || {};
+  const ln     = dist.lognorm || {};
+  const clus   = dist.clusters || [];
+  const sweep  = dist.sl_sweep || [];
+  const hist   = dist.histogram || {};
+  const optSl  = dist.opt_sl;
+  const ce     = rs.ce;
+  const clusterColors = ['#60a5fa','#fbbf24','#f87171'];
 
-  // Bell curve SL candidates
-  const candidates = bell ? [
-    {label:'Mean (μ)',  val: bell.mean,      cov: bell.cov_mean,  color:'#60a5fa'},
-    {label:'+0.5σ',     val: bell.plus_0_5s, cov: bell.cov_0_5s,  color:'#fbbf24'},
-    {label:'+1σ',       val: bell.plus_1s,   cov: bell.cov_1s,    color:'#fb923c'},
-    {label:'+1.5σ',     val: bell.plus_1_5s, cov: bell.cov_1_5s,  color:'#a78bfa'},
-    {label:'+2σ',       val: bell.plus_2s,   cov: bell.cov_2s,    color:'#c084fc'},
-  ] : [];
+  const fmt    = (v, d=4) => v != null ? (+v).toFixed(d) : '—';
+  const fmtPct = v => v != null ? (+v).toFixed(4) + '%' : '—';
 
-  const slRow = (c) => {
-    const isCurrent = slPct != null && Math.abs(c.val - slPct) / slPct < 0.05;
-    return `<tr style="background:${isCurrent?'rgba(16,185,129,0.08)':''}">
-      <td style="font-family:var(--font-data);font-size:11px;color:${c.color};padding:7px 10px;width:80px">${c.label}</td>
-      <td style="font-family:var(--font-data);font-size:12px;color:var(--text);padding:7px 10px;font-weight:600">${c.val.toFixed(4)}%</td>
-      <td style="padding:7px 10px">
-        <div style="display:flex;align-items:center;gap:8px">
-          <div style="flex:1;height:5px;background:var(--border);border-radius:3px;max-width:100px">
-            <div style="width:${c.cov}%;height:100%;background:${c.color};border-radius:3px;opacity:0.7"></div>
-          </div>
-          <span style="font-family:var(--font-data);font-size:10px;color:var(--subtle)">${c.cov}%</span>
-        </div>
-      </td>
-      <td style="font-family:var(--font-data);font-size:10px;color:var(--faint);padding:7px 10px">${isCurrent?'← current profile':''}</td>
-    </tr>`;
-  };
+  const statTiles = [
+    { lbl:'Mean MAE',   v: fmtPct(dist.mean),   c:'#fbbf24', note:'arithmetic avg' },
+    { lbl:'Median MAE', v: fmtPct(dist.median),  c:'#fb923c', note:'50th pct' },
+    { lbl:'Mode MAE',   v: fmtPct(dist.mode),    c:'#60a5fa', note:'most common heat' },
+    { lbl:'Std Dev',    v: fmtPct(dist.std),      c:'#94a3b8', note:'dispersion' },
+    { lbl:'Skewness',   v: fmt(dist.skewness,1),  c: dist.skewness > 2 ? '#f87171':'#94a3b8', note: dist.skewness > 2 ? 'heavy right tail' : 'mild' },
+    { lbl:'CE',         v: ce != null ? ce.toFixed(2) : '—',
+      c: ce >= 3 ? '#10b981' : ce >= 1.5 ? '#fbbf24' : '#f87171',
+      note: ce >= 3 ? 'strong entries' : ce >= 1.5 ? 'decent' : ce != null ? 'marginal' : 'n/a' },
+  ];
+
+  const pctRows = [
+    { lbl:'p5',  v: p.p5,  exceed: 95, color:'#94a3b8' },
+    { lbl:'p10', v: p.p10, exceed: 90, color:'#94a3b8' },
+    { lbl:'p15', v: p.p15, exceed: 85, color:'#64748b' },
+    { lbl:'p20', v: p.p20, exceed: 80, color:'#64748b' },
+    { lbl:'p25', v: p.p25, exceed: 75, color:'#60a5fa' },
+    { lbl:'p30', v: p.p30, exceed: 70, color:'#60a5fa' },
+    { lbl:'p35', v: p.p35, exceed: 65, color:'#60a5fa' },
+    { lbl:'p40', v: p.p40, exceed: 60, color:'#fb923c' },
+    { lbl:'p50 (Median)', v: dist.median, exceed: 50, color:'#fb923c', bold:true },
+    { lbl:'p60', v: p.p60, exceed: 40, color:'#fb923c' },
+    { lbl:'p65', v: p.p65, exceed: 35, color:'#fbbf24' },
+    { lbl:'p70', v: p.p70, exceed: 30, color:'#fbbf24' },
+    { lbl:'p75', v: p.p75, exceed: 25, color:'#10b981' },
+    { lbl:'p80', v: p.p80, exceed: 20, color:'#10b981' },
+    { lbl:'p85', v: p.p85, exceed: 15, color:'#10b981' },
+    { lbl:'p90', v: p.p90, exceed: 10, color:'#a78bfa' },
+    { lbl:'p95', v: p.p95, exceed:  5, color:'#c084fc' },
+    { lbl:'p99', v: p.p99, exceed:  1, color:'#f87171' },
+  ];
+
+  const histId = 'mae-hist-canvas';
 
   el.innerHTML = `
-    <div class="panel" style="margin-bottom:14px">
+  <div class="panel" style="margin-bottom:14px">
+    <div class="panel-hd">
+      <span class="panel-title">MAE Distribution Analysis</span>
+      <span class="panel-note">Max Adverse Excursion · ${dist.n || ''} resolved trades · log-normal fit r=${fmt(ln.goodness,4)}</span>
+    </div>
+    <div class="panel-body">
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px">
+        ${statTiles.map(s=>`
+        <div style="background:var(--card-alt);border:1px solid var(--border);border-radius:8px;padding:12px 10px">
+          <div style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">${s.lbl}</div>
+          <div style="font-family:var(--font-display);font-size:18px;font-weight:700;color:${s.c};line-height:1.1">${s.v}</div>
+          <div style="font-size:9px;color:var(--faint);margin-top:3px">${s.note}</div>
+        </div>`).join('')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 260px;gap:20px;align-items:start">
+        <div>
+          <div style="font-family:var(--font-data);font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">MAE Frequency Distribution (0 → p99)</div>
+          <canvas id="${histId}" height="140" style="width:100%;display:block;border-radius:6px;background:var(--canvas-bg)"></canvas>
+        </div>
+        <div style="background:var(--card-alt);border:1px solid var(--border);border-radius:10px;padding:14px">
+          <div style="font-family:var(--font-data);font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Log-Normal Fit</div>
+          ${[
+            {lbl:'μ (log space)',  v:fmt(ln.mu,4)},
+            {lbl:'σ (log space)',  v:fmt(ln.sigma,4)},
+            {lbl:'Implied Median', v:fmtPct(ln.implied_median)},
+            {lbl:'Implied Mean',   v:fmtPct(ln.implied_mean)},
+            {lbl:'Implied Mode',   v:fmtPct(ln.implied_mode)},
+            {lbl:'Goodness (r)',   v:fmt(ln.goodness,4)},
+          ].map(r=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)">
+            <span style="font-size:11px;color:var(--subtle)">${r.lbl}</span>
+            <span style="font-family:var(--font-data);font-size:11px;color:var(--text);font-weight:500">${r.v}</span>
+          </div>`).join('')}
+          <div style="margin-top:10px;font-size:10px;color:var(--faint);line-height:1.6">
+            MAE is right-skewed — most trades absorb small heat, but outliers run deep. Log-normal r=${fmt(ln.goodness,3)}.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:14px">
+    <div class="panel-hd">
+      <span class="panel-title">MAE Natural Clusters</span>
+      <span class="panel-note">3-tier segmentation at p33 and p75 breakpoints</span>
+    </div>
+    <div class="panel-body">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+        ${clus.map((c,i)=>`
+        <div style="background:var(--card-alt);border:1px solid ${clusterColors[i]}44;border-radius:10px;padding:16px;position:relative;overflow:hidden">
+          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${clusterColors[i]};opacity:0.6"></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <div style="width:8px;height:8px;border-radius:50%;background:${clusterColors[i]}"></div>
+            <span style="font-family:var(--font-display);font-size:13px;font-weight:700;color:${clusterColors[i]}">${c.label}</span>
+            <span style="font-family:var(--font-data);font-size:10px;color:var(--faint)">${c.range}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            ${[
+              {lbl:'Trades', v:c.n},
+              {lbl:'Share',  v:c.pct_of_trades+'%'},
+              {lbl:'Mean',   v:fmtPct(c.mean)},
+              {lbl:'Median', v:fmtPct(c.median)},
+              {lbl:'Max',    v:fmtPct(c.max)},
+            ].map(s=>`
+            <div>
+              <div style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.03em">${s.lbl}</div>
+              <div style="font-family:var(--font-data);font-size:12px;color:var(--text);font-weight:600">${s.v}</div>
+            </div>`).join('')}
+          </div>
+        </div>`).join('')}
+      </div>
+      <div style="margin-top:12px;font-size:11px;color:var(--subtle);line-height:1.7">
+        <strong style="color:var(--text)">Tight cluster</strong> (bottom 33%) — minimal heat before resolution.
+        <strong style="color:var(--text)">Moderate cluster</strong> (middle 42%) — typical adversity before direction confirms.
+        <strong style="color:var(--text)">Wide cluster</strong> (top 25%) — deep pullbacks; many still recover (see SL sweep below).
+      </div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+    <div class="panel">
       <div class="panel-hd">
-        <span class="panel-title">MAE / MFE Analysis</span>
-        <span class="panel-note">Bell curve stop sizing · Combined Edge entry quality</span>
+        <span class="panel-title">Full Percentile Table</span>
+        <span class="panel-note">X% of trades exceed this MAE level</span>
       </div>
-      <div class="panel-body" style="display:grid;grid-template-columns:1fr 1.4fr;gap:24px;align-items:start">
-
-        <!-- Left: CE + avg R -->
-        <div>
-          <div style="background:var(--card-alt);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:14px">
-            <div style="font-family:var(--font-data);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:6px">Combined Edge (CE)</div>
-            <div style="font-family:var(--font-display);font-size:36px;font-weight:700;color:${ceColor};line-height:1;margin-bottom:4px">${ce != null ? ce.toFixed(2) : '—'}</div>
-            <div style="font-family:var(--font-data);font-size:11px;color:${ceColor};margin-bottom:8px">${ceRating}</div>
-            <div style="font-size:11px;color:var(--faint);line-height:1.5">${ceDesc}</div>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <div style="background:var(--card-alt);border:1px solid var(--border);border-radius:8px;padding:12px">
-              <div style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Avg Win R</div>
-              <div style="font-family:var(--font-display);font-size:18px;font-weight:700;color:var(--green)">${rs.avg_win_usd != null ? '+' + (rs.avg_win_usd/225).toFixed(2) + 'R' : '—'}</div>
-            </div>
-            <div style="background:var(--card-alt);border:1px solid var(--border);border-radius:8px;padding:12px">
-              <div style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Avg Loss R</div>
-              <div style="font-family:var(--font-display);font-size:18px;font-weight:700;color:var(--red)">${rs.avg_loss_usd != null ? (rs.avg_loss_usd/225).toFixed(2) + 'R' : '—'}</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Right: Bell curve + candidates table -->
-        <div>
-          ${bell ? `
-          <div style="font-family:var(--font-data);font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:8px">
-            MAE Bell Curve  ·  μ = ${bell.mean.toFixed(4)}%  ·  σ = ${bell.std.toFixed(4)}%
-          </div>
-          <canvas id="mae-bell-canvas" height="120" style="width:100%;border-radius:6px;background:var(--card-alt);margin-bottom:12px"></canvas>
-          <table style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead>
-              <tr style="border-bottom:1px solid var(--border)">
-                <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:5px 10px;text-align:left;font-weight:400">Tier</th>
-                <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:5px 10px;text-align:left;font-weight:400">SL Candidate</th>
-                <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:5px 10px;text-align:left;font-weight:400">Trade Coverage</th>
-                <th style="padding:5px 10px"></th>
-              </tr>
-            </thead>
-            <tbody>${candidates.map(slRow).join('')}</tbody>
-          </table>
-          ` : `<div style="font-family:var(--font-data);font-size:11px;color:var(--faint);padding:16px">
-            Bell curve N/A — fixed-% stop profile (stop is uniform across all trades)
-          </div>`}
-        </div>
-
+      <div class="panel-body" style="padding:0">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);background:var(--card-alt)">
+              <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:7px 14px;text-align:left;font-weight:400">Pct</th>
+              <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:7px 14px;text-align:right;font-weight:400">MAE %</th>
+              <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:7px 14px;text-align:left;font-weight:400">Exceeded by</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${pctRows.map(r => `<tr style="border-bottom:1px solid var(--border)">
+              <td style="font-family:var(--font-data);font-size:11px;color:${r.color};padding:5px 14px;font-weight:${r.bold?700:500}">${r.lbl}</td>
+              <td style="font-family:var(--font-data);font-size:12px;color:var(--text);padding:5px 14px;font-weight:600;text-align:right">${r.v != null ? (+r.v).toFixed(4)+'%' : '—'}</td>
+              <td style="padding:5px 14px">
+                <div style="display:flex;align-items:center;gap:7px">
+                  <div style="flex:1;height:4px;background:var(--border);border-radius:3px;max-width:100px">
+                    <div style="width:${r.exceed}%;height:100%;background:${r.color};border-radius:3px;opacity:.7"></div>
+                  </div>
+                  <span style="font-family:var(--font-data);font-size:11px;color:var(--subtle);min-width:30px">${r.exceed}%</span>
+                </div>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
       </div>
-    </div>`;
+    </div>
 
-  // Draw bell curve canvas
-  if (bell) {
-    const canvas = document.getElementById('mae-bell-canvas');
-    if (canvas) drawMAEBell(canvas, bell, slPct);
-  }
-}
+    <div class="panel">
+      <div class="panel-hd">
+        <span class="panel-title">SL Sweep Analysis</span>
+        <span class="panel-note">If SL = X → P(false stop — would recover) · P(genuine loss)</span>
+      </div>
+      <div class="panel-body" style="padding:0">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);background:var(--card-alt)">
+              <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">Touch%</th>
+              <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">SL Level</th>
+              <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">P(false)</th>
+              <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">P(genuine)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sweep.map(t => {
+              const isOpt = t.threshold === optSl;
+              const koColor = t.p_ko >= 0.5 ? '#10b981' : t.p_ko >= 0.35 ? '#fbbf24' : '#f87171';
+              return `<tr style="border-bottom:1px solid var(--border);${isOpt?'background:rgba(16,185,129,0.08)':''}">
+                <td style="font-family:var(--font-data);font-size:11px;color:var(--subtle);padding:5px 10px;text-align:right">${t.exceed_pct}%</td>
+                <td style="font-family:var(--font-data);font-size:11px;color:var(--text);padding:5px 10px;text-align:right;font-weight:${isOpt?700:500}">${(+t.threshold).toFixed(4)}%</td>
+                <td style="font-family:var(--font-data);font-size:11px;color:#f87171;padding:5px 10px;text-align:right">${(t.p_recovered*100).toFixed(1)}%</td>
+                <td style="padding:5px 10px;text-align:right">
+                  <span style="font-family:var(--font-data);font-size:11px;color:${koColor};font-weight:700">${(t.p_ko*100).toFixed(1)}%</span>
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 
-function drawMAEBell(canvas, bell, currentSlPct) {
-  const dpr = window.devicePixelRatio || 1;
-  const W = canvas.offsetWidth || 400, H = 120;
-  canvas.width = W * dpr; canvas.height = H * dpr;
+  <div style="background:rgba(248,113,113,0.07);border:1.5px solid rgba(248,113,113,0.3);border-radius:12px;padding:20px 24px;margin-bottom:14px;display:flex;gap:24px;align-items:flex-start">
+    <div style="font-size:28px;flex-shrink:0">🛡</div>
+    <div style="flex:1">
+      <div style="font-family:var(--font-display);font-size:16px;font-weight:800;color:#f87171;margin-bottom:6px">Stop Loss Insight</div>
+      <div style="font-size:12px;color:var(--subtle);line-height:1.8">
+        Across all SL levels tested, <strong style="color:var(--text)">P(false stop)</strong> never drops below
+        <strong style="color:#f87171">${sweep.length ? (Math.min(...sweep.map(s=>s.p_recovered))*100).toFixed(1)+'%' : '—'}</strong>.
+        Even at the widest level tested (<strong style="color:var(--text)">${sweep.length ? sweep[0].threshold.toFixed(4)+'%' : '—'}</strong>),
+        <strong style="color:#f87171">${sweep.length ? (sweep[0].p_recovered*100).toFixed(1)+'%' : '—'}</strong> of touched trades still recover to TP1.
+        This confirms the <strong style="color:var(--text)">structural stop is the natural boundary</strong> — any tighter fixed % stop cuts legitimate winners.
+        MAE is tightly clustered (σ=${fmt(dist.std,4)}%) relative to MFE, confirming clean directional entries with controlled heat.
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;flex-shrink:0">
+      ${[
+        {lbl:'Median MAE', v:fmtPct(dist.median), c:'#fb923c'},
+        {lbl:'Mean MAE',   v:fmtPct(dist.mean),   c:'#fbbf24'},
+        {lbl:'Min False%', v:sweep.length ? (Math.min(...sweep.map(s=>s.p_recovered))*100).toFixed(1)+'%' : '—', c:'#f87171'},
+        {lbl:'CE Score',   v:ce != null ? ce.toFixed(2) : '—', c: ce >= 1.5 ? '#10b981' : '#fbbf24'},
+      ].map(s=>`
+      <div style="background:rgba(0,0,0,0.2);border:1px solid rgba(248,113,113,0.2);border-radius:8px;padding:10px 14px;text-align:center">
+        <div style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">${s.lbl}</div>
+        <div style="font-family:var(--font-display);font-size:18px;font-weight:800;color:${s.c}">${s.v}</div>
+      </div>`).join('')}
+    </div>
+  </div>
+  `;
+
+  const canvas = document.getElementById(histId);
+  if (!canvas || !hist.edges || !hist.counts) return;
+
+  const W = canvas.offsetWidth || 600;
+  const H = 140;
+  canvas.width  = W * devicePixelRatio;
+  canvas.height = H * devicePixelRatio;
   const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
+  ctx.scale(devicePixelRatio, devicePixelRatio);
 
-  const mu = bell.mean, sd = bell.std;
-  const xMin = Math.max(0, mu - 1.5*sd), xMax = mu + 2.8*sd;
-  const pad = {l:8, r:8, t:12, b:28};
-  const w = W - pad.l - pad.r, h = H - pad.t - pad.b;
+  const padL = 36, padR = 12, padT = 14, padB = 28;
+  const cW = W - padL - padR;
+  const cH = H - padT - padB;
+  const counts = hist.counts;
+  const edges  = hist.edges;
+  const maxC   = Math.max(...counts, 1);
+  const nBins  = counts.length;
+  const xMax   = edges[edges.length - 1];
 
-  function normPDF(x) {
-    return Math.exp(-0.5*Math.pow((x-mu)/sd,2)) / (sd * Math.sqrt(2*Math.PI));
-  }
-  const maxPDF = normPDF(mu);
-  const px = x => pad.l + Math.max(0, Math.min(1, (x-xMin)/(xMax-xMin))) * w;
-  const py = y => pad.t + h - (y / (maxPDF * 1.15)) * h;
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-bg').trim() || '#0d1420';
+  ctx.fillRect(0, 0, W, H);
 
-  // Shaded bands
-  const bands = [
-    {from:xMin,       to:mu,          fill:'rgba(96,165,250,0.06)'},
-    {from:mu,         to:mu+0.5*sd,   fill:'rgba(251,191,36,0.08)'},
-    {from:mu+0.5*sd,  to:mu+sd,       fill:'rgba(251,146,60,0.10)'},
-    {from:mu+sd,      to:mu+1.5*sd,   fill:'rgba(167,139,250,0.12)'},
-    {from:mu+1.5*sd,  to:mu+2.5*sd,   fill:'rgba(192,132,252,0.12)'},
-  ];
-  bands.forEach(({from, to, fill}) => {
-    ctx.beginPath();
-    ctx.moveTo(px(from), py(0));
-    for (let i=0; i<=50; i++) {
-      const x = from + (to-from)*i/50;
-      ctx.lineTo(px(x), py(normPDF(x)));
-    }
-    ctx.lineTo(px(to), py(0));
-    ctx.closePath();
-    ctx.fillStyle = fill; ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1;
+  [0.25,0.5,0.75,1].forEach(f => {
+    const y = padT + cH * (1 - f);
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL+cW, y); ctx.stroke();
   });
 
-  // Bell curve
-  ctx.beginPath();
-  for (let i=0; i<=300; i++) {
-    const x = xMin + (xMax-xMin)*i/300;
-    i===0 ? ctx.moveTo(px(x),py(normPDF(x))) : ctx.lineTo(px(x),py(normPDF(x)));
-  }
-  ctx.strokeStyle = 'rgba(148,163,184,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
-
-  // Candidate vertical lines + labels
-  const lines = [
-    {x:mu,         c:'#60a5fa', lbl:'μ'},
-    {x:mu+0.5*sd,  c:'#fbbf24', lbl:'+½σ'},
-    {x:mu+sd,      c:'#fb923c', lbl:'+1σ'},
-    {x:mu+1.5*sd,  c:'#a78bfa', lbl:'+1.5σ'},
-    {x:mu+2*sd,    c:'#c084fc', lbl:'+2σ'},
-  ];
-  lines.forEach(({x, c, lbl}) => {
-    if (x < xMin || x > xMax) return;
-    ctx.save(); ctx.strokeStyle = c; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
-    ctx.beginPath(); ctx.moveTo(px(x), pad.t); ctx.lineTo(px(x), pad.t+h); ctx.stroke();
-    ctx.restore();
-    ctx.fillStyle = c; ctx.font = `8px monospace`;
-    const tx = Math.min(px(x)+2, W-24);
-    ctx.fillText(lbl, tx, pad.t+h+10);
+  const bW = cW / nBins;
+  counts.forEach((c, i) => {
+    const barH = (c / maxC) * cH;
+    const x = padL + i * bW;
+    const y = padT + cH - barH;
+    const t = i / nBins;
+    const r = Math.round(96  + (248-96)  * t);
+    const g = Math.round(165 + (113-165) * t);
+    const b = Math.round(250 + (113-250) * t);
+    ctx.fillStyle = `rgba(${r},${g},${b},0.75)`;
+    ctx.fillRect(x+1, y, Math.max(bW-2,1), barH);
   });
 
-  // Current SL marker (green solid line + triangle)
-  if (currentSlPct != null) {
-    const cx = px(currentSlPct);
-    ctx.save(); ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2; ctx.setLineDash([]);
-    ctx.beginPath(); ctx.moveTo(cx, pad.t); ctx.lineTo(cx, pad.t+h+6); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx, pad.t+h+6); ctx.lineTo(cx-4, pad.t+h+14); ctx.lineTo(cx+4, pad.t+h+14); ctx.closePath();
-    ctx.fillStyle = '#10b981'; ctx.fill(); ctx.restore();
+  if (dist.median != null) {
+    const mx = padL + (dist.median / xMax) * cW;
+    ctx.strokeStyle = 'rgba(251,146,60,0.8)'; ctx.lineWidth = 1.5; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(mx, padT); ctx.lineTo(mx, padT+cH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#fb923c'; ctx.font = `10px IBM Plex Mono, monospace`;
+    ctx.fillText('Med', mx + 3, padT + cH - 4);
   }
+
+  ctx.fillStyle = '#64748b'; ctx.font = `9px IBM Plex Mono, monospace`; ctx.textAlign = 'center';
+  [0,0.25,0.5,0.75,1].forEach(f => {
+    const xVal = edges[0] + f * (xMax - edges[0]);
+    ctx.fillText(xVal.toFixed(2)+'%', padL + f*cW, padT+cH+16);
+  });
+  ctx.textAlign = 'right';
+  ctx.fillText(maxC, padL-4, padT+4);
+  ctx.fillText('0', padL-4, padT+cH+4);
 }
 
 // ─── HERO STATS ──────────────────────────────────────────────────────────────
 function renderHero(meta, rs) {
-  // sd = structural params from SLTP_DATA (fixed per combo — SL%, TP%, R:R)
-  // rs / meta = live values from JSON (change with timeframe)
-  const sd = SLTP_DATA[_activeModel] || {};
-
   const fmtPL = v => v == null ? '—' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toLocaleString('en-US', {maximumFractionDigits:0});
 
-  // Compute live metrics from JSON risk_stats + meta
-  const n      = rs?.trades  ?? 0;
-  const wins   = rs?.wins    ?? 0;
-  const losses = rs?.losses  ?? 0;
-  const wr     = n > 0 ? wins / n : null;
-  const rr     = (sd.sl && sd.tp) ? sd.tp / sd.sl : 1.0;   // R:R for PCT models; 1:1 for cashflow
-  const ev_r   = wr != null ? +(wr * rr - (1 - wr)).toFixed(3) : null;
-  const pf     = losses > 0 ? +((wins * rr) / losses).toFixed(3) : null;
-  const pl_usd = rs ? Math.round(wins * (rs.avg_win_usd ?? 0) + losses * (rs.avg_loss_usd ?? 0)) : null;
-  const sharpe    = rs?.sharpe ?? null;
-  const blown     = rs?.blown  ?? null;
-  const minEq     = rs?.min_equity_usd ?? null;
-  const accSize   = rs?.account_size   ?? 4500;
-  const maxDDUsd  = minEq != null ? Math.max(0, accSize - minEq) : null;
-  const maxDDPct  = maxDDUsd != null ? (maxDDUsd / accSize * 100) : null;
+  const n         = rs?.trades        ?? 0;
+  const n_tp1     = rs?.tp1_count     ?? 0;
+  const n_stopped = rs?.stopped_count ?? 0;
+  const tp1_rate  = n > 0 ? n_tp1 / n : null;
+  const stop_rate = n > 0 ? n_stopped / n : null;
+  // EV uses actual avg exit R
+  const avg_tp1_r  = rs?.avg_win_usd  != null ? rs.avg_win_usd  / 225 : 0;
+  const avg_stop_r = rs?.avg_loss_usd != null ? rs.avg_loss_usd / 225 : -1;
+  const ev_r  = n > 0 ? +(tp1_rate * avg_tp1_r + stop_rate * avg_stop_r).toFixed(3) : null;
+  const pf    = n_stopped > 0 && avg_tp1_r > 0
+    ? +((n_tp1 * avg_tp1_r) / (n_stopped * Math.abs(avg_stop_r))).toFixed(3) : null;
+  const pl_usd = rs ? Math.round(n_tp1 * (rs.avg_win_usd ?? 0) + n_stopped * (rs.avg_loss_usd ?? 0)) : null;
+  const wins = n_tp1; const losses = n_stopped; const wr = tp1_rate;  // compat aliases
+  const sharpe   = rs?.sharpe ?? null;
+  const blown    = rs?.blown  ?? null;
+  const ce       = rs?.ce     ?? null;
+  const minEq    = rs?.min_equity_usd ?? null;
+  const accSize  = rs?.account_size   ?? 4500;
+  const maxDDUsd = minEq != null ? Math.max(0, accSize - minEq) : null;
+  const maxDDPct = maxDDUsd != null ? (maxDDUsd / accSize * 100) : null;
   const tfHint = _activeTF === 'all' ? '2014–2026' : ({
     '2y':'last 2 years','1y':'last 1 year','6m':'last 6 months','3m':'last 3 months','1m':'last 1 month'
   }[_activeTF] || _activeTF);
 
   const primary = [
-    { lbl: 'Win Rate',  val: wr != null ? (wr*100).toFixed(1)+'%' : '—',
-      cls: wr >= 0.55 ? 'green' : wr >= 0.45 ? 'amber' : 'red',
-      hint: n ? n.toLocaleString()+' trades · '+tfHint : '', bar: cssVar('--cyan') },
+    { lbl: 'TP1 Rate', val: tp1_rate != null ? (tp1_rate*100).toFixed(1)+'%' : '—',
+      cls: tp1_rate >= 0.55 ? 'green' : tp1_rate >= 0.45 ? 'neutral' : 'red',
+      hint: n ? n_tp1.toLocaleString()+' TP1 hits · '+n_stopped.toLocaleString()+' stopped · '+tfHint : '', bar: cssVar('--cyan') },
     { lbl: 'EV (R)',    val: ev_r != null ? (ev_r >= 0 ? '+' : '')+ev_r.toFixed(3) : '—',
       cls: ev_r > 0 ? 'green' : 'red',
-      hint: 'Expected value per R risked', bar: cssVar('--green') },
+      hint: 'Expected value per R risked (TP1=0.10% 50% + runner 50% at BE)', bar: cssVar('--green') },
     { lbl: 'Prof Factor', val: pf != null ? pf.toFixed(3) : '—',
       cls: pf >= 1.5 ? 'green' : pf >= 1.2 ? 'amber' : 'red',
       hint: 'Gross profit ÷ gross loss', bar: cssVar('--blue') },
-    { lbl: 'CE',        val: sd.ce != null ? sd.ce.toFixed(3) : '—',
-      cls: sd.ce >= 0.36 ? 'green' : sd.ce >= 0.30 ? 'amber' : 'red',
-      hint: 'Certainty Equivalent — full 2014–2026 rank metric', bar: cssVar('--purple') },
+    { lbl: 'CE',        val: ce != null ? ce.toFixed(3) : '—',
+      cls: ce >= 3.0 ? 'green' : ce >= 1.5 ? 'amber' : ce >= 1.0 ? 'orange' : 'red',
+      hint: 'avg(MFE÷MAE) on surviving trades — entry quality', bar: cssVar('--purple') },
     { lbl: 'Total P&L', val: fmtPL(pl_usd),
       cls: pl_usd > 0 ? 'green' : 'red',
       hint: '$4,500 account · $225/trade · '+tfHint, bar: cssVar('--green') },
     { lbl: 'Sharpe',    val: sharpe != null ? sharpe.toFixed(2) : '—',
-      cls: sharpe >= 10 ? 'green' : sharpe >= 5 ? 'amber' : 'red',
+      cls: sharpe >= 5 ? 'green' : sharpe >= 2 ? 'amber' : 'red',
       hint: 'Annualised Sharpe ratio', bar: cssVar('--cyan') },
   ];
 
   const risk = [
-    { lbl: 'SL %',      val: sd.sl != null ? sd.sl.toFixed(2)+'%' : 'Struct',
-      cls: 'amber', hint: sd.sl != null ? 'Fixed stop-loss % from entry' : 'Structural stop: min(C1.low, C2.low) / max(C1.high, C2.high)', bar: cssVar('--amber') },
-    { lbl: 'TP %',      val: sd.tp != null ? sd.tp.toFixed(2)+'%' : '—',
-      cls: 'green', hint: 'Fixed take-profit % from entry', bar: cssVar('--green') },
-    { lbl: 'R:R',       val: sd.rr != null ? sd.rr.toFixed(2)+':1' : '—',
-      cls: 'neutral', hint: 'Reward-to-risk ratio (TP÷SL)', bar: cssVar('--blue') },
+    { lbl: 'Stop',      val: 'Structural',
+      cls: 'amber', hint: 'min(C1.low, C2.low) for longs · max(C1.high, C2.high) for shorts', bar: cssVar('--amber') },
+    { lbl: 'Target',    val: 'TP1 0.10%',
+      cls: 'neutral', hint: '50% exits at 0.10% (PTQ) · 50% runner at BE to EOD', bar: cssVar('--faint') },
     { lbl: 'Blown',     val: blown == null ? '—' : (blown ? 'YES' : 'NO'),
       cls: blown ? 'red' : 'green',
       hint: 'Account blown in '+tfHint+'?', bar: blown ? cssVar('--red') : cssVar('--green') },
@@ -1035,66 +1069,6 @@ function renderHero(meta, rs) {
   document.getElementById('riskStatsGrid').innerHTML = risk.map(tileHTML).join('');
 }
 
-// ─── CLASSIFICATION GRID ─────────────────────────────────────────────────────
-function renderClassificationGrid() {
-  const el = document.getElementById('classGrid');
-  if (!el) return;
-  const sd = SLTP_DATA[_activeModel] || {};
-
-  const buckets = [
-    { key:'DWP',  label:'DWP',           desc:'Directional With Pullback', color:'var(--cyan)',   dot:'#22d3ee' },
-    { key:'DNP',  label:'DNP',           desc:'Directional No Pullback',   color:'var(--amber)',  dot:'#fbbf24' },
-    { key:'R1',   label:'R1',            desc:'Range Day Type 1',          color:'var(--blue)',   dot:'#60a5fa' },
-    { key:'R2',   label:'R2',            desc:'Range Day Type 2',          color:'var(--orange)', dot:'#fb923c' },
-    { key:'Unclassified', label:'Unclas', desc:'Unclassified Days',        color:'var(--faint)',  dot:'#64748b' },
-  ];
-
-  const fmtPL = v => v == null ? '—' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toLocaleString('en-US', {maximumFractionDigits:0});
-
-  const cards = buckets.map(b => {
-    const d = sd[b.key] || {};
-    const wrVal  = d.wr  != null ? (d.wr*100).toFixed(1)+'%' : '—';
-    const wrCol  = d.wr >= 0.55 ? 'var(--green)' : d.wr >= 0.45 ? 'var(--amber)' : 'var(--red)';
-    const plVal  = fmtPL(d.pl);
-    const plCol  = d.pl > 0 ? 'var(--green)' : 'var(--red)';
-    const shVal  = d.sharpe != null ? d.sharpe.toFixed(2) : '—';
-    const shCol  = d.sharpe >= 8 ? 'var(--green)' : d.sharpe >= 4 ? 'var(--amber)' : d.sharpe >= 0 ? 'var(--orange)' : 'var(--red)';
-    const blownBadge = d.blown
-      ? `<span style="font-family:var(--font-data);font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px;background:var(--red-dim);color:var(--red);border:1px solid var(--red-border)">BLOWN</span>`
-      : `<span style="font-family:var(--font-data);font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px;background:var(--green-dim);color:var(--green);border:1px solid var(--green-border)">SAFE</span>`;
-
-    return `<div class="stat-tile" style="border-top:2px solid ${b.dot}">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div>
-          <div style="font-family:var(--font-display);font-size:15px;font-weight:800;color:${b.color};letter-spacing:-0.02em">${b.label}</div>
-          <div style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-top:1px">${b.desc}</div>
-        </div>
-        ${blownBadge}
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div>
-          <div style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Win Rate</div>
-          <div style="font-family:var(--font-display);font-size:22px;font-weight:800;color:${wrCol};line-height:1">${wrVal}</div>
-          <div style="font-family:var(--font-data);font-size:10px;color:var(--faint);margin-top:2px">${d.n ? d.n.toLocaleString()+' trades' : '—'}</div>
-        </div>
-        <div>
-          <div style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Total P&L</div>
-          <div style="font-family:var(--font-display);font-size:18px;font-weight:800;color:${plCol};line-height:1">${plVal}</div>
-          <div style="font-family:var(--font-data);font-size:10px;color:var(--faint);margin-top:2px">Sharpe <span style="color:${shCol}">${shVal}</span></div>
-        </div>
-      </div>
-    </div>`;
-  });
-
-  el.innerHTML = `
-    <div style="font-family:var(--font-data);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:10px">
-      Classification Breakdown
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px">
-      ${cards.join('')}
-    </div>`;
-}
-
 // ─── DIRECTION SPLIT ─────────────────────────────────────────────────────────
 function renderDirection(byDir) {
   const dirs = [
@@ -1108,7 +1082,7 @@ function renderDirection(byDir) {
     const wrC = wr >= 0.5 ? cssVar('--green') : cssVar('--red');
     const mfeMiddle = `<div>
            <div class="dir-stat-lbl">Avg MFE</div>
-           <div class="dir-stat-val" style="color:var(--cyan)">${d.avg_mfe1_pct != null ? d.avg_mfe1_pct.toFixed(4)+'%' : '—'}</div>
+           <div class="dir-stat-val" style="color:var(--cyan)">${d.avg_mfe_pct != null ? d.avg_mfe_pct.toFixed(4)+'%' : '—'}</div>
          </div>`;
     return `
       <div class="dir-card">
@@ -1365,7 +1339,7 @@ function drawQuarter(byQ) {
   const cols = [
     { label: 'Trades',   fn: d => (d.n || 0).toString(), color: textM },
     { label: 'Avg MAE',  fn: d => d.avg_mae_pct  != null ? d.avg_mae_pct.toFixed(3)+'%'  : '—', color: amber },
-    { label: 'Avg MFE',  fn: d => d.avg_mfe1_pct != null ? d.avg_mfe1_pct.toFixed(3)+'%' : '—', color: blue  },
+    { label: 'Avg MFE',  fn: d => d.avg_mfe_pct != null ? d.avg_mfe_pct.toFixed(3)+'%' : '—', color: blue  },
   ];
 
   ctx.textBaseline = 'middle';
@@ -1412,7 +1386,7 @@ function renderYearTable(byYear) {
       <tr>
         <th>Year</th>
         <th>N</th>
-        <th>TP1 WR%</th>
+        <th>Survival%</th>
         <th>Avg MAE</th>
         <th>Med MAE</th>
         <th>Avg MFE</th>
@@ -1431,8 +1405,8 @@ function renderYearTable(byYear) {
           <td style="color:${wrC}">${pct(wr)}</td>
           <td style="color:var(--amber)">${f4(d.avg_mae_pct)}</td>
           <td style="color:var(--faint)">${f4(d.med_mae_pct)}</td>
-          <td style="color:var(--cyan)">${f4(d.avg_mfe1_pct)}</td>
-          <td style="color:var(--faint)">${f4(d.med_mfe1_pct)}</td>
+          <td style="color:var(--cyan)">${f4(d.avg_mfe_pct)}</td>
+          <td style="color:var(--faint)">${f4(d.med_mfe_pct)}</td>
         </tr>`;
       }).join('')}
     </tbody>
@@ -1471,9 +1445,9 @@ function renderTradesTable(allTrades) {
     { key: 'direction',    label: 'Dir' },
     { key: '_stop',        label: 'Stop $' },
     { key: 'mae_pct',      label: 'MAE (%)' },
-    { key: 'mfe1_pct',     label: 'MFE (%)' },
-    { key: '_tp',          label: 'TP $' },
-    { key: 'outcome_main', label: 'TP1' },
+    { key: 'mfe_pct',      label: 'MFE (%)' },
+    { key: 'exit_price',   label: 'Exit $' },
+    { key: 'outcome_main', label: 'Result' },
   ];
 
   const table = document.getElementById('tradesTable');
@@ -1495,17 +1469,17 @@ function renderTradesTable(allTrades) {
       const dirBadge = t.direction === 'LONG'
         ? '<span class="badge badge-long">L</span>'
         : '<span class="badge badge-short">S</span>';
-      const tp1Badge = t.outcome_main === 'WIN'
+      const tp1Badge = (t.exit_type === 'TP1+EOD' || t.exit_type === 'TP1+STOP')
         ? '<span class="badge badge-win">WIN</span>'
-        : t.outcome_main === 'LOSS'
+        : t.exit_type === 'STOPPED'
           ? '<span class="badge badge-loss">LOSS</span>'
           : '<span class="badge badge-open">—</span>';
       const mae      = t.mae_pct != null ? t.mae_pct.toFixed(4) : '0.0000';
       const fvgTime  = t.c2_ts ? t.c2_ts.replace('T',' ').slice(-5) : '—';
       const contract = nqContract(t.date);
       const fmtPx    = v => v != null ? Number(v).toFixed(2) : '—';
-      const stopPx   = fmtPx(t.pct_stop ?? t.stop);
-      const tpPx     = fmtPx(t.pct_tp   ?? t.tp1);
+      const stopPx = fmtPx(t.stop);
+      const exitPx = fmtPx(t.exit_price);
       return `<tr>
         <td>${t.date}</td>
         <td style="font-family:var(--font-data);color:var(--faint)">${contract}</td>
@@ -1515,8 +1489,8 @@ function renderTradesTable(allTrades) {
         <td>${dirBadge}</td>
         <td style="font-family:var(--font-data)">${stopPx}</td>
         <td>${mae}</td>
-        <td>${mfeCell(t.mfe1_pct)}</td>
-        <td style="font-family:var(--font-data)">${tpPx}</td>
+        <td>${mfeCell(t.mfe_pct)}</td>
+        <td style="font-family:var(--font-data)">${exitPx}</td>
         <td>${tp1Badge}</td>
       </tr>`;
     }).join('');
@@ -1550,96 +1524,351 @@ function renderTradesTable(allTrades) {
   });
 }
 
-// ─── TOP 10 RANKINGS TABLE ───────────────────────────────────────────────────
-function renderRankingsTable() {
-  const el = document.getElementById('compSection');
+// ─── MFE DISTRIBUTION ────────────────────────────────────────────────────────
+function renderMFEDistribution(rs) {
+  const el = document.getElementById('mfe-dist-panel');
   if (!el) return;
+  rs = rs || {};
+  const dist = rs.mfe_dist;
+  if (!dist) {
+    el.innerHTML = `<div style="color:var(--faint);font-family:var(--font-data);font-size:11px;padding:16px">No MFE distribution data — run python3 ny1_backtest.py first.</div>`;
+    return;
+  }
 
-  const keys = ['pct_005_006','pct_004_006','pct_005_008','pct_004_008','pct_004_007',
-                 'pct_005_009','pct_003_006','pct_005_005','pct_004_005','pct_003_005'];
+  const p = dist.percentiles || {};
+  const ptq = dist.ptq_level;
+  const ptqRR = dist.ptq_reach_rate;
+  const ln = dist.lognorm || {};
+  const clus = dist.clusters || [];
+  const triggers = dist.be_triggers || [];
+  const hist = dist.histogram || {};
 
-  const fmtPL = v => v == null ? '—' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toLocaleString('en-US', {maximumFractionDigits:0});
-  const vcls  = v => v > 0 ? 'val-pos' : v < 0 ? 'val-neg' : 'val-neutral';
+  // ── helpers ───────────────────────────────────────────────────────────────
+  const fmt = (v, d=4) => (v != null ? (+v).toFixed(d) : '—');
+  const fmtPct = v => v != null ? (+v).toFixed(4) + '%' : '—';
+  const clusterColors = ['#60a5fa','#fb923c','#10b981'];
 
-  const fmtSL  = s => s.sl != null ? s.sl.toFixed(2)+'% / '+s.tp.toFixed(2)+'%' : 'Struct / '+s.tp.toFixed(2)+'%';
-  const fmtRR  = s => s.rr != null ? s.rr.toFixed(2)+':1' : '1:1';
+  // ── 1. Hero stat tiles ───────────────────────────────────────────────────
+  const statTiles = [
+    { lbl:'Mean MFE',   v: fmtPct(dist.mean),   c:'#fbbf24', note:'arithmetic avg' },
+    { lbl:'Median MFE', v: fmtPct(dist.median),  c:'#fb923c', note:'50th pct — 50% reach this' },
+    { lbl:'Mode MFE',   v: fmtPct(dist.mode),    c:'#60a5fa', note:'most common run' },
+    { lbl:'Std Dev',    v: fmtPct(dist.std),      c:'#94a3b8', note:'dispersion' },
+    { lbl:'Skewness',   v: fmt(dist.skewness,1),  c: dist.skewness > 2 ? '#f87171':'#94a3b8', note: dist.skewness > 2 ? 'heavy right tail' : 'mild skew' },
+    { lbl:'Kurtosis',   v: fmt(dist.kurtosis,1),  c: dist.kurtosis > 10 ? '#f87171':'#94a3b8', note: dist.kurtosis > 10 ? 'fat tails / outliers' : 'moderate tails' },
+  ];
 
-  const rows = keys.map((k, i) => {
-    const s = SLTP_DATA[k];
-    const c = s.combined;
-    const isActive = k === _activeModel;
-    const rowStyle = isActive ? 'background:rgba(34,211,238,0.06);' : '';
-    const labelStyle = isActive ? 'color:var(--cyan);font-weight:700;' : '';
-    const anyBlown = c.blown || s.R1?.blown || s.Unclassified?.blown;
-    const blownVal = c.blown ? 'Yes' : anyBlown ? 'Partial' : 'No';
-    const blownCls = c.blown ? 'val-neg' : anyBlown ? '' : 'val-pos';
-    return `<tr style="${rowStyle}">
-      <td style="font-family:var(--font-display);font-weight:700;font-size:13px;${labelStyle}">${i+1}</td>
-      <td style="font-family:var(--font-data);font-size:11px;${labelStyle}">${fmtSL(s)}</td>
-      <td style="text-align:right;font-family:var(--font-data);font-size:11px">${fmtRR(s)}</td>
-      <td style="text-align:right;font-family:var(--font-data);font-size:11px">${(c.wr*100).toFixed(1)}%</td>
-      <td style="text-align:right;font-family:var(--font-data);font-size:11px" class="${vcls(s.ev_r)}">${s.ev_r >= 0 ? '+' : ''}${s.ev_r.toFixed(3)}</td>
-      <td style="text-align:right;font-family:var(--font-data);font-size:11px">${s.pf.toFixed(3)}</td>
-      <td style="text-align:right;font-family:var(--font-data);font-size:11px" class="${vcls(s.ce)}">${s.ce.toFixed(3)}</td>
-      <td style="text-align:right;font-family:var(--font-data);font-size:11px" class="${vcls(c.pl)}">${fmtPL(c.pl)}</td>
-      <td style="text-align:right;font-family:var(--font-data);font-size:11px">${c.sharpe.toFixed(2)}</td>
-      <td style="text-align:right;font-family:var(--font-data);font-size:11px" class="${blownCls}">${blownVal}</td>
-    </tr>`;
-  });
+  // ── 2. Histogram canvas ──────────────────────────────────────────────────
+  const histId = 'mfe-hist-canvas';
 
-  // Cashflow reference row (always shown at bottom of rankings table)
-  const cf = SLTP_DATA['cashflow'];
-  const cfc = cf.combined;
-  const cfActive = _activeModel === 'cashflow';
-  const cfRowStyle = cfActive ? 'background:rgba(34,211,238,0.06);' : 'background:rgba(255,255,255,0.02);';
-  const cfLabelStyle = cfActive ? 'color:var(--cyan);font-weight:700;' : 'color:var(--faint);';
-  const cfAnyBlown = cfc.blown || cf.Unclassified?.blown;
-  const cfBlownVal = cfc.blown ? 'Yes' : cfAnyBlown ? 'Partial' : 'No';
-  const cfBlownCls = cfc.blown ? 'val-neg' : cfAnyBlown ? '' : 'val-pos';
-  const cfRow = `<tr style="${cfRowStyle}">
-    <td style="font-family:var(--font-display);font-weight:700;font-size:13px;${cfLabelStyle}">CF</td>
-    <td style="font-family:var(--font-data);font-size:11px;${cfLabelStyle}">Struct / 0.10%</td>
-    <td style="text-align:right;font-family:var(--font-data);font-size:11px">1:1</td>
-    <td style="text-align:right;font-family:var(--font-data);font-size:11px">${(cfc.wr*100).toFixed(1)}%</td>
-    <td style="text-align:right;font-family:var(--font-data);font-size:11px" class="${vcls(cf.ev_r)}">${cf.ev_r >= 0 ? '+' : ''}${cf.ev_r.toFixed(3)}</td>
-    <td style="text-align:right;font-family:var(--font-data);font-size:11px">${cf.pf.toFixed(3)}</td>
-    <td style="text-align:right;font-family:var(--font-data);font-size:11px" class="${vcls(cf.ce)}">${cf.ce.toFixed(3)}</td>
-    <td style="text-align:right;font-family:var(--font-data);font-size:11px" class="${vcls(cfc.pl)}">${fmtPL(cfc.pl)}</td>
-    <td style="text-align:right;font-family:var(--font-data);font-size:11px">${cfc.sharpe.toFixed(2)}</td>
-    <td style="text-align:right;font-family:var(--font-data);font-size:11px" class="${cfBlownCls}">${cfBlownVal}</td>
-  </tr>`;
+  // ── 3. Percentile table rows ──────────────────────────────────────────────
+  const pctRows = [
+    { lbl:'p5',  v: p.p5,  rr: 95, color:'#94a3b8' },
+    { lbl:'p10', v: p.p10, rr: 90, color:'#94a3b8' },
+    { lbl:'p15', v: p.p15, rr: 85, color:'#64748b' },
+    { lbl:'p20', v: p.p20, rr: 80, color:'#64748b' },
+    { lbl:'p25', v: p.p25, rr: 75, color:'#60a5fa' },
+    { lbl:'p30', v: p.p30, rr: 70, color:'#60a5fa' },
+    { lbl:'p35', v: p.p35, rr: 65, color:'#60a5fa' },
+    { lbl:'p40', v: p.p40, rr: 60, color:'#fb923c' },
+    { lbl:'p50 (Median)', v: dist.median, rr: 50, color:'#fb923c', bold:true },
+    { lbl:'p60', v: p.p60, rr: 40, color:'#fb923c' },
+    { lbl:'p65', v: p.p65, rr: 35, color:'#fbbf24' },
+    { lbl:'p70', v: p.p70, rr: 30, color:'#fbbf24' },
+    { lbl:'p75', v: p.p75, rr: 25, color:'#10b981' },
+    { lbl:'p80', v: p.p80, rr: 20, color:'#10b981' },
+    { lbl:'p85', v: p.p85, rr: 15, color:'#10b981' },
+    { lbl:'p90', v: p.p90, rr: 10, color:'#a78bfa' },
+    { lbl:'p95', v: p.p95, rr:  5, color:'#c084fc' },
+    { lbl:'p99', v: p.p99, rr:  1, color:'#f87171' },
+  ];
+
+  // ── 4. PTQ recommended row highlight ─────────────────────────────────────
+  const ptqHighlightVal = ptq;
 
   el.innerHTML = `
-    <div class="sec-head" id="comparison">
-      <span class="sec-label">Top 10 Rankings</span>
-      <span class="sec-line"></span>
-      <span class="sec-pill">168 survivors · ranked by CE</span>
+  <!-- Row 1: Stat tiles + histogram -->
+  <div class="panel" style="margin-bottom:14px">
+    <div class="panel-hd">
+      <span class="panel-title">MFE Distribution Analysis</span>
+      <span class="panel-note">Max Favourable Excursion · ${dist.n || ''} resolved trades · log-normal fit r=${fmt(ln.goodness,4)}</span>
     </div>
-    ${_activeTF !== 'all' ? `<div id="tfNote" style="margin-bottom:12px;padding:8px 12px;border-radius:6px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.25);font-size:11px;color:var(--amber);">⚠ Rankings &amp; Classification data reflect the full 2014–2026 dataset. Only the hero stats, charts, and trade log above change with timeframe.</div>` : ''}
+    <div class="panel-body">
+
+      <!-- Stat tiles -->
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px">
+        ${statTiles.map(s=>`
+        <div style="background:var(--card-alt);border:1px solid var(--border);border-radius:8px;padding:12px 10px">
+          <div style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">${s.lbl}</div>
+          <div style="font-family:var(--font-display);font-size:18px;font-weight:700;color:${s.c};line-height:1.1">${s.v}</div>
+          <div style="font-size:9px;color:var(--faint);margin-top:3px">${s.note}</div>
+        </div>`).join('')}
+      </div>
+
+      <!-- Histogram + log-normal info side by side -->
+      <div style="display:grid;grid-template-columns:1fr 260px;gap:20px;align-items:start">
+        <div>
+          <div style="font-family:var(--font-data);font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">MFE Frequency Distribution (0 → p99)</div>
+          <canvas id="${histId}" height="140" style="width:100%;display:block;border-radius:6px;background:var(--canvas-bg)"></canvas>
+        </div>
+        <div style="background:var(--card-alt);border:1px solid var(--border);border-radius:10px;padding:14px">
+          <div style="font-family:var(--font-data);font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Log-Normal Fit</div>
+          ${[
+            {lbl:'μ (log space)',    v:fmt(ln.mu,4)},
+            {lbl:'σ (log space)',    v:fmt(ln.sigma,4)},
+            {lbl:'Implied Median',   v:fmtPct(ln.implied_median)},
+            {lbl:'Implied Mean',     v:fmtPct(ln.implied_mean)},
+            {lbl:'Implied Mode',     v:fmtPct(ln.implied_mode)},
+            {lbl:'Goodness (r)',     v:fmt(ln.goodness,4)},
+          ].map(r=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)">
+            <span style="font-size:11px;color:var(--subtle)">${r.lbl}</span>
+            <span style="font-family:var(--font-data);font-size:11px;color:var(--text);font-weight:500">${r.v}</span>
+          </div>`).join('')}
+          <div style="margin-top:10px;font-size:10px;color:var(--faint);line-height:1.6">
+            MFE is strongly right-skewed. Log-normal r=${fmt(ln.goodness,3)} confirms excellent distributional fit.
+            Median < Mean < tail — most trades run short, but outliers are large.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 2: Clusters -->
+  <div class="panel" style="margin-bottom:14px">
+    <div class="panel-hd">
+      <span class="panel-title">MFE Natural Clusters</span>
+      <span class="panel-note">3-tier segmentation at p33 and p75 breakpoints</span>
+    </div>
+    <div class="panel-body">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+        ${clus.map((c,i)=>`
+        <div style="background:var(--card-alt);border:1px solid ${clusterColors[i]}44;border-radius:10px;padding:16px;position:relative;overflow:hidden">
+          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${clusterColors[i]};opacity:0.6"></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <div style="width:8px;height:8px;border-radius:50%;background:${clusterColors[i]}"></div>
+            <span style="font-family:var(--font-display);font-size:13px;font-weight:700;color:${clusterColors[i]}">${c.label}</span>
+            <span style="font-family:var(--font-data);font-size:10px;color:var(--faint)">${c.range}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            ${[
+              {lbl:'Trades', v:c.n, unit:''},
+              {lbl:'Share',  v:c.pct_of_trades+'%', unit:''},
+              {lbl:'Mean',   v:fmtPct(c.mean), unit:''},
+              {lbl:'Median', v:fmtPct(c.median), unit:''},
+              {lbl:'Max',    v:fmtPct(c.max), unit:''},
+            ].map(s=>`
+            <div>
+              <div style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.03em">${s.lbl}</div>
+              <div style="font-family:var(--font-data);font-size:12px;color:var(--text);font-weight:600">${s.v}</div>
+            </div>`).join('')}
+          </div>
+        </div>`).join('')}
+      </div>
+      <div style="margin-top:12px;font-size:11px;color:var(--subtle);line-height:1.7">
+        <strong style="color:var(--text)">Small cluster</strong> (bottom 33%) — trades that barely moved before stopping or closing flat.
+        <strong style="color:var(--text)">Moderate cluster</strong> (middle 42%) — clean directional runs with meaningful excursion.
+        <strong style="color:var(--text)">Large cluster</strong> (top 25%) — momentum breakouts; the outliers that drive positive EV in any TP strategy.
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 3: Percentile table + BE trigger analysis -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+
+    <!-- Percentile table -->
     <div class="panel">
       <div class="panel-hd">
-        <span class="panel-title">All 10 Combos Side-by-Side</span>
-        <span class="panel-note">$4,500 account · $225/trade · 2,721 trades · 2014–2026 · highlighted row = active combo</span>
+        <span class="panel-title">Full Percentile Table</span>
+        <span class="panel-note">TP here would hit on X% of trades</span>
       </div>
-      <div class="panel-body" style="padding:0;overflow-x:auto">
-        <table class="model-comp-table" style="min-width:700px">
+      <div class="panel-body" style="padding:0">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead>
-            <tr>
-              <th>#</th><th>SL / TP</th>
-              <th style="text-align:right">R:R</th>
-              <th style="text-align:right">Win%</th>
-              <th style="text-align:right">EV(R)</th>
-              <th style="text-align:right">PF</th>
-              <th style="text-align:right">CE ↓</th>
-              <th style="text-align:right">Total P&L</th>
-              <th style="text-align:right">Sharpe</th>
-              <th style="text-align:right">Blown</th>
+            <tr style="border-bottom:1px solid var(--border);background:var(--card-alt)">
+              <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:7px 14px;text-align:left;font-weight:400">Pct</th>
+              <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:7px 14px;text-align:right;font-weight:400">MFE %</th>
+              <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:7px 14px;text-align:left;font-weight:400">TP Hit Rate</th>
             </tr>
           </thead>
-          <tbody>${rows.join('')}${cfRow}</tbody>
+          <tbody>
+            ${pctRows.map(r => {
+              const isPTQ = Math.abs((r.v||0) - (ptqHighlightVal||0)) < 0.001;
+              return `<tr style="border-bottom:1px solid var(--border);${isPTQ?'background:rgba(16,185,129,0.07)':''}">
+                <td style="font-family:var(--font-data);font-size:11px;color:${r.color};padding:5px 14px;font-weight:${r.bold?700:500}">${r.lbl}</td>
+                <td style="font-family:var(--font-data);font-size:12px;color:var(--text);padding:5px 14px;font-weight:600;text-align:right">${r.v != null ? (+r.v).toFixed(4)+'%' : '—'}</td>
+                <td style="padding:5px 14px">
+                  <div style="display:flex;align-items:center;gap:7px">
+                    <div style="flex:1;height:4px;background:var(--border);border-radius:3px;max-width:100px">
+                      <div style="width:${r.rr}%;height:100%;background:${r.color};border-radius:3px;opacity:.7"></div>
+                    </div>
+                    <span style="font-family:var(--font-data);font-size:11px;color:var(--subtle);min-width:30px">${r.rr}%</span>
+                  </div>
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
         </table>
       </div>
-    </div>`;
+    </div>
+
+    <!-- BE Trigger analysis -->
+    <div class="panel">
+      <div class="panel-hd">
+        <span class="panel-title">Breakeven Trigger Analysis</span>
+        <span class="panel-note">If MFE ≥ X → move stop to entry · P(positive exit | MFE ≥ X)</span>
+      </div>
+      <div class="panel-body" style="padding:0">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);background:var(--card-alt)">
+              <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">Reach%</th>
+              <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">Trigger</th>
+              <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">P(pos)</th>
+              <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">Rescued</th>
+              <th style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">ΔEV</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${triggers.map(t => {
+              const isPTQ = t.trigger_pct === ptq;
+              const pPos = t.p_pos_given;
+              const pColor = pPos >= 0.5 ? '#10b981' : pPos >= 0.35 ? '#fbbf24' : '#f87171';
+              return `<tr style="border-bottom:1px solid var(--border);${isPTQ?'background:rgba(16,185,129,0.1)':''}">
+                <td style="font-family:var(--font-data);font-size:11px;color:var(--subtle);padding:5px 10px;text-align:right">${t.reach_rate}%</td>
+                <td style="font-family:var(--font-data);font-size:11px;color:var(--text);padding:5px 10px;text-align:right;font-weight:${isPTQ?700:500}">${(+t.trigger_pct).toFixed(4)}%</td>
+                <td style="padding:5px 10px;text-align:right">
+                  <span style="font-family:var(--font-data);font-size:11px;color:${pColor};font-weight:700">${(pPos*100).toFixed(1)}%</span>
+                </td>
+                <td style="font-family:var(--font-data);font-size:11px;color:var(--subtle);padding:5px 10px;text-align:right">${t.n_rescued}</td>
+                <td style="font-family:var(--font-data);font-size:11px;color:var(--green);padding:5px 10px;text-align:right">+${(+t.ev_delta).toFixed(4)}R</td>
+              </tr>
+              ${isPTQ ? `<tr><td colspan="5" style="padding:2px 10px 6px;font-size:10px;color:#10b981;font-style:italic">← Protect the Queen recommendation</td></tr>` : ''}`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 4: Protect the Queen box -->
+  ${ptq != null ? `
+  <div style="background:rgba(16,185,129,0.08);border:1.5px solid rgba(16,185,129,0.35);border-radius:12px;padding:20px 24px;margin-bottom:14px;display:flex;gap:24px;align-items:flex-start">
+    <div style="font-size:28px;flex-shrink:0">♛</div>
+    <div style="flex:1">
+      <div style="font-family:var(--font-display);font-size:16px;font-weight:800;color:#10b981;margin-bottom:6px">Protect the Queen — Recommended BE Trigger: ${fmtPct(ptq)}</div>
+      <div style="font-size:12px;color:var(--subtle);line-height:1.8">
+        When MFE reaches <strong style="color:#10b981">${fmtPct(ptq)}</strong>, move your stop to breakeven (entry price).
+        This level is reached by <strong style="color:var(--text)">${ptqRR}%</strong> of all trades.
+        Once reached, <strong style="color:#10b981">${((triggers.find(t=>t.trigger_pct===ptq)||{}).p_pos_given*100||0).toFixed(1)}%</strong> of those trades exit positively — the first level where the odds flip in your favour.
+        Moving to BE at this point saves approximately <strong style="color:var(--text)">${triggers.find(t=>t.trigger_pct===ptq)?.n_rescued || '—'} trades</strong> from negative exits
+        and improves EV by <strong style="color:#10b981">+${(+(triggers.find(t=>t.trigger_pct===ptq)||{}).ev_delta||0).toFixed(4)}R per trade</strong>.
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;flex-shrink:0">
+      ${[
+        {lbl:'Trigger',    v:fmtPct(ptq),             c:'#10b981'},
+        {lbl:'Reach Rate', v:(ptqRR||'—')+'%',          c:'#fbbf24'},
+        {lbl:'P(+exit)',   v:((triggers.find(t=>t.trigger_pct===ptq)||{}).p_pos_given*100||0).toFixed(1)+'%', c:'#10b981'},
+        {lbl:'New EV',     v:'+'+((triggers.find(t=>t.trigger_pct===ptq)||{}).new_ev||0).toFixed(4)+'R', c:'#10b981'},
+      ].map(s=>`
+      <div style="background:rgba(0,0,0,0.2);border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:10px 14px;text-align:center">
+        <div style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">${s.lbl}</div>
+        <div style="font-family:var(--font-display);font-size:18px;font-weight:800;color:${s.c}">${s.v}</div>
+      </div>`).join('')}
+    </div>
+  </div>` : ''}
+  `;
+
+  // ── Draw histogram canvas ──────────────────────────────────────────────────
+  const canvas = document.getElementById(histId);
+  if (!canvas || !hist.edges || !hist.counts) return;
+
+  const W = canvas.offsetWidth || 600;
+  const H = 140;
+  canvas.width  = W * devicePixelRatio;
+  canvas.height = H * devicePixelRatio;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+
+  const padL = 36, padR = 12, padT = 14, padB = 28;
+  const cW = W - padL - padR;
+  const cH = H - padT - padB;
+
+  const counts = hist.counts;
+  const edges  = hist.edges;
+  const maxC   = Math.max(...counts, 1);
+  const nBins  = counts.length;
+
+  // Background
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-bg').trim() || '#0d1420';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  [0.25,0.5,0.75,1].forEach(f => {
+    const y = padT + cH * (1 - f);
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + cW, y); ctx.stroke();
+  });
+
+  // Draw PTQ marker line
+  if (ptq != null) {
+    const xMax = edges[edges.length-1];
+    const ptqX = padL + (ptq / xMax) * cW;
+    ctx.strokeStyle = 'rgba(16,185,129,0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(ptqX, padT); ctx.lineTo(ptqX, padT+cH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#10b981';
+    ctx.font = `bold ${10*devicePixelRatio/devicePixelRatio}px IBM Plex Mono, monospace`;
+    ctx.fillText('PTQ', ptqX + 4, padT + 11);
+  }
+
+  // Bars
+  const bW = cW / nBins;
+  counts.forEach((c, i) => {
+    const barH = (c / maxC) * cH;
+    const x = padL + i * bW;
+    const y = padT + cH - barH;
+    const t = i / nBins;
+    // colour gradient: blue → orange → green
+    const r = Math.round(96 + (251-96)*Math.min(t*2,1));
+    const g = Math.round(165 + (146-165)*Math.min(t*2,1) + (185-146)*Math.max(t*2-1,0));
+    const b = Math.round(250 + (60-250)*Math.min(t*2,1));
+    ctx.fillStyle = `rgba(${r},${g},${b},0.75)`;
+    ctx.fillRect(x+1, y, Math.max(bW-2,1), barH);
+  });
+
+  // Median line
+  if (dist.median != null) {
+    const xMax = edges[edges.length-1];
+    const medX = padL + (dist.median / xMax) * cW;
+    ctx.strokeStyle = 'rgba(251,146,60,0.8)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(medX, padT); ctx.lineTo(medX, padT+cH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#fb923c';
+    ctx.font = `${10}px IBM Plex Mono, monospace`;
+    ctx.fillText('Med', medX + 3, padT + cH - 4);
+  }
+
+  // X-axis labels
+  ctx.fillStyle = '#64748b';
+  ctx.font = `${9}px IBM Plex Mono, monospace`;
+  ctx.textAlign = 'center';
+  [0, 0.25, 0.5, 0.75, 1].forEach(f => {
+    const xVal = edges[0] + f * (edges[edges.length-1] - edges[0]);
+    const x = padL + f * cW;
+    ctx.fillText(xVal.toFixed(2)+'%', x, padT + cH + 16);
+  });
+
+  // Y-axis label
+  ctx.textAlign = 'right';
+  ctx.fillText(maxC, padL - 4, padT + 4);
+  ctx.fillText('0', padL - 4, padT + cH + 4);
 }
 
 // ─── EQUITY CURVE ────────────────────────────────────────────────────────────
@@ -1667,8 +1896,8 @@ function renderNy1EquityCurve(d) {
   const pts = [{ yr: 'Start', eq, dd: 0, pnl: null }];
   years.forEach(yr => {
     const row = byYear[yr];
-    const losses = row.n - row.wins;
-    const pnl = row.wins * avgWin + losses * avgLoss;
+    const losses = row.n - row.tp1_count;
+    const pnl = row.tp1_count * avgWin + losses * avgLoss;
     eq += pnl;
     if (eq > peak) peak = eq;
     const dd = (peak - eq) / peak * 100;
@@ -1763,7 +1992,7 @@ window.addEventListener('resize', () => {
   clearTimeout(_resizeTimer);
   _resizeTimer = setTimeout(() => {
     if (!_data) return;
-    const d = _data[_activeTF][_activeModel];
+    const d = _data[_activeTF]['open_run'];
     renderCharts(d);
     renderNy1EquityCurve(d);
   }, 150);

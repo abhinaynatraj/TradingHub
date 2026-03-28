@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-ny1_backtest.py — NY1 F.P.FVG Backtest
-========================================
+ny1_backtest.py — NY1 F.P.FVG Backtest  (open-run model)
+==========================================================
 Backtests the First Presented Fair Value Gap model on 1-minute NQ futures.
 
-Two model variants:
-  cashflow          — 100% of position exits at TP1 (+0.10%). No runner.
-  cashflow_extended — 80% exits at TP1; 20% runner with stop moved to entry
-                      (breakeven) once TP1 is hit. Runner exits at BE stop or EOD.
+Model:
+  • Entry  : limit at FVG edge (C3.low for LONG, C3.high for SHORT)
+  • Stop   : structural — min(C1.low, C2.low) for LONG; max(C1.high, C2.high) for SHORT
+  • Target : none — trade runs from fill to 16:00 ET (EOD)
+  • Outcome: LOSS if stop hit before EOD, WIN if exits at EOD close
+  • MFE    : max favourable excursion from fill to exit (analysed for TP research)
 
 Usage:
     python3 ny1_backtest.py
@@ -26,38 +28,23 @@ import numpy as np
 import pandas as pd
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-DB_PATH  = Path(__file__).parent.parent / 'Fractal Sweep' / 'candle_science.duckdb'
-OUT_JSON = Path(__file__).parent / 'ny1_results.json'
+DB_PATH        = Path(__file__).parent.parent / 'Fractal Sweep' / 'candle_science.duckdb'
+OUT_JSON       = Path(__file__).parent / 'ny1_results.json'
 
-TP1_BPS       = 0.001   # 10 basis points = 0.10%
-MIN_RISK_PTS  = 0.25    # guard against zero-risk setups
-MIN_FVG_TICKS = 0       # minimum FVG gap size in ticks (0 = no filter)
-TICK_SIZE     = 0.25    # NQ futures tick size in points
-ACCOUNT_SIZE  = 4500    # account size for risk metrics ($)
-RISK_PER_TRADE = 225    # risk per trade ($)
-DOW_NAMES    = {1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri'}  # DuckDB: 0=Sun
+MIN_RISK_PTS   = 0.25    # guard against zero-risk setups
+MIN_FVG_TICKS  = 0       # minimum FVG gap size in ticks (0 = no filter)
+TICK_SIZE      = 0.25    # NQ futures tick size in points
+ACCOUNT_SIZE   = 4_500   # account size for risk metrics ($)
+RISK_PER_TRADE = 225     # risk per trade ($)
 
-# Fixed % stop/TP profiles — top 10 from brute-force scan (fixed_profile_scan.py)
-# Each entry: (json_key, stop_pct, tp_pct, display_name)
-PCT_PROFILES = [
-    # Top 10 Combined — ranked by weighted composite score (blown combos excluded)
-    # Sharpe 25% · PF 20% · EV 15% · SQN 15% · MaxDD 10% · RoR 10% · CE 5%
-    # Excluded (blown in NY1 model): pct_010_005, pct_010_006, pct_005_007
-    ('pct_005_006', 0.0005, 0.0006, '#1  0.05% Stop / 0.06% TP  (1.2:1)'),
-    ('pct_004_006', 0.0004, 0.0006, '#2  0.04% Stop / 0.06% TP  (1.5:1)'),
-    ('pct_005_008', 0.0005, 0.0008, '#3  0.05% Stop / 0.08% TP  (1.6:1)'),
-    ('pct_004_008', 0.0004, 0.0008, '#4  0.04% Stop / 0.08% TP  (2:1)'),
-    ('pct_004_007', 0.0004, 0.0007, '#5  0.04% Stop / 0.07% TP  (1.75:1)'),
-    ('pct_005_009', 0.0005, 0.0009, '#6  0.05% Stop / 0.09% TP  (1.8:1)'),
-    ('pct_003_006', 0.0003, 0.0006, '#7  0.03% Stop / 0.06% TP  (2:1)'),
-    ('pct_005_005', 0.0005, 0.0005, '#8  0.05% Stop / 0.05% TP  (1:1)'),
-    ('pct_004_005', 0.0004, 0.0005, '#9  0.04% Stop / 0.05% TP  (1.25:1)'),
-    ('pct_003_005', 0.0003, 0.0005, '#10 0.03% Stop / 0.05% TP  (1.67:1)'),
-]
-MONTH_NAMES  = {1:'Jan',2:'Feb',3:'Mar',4:'Apr',5:'May',6:'Jun',
-                7:'Jul',8:'Aug',9:'Sep',10:'Oct',11:'Nov',12:'Dec'}
+# ── Split-exit model ───────────────────────────────────────────────────────────
+TP1_PCT      = 0.001     # 0.10% (10 bps) — Protect the Queen / TP1 level
+TP1_SIZE     = 0.50      # 50% of position exits at TP1
+RUNNER_SIZE  = 0.50      # 50% runner moves to BE, runs to EOD
+DOW_NAMES      = {1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri'}  # DuckDB: 0=Sun
+MONTH_NAMES    = {1:'Jan',2:'Feb',3:'Mar',4:'Apr',5:'May',6:'Jun',
+                  7:'Jul',8:'Aug',9:'Sep',10:'Oct',11:'Nov',12:'Dec'}
 
-# Timeframes: key → days to look back (None = all time)
 TIMEFRAMES = [
     ('all', None),
     ('2y',  730),
@@ -99,24 +86,20 @@ def load_bars(con, table: str) -> pd.DataFrame:
     df['ts_et']      = pd.to_datetime(df['ts_et'], utc=True).dt.tz_convert('America/New_York')
     for col in ('hr', 'mn', 'dow', 'yr', 'mo'):
         df[col] = df[col].astype(int)
-
-    # Exclude the 16:xx bars except exactly 16:00 (used only for runner exit)
     df = df[~((df['hr'] == 16) & (df['mn'] > 0))].reset_index(drop=True)
     return df
 
 
 # ── Timeframe filter ──────────────────────────────────────────────────────────
 def filter_by_tf(trades: list, max_date: str, days: int | None) -> list:
-    """Return trades on or after (max_date - days).  days=None → all trades."""
     if days is None or not trades:
         return trades
     cutoff = (pd.Timestamp(max_date) - pd.Timedelta(days=days)).strftime('%Y-%m-%d')
     return [t for t in trades if t['date'] >= cutoff]
 
 
-# ── Per-day array builder ──────────────────────────────────────────────────────
+# ── Per-day array builder ─────────────────────────────────────────────────────
 def build_day_arrays(day_df: pd.DataFrame) -> dict:
-    """Convert a single day's DataFrame to numpy arrays for fast scanning."""
     return {
         'ts_et': day_df['ts_et'].values,
         'hr':    day_df['hr'].values.astype(np.int32),
@@ -131,7 +114,6 @@ def build_day_arrays(day_df: pd.DataFrame) -> dict:
 
 
 def find_idx(arrs: dict, hr: int, mn: int) -> int:
-    """Return index of bar at hr:mn, or -1 if not found."""
     tval = hr * 60 + mn
     idx  = int(np.searchsorted(arrs['tval'], tval, side='left'))
     if idx < arrs['n'] and arrs['tval'][idx] == tval:
@@ -143,21 +125,17 @@ def find_idx(arrs: dict, hr: int, mn: int) -> int:
 def detect_fvg(arrs: dict) -> dict | None:
     """
     Scan 9:31–9:59 for the first valid FVG.
-    C1 = bar before C2, C3 = bar after C2. C2 must be 9:31–9:59.
-
-    Bullish FVG: C3.low > C1.high  →  gap = [C1.high, C3.low]
-    Bearish FVG: C3.high < C1.low  →  gap = [C3.high, C1.low]
-    Direction from C2 body: bullish C2 → LONG, bearish C2 → SHORT.
+    Bullish FVG: C3.low > C1.high, C2 bullish → LONG
+    Bearish FVG: C3.high < C1.low, C2 bearish → SHORT
     """
     n = arrs['n']
     for c2_idx in range(1, n - 1):
         hr = int(arrs['hr'][c2_idx])
         mn = int(arrs['mn'][c2_idx])
 
-        # C2 must be strictly 9:31–9:59
         if hr != 9 or mn < 31 or mn > 59:
             if hr > 9 or (hr == 9 and mn > 59):
-                break   # past the window, stop scanning
+                break
             continue
 
         c1_idx = c2_idx - 1
@@ -167,31 +145,27 @@ def detect_fvg(arrs: dict) -> dict | None:
         c3_h = arrs['high'][c3_idx];  c3_l = arrs['low'][c3_idx]
         c2_o = arrs['open'][c2_idx];  c2_c = arrs['close'][c2_idx]
 
-        # Bullish FVG: gap exists upward, C2 is bullish
         if c3_l > c1_h and c2_c > c2_o:
             if MIN_FVG_TICKS > 0 and (c3_l - c1_h) < MIN_FVG_TICKS * TICK_SIZE:
                 continue
             c2_l = arrs['low'][c2_idx]
             return {
                 'c1_idx': c1_idx, 'c2_idx': c2_idx, 'c3_idx': c3_idx,
-                'fvg_top': float(c3_l),
-                'fvg_bot': float(c1_h),
-                'entry':   float(c3_l),             # limit buy at top of gap
-                'stop':    float(min(c1_l, c2_l)),  # stop below lowest of C1/C2
+                'fvg_top': float(c3_l), 'fvg_bot': float(c1_h),
+                'entry':   float(c3_l),
+                'stop':    float(min(c1_l, c2_l)),
                 'direction': 'LONG',
             }
 
-        # Bearish FVG: gap exists downward, C2 is bearish
         if c3_h < c1_l and c2_c < c2_o:
             if MIN_FVG_TICKS > 0 and (c1_l - c3_h) < MIN_FVG_TICKS * TICK_SIZE:
                 continue
             c2_h = arrs['high'][c2_idx]
             return {
                 'c1_idx': c1_idx, 'c2_idx': c2_idx, 'c3_idx': c3_idx,
-                'fvg_top': float(c1_l),
-                'fvg_bot': float(c3_h),
-                'entry':   float(c3_h),             # limit sell at bottom of gap
-                'stop':    float(max(c1_h, c2_h)),  # stop above highest of C1/C2
+                'fvg_top': float(c1_l), 'fvg_bot': float(c3_h),
+                'entry':   float(c3_h),
+                'stop':    float(max(c1_h, c2_h)),
                 'direction': 'SHORT',
             }
 
@@ -200,264 +174,191 @@ def detect_fvg(arrs: dict) -> dict | None:
 
 # ── Entry fill scanner ────────────────────────────────────────────────────────
 def scan_fill(arrs: dict, c3_idx: int, fvg: dict, eod_idx: int) -> dict | None:
-    """
-    Scan from bar after C3 through EOD for limit fill.
-    LONG fill: bar.low <= entry  (price retraces into the gap)
-    SHORT fill: bar.high >= entry
-    Fill price is always the limit price (fvg['entry']).
-    """
     entry     = fvg['entry']
     direction = fvg['direction']
-
     for j in range(c3_idx + 1, eod_idx + 1):
         if direction == 'LONG':
             if arrs['low'][j] <= entry:
-                return {
-                    'fill_idx': j,
-                    'fill_ts':  arrs['ts_et'][j],
-                    'fill_hr':  int(arrs['hr'][j]),
-                    'fill_mn':  int(arrs['mn'][j]),
-                }
-        else:  # SHORT
+                return {'fill_idx': j, 'fill_ts': arrs['ts_et'][j],
+                        'fill_hr': int(arrs['hr'][j]), 'fill_mn': int(arrs['mn'][j])}
+        else:
             if arrs['high'][j] >= entry:
-                return {
-                    'fill_idx': j,
-                    'fill_ts':  arrs['ts_et'][j],
-                    'fill_hr':  int(arrs['hr'][j]),
-                    'fill_mn':  int(arrs['mn'][j]),
-                }
+                return {'fill_idx': j, 'fill_ts': arrs['ts_et'][j],
+                        'fill_hr': int(arrs['hr'][j]), 'fill_mn': int(arrs['mn'][j])}
     return None
 
 
-# ── Outcome resolution ────────────────────────────────────────────────────────
-def resolve_outcome(arrs: dict, fill_idx: int, fvg: dict,
-                    tp1: float, eod_idx: int, model: str = 'cashflow_extended') -> dict:
+# ── Split-exit resolver ────────────────────────────────────────────────────────
+def resolve_open_run(arrs: dict, fill_idx: int, fvg: dict, eod_idx: int) -> dict:
     """
-    Scan from bar after fill for TP1 or stop.  TP1 wins on same-bar conflict.
+    Split-exit model:
+      TP1  : 80% of position exits at TP1_PCT (0.10%) in trade's favour.
+      Runner: remaining 20% runs to structural stop or EOD (16:00).
 
-    cashflow:
-        100% exits at TP1.  No runner.  combined_r = tp1_move / risk_pts or -1.
+    Exit types:
+      'TP1+EOD'  — TP1 hit, runner survived to EOD close
+      'TP1+STOP' — TP1 hit, runner closed at breakeven (entry)
+      'STOPPED'  — structural stop hit before TP1
 
-    cashflow_extended:
-        80% exits at TP1.  20% runner with stop moved to entry (breakeven).
-        Runner exits at BE stop or EOD close.
+    combined_r = TP1_SIZE * tp1_r + RUNNER_SIZE * runner_r
+    MFE        = max favourable excursion from fill to last bar of the full trade.
     """
     entry     = fvg['entry']
     stop      = fvg['stop']
     direction = fvg['direction']
     risk_pts  = abs(entry - stop)
 
-    outcome_main = 'OPEN'
-    tp1_idx      = None
+    # TP1 price level
+    tp1_price = entry * (1 + TP1_PCT) if direction == 'LONG' \
+                else entry * (1 - TP1_PCT)
 
-    # ── Step 1: scan for TP1 or stop (same for both models) ───────────────────
-    for j in range(fill_idx + 1, eod_idx + 1):
-        h = arrs['high'][j]
-        l = arrs['low'][j]
+    # ── Phase 1: scan for TP1 or stop ─────────────────────────────────────────
+    tp1_idx  = None
+    stop_idx = None
 
-        if direction == 'LONG':
-            hit_tp1  = h >= tp1
-            hit_stop = l <= stop
-        else:
-            hit_tp1  = l <= tp1
-            hit_stop = h >= stop
-
-        if hit_tp1 and hit_stop:
-            outcome_main = 'WIN'; tp1_idx = j; break
-        if hit_tp1:
-            outcome_main = 'WIN'; tp1_idx = j; break
-        if hit_stop:
-            outcome_main = 'LOSS'; break
-
-    # ── Step 2: model-specific resolution ─────────────────────────────────────
-    mfe2_pct          = 0.0
-    runner_exit_price = None
-    runner_outcome    = None
-
-    if risk_pts <= 0:
-        combined_r = None
-    elif outcome_main == 'LOSS':
-        combined_r = -1.0
-    elif outcome_main == 'WIN':
-        tp1_move = abs(tp1 - entry)
-        tp1_r    = tp1_move / risk_pts
-
-        if model == 'cashflow':
-            # 100% exits at TP1.  TP1 hit is treated as 1R (symmetric risk/reward).
-            combined_r = 1.0
-
-        else:  # cashflow_extended — runner with BE stop
-            runner_stop       = entry          # stop moves to entry once TP1 hit
-            runner_exit_idx   = eod_idx
-            runner_exit_price = float(arrs['close'][eod_idx])
-            runner_outcome    = 'WIN'
-
-            for j in range(tp1_idx + 1, eod_idx + 1):
-                if direction == 'LONG'  and arrs['low'][j]  <= runner_stop:
-                    runner_exit_idx   = j
-                    runner_exit_price = runner_stop
-                    runner_outcome    = 'BE'
-                    break
-                if direction == 'SHORT' and arrs['high'][j] >= runner_stop:
-                    runner_exit_idx   = j
-                    runner_exit_price = runner_stop
-                    runner_outcome    = 'BE'
-                    break
-
-            # MFE2: max favorable from fill to runner exit
-            mfe2_pts = 0.0
-            for j in range(fill_idx, runner_exit_idx + 1):
-                fav = (float(arrs['high'][j]) - entry) if direction == 'LONG' \
-                      else (entry - float(arrs['low'][j]))
-                if fav > mfe2_pts:
-                    mfe2_pts = fav
-            mfe2_pct = round(mfe2_pts / entry * 100, 4) if entry > 0 else 0.0
-
-            if direction == 'LONG':
-                run_move = runner_exit_price - entry
-            else:
-                run_move = entry - runner_exit_price
-            runner_r   = run_move / risk_pts
-            # TP1 leg = 0.8R (treating TP1 hit as 1R); runner leg = 0.2 × runner_r
-            combined_r = round(0.8 + 0.2 * runner_r, 4)
-
-    else:
-        combined_r = None
-
-    return {
-        'outcome_main':       outcome_main,
-        'runner_exit_price':  runner_exit_price,
-        'runner_outcome':     runner_outcome,
-        'combined_r':         combined_r,
-        'mfe2_pct':           mfe2_pct,
-    }
-
-
-def resolve_pct_profile(arrs: dict, fill_idx: int, fvg: dict,
-                        stop_pct: float, tp_pct: float, eod_idx: int) -> dict:
-    """
-    Fixed-percentage stop/TP profile.  Stop and TP are both computed as a
-    fixed percentage of the entry price, independent of FVG structure.
-
-        stop  = entry ± entry * stop_pct
-        tp    = entry ± entry * tp_pct
-        R:R   = tp_pct / stop_pct  (fixed per profile)
-    """
-    entry     = fvg['entry']
-    direction = fvg['direction']
-
-    if direction == 'LONG':
-        stop = entry * (1.0 - stop_pct)
-        tp   = entry * (1.0 + tp_pct)
-    else:
-        stop = entry * (1.0 + stop_pct)
-        tp   = entry * (1.0 - tp_pct)
-
-    outcome = 'OPEN'
     for j in range(fill_idx + 1, eod_idx + 1):
         h = arrs['high'][j]
         l = arrs['low'][j]
         if direction == 'LONG':
-            hit_tp   = h >= tp
-            hit_stop = l <= stop
+            if l <= stop:
+                stop_idx = j; break
+            if h >= tp1_price:
+                tp1_idx = j; break
         else:
-            hit_tp   = l <= tp
-            hit_stop = h >= stop
+            if h >= stop:
+                stop_idx = j; break
+            if l <= tp1_price:
+                tp1_idx = j; break
 
-        if hit_tp and hit_stop:
-            outcome = 'WIN'; break   # TP wins on same-bar conflict
-        if hit_tp:
-            outcome = 'WIN'; break
-        if hit_stop:
-            outcome = 'LOSS'; break
+    if stop_idx is not None:
+        # Stopped before TP1
+        exit_type   = 'STOPPED'
+        tp1_exit    = None
+        runner_exit = stop
+        last_idx    = stop_idx
+    elif tp1_idx is not None:
+        # TP1 hit — runner stop moves to breakeven (entry)
+        runner_type = 'EOD'
+        runner_idx  = eod_idx
+        for j in range(tp1_idx + 1, eod_idx + 1):
+            h = arrs['high'][j]
+            l = arrs['low'][j]
+            if direction == 'LONG'  and l <= entry:
+                runner_type = 'BE'; runner_idx = j; break
+            if direction == 'SHORT' and h >= entry:
+                runner_type = 'BE'; runner_idx = j; break
+        exit_type   = 'TP1+EOD' if runner_type == 'EOD' else 'TP1+STOP'
+        tp1_exit    = tp1_price
+        runner_exit = entry if runner_type == 'BE' else float(arrs['close'][eod_idx])
+        last_idx    = runner_idx
+    else:
+        # Neither TP1 nor stop hit — exits EOD without TP1
+        exit_type   = 'STOPPED'   # treat as full stop (no partial exit)
+        tp1_exit    = None
+        runner_exit = float(arrs['close'][eod_idx])
+        last_idx    = eod_idx
 
-    if outcome == 'WIN':
-        combined_r = round(tp_pct / stop_pct, 4)
-    elif outcome == 'LOSS':
-        combined_r = -1.0
+    # ── MFE: max favourable from fill bar through last bar of trade ────────────
+    mfe_pts = 0.0
+    for j in range(fill_idx, last_idx + 1):
+        fav = (float(arrs['high'][j]) - entry) if direction == 'LONG' \
+              else (entry - float(arrs['low'][j]))
+        if fav > mfe_pts:
+            mfe_pts = fav
+    mfe_pct = round(mfe_pts / entry * 100, 4) if entry > 0 else 0.0
+
+    # ── combined_r ─────────────────────────────────────────────────────────────
+    if risk_pts > 0:
+        if exit_type == 'STOPPED':
+            runner_move = (runner_exit - entry) if direction == 'LONG' \
+                          else (entry - runner_exit)
+            combined_r = round(runner_move / risk_pts, 4)
+        else:
+            tp1_move    = (tp1_price  - entry) if direction == 'LONG' \
+                          else (entry - tp1_price)
+            runner_move = (runner_exit - entry) if direction == 'LONG' \
+                          else (entry - runner_exit)
+            combined_r  = round(TP1_SIZE * tp1_move / risk_pts
+                                + RUNNER_SIZE * runner_move / risk_pts, 4)
     else:
         combined_r = None
 
+    # Use runner_exit as the representative exit price for display
+    display_exit = runner_exit if exit_type != 'STOPPED' else runner_exit
+
     return {
-        'outcome_main': outcome,
-        'combined_r':   combined_r,
-        'pct_stop':     round(stop, 4),
-        'pct_tp':       round(tp,   4),
+        'exit_type':   exit_type,
+        'exit_price':  round(display_exit, 4),
+        'tp1_price':   round(tp1_price, 4) if tp1_exit is not None else None,
+        'mfe_pct':     mfe_pct,
+        'combined_r':  combined_r,
     }
 
 
 # ── Stats helpers ─────────────────────────────────────────────────────────────
+_VALID_EXITS = ('TP1+EOD', 'TP1+STOP', 'STOPPED')
+
 def _agg(trades: list[dict]) -> dict:
-    wl   = [t for t in trades if t['outcome_main'] in ('WIN', 'LOSS')]
+    wl = [t for t in trades if t.get('exit_type') in _VALID_EXITS]
     if not wl:
-        return {'n': 0, 'wins': 0, 'tp1_wr': None,
+        return {'n': 0, 'tp1_count': 0, 'stopped_count': 0,
+                'tp1_wr': None,
                 'avg_mae_pct': None, 'med_mae_pct': None,
-                'avg_mfe1_pct': None, 'med_mfe1_pct': None, 'avg_mfe2_pct': None}
-    n    = len(wl)
-    wins = sum(1 for t in wl if t['outcome_main'] == 'WIN')
-    wr   = wins / n
+                'avg_mfe_pct': None, 'med_mfe_pct': None}
+    n      = len(wl)
+    tp1    = sum(1 for t in wl if t['exit_type'] in ('TP1+EOD', 'TP1+STOP'))
+    tp1_wr = tp1 / n   # TP1 hit rate — used by charts as the bar height
 
-    mae_vals  = [t['mae_pct']  for t in wl if t.get('mae_pct')  is not None]
-    mfe1_vals = [t.get('mfe1_pct', 0.0) for t in wl]
-    mfe2_vals = [t.get('mfe2_pct', 0.0) for t in wl]
-    avg_mae   = round(float(np.mean(mae_vals)),  4) if mae_vals  else None
-    med_mae   = round(float(np.median(mae_vals)), 4) if mae_vals  else None
-    avg_mfe1  = round(float(np.mean(mfe1_vals)), 4) if mfe1_vals else None
-    med_mfe1  = round(float(np.median(mfe1_vals)), 4) if mfe1_vals else None
-    avg_mfe2  = round(float(np.mean(mfe2_vals)), 4) if mfe2_vals else None
+    mae_vals = [t['mae_pct'] for t in wl if t.get('mae_pct') is not None]
+    mfe_vals = [t.get('mfe_pct', 0.0) for t in wl]
+    avg_mae  = round(float(np.mean(mae_vals)),   4) if mae_vals else None
+    med_mae  = round(float(np.median(mae_vals)), 4) if mae_vals else None
+    avg_mfe  = round(float(np.mean(mfe_vals)),   4) if mfe_vals else None
+    med_mfe  = round(float(np.median(mfe_vals)), 4) if mfe_vals else None
 
-    return {'n': n, 'wins': wins, 'tp1_wr': round(wr, 4),
+    return {'n': n, 'tp1_count': tp1, 'stopped_count': n - tp1,
+            'tp1_wr': round(tp1_wr, 4),
             'avg_mae_pct': avg_mae, 'med_mae_pct': med_mae,
-            'avg_mfe1_pct': avg_mfe1, 'med_mfe1_pct': med_mfe1,
-            'avg_mfe2_pct': avg_mfe2}
+            'avg_mfe_pct': avg_mfe, 'med_mfe_pct': med_mfe}
 
 
-def build_stats(trades, meta_extra: dict, model: str = 'cashflow_extended',
+def build_stats(trades: list, meta_extra: dict,
                 include_full_trades: bool = True) -> dict:
     overall = _agg(trades)
 
-    by_dow = {}
-    for d in range(1, 6):
-        dn = DOW_NAMES[d]
-        by_dow[dn] = _agg([t for t in trades if t['dow'] == d])
-
-    by_hour = {}
-    for h in range(9, 16):
-        by_hour[str(h)] = _agg([t for t in trades if t['fill_hr'] == h])
-
-    by_year = {}
-    for yr in sorted({t['yr'] for t in trades}):
-        by_year[str(yr)] = _agg([t for t in trades if t['yr'] == yr])
-
-    by_month = {}
-    for mo in range(1, 13):
-        mn = MONTH_NAMES[mo]
-        by_month[mn] = _agg([t for t in trades if t['mo'] == mo])
-
+    by_dow = {DOW_NAMES[d]: _agg([t for t in trades if t['dow'] == d])
+              for d in range(1, 6)}
+    by_hour  = {str(h): _agg([t for t in trades if t['fill_hr'] == h])
+                for h in range(9, 16)}
+    by_year  = {str(yr): _agg([t for t in trades if t['yr'] == yr])
+                for yr in sorted({t['yr'] for t in trades})}
+    by_month = {MONTH_NAMES[mo]: _agg([t for t in trades if t['mo'] == mo])
+                for mo in range(1, 13)}
+    def get_q(mo): return (mo - 1) // 3 + 1
+    by_quarter = {f'Q{q}': _agg([t for t in trades if get_q(t['mo']) == q])
+                  for q in range(1, 5)}
     by_direction = {
         'LONG':  _agg([t for t in trades if t['direction'] == 'LONG']),
         'SHORT': _agg([t for t in trades if t['direction'] == 'SHORT']),
     }
 
-    wl_resolved = [t for t in trades if t.get('outcome_main') in ('WIN', 'LOSS')]
+    wl_resolved   = [t for t in trades if t.get('exit_type') in _VALID_EXITS]
     recent_trades = sorted(wl_resolved, key=lambda t: t['date'], reverse=True)[:40]
 
-    # ── By quarter ────────────────────────────────────────────────────────────
-    def get_q(mo): return (mo - 1) // 3 + 1
-    by_quarter = {f'Q{q}': _agg([t for t in trades if get_q(t['mo']) == q])
-                  for q in range(1, 5)}
-
-    # ── Risk stats ────────────────────────────────────────────────────────────
-    outcomes_seq = [t['outcome_main'] for t in wl_resolved]
+    # ── Streak stats ──────────────────────────────────────────────────────────
+    # Win streak = consecutive TP1 hits; loss streak = consecutive full stops
+    exit_seq = ['TP1' if t['exit_type'] in ('TP1+EOD','TP1+STOP') else 'STOPPED'
+                for t in wl_resolved]
     def max_consec(seq, val):
         mx = cur = 0
         for v in seq:
             cur = cur + 1 if v == val else 0
             mx  = max(mx, cur)
         return mx
-    max_cw = max_consec(outcomes_seq, 'WIN')
-    max_cl = max_consec(outcomes_seq, 'LOSS')
+    max_cw = max_consec(exit_seq, 'TP1')
+    max_cl = max_consec(exit_seq, 'STOPPED')
 
+    # ── Sharpe ────────────────────────────────────────────────────────────────
     rs = [t['combined_r'] for t in wl_resolved if t['combined_r'] is not None]
     if len(rs) > 1:
         mean_r = float(np.mean(rs))
@@ -468,34 +369,8 @@ def build_stats(trades, meta_extra: dict, model: str = 'cashflow_extended',
     else:
         sharpe = None
 
-    mae_all  = [t['mae_pct']  for t in wl_resolved if t.get('mae_pct')  is not None]
-    if model == 'cashflow':
-        mfe_all = [t.get('mfe1_pct', 0.0) for t in wl_resolved if t['outcome_main'] == 'WIN']
-    else:
-        mfe_all = [t.get('mfe2_pct', 0.0) for t in wl_resolved]
-    mae_median  = round(float(np.median(mae_all)),  4) if mae_all  else None
-    mfe_median  = round(float(np.median(mfe_all)),  4) if mfe_all  else None
-
-    win_rs  = [t['combined_r'] for t in wl_resolved
-               if t['outcome_main'] == 'WIN' and t['combined_r'] is not None]
-    avg_win_r = float(np.mean(win_rs)) if win_rs else 0.0
-    p_wr   = overall['tp1_wr'] or 0.0
-    edge   = p_wr * avg_win_r - (1 - p_wr) * 1.0
-    N_units = ACCOUNT_SIZE / RISK_PER_TRADE
-    if edge <= 0:
-        ror = 1.0
-    else:
-        a   = (1 - edge) / (1 + edge)
-        ror = round(min(1.0, a ** N_units), 4)
-
-    # Additional metrics for hero tiles
-    losses_list  = [t for t in wl_resolved if t['outcome_main'] == 'LOSS']
-    loss_rs      = [t['combined_r'] for t in losses_list if t['combined_r'] is not None]
-    avg_loss_r   = round(float(np.mean(loss_rs)), 4) if loss_rs else -1.0
-    avg_win_usd  = round(avg_win_r  * RISK_PER_TRADE, 2)
-    avg_loss_usd = round(avg_loss_r * RISK_PER_TRADE, 2)
-
-    eq = float(ACCOUNT_SIZE)
+    # ── Equity curve / max DD ─────────────────────────────────────────────────
+    eq     = float(ACCOUNT_SIZE)
     min_eq = eq
     for t in sorted(wl_resolved, key=lambda x: x['date']):
         if t['combined_r'] is not None:
@@ -505,75 +380,374 @@ def build_stats(trades, meta_extra: dict, model: str = 'cashflow_extended',
     min_eq = round(min_eq, 2)
     blown  = min_eq <= 0.0
 
-    if 'stop_pct' in meta_extra:
-        sl_pct_val = meta_extra['stop_pct']
-        tp_pct_val = meta_extra['tp_pct']
-    else:
-        sl_pct_val = overall.get('avg_mae_pct') or round(TP1_BPS * 100, 4)
-        tp_pct_val = round(TP1_BPS * 100, 4)
+    # ── Win / loss R summaries ────────────────────────────────────────────────
+    stopped_list = [t for t in wl_resolved if t['exit_type'] == 'STOPPED']
+    tp1_list     = [t for t in wl_resolved if t['exit_type'] in ('TP1+EOD','TP1+STOP')]
+    tp1_rs  = [t['combined_r'] for t in tp1_list     if t['combined_r'] is not None]
+    stop_rs = [t['combined_r'] for t in stopped_list if t['combined_r'] is not None]
+    avg_tp1_r    = float(np.mean(tp1_rs))  if tp1_rs  else 0.0
+    avg_stop_r   = round(float(np.mean(stop_rs)), 4) if stop_rs else -1.0
+    avg_win_usd  = round(avg_tp1_r  * RISK_PER_TRADE, 2)
+    avg_loss_usd = round(avg_stop_r * RISK_PER_TRADE, 2)
 
-    # CE — Combined Edge: avg(MFE / MAE) for WIN trades
-    # Uses mfe2_pct (runner max favorable) for cashflow_extended, mfe1_pct otherwise
-    mfe_key = 'mfe2_pct' if model == 'cashflow_extended' else 'mfe1_pct'
+    p_wr = overall['tp1_wr'] or 0.0
+    edge = p_wr * avg_tp1_r - (1 - p_wr) * abs(avg_stop_r)
+    N_units = ACCOUNT_SIZE / RISK_PER_TRADE
+    if edge <= 0:
+        ror = 1.0
+    else:
+        a   = (1 - edge) / (1 + edge)
+        ror = round(min(1.0, a ** N_units), 4)
+
+    # ── CE — avg(MFE / MAE) for TP1+EOD trades ───────────────────────────────
     ce_ratios = []
-    for t in [t for t in wl_resolved if t['outcome_main'] == 'WIN']:
+    for t in [t for t in wl_resolved if t['exit_type'] == 'TP1+EOD']:
         mae = t.get('mae_pct') or 0.0
-        mfe = t.get(mfe_key) or 0.0
+        mfe = t.get('mfe_pct') or 0.0
         if mae > 0 and mfe > 0:
             ce_ratios.append(mfe / mae)
     ce = round(float(np.mean(ce_ratios)), 3) if ce_ratios else None
 
-    # Bell curve of actual MAE distribution — SL candidates per sigma tier
+    # ── MAE deep analysis (PhD-level, mirrors MFE study) ─────────────────────
     mae_raw = [t['mae_pct'] for t in wl_resolved
                if t.get('mae_pct') is not None and t['mae_pct'] > 0]
-    if len(mae_raw) > 1 and len(set(mae_raw)) > 1:
-        mae_mu = float(np.mean(mae_raw))
-        mae_sd = float(np.std(mae_raw, ddof=1))
-        # Actual empirical percentiles for coverage labels
-        mae_np  = np.array(mae_raw)
-        mae_bell = {
-            'mean':         round(mae_mu, 4),
-            'std':          round(mae_sd, 4),
-            'plus_0_5s':    round(mae_mu + 0.5 * mae_sd, 4),   # ~69th pct
-            'plus_1s':      round(mae_mu + mae_sd, 4),          # ~84th pct
-            'plus_1_5s':    round(mae_mu + 1.5 * mae_sd, 4),   # ~93rd pct
-            'plus_2s':      round(mae_mu + 2.0 * mae_sd, 4),   # ~97.5th pct
-            # Empirical coverage at each candidate
-            'cov_mean':     round(float(np.mean(mae_np <= mae_mu)) * 100, 1),
-            'cov_0_5s':     round(float(np.mean(mae_np <= mae_mu + 0.5*mae_sd)) * 100, 1),
-            'cov_1s':       round(float(np.mean(mae_np <= mae_mu + mae_sd)) * 100, 1),
-            'cov_1_5s':     round(float(np.mean(mae_np <= mae_mu + 1.5*mae_sd)) * 100, 1),
-            'cov_2s':       round(float(np.mean(mae_np <= mae_mu + 2.0*mae_sd)) * 100, 1),
+    mae_dist = None
+    mae_bell = None   # kept for backward compat — populated below
+    if len(mae_raw) > 10:
+        mae_np = np.array(mae_raw)
+        Nm = len(mae_np)
+
+        # ── Basic moments ─────────────────────────────────────────────────────
+        mae_mean = float(np.mean(mae_np))
+        mae_med  = float(np.median(mae_np))
+        mae_std  = float(np.std(mae_np, ddof=1))
+        cen      = mae_np - mae_mean
+        mae_skew = float(np.mean(cen**3) / (mae_std**3)) if mae_std > 0 else 0.0
+        mae_kurt = float(np.mean(cen**4) / (mae_std**4)) - 3.0 if mae_std > 0 else 0.0
+
+        # ── Mode via histogram peak ───────────────────────────────────────────
+        hc, he = np.histogram(mae_np, bins=80)
+        mi     = int(np.argmax(hc))
+        mae_mode = round(float((he[mi] + he[mi + 1]) / 2), 4)
+
+        # ── Full percentile table ─────────────────────────────────────────────
+        pct_levels = [5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 65, 70, 75, 80, 85, 90, 95, 99]
+        mae_percentiles = {f'p{p}': round(float(np.percentile(mae_np, p)), 4)
+                           for p in pct_levels}
+
+        # ── Log-normal fit ────────────────────────────────────────────────────
+        mae_pos = mae_np[mae_np > 1e-6]
+        if len(mae_pos) > 10:
+            lm      = np.log(mae_pos)
+            lm_mu   = float(np.mean(lm))
+            lm_sig  = float(np.std(lm, ddof=1))
+            mae_lognorm = {
+                'mu':             round(lm_mu,  4),
+                'sigma':          round(lm_sig, 4),
+                'implied_median': round(float(np.exp(lm_mu)), 4),
+                'implied_mean':   round(float(np.exp(lm_mu + 0.5 * lm_sig**2)), 4),
+                'implied_mode':   round(float(np.exp(lm_mu - lm_sig**2)), 4),
+                'goodness':       round(float(np.corrcoef(
+                    np.sort(lm),
+                    np.linspace(-3, 3, len(lm))
+                )[0, 1]), 4),
+            }
+        else:
+            mae_lognorm = None
+
+        # ── Natural clusters (3-tier) ─────────────────────────────────────────
+        mc1_thresh = float(np.percentile(mae_np, 33))
+        mc2_thresh = float(np.percentile(mae_np, 75))
+        mc1 = mae_np[mae_np <  mc1_thresh]
+        mc2 = mae_np[(mae_np >= mc1_thresh) & (mae_np < mc2_thresh)]
+        mc3 = mae_np[mae_np >= mc2_thresh]
+        mae_clusters = [
+            {'label': 'Tight',    'range': f'0 – {mc1_thresh:.4f}%',
+             'n': len(mc1), 'pct_of_trades': round(len(mc1)/Nm*100, 1),
+             'mean':   round(float(np.mean(mc1)),   4) if len(mc1) else 0,
+             'median': round(float(np.median(mc1)), 4) if len(mc1) else 0,
+             'max':    round(float(np.max(mc1)),    4) if len(mc1) else 0},
+            {'label': 'Moderate', 'range': f'{mc1_thresh:.4f}% – {mc2_thresh:.4f}%',
+             'n': len(mc2), 'pct_of_trades': round(len(mc2)/Nm*100, 1),
+             'mean':   round(float(np.mean(mc2)),   4) if len(mc2) else 0,
+             'median': round(float(np.median(mc2)), 4) if len(mc2) else 0,
+             'max':    round(float(np.max(mc2)),    4) if len(mc2) else 0},
+            {'label': 'Wide',     'range': f'{mc2_thresh:.4f}%+',
+             'n': len(mc3), 'pct_of_trades': round(len(mc3)/Nm*100, 1),
+             'mean':   round(float(np.mean(mc3)),   4) if len(mc3) else 0,
+             'median': round(float(np.median(mc3)), 4) if len(mc3) else 0,
+             'max':    round(float(np.max(mc3)),    4) if len(mc3) else 0},
+        ]
+
+        # ── SL sweep — "how tight can you go?" ───────────────────────────────
+        # For each MAE level X (% of trades exceeded it):
+        #   exceeded_pct  : reach rate (% of trades with MAE >= threshold)
+        #   threshold     : the MAE value at that percentile
+        #   n_exceeded    : count of trades exceeding
+        #   p_recovered   : fraction of exceeded trades that still hit TP1 (false stop rate)
+        #   p_ko          : fraction that did NOT recover (genuine stops if SL set here)
+        #   ev_cost       : EV lost per trade from false stops (R units)
+        sl_sweep_pcts = [5, 10, 15, 20, 25, 30, 33, 40, 50, 60, 75, 90]
+        sl_sweep = []
+        for sp in sl_sweep_pcts:
+            threshold = float(np.percentile(mae_np, 100 - sp))
+            exceeded  = [t for t in wl_resolved if t.get('mae_pct', 0) >= threshold]
+            if not exceeded:
+                continue
+            n_exc    = len(exceeded)
+            n_rec    = sum(1 for t in exceeded
+                          if t['exit_type'] in ('TP1+EOD', 'TP1+STOP'))
+            p_rec    = round(n_rec / n_exc, 4)
+            p_ko     = round(1.0 - p_rec, 4)
+            # EV cost: false stops lose avg_tp1_r instead of gaining it
+            ev_cost  = round(n_rec * avg_tp1_r / Nm, 4) if avg_tp1_r > 0 else 0.0
+            sl_sweep.append({
+                'exceed_pct':  sp,           # % of trades that touch this MAE
+                'threshold':   round(threshold, 4),
+                'n_exceeded':  n_exc,
+                'p_recovered': p_rec,        # false stop rate (would have recovered)
+                'p_ko':        p_ko,         # true stop rate (genuine losers)
+                'ev_cost':     ev_cost,
+            })
+
+        # ── Optimal SL recommendation ─────────────────────────────────────────
+        # Tightest level where majority of touched trades are genuine losers
+        # (p_ko >= 0.50, i.e., most exceeded trades did NOT recover)
+        opt_sl = None
+        opt_sl_exceed = None
+        for row in reversed(sl_sweep):
+            if row['p_ko'] >= 0.50:
+                opt_sl         = row['threshold']
+                opt_sl_exceed  = row['exceed_pct']
+                break
+        if opt_sl is None and sl_sweep:
+            best = max(sl_sweep, key=lambda r: r['p_ko'])
+            opt_sl        = best['threshold']
+            opt_sl_exceed = best['exceed_pct']
+
+        # ── Histogram for canvas ──────────────────────────────────────────────
+        p99m     = float(np.percentile(mae_np, 99))
+        mae_edges = np.linspace(0, p99m, 61)
+        mae_hv, _ = np.histogram(mae_np, bins=mae_edges)
+        mae_hist  = {
+            'edges':  [round(float(e), 5) for e in mae_edges],
+            'counts': mae_hv.tolist(),
         }
-    else:
-        mae_bell = None
+
+        # ── Backward-compat mae_bell ──────────────────────────────────────────
+        mae_bell = {
+            'mean':      round(mae_mean, 4),
+            'std':       round(mae_std,  4),
+            'plus_0_5s': round(mae_mean + 0.5 * mae_std, 4),
+            'plus_1s':   round(mae_mean + mae_std, 4),
+            'plus_1_5s': round(mae_mean + 1.5 * mae_std, 4),
+            'plus_2s':   round(mae_mean + 2.0 * mae_std, 4),
+            'cov_mean':  round(float(np.mean(mae_np <= mae_mean)) * 100, 1),
+            'cov_0_5s':  round(float(np.mean(mae_np <= mae_mean + 0.5*mae_std)) * 100, 1),
+            'cov_1s':    round(float(np.mean(mae_np <= mae_mean + mae_std)) * 100, 1),
+            'cov_1_5s':  round(float(np.mean(mae_np <= mae_mean + 1.5*mae_std)) * 100, 1),
+            'cov_2s':    round(float(np.mean(mae_np <= mae_mean + 2.0*mae_std)) * 100, 1),
+        }
+
+        mae_dist = {
+            'mean':      round(mae_mean, 4),
+            'median':    round(mae_med,  4),
+            'mode':      mae_mode,
+            'std':       round(mae_std,  4),
+            'skewness':  round(mae_skew, 3),
+            'kurtosis':  round(mae_kurt, 3),
+            'percentiles': mae_percentiles,
+            'lognorm':   mae_lognorm,
+            'clusters':  mae_clusters,
+            'sl_sweep':  sl_sweep,
+            'opt_sl':    round(opt_sl, 4) if opt_sl else None,
+            'opt_sl_exceed': opt_sl_exceed,
+            'histogram': mae_hist,
+            'n':         Nm,
+            'bell':      mae_bell,  # kept for legacy canvas
+        }
+
+    # ── MFE deep analysis (PhD-level) ────────────────────────────────────────
+    mfe_raw = [t.get('mfe_pct', 0.0) for t in wl_resolved]
+    mfe_dist = None
+    if len(mfe_raw) > 10:
+        mfe_np = np.array(mfe_raw)
+        N = len(mfe_np)
+
+        # ── Basic moments ─────────────────────────────────────────────────────
+        mfe_mean = float(np.mean(mfe_np))
+        mfe_med  = float(np.median(mfe_np))
+        mfe_std  = float(np.std(mfe_np, ddof=1))
+        centered = mfe_np - mfe_mean
+        mfe_skew = float(np.mean(centered**3) / (mfe_std**3)) if mfe_std > 0 else 0.0
+        mfe_kurt = float(np.mean(centered**4) / (mfe_std**4)) - 3.0 if mfe_std > 0 else 0.0
+
+        # ── Mode via histogram peak ───────────────────────────────────────────
+        hist_counts, hist_edges = np.histogram(mfe_np, bins=80)
+        mode_idx  = int(np.argmax(hist_counts))
+        mfe_mode  = round(float((hist_edges[mode_idx] + hist_edges[mode_idx + 1]) / 2), 4)
+
+        # ── Full percentile table (every 5th + key levels) ───────────────────
+        pct_levels = [5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 65, 70, 75, 80, 85, 90, 95, 99]
+        percentiles = {f'p{p}': round(float(np.percentile(mfe_np, p)), 4)
+                       for p in pct_levels}
+
+        # ── Log-normal fit (MFE is almost always right-skewed & positive) ────
+        mfe_pos = mfe_np[mfe_np > 1e-6]
+        if len(mfe_pos) > 10:
+            log_mfe   = np.log(mfe_pos)
+            log_mu    = float(np.mean(log_mfe))
+            log_sigma = float(np.std(log_mfe, ddof=1))
+            lognorm = {
+                'mu':             round(log_mu,    4),
+                'sigma':          round(log_sigma, 4),
+                'implied_median': round(float(np.exp(log_mu)), 4),
+                'implied_mean':   round(float(np.exp(log_mu + 0.5 * log_sigma**2)), 4),
+                'implied_mode':   round(float(np.exp(log_mu - log_sigma**2)), 4),
+                'goodness':       round(float(np.corrcoef(
+                    np.sort(log_mfe),
+                    np.linspace(-3, 3, len(log_mfe))
+                )[0, 1]), 4),   # Pearson r with normal quantiles (higher = better fit)
+            }
+        else:
+            lognorm = None
+
+        # ── Natural clusters (3-tier: small / moderate / large runs) ─────────
+        c1_thresh = float(np.percentile(mfe_np, 33))
+        c2_thresh = float(np.percentile(mfe_np, 75))
+        c1 = mfe_np[mfe_np <  c1_thresh]
+        c2 = mfe_np[(mfe_np >= c1_thresh) & (mfe_np < c2_thresh)]
+        c3 = mfe_np[mfe_np >= c2_thresh]
+        clusters = [
+            {'label': 'Small',    'range': f'0 – {c1_thresh:.4f}%',
+             'n': len(c1), 'pct_of_trades': round(len(c1)/N*100, 1),
+             'mean': round(float(np.mean(c1)),   4) if len(c1) else 0,
+             'median': round(float(np.median(c1)), 4) if len(c1) else 0,
+             'max':  round(float(np.max(c1)),   4) if len(c1) else 0},
+            {'label': 'Moderate', 'range': f'{c1_thresh:.4f}% – {c2_thresh:.4f}%',
+             'n': len(c2), 'pct_of_trades': round(len(c2)/N*100, 1),
+             'mean': round(float(np.mean(c2)),   4) if len(c2) else 0,
+             'median': round(float(np.median(c2)), 4) if len(c2) else 0,
+             'max':  round(float(np.max(c2)),   4) if len(c2) else 0},
+            {'label': 'Large',    'range': f'{c2_thresh:.4f}%+',
+             'n': len(c3), 'pct_of_trades': round(len(c3)/N*100, 1),
+             'mean': round(float(np.mean(c3)),   4) if len(c3) else 0,
+             'median': round(float(np.median(c3)), 4) if len(c3) else 0,
+             'max':  round(float(np.max(c3)),   4) if len(c3) else 0},
+        ]
+
+        # ── BE trigger analysis — "Protect the Queen" ─────────────────────────
+        # For each trigger X%: if we move stop to entry once MFE >= X, then
+        #   • trades with MFE >= X and combined_r < 0 exit at 0R instead
+        # Key metrics per trigger:
+        #   reach_rate   : % of all trades that hit this level
+        #   p_pos_given  : P(combined_r > 0 | MFE >= X)  — "confidence" at this level
+        #   n_rescued    : trades saved from negative exit
+        #   ev_delta     : EV improvement per trade (R) from moving stop to BE at X
+        #   cumulative_r_saved : total R saved across all trades
+        trigger_pcts = [5, 10, 15, 20, 25, 30, 33, 40, 50, 60, 75, 90]
+        be_triggers  = []
+        base_ev      = float(np.mean([t['combined_r'] for t in wl_resolved
+                                      if t['combined_r'] is not None]))
+        for tp in trigger_pcts:
+            trigger_val = float(np.percentile(mfe_np, 100 - tp))  # "reach rate = tp %"
+            reached = [t for t in wl_resolved
+                       if t.get('mfe_pct', 0) >= trigger_val and t['combined_r'] is not None]
+            if not reached:
+                continue
+            n_reached   = len(reached)
+            n_pos       = sum(1 for t in reached if t['combined_r'] > 0)
+            p_pos       = round(n_pos / n_reached, 4)
+            rescued     = [t for t in reached if t['combined_r'] < 0]
+            n_rescued   = len(rescued)
+            r_saved     = sum(abs(t['combined_r']) for t in rescued)
+            ev_delta    = round(r_saved / N, 4)
+            new_ev      = round(base_ev + ev_delta, 4)
+            be_triggers.append({
+                'reach_rate':    tp,              # % of trades that hit this level
+                'trigger_pct':   round(trigger_val, 4),
+                'n_reached':     n_reached,
+                'p_pos_given':   p_pos,           # P(exit > entry | MFE >= trigger)
+                'n_rescued':     n_rescued,        # saved from negative exit
+                'ev_delta':      ev_delta,         # EV improvement per trade (R)
+                'new_ev':        new_ev,
+            })
+
+        # ── Protect the Queen recommendation ─────────────────────────────────
+        # Find the LOWEST trigger_pct where p_pos_given >= 0.50
+        # i.e. most aggressive (earliest) BE move that still gives a coin-flip
+        # be_triggers is ordered reach_rate ASC (high trigger → low trigger),
+        # so we iterate in reverse to find the last entry >= 0.50
+        ptq_level = None
+        ptq_reach_rate = None
+        for row in reversed(be_triggers):
+            if row['p_pos_given'] >= 0.50:
+                ptq_level      = row['trigger_pct']
+                ptq_reach_rate = row['reach_rate']
+                break
+        # If no level reaches 50%, recommend the highest p_pos one
+        if ptq_level is None and be_triggers:
+            best = max(be_triggers, key=lambda r: r['p_pos_given'])
+            ptq_level      = best['trigger_pct']
+            ptq_reach_rate = best['reach_rate']
+
+        # ── Histogram bins for canvas drawing ────────────────────────────────
+        # 60 log-spaced bins from 0 to p99 for the histogram curve
+        p99_val = float(np.percentile(mfe_np, 99))
+        bin_edges = np.linspace(0, p99_val, 61)
+        hist_vals, _ = np.histogram(mfe_np, bins=bin_edges)
+        hist_data = {
+            'edges': [round(float(e), 5) for e in bin_edges],
+            'counts': hist_vals.tolist(),
+        }
+
+        mfe_dist = {
+            # Moments
+            'mean':     round(mfe_mean, 4),
+            'median':   round(mfe_med,  4),
+            'mode':     mfe_mode,
+            'std':      round(mfe_std,  4),
+            'skewness': round(mfe_skew, 3),
+            'kurtosis': round(mfe_kurt, 3),
+            # Percentiles
+            'percentiles': percentiles,
+            # Distribution fit
+            'lognorm': lognorm,
+            # Clusters
+            'clusters': clusters,
+            # BE / protect-the-queen
+            'be_triggers':    be_triggers,
+            'ptq_level':      round(ptq_level, 4) if ptq_level else None,
+            'ptq_reach_rate': ptq_reach_rate,
+            # Histogram for canvas
+            'histogram': hist_data,
+            'n': N,
+        }
 
     risk_stats = {
-        'ror':              ror,
-        'max_consec_wins':  max_cw,
+        'ror':               ror,
+        'max_consec_wins':   max_cw,
         'max_consec_losses': max_cl,
-        'sharpe':           sharpe,
-        'mae_median':       mae_median,
-        'mfe_median':       mfe_median,
-        'account_size':     ACCOUNT_SIZE,
-        'risk_per_trade':   RISK_PER_TRADE,
-        'trades':           len(wl_resolved),
-        'wins':             overall['wins'],
-        'losses':           len(losses_list),
-        'be_count':         0,
-        'avg_win_usd':      avg_win_usd,
-        'avg_loss_usd':     avg_loss_usd,
-        'min_equity_usd':   min_eq,
-        'blown':            blown,
-        'sl_pct':           sl_pct_val,
-        'tp_pct':           tp_pct_val,
-        'ce':               ce,
-        'mae_bell':         mae_bell,
+        'sharpe':            sharpe,
+        'mae_median':        overall.get('med_mae_pct'),
+        'mfe_median':        overall.get('med_mfe_pct'),
+        'account_size':      ACCOUNT_SIZE,
+        'risk_per_trade':    RISK_PER_TRADE,
+        'trades':            len(wl_resolved),
+        'tp1_count':         len(tp1_list),
+        'stopped_count':     len(stopped_list),
+        'avg_win_usd':       avg_win_usd,
+        'avg_loss_usd':      avg_loss_usd,
+        'min_equity_usd':    min_eq,
+        'blown':             blown,
+        'ce':                ce,
+        'mae_bell':          mae_bell,
+        'mae_dist':          mae_dist,
+        'mfe_dist':          mfe_dist,
     }
 
     result = {
-        'meta': {**meta_extra, **overall,
-                 'generated_at': datetime.now().isoformat()},
+        'meta': {**meta_extra, **overall, 'generated_at': datetime.now().isoformat()},
         'overall':       overall,
         'by_dow':        by_dow,
         'by_hour':       by_hour,
@@ -591,14 +765,14 @@ def build_stats(trades, meta_extra: dict, model: str = 'cashflow_extended',
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main():
-    parser = argparse.ArgumentParser(description='NY1 F.P.FVG backtest')
+    parser = argparse.ArgumentParser(description='NY1 F.P.FVG backtest — split-exit (TP1=0.10% + runner)')
     parser.add_argument('--table',   default='nq_1m')
     parser.add_argument('--no-json', action='store_true', dest='no_json')
     args = parser.parse_args()
 
     bar = '═' * 68
     print(f'\n{bar}')
-    print(f'  NY1 F.P.FVG Backtest  ·  {args.table}  ·  TP1=10bps  ·  Runner 20%')
+    print(f'  NY1 F.P.FVG Backtest  ·  {args.table}  ·  Split-Exit (TP1={TP1_PCT*100:.4f}% + Runner)')
     print(bar)
 
     print('\n  Loading bars...', end=' ', flush=True)
@@ -607,61 +781,41 @@ def main():
     trading_days = df['trade_date'].nunique()
     print(f'{len(df):,} bars  ·  {trading_days:,} trading days')
 
-    trades_by_model = {'cashflow': [], 'cashflow_extended': []}
-    trades_by_pct   = {key: [] for key, *_ in PCT_PROFILES}
-    n_setups    = 0
-    n_filled    = 0
-    n_no_fill   = 0
-    n_no_setup  = 0
+    trades     = []
+    n_setups   = 0
+    n_filled   = 0
+    n_no_fill  = 0
+    n_no_setup = 0
 
     print('  Running...', end=' ', flush=True)
     for date, day_df in df.groupby('trade_date'):
         arrs = build_day_arrays(day_df)
-
-        # Need at least 9:30–10:01 bars
         if arrs['n'] < 5:
             continue
 
-        # Find EOD index (16:00 bar for runner exit)
         eod_idx = find_idx(arrs, 16, 0)
         if eod_idx == -1:
-            eod_idx = arrs['n'] - 1   # fallback to last bar
+            eod_idx = arrs['n'] - 1
 
-        # Detect first FVG
         fvg = detect_fvg(arrs)
         if fvg is None:
             n_no_setup += 1
             continue
         n_setups += 1
 
-        # Risk check
         risk_pts = abs(fvg['entry'] - fvg['stop'])
         if risk_pts < MIN_RISK_PTS:
             n_no_setup += 1
             continue
 
-        # MAE and MFE1 as percentage of entry price
-        mae_pct  = round(risk_pts / fvg['entry'] * 100, 4)
-        mfe1_pct = round(TP1_BPS * 100, 4)  # always 0.10%
+        mae_pct = round(risk_pts / fvg['entry'] * 100, 4)
 
-        # TP1 level
-        if fvg['direction'] == 'LONG':
-            tp1 = fvg['entry'] * (1 + TP1_BPS)
-        else:
-            tp1 = fvg['entry'] * (1 - TP1_BPS)
-
-        # Sanity: TP1 must be on the correct side of entry
-        if fvg['direction'] == 'LONG'  and tp1 <= fvg['entry']: continue
-        if fvg['direction'] == 'SHORT' and tp1 >= fvg['entry']: continue
-
-        # Find fill
         fill = scan_fill(arrs, fvg['c3_idx'], fvg, eod_idx)
         if fill is None:
             n_no_fill += 1
             continue
         n_filled += 1
 
-        # C2 timestamp for reference
         c2_ts = arrs['ts_et'][fvg['c2_idx']]
         c1_ts = arrs['ts_et'][fvg['c1_idx']]
         c3_ts = arrs['ts_et'][fvg['c3_idx']]
@@ -671,122 +825,85 @@ def main():
 
         fill_time = f"{fill['fill_hr']:02d}:{fill['fill_mn']:02d}"
         base = {
-            'date':       str(date.date()) if hasattr(date, 'date') else str(date)[:10],
-            'time':       fill_time,
-            'dow':        dow,
-            'dow_name':   DOW_NAMES.get(dow, '?'),
-            'yr':         yr,
-            'mo':         mo,
-            'direction':  fvg['direction'],
-            'c1_ts':      str(c1_ts)[:16],
-            'c2_ts':      str(c2_ts)[:16],
-            'c3_ts':      str(c3_ts)[:16],
-            'fvg_top':    round(fvg['fvg_top'], 4),
-            'fvg_bot':    round(fvg['fvg_bot'], 4),
-            'entry':      round(fvg['entry'], 4),
-            'stop':       round(fvg['stop'],  4),
-            'tp1':        round(tp1, 4),
-            'risk_pts':   round(risk_pts, 2),
-            'mae_pct':    mae_pct,
-            'fill_hr':    fill['fill_hr'],
-            'fill_mn':    fill['fill_mn'],
+            'date':      str(date.date()) if hasattr(date, 'date') else str(date)[:10],
+            'time':      fill_time,
+            'dow':       dow,
+            'dow_name':  DOW_NAMES.get(dow, '?'),
+            'yr':        yr,
+            'mo':        mo,
+            'direction': fvg['direction'],
+            'c1_ts':     str(c1_ts)[:16],
+            'c2_ts':     str(c2_ts)[:16],
+            'c3_ts':     str(c3_ts)[:16],
+            'fvg_top':   round(fvg['fvg_top'], 4),
+            'fvg_bot':   round(fvg['fvg_bot'], 4),
+            'entry':     round(fvg['entry'], 4),
+            'stop':      round(fvg['stop'],  4),
+            'risk_pts':  round(risk_pts, 2),
+            'mae_pct':   mae_pct,
+            'fill_hr':   fill['fill_hr'],
+            'fill_mn':   fill['fill_mn'],
         }
 
-        # Resolve outcome for each structural model
-        for model_key in ('cashflow', 'cashflow_extended'):
-            outcome = resolve_outcome(arrs, fill['fill_idx'], fvg, tp1, eod_idx, model=model_key)
-            trades_by_model[model_key].append({
-                **base,
-                'mfe1_pct': mfe1_pct if outcome['outcome_main'] == 'WIN' else 0.0,
-                **outcome,
-            })
-
-        # Resolve outcome for each fixed-% profile
-        for pct_key, stop_pct, tp_pct, _ in PCT_PROFILES:
-            pct_out = resolve_pct_profile(arrs, fill['fill_idx'], fvg,
-                                          stop_pct, tp_pct, eod_idx)
-            trades_by_pct[pct_key].append({
-                **base,
-                'mae_pct':  round(stop_pct * 100, 4),   # fixed stop distance
-                'mfe1_pct': round(tp_pct * 100, 4) if pct_out['outcome_main'] == 'WIN' else 0.0,
-                'mfe2_pct': 0.0,
-                'runner_exit_price': None,
-                'runner_outcome':    None,
-                **pct_out,
-            })
+        outcome = resolve_open_run(arrs, fill['fill_idx'], fvg, eod_idx)
+        trades.append({**base, **outcome})
 
     print(f'done\n')
 
-    # ── Print summary (use cashflow_extended as reference) ────────────────────
-    trades   = trades_by_model['cashflow_extended']
-    wl       = [t for t in trades if t['outcome_main'] in ('WIN', 'LOSS')]
-    wins     = sum(1 for t in wl if t['outcome_main'] == 'WIN')
-    wr       = wins / len(wl) if wl else 0
-    mae_vals = [t['mae_pct'] for t in wl if t.get('mae_pct') is not None]
-    avg_mae  = float(np.mean(mae_vals)) if mae_vals else 0
+    wl        = [t for t in trades if t.get('exit_type') in _VALID_EXITS]
+    n_tp1     = sum(1 for t in wl if t['exit_type'] in ('TP1+EOD', 'TP1+STOP'))
+    n_stopped = sum(1 for t in wl if t['exit_type'] == 'STOPPED')
+    mfe_arr   = np.array([t.get('mfe_pct', 0.0) for t in wl]) if wl else np.array([])
 
     print(f'{bar}')
-    print(f'  SUMMARY')
+    print(f'  NY1 F.P.FVG · Split-Exit: TP1={TP1_PCT*100:.4f}% ({int(TP1_SIZE*100)}%) + Runner ({int(RUNNER_SIZE*100)}%)')
     print(bar)
-    print(f'  Trading days      : {trading_days:,}')
-    print(f'  Days w/ setup     : {n_setups:,}  ({n_setups/trading_days:.1%})')
-    print(f'  No fill (no retrace): {n_no_fill:,}')
-    print(f'  Filled trades     : {n_filled:,}')
-    print(f'  Resolved (W+L)    : {len(wl):,}')
-    print(f'  Wins (TP1 hit)    : {wins:,}')
-    print(f'  TP1 Win Rate      : {wr:.1%}')
-    print(f'  Avg MAE           : {avg_mae:.4f}%')
+    print(f'  Trading days         : {trading_days:,}')
+    print(f'  Days w/ setup        : {n_setups:,}  ({n_setups/trading_days:.1%})')
+    print(f'  No fill (no retrace) : {n_no_fill:,}')
+    print(f'  Filled trades        : {n_filled:,}')
+    print(f'  Resolved             : {len(wl):,}')
+    print(f'  TP1 hit              : {n_tp1:,}  ({n_tp1/len(wl):.1%})')
+    print(f'  Stopped (before TP1) : {n_stopped:,}  ({n_stopped/len(wl):.1%})')
+    if len(mfe_arr):
+        print(f'\n  MFE Distribution (all resolved trades)')
+        print(f'    Mean   : {np.mean(mfe_arr):.4f}%')
+        print(f'    Median : {np.median(mfe_arr):.4f}%')
+        print(f'    StdDev : {np.std(mfe_arr, ddof=1):.4f}%')
+        print(f'    p25    : {np.percentile(mfe_arr, 25):.4f}%')
+        print(f'    p75    : {np.percentile(mfe_arr, 75):.4f}%')
+        print(f'    p90    : {np.percentile(mfe_arr, 90):.4f}%')
+        print(f'    p99    : {np.percentile(mfe_arr, 99):.4f}%')
     print()
 
     print(f'  BY DIRECTION')
     for d in ('LONG', 'SHORT'):
-        sub  = [t for t in wl if t['direction'] == d]
-        w    = sum(1 for t in sub if t['outcome_main'] == 'WIN')
-        wr_d = w / len(sub) if sub else 0
-        print(f'    {d:<6}  N={len(sub):>4}  WR={wr_d:.1%}')
+        sub    = [t for t in wl if t['direction'] == d]
+        n_tp1d = sum(1 for t in sub if t['exit_type'] in ('TP1+EOD','TP1+STOP'))
+        print(f'    {d:<6}  N={len(sub):>4}  TP1={n_tp1d/len(sub):.1%}  STOP={(len(sub)-n_tp1d)/len(sub):.1%}')
     print()
 
     print(f'  BY DAY OF WEEK')
     for d in range(1, 6):
-        sub  = [t for t in wl if t['dow'] == d]
-        w    = sum(1 for t in sub if t['outcome_main'] == 'WIN')
-        wr_d = w / len(sub) if sub else 0
-        print(f'    {DOW_NAMES[d]}  N={len(sub):>4}  WR={wr_d:.1%}')
+        sub    = [t for t in wl if t['dow'] == d]
+        n_tp1d = sum(1 for t in sub if t['exit_type'] in ('TP1+EOD','TP1+STOP'))
+        print(f'    {DOW_NAMES[d]}  N={len(sub):>4}  TP1={n_tp1d/len(sub):.1%}')
     print()
 
     print(f'  BY FILL HOUR')
     for h in range(9, 16):
-        sub  = [t for t in wl if t['fill_hr'] == h]
+        sub    = [t for t in wl if t['fill_hr'] == h]
         if not sub: continue
-        w    = sum(1 for t in sub if t['outcome_main'] == 'WIN')
-        wr_h = w / len(sub)
-        print(f'    {h:02d}:xx  N={len(sub):>4}  WR={wr_h:.1%}')
-    print()
-
-    # ── Recent 40 trades table ─────────────────────────────────────────────────
-    recent_40 = sorted(wl, key=lambda t: t['date'], reverse=True)[:40]
-    hdr = f"  {'DATE':<12} {'TIME':<6} {'DIR':<6} {'MAE(%)':>8} {'MFE1(%)':>9} {'MFE2(%)':>9} {'TP1':>5}"
-    print(f'  RECENT 40 TRADES')
-    print(f'  {"-"*74}')
-    print(hdr)
-    print(f'  {"-"*74}')
-    for t in recent_40:
-        tp1_str  = 'W' if t['outcome_main'] == 'WIN' else 'L'
-        print(f"  {t['date']:<12} {t.get('time','?'):<6} {t['direction']:<6} "
-              f"{t.get('mae_pct', 0):>8.4f} "
-              f"{t.get('mfe1_pct', 0.0):>9.4f} "
-              f"{t.get('mfe2_pct', 0.0):>9.4f} "
-              f"{tp1_str:>5}")
+        n_tp1h = sum(1 for t in sub if t['exit_type'] in ('TP1+EOD','TP1+STOP'))
+        print(f'    {h:02d}:xx  N={len(sub):>4}  TP1={n_tp1h/len(sub):.1%}')
     print()
 
     print(f'{bar}\n')
 
     if not args.no_json:
-        ref_all = trades_by_model['cashflow_extended']
-        max_date = ref_all[-1]['date'] if ref_all else ''
+        max_date = trades[-1]['date'] if trades else ''
         base_meta = {
             'instrument':    args.table.split('_')[0].upper(),
-            'tp1_bps':       int(TP1_BPS * 10000),
             'table':         args.table,
             'trading_days':  trading_days,
             'total_setups':  n_setups,
@@ -796,47 +913,21 @@ def main():
 
         out = {}
         for tf_key, tf_days in TIMEFRAMES:
-            is_full = tf_days is None   # only 'all' includes full trades array
+            is_full = tf_days is None
             print(f'  Building timeframe: {tf_key}...', end=' ', flush=True)
-
-            cf_t  = filter_by_tf(trades_by_model['cashflow'],          max_date, tf_days)
-            cfe_t = filter_by_tf(trades_by_model['cashflow_extended'],  max_date, tf_days)
-            ref   = cfe_t or cf_t
-            dr    = f"{ref[0]['date']} – {ref[-1]['date']}" if ref else ''
+            tf_trades = filter_by_tf(trades, max_date, tf_days)
+            ref = tf_trades
+            dr  = f"{ref[0]['date']} – {ref[-1]['date']}" if ref else ''
             meta_extra = {**base_meta, 'date_range': dr, 'timeframe': tf_key}
-
-            tf_out = {
-                'cashflow': build_stats(
-                    cf_t,
-                    {**meta_extra, 'model_name': 'Cashflow'},
-                    model='cashflow',
-                    include_full_trades=is_full,
-                ),
-                'cashflow_extended': build_stats(
-                    cfe_t,
-                    {**meta_extra, 'model_name': 'Cashflow + Extended'},
-                    model='cashflow_extended',
-                    include_full_trades=is_full,
-                ),
+            out[tf_key] = {
+                'open_run': build_stats(tf_trades, meta_extra,
+                                        include_full_trades=is_full)
             }
-            for pct_key, stop_pct, tp_pct, display_name in PCT_PROFILES:
-                pct_t = filter_by_tf(trades_by_pct[pct_key], max_date, tf_days)
-                tf_out[pct_key] = build_stats(
-                    pct_t,
-                    {**meta_extra,
-                     'model_name': display_name,
-                     'stop_pct':   round(stop_pct * 100, 4),
-                     'tp_pct':     round(tp_pct  * 100, 4)},
-                    model='cashflow',
-                    include_full_trades=is_full,
-                )
-            out[tf_key] = tf_out
-            n_trades = len(cf_t)
-            print(f'{n_trades} trades')
+            print(f'{len(tf_trades)} trades')
 
         with open(OUT_JSON, 'w') as f:
             json.dump(out, f, indent=2, default=str)
-        print(f'  Saved → {OUT_JSON}')
+        print(f'\n  Saved → {OUT_JSON}')
 
 
 if __name__ == '__main__':
