@@ -54,19 +54,21 @@ TIMEFRAMES = [
     ('1m',   30),
 ]
 
-# ── Top-10 fixed SL/TP profiles (from fixed_scan_results.json brute-force) ────
-# (rank, sl_pct, tp_pct)  —  sl/tp are percentages, e.g. 0.01 = 0.01%
+# ── Top-10 fixed SL/TP profiles (from FVG2_FIXED ranked spreadsheet) ──────────
+# Ranked by weighted composite: Sharpe 25% + PF 20% + EV 15% + SQN 15% + MaxDD 10% + RoR 10% + CE 5%
+# Derived from top unique SL/TP pairs across all direction-classified FPFVG sheets.
+# (rank, sl_pct, tp_pct)  —  sl/tp are percentages, e.g. 0.10 = 0.10%
 TOP10_FIXED_PROFILES = [
-    (1,  0.01, 0.16),
-    (2,  0.01, 0.09),
-    (3,  0.01, 0.08),
-    (4,  0.01, 0.18),
-    (5,  0.01, 0.17),
-    (6,  0.01, 0.14),
-    (7,  0.01, 0.10),
-    (8,  0.01, 0.19),
-    (9,  0.01, 0.13),
-    (10, 0.01, 0.11),
+    (1,  0.10, 0.05),  # score 0.8815 — SL 0.10% / TP 0.05% · R:R 0.5
+    (2,  0.10, 0.06),  # score 0.8219 — SL 0.10% / TP 0.06% · R:R 0.6
+    (3,  0.04, 0.07),  # score 0.7421 — SL 0.04% / TP 0.07% · R:R 1.75
+    (4,  0.05, 0.09),  # score 0.7403 — SL 0.05% / TP 0.09% · R:R 1.8
+    (5,  0.04, 0.08),  # score 0.7353 — SL 0.04% / TP 0.08% · R:R 2.0
+    (6,  0.05, 0.08),  # score 0.7218 — SL 0.05% / TP 0.08% · R:R 1.6
+    (7,  0.05, 0.06),  # score 0.7198 — SL 0.05% / TP 0.06% · R:R 1.2
+    (8,  0.05, 0.07),  # score 0.7136 — SL 0.05% / TP 0.07% · R:R 1.4
+    (9,  0.04, 0.06),  # score 0.7081 — SL 0.04% / TP 0.06% · R:R 1.5
+    (10, 0.03, 0.06),  # score 0.6885 — SL 0.03% / TP 0.06% · R:R 2.0
 ]
 
 def profile_key(sl_pct: float, tp_pct: float) -> str:
