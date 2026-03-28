@@ -54,6 +54,24 @@ TIMEFRAMES = [
     ('1m',   30),
 ]
 
+# ── Top-10 fixed SL/TP profiles (from fixed_scan_results.json brute-force) ────
+# (rank, sl_pct, tp_pct)  —  sl/tp are percentages, e.g. 0.01 = 0.01%
+TOP10_FIXED_PROFILES = [
+    (1,  0.01, 0.16),
+    (2,  0.01, 0.09),
+    (3,  0.01, 0.08),
+    (4,  0.01, 0.18),
+    (5,  0.01, 0.17),
+    (6,  0.01, 0.14),
+    (7,  0.01, 0.10),
+    (8,  0.01, 0.19),
+    (9,  0.01, 0.13),
+    (10, 0.01, 0.11),
+]
+
+def profile_key(sl_pct: float, tp_pct: float) -> str:
+    return f"sl{round(sl_pct * 100):03d}_tp{round(tp_pct * 100):03d}"
+
 
 # ── Database ──────────────────────────────────────────────────────────────────
 def connect_db():
@@ -292,6 +310,88 @@ def resolve_open_run(arrs: dict, fill_idx: int, fvg: dict, eod_idx: int) -> dict
         'tp1_price':   round(tp1_price, 4) if tp1_exit is not None else None,
         'mfe_pct':     mfe_pct,
         'combined_r':  combined_r,
+    }
+
+
+# ── Fixed SL/TP resolver ──────────────────────────────────────────────────────
+def resolve_fixed_profile(arrs: dict, fill_idx: int, fvg: dict, eod_idx: int,
+                           sl_pct: float, tp_pct: float) -> dict:
+    """
+    Fixed SL/TP profile resolver.
+    sl_pct, tp_pct: in percent (e.g. 0.01 = 0.01%, 0.16 = 0.16%)
+    Exit types: 'TP1+EOD' (TP hit), 'STOPPED' (SL hit or EOD without TP).
+    mae_pct: actual adverse excursion (overrides structural stop distance in base).
+    """
+    entry     = fvg['entry']
+    direction = fvg['direction']
+    sl_pts    = entry * sl_pct / 100.0
+    tp_pts    = entry * tp_pct / 100.0
+    rr        = tp_pct / sl_pct
+
+    if direction == 'LONG':
+        sl_price = entry - sl_pts
+        tp_price = entry + tp_pts
+    else:
+        sl_price = entry + sl_pts
+        tp_price = entry - tp_pts
+
+    exit_type  = None
+    exit_price = None
+    exit_idx   = eod_idx
+
+    for j in range(fill_idx + 1, eod_idx + 1):
+        h = arrs['high'][j]
+        l = arrs['low'][j]
+        if direction == 'LONG':
+            if l <= sl_price:
+                exit_type = 'STOPPED'; exit_price = sl_price; exit_idx = j; break
+            if h >= tp_price:
+                exit_type = 'TP1+EOD'; exit_price = tp_price; exit_idx = j; break
+        else:
+            if h >= sl_price:
+                exit_type = 'STOPPED'; exit_price = sl_price; exit_idx = j; break
+            if l <= tp_price:
+                exit_type = 'TP1+EOD'; exit_price = tp_price; exit_idx = j; break
+
+    if exit_type is None:
+        # Reached EOD without TP or SL — treat as stopped
+        exit_type  = 'STOPPED'
+        exit_price = float(arrs['close'][eod_idx])
+        exit_idx   = eod_idx
+
+    # ── MAE: actual adverse excursion from fill to exit ───────────────────────
+    mae_pts = 0.0
+    for j in range(fill_idx, exit_idx + 1):
+        adv = (entry - float(arrs['low'][j]))  if direction == 'LONG' \
+              else (float(arrs['high'][j]) - entry)
+        if adv > mae_pts:
+            mae_pts = adv
+    mae_pct_val = round(mae_pts / entry * 100, 4) if entry > 0 else 0.0
+
+    # ── MFE: max favourable from fill to exit ────────────────────────────────
+    mfe_pts = 0.0
+    for j in range(fill_idx, exit_idx + 1):
+        fav = (float(arrs['high'][j]) - entry) if direction == 'LONG' \
+              else (entry - float(arrs['low'][j]))
+        if fav > mfe_pts:
+            mfe_pts = fav
+    mfe_pct_val = round(mfe_pts / entry * 100, 4) if entry > 0 else 0.0
+
+    # ── combined_r ─────────────────────────────────────────────────────────────
+    if exit_type == 'TP1+EOD' and abs(float(exit_price) - tp_price) < 1e-4:
+        combined_r = round(rr, 4)
+    else:
+        move = (float(exit_price) - entry) if direction == 'LONG' \
+               else (entry - float(exit_price))
+        combined_r = round(move / sl_pts, 4) if sl_pts > 0 else None
+
+    return {
+        'exit_type':  exit_type,
+        'exit_price': round(float(exit_price), 4),
+        'tp1_price':  round(tp_price, 4) if exit_type == 'TP1+EOD' else None,
+        'mfe_pct':    mfe_pct_val,
+        'mae_pct':    mae_pct_val,  # actual adverse excursion (overrides structural)
+        'combined_r': combined_r,
     }
 
 
@@ -781,7 +881,8 @@ def main():
     trading_days = df['trade_date'].nunique()
     print(f'{len(df):,} bars  ·  {trading_days:,} trading days')
 
-    trades     = []
+    trades        = []
+    fixed_trades  = {profile_key(sl, tp): [] for _, sl, tp in TOP10_FIXED_PROFILES}
     n_setups   = 0
     n_filled   = 0
     n_no_fill  = 0
@@ -847,6 +948,12 @@ def main():
 
         outcome = resolve_open_run(arrs, fill['fill_idx'], fvg, eod_idx)
         trades.append({**base, **outcome})
+
+        for _, sl_pct, tp_pct in TOP10_FIXED_PROFILES:
+            pk = profile_key(sl_pct, tp_pct)
+            fixed_outcome = resolve_fixed_profile(arrs, fill['fill_idx'], fvg, eod_idx,
+                                                   sl_pct, tp_pct)
+            fixed_trades[pk].append({**base, **fixed_outcome})
 
     print(f'done\n')
 
@@ -919,10 +1026,22 @@ def main():
             ref = tf_trades
             dr  = f"{ref[0]['date']} – {ref[-1]['date']}" if ref else ''
             meta_extra = {**base_meta, 'date_range': dr, 'timeframe': tf_key}
-            out[tf_key] = {
-                'open_run': build_stats(tf_trades, meta_extra,
-                                        include_full_trades=is_full)
-            }
+
+            profiles = {}
+            profiles['open_run'] = build_stats(tf_trades, meta_extra,
+                                               include_full_trades=is_full)
+            for rank, sl_pct, tp_pct in TOP10_FIXED_PROFILES:
+                pk = profile_key(sl_pct, tp_pct)
+                tf_fixed = filter_by_tf(fixed_trades[pk], max_date, tf_days)
+                profile_meta = {**meta_extra,
+                                'profile': pk,
+                                'profile_rank': rank,
+                                'sl_pct': sl_pct,
+                                'tp_pct': tp_pct,
+                                'rr': round(tp_pct / sl_pct, 1)}
+                profiles[pk] = build_stats(tf_fixed, profile_meta,
+                                           include_full_trades=is_full)
+            out[tf_key] = {'profiles': profiles}
             print(f'{len(tf_trades)} trades')
 
         with open(OUT_JSON, 'w') as f:

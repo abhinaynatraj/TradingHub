@@ -410,6 +410,26 @@ footer{
       <option value="1m">Last 1 Month</option>
     </select>
   </div>
+  <div class="sel-group">
+    <label class="sel-label">Risk Profile</label>
+    <select class="sel-drop" id="profileDropdown" onchange="switchProfile(this.value)">
+      <optgroup label="Structural">
+        <option value="open_run" selected>Structural · TP1 0.10% + Runner</option>
+      </optgroup>
+      <optgroup label="Fixed SL/TP · Top 10">
+        <option value="sl001_tp016">#1 · SL 0.01% / TP 0.16% · 16R</option>
+        <option value="sl001_tp009">#2 · SL 0.01% / TP 0.09% · 9R</option>
+        <option value="sl001_tp008">#3 · SL 0.01% / TP 0.08% · 8R</option>
+        <option value="sl001_tp018">#4 · SL 0.01% / TP 0.18% · 18R</option>
+        <option value="sl001_tp017">#5 · SL 0.01% / TP 0.17% · 17R</option>
+        <option value="sl001_tp014">#6 · SL 0.01% / TP 0.14% · 14R</option>
+        <option value="sl001_tp010">#7 · SL 0.01% / TP 0.10% · 10R</option>
+        <option value="sl001_tp019">#8 · SL 0.01% / TP 0.19% · 19R</option>
+        <option value="sl001_tp013">#9 · SL 0.01% / TP 0.13% · 13R</option>
+        <option value="sl001_tp011">#10 · SL 0.01% / TP 0.11% · 11R</option>
+      </optgroup>
+    </select>
+  </div>
 </div>
 
 <main>
@@ -629,7 +649,7 @@ function toggleTheme() {
 // Re-render charts when theme changes
 let _data = null;
 const themeObserver = new MutationObserver(() => {
-  if (_data) renderCharts(_data[_activeTF][_activeModel]);
+  if (_data) renderCharts(_data[_activeTF]['profiles'][_activeProfile]);
 });
 themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
@@ -645,9 +665,9 @@ function switchTab(tab) {
   if (btn) btn.classList.add('active');
   window.scrollTo({top: 0, behavior: 'smooth'});
   // Re-render canvases that need sizing when their tab becomes visible
-  if (tab === 'performance') renderCharts(_data?.[_activeTF]?.['open_run'] || null);
-  if (tab === 'mfe') renderMFEDistribution(_data?.[_activeTF]?.['open_run']?.risk_stats || null);
-  if (tab === 'mae') renderMAEAnalysis(_data?.[_activeTF]?.['open_run']?.risk_stats || null);
+  if (tab === 'performance') renderCharts(_data?.[_activeTF]?.['profiles']?.[_activeProfile] || null);
+  if (tab === 'mfe') renderMFEDistribution(_data?.[_activeTF]?.['profiles']?.[_activeProfile]?.risk_stats || null);
+  if (tab === 'mae') renderMAEAnalysis(_data?.[_activeTF]?.['profiles']?.[_activeProfile]?.risk_stats || null);
 }
 
 // ─── CANVAS SETUP ────────────────────────────────────────────────────────────
@@ -691,12 +711,24 @@ function wrColorBars(wr) {
 function pct(v, dp = 1) { return (v * 100).toFixed(dp) + '%'; }
 function rnd(v, dp = 2) { return v >= 0 ? '+' + v.toFixed(dp) : v.toFixed(dp); }
 
-// ─── TIMEFRAME SELECTION ──────────────────────────────────────────────────────
-let _activeTF = 'all';
+// ─── TIMEFRAME / PROFILE SELECTION ───────────────────────────────────────────
+let _activeTF      = 'all';
+let _activeProfile = 'open_run';
+
+function _activeData() {
+  return _data?.[_activeTF]?.['profiles']?.[_activeProfile] || null;
+}
 
 function switchTF(tf) {
   _activeTF = tf;
-  if (_data) renderAll(_data[tf]['open_run']);
+  const d = _activeData();
+  if (d) renderAll(d);
+}
+
+function switchProfile(profile) {
+  _activeProfile = profile;
+  const d = _activeData();
+  if (d) renderAll(d);
 }
 
 // ─── LOAD DATA ───────────────────────────────────────────────────────────────
@@ -708,7 +740,7 @@ async function loadData() {
     _data = raw;
     document.getElementById('loading').style.display = 'none';
     document.getElementById('app').style.display = '';
-    renderAll(_data[_activeTF]['open_run']);
+    renderAll(_activeData());
   } catch (e) {
     document.getElementById('loading').innerHTML =
       '<span style="color:var(--red)">&#9888; Could not load ny1_results.json — run python3 ny1_backtest.py first</span>';
@@ -2041,7 +2073,8 @@ window.addEventListener('resize', () => {
   clearTimeout(_resizeTimer);
   _resizeTimer = setTimeout(() => {
     if (!_data) return;
-    const d = _data[_activeTF]['open_run'];
+    const d = _activeData();
+    if (!d) return;
     renderCharts(d);
     renderNy1EquityCurve(d);
   }, 150);
