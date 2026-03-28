@@ -37,6 +37,9 @@ TICK_SIZE      = 0.25
 N   = 100
 PCT = np.round(np.arange(1, N + 1) * 0.01, 2)  # [0.01, 0.02, …, 1.00] in %
 
+# Minimum realistic SL — exclude ultra-tight stops that can't work in practice
+MIN_SL_PCT = 0.03   # 0.03% minimum SL (≈3 bps; realistic for NQ at 9:30)
+
 
 # ── DB helpers (identical to ny1_backtest.py) ──────────────────────────────────
 def connect_db():
@@ -184,12 +187,13 @@ def main():
     print(f'Bars loaded  : {len(df):,}')
     print(f'Trading days : {df["trade_date"].nunique():,}\n')
 
-    equity      = np.full((N, N), float(ACCOUNT_SIZE))
-    min_equity  = np.full((N, N), float(ACCOUNT_SIZE))
-    peak_equity = np.full((N, N), float(ACCOUNT_SIZE))
-    wins_m      = np.zeros((N, N), dtype=np.int64)
-    total_m     = np.zeros((N, N), dtype=np.int64)
-    years_seen  = set()
+    equity        = np.full((N, N), float(ACCOUNT_SIZE))
+    min_equity    = np.full((N, N), float(ACCOUNT_SIZE))
+    peak_equity   = np.full((N, N), float(ACCOUNT_SIZE))
+    max_dd_pct_m  = np.zeros((N, N))   # running max consecutive DD%
+    wins_m        = np.zeros((N, N), dtype=np.int64)
+    total_m       = np.zeros((N, N), dtype=np.int64)
+    years_seen    = set()
 
     n_filled = 0
     n_days   = df['trade_date'].nunique()
@@ -221,10 +225,14 @@ def main():
         years_seen.add(date.year)
         rm = r_matrix(arrs, fill, fvg, eod)
 
-        delta       = np.where(np.isnan(rm), 0.0, rm * RISK_PER_TRADE)
-        equity     += delta
-        peak_equity = np.maximum(peak_equity, equity)
-        min_equity  = np.minimum(min_equity,  equity)
+        delta        = np.where(np.isnan(rm), 0.0, rm * RISK_PER_TRADE)
+        equity      += delta
+        peak_equity  = np.maximum(peak_equity, equity)
+        min_equity   = np.minimum(min_equity,  equity)
+        # True running max consecutive drawdown (not global peak vs global trough)
+        cur_dd       = np.where(peak_equity > 0,
+                                (peak_equity - equity) / peak_equity * 100, 0.0)
+        max_dd_pct_m = np.maximum(max_dd_pct_m, cur_dd)
 
         wins_m  += (rm > 0).astype(np.int64)
         total_m += np.isfinite(rm).astype(np.int64)
@@ -250,7 +258,8 @@ def main():
     NT = total_m.astype(float)
     rr_m = PCT[None, :] / PCT[:, None]           # (N, N) R:R per combo
 
-    valid = (~blown) & (total_m >= MIN_TRADES)
+    sl_ok = (PCT >= MIN_SL_PCT)[:, None]   # (N,1) — True for realistic SL rows
+    valid = (~blown) & (total_m >= MIN_TRADES) & sl_ok
 
     with np.errstate(divide='ignore', invalid='ignore'):
         wr_m   = np.where(NT > 0, W / NT, 0.0)
@@ -271,9 +280,7 @@ def main():
         # Sharpe (annualised): sqrt(trades_per_year)
         tpy    = n_filled / num_years
         sharpe_m = np.where(std_r > 0, ev_r_m / std_r * np.sqrt(tpy), 0.0)
-        # Max DD% = (peak - min) / peak * 100
-        max_dd_pct_m = np.where(peak_equity > 0,
-                                (peak_equity - min_equity) / peak_equity * 100, 0.0)
+        # max_dd_pct_m is already computed correctly as running DD in the scan loop
         # RoR = ((1-CE)/(1+CE))^N_bankroll * 100
         ror_m  = np.where(
             ce_m <= 0, 100.0,
@@ -343,7 +350,7 @@ def main():
     # ── Print results ──────────────────────────────────────────────────────────
     bar = '─' * 104
     print(f'\n{bar}')
-    print(f'  TOP {top_n} FIXED % PROFILES  (not blown · ranked by weighted composite score)')
+    print(f'  TOP {top_n} FIXED % PROFILES  (not blown · SL ≥ {MIN_SL_PCT}% · ranked by weighted composite score)')
     print(f'  Weights: Sharpe 25% · PF 20% · EV 15% · SQN 15% · MaxDD 10% · RoR 10% · CE 5%')
     print(bar)
     print(f'  {"#":<3} {"SL%":>5} {"TP%":>5} {"R:R":>5} {"WR":>7} '
@@ -357,6 +364,63 @@ def main():
               f'{r["composite"]:>8.4f}')
     print(bar)
 
+    # ── Extract scores for the 10 FPFVG-validated SL/TP combos ──────────────
+    # These are the unique SL/TP pairs tested across all direction classifications
+    # in the FPFVG analysis — run on NY1 data without classification filtering.
+    FPFVG_COMBOS = [
+        (0.03, 0.06), (0.04, 0.06), (0.04, 0.07), (0.04, 0.08),
+        (0.05, 0.06), (0.05, 0.07), (0.05, 0.08), (0.05, 0.09),
+        (0.10, 0.05), (0.10, 0.06),
+    ]
+
+    def _combo_stats(sl_p, tp_p):
+        # Find grid indices
+        sl_i = int(round(sl_p / 0.01)) - 1
+        tp_i = int(round(tp_p / 0.01)) - 1
+        if sl_i < 0 or sl_i >= N or tp_i < 0 or tp_i >= N:
+            return None
+        idx = sl_i * N + tp_i
+        return {
+            'sl_pct':       round(sl_p, 2),
+            'tp_pct':       round(tp_p, 2),
+            'rr':           round(tp_p / sl_p, 4),
+            'win_rate':     round(float(wr_m.flat[idx]),        4),
+            'wins':         int(wins_m.flat[idx]),
+            'losses':       int(total_m.flat[idx]) - int(wins_m.flat[idx]),
+            'trades':       int(total_m.flat[idx]),
+            'ev_r':         round(float(ev_r_m.flat[idx]),      6),
+            'ev_dollar':    round(float(ev_dol.flat[idx]),      4),
+            'pf':           round(float(pf_m.flat[idx]),        4),
+            'ce':           round(float(ce_m.flat[idx]),        6),
+            'sqn':          round(float(sqn_m.flat[idx]),       4),
+            'sharpe':       round(float(sharpe_m.flat[idx]),    4),
+            'max_dd_pct':   round(float(max_dd_pct_m.flat[idx]),2),
+            'ror_pct':      round(float(ror_m.flat[idx]),       4),
+            'min_equity':   round(float(min_equity.flat[idx]),  2),
+            'final_equity': round(float(equity.flat[idx]),      2),
+            'blown':        bool(blown.flat[idx]),
+            'composite':    round(float(composite.flat[idx]) if composite.flat[idx] > -np.inf else 0.0, 6),
+        }
+
+    fpfvg_on_ny1 = []
+    for sl_p, tp_p in FPFVG_COMBOS:
+        s = _combo_stats(sl_p, tp_p)
+        if s:
+            fpfvg_on_ny1.append(s)
+
+    fpfvg_on_ny1.sort(key=lambda x: x['composite'], reverse=True)
+    for i, r in enumerate(fpfvg_on_ny1, 1):
+        r['rank'] = i
+
+    print(f'\n  FPFVG-VALIDATED COMBOS ON NY1 DATA (ranked by composite score)')
+    print(f'  {"#":<3} {"SL%":>5} {"TP%":>5} {"R:R":>5} {"WR":>7} {"Sharpe":>8} {"PF":>6} {"SQN":>7} {"MaxDD%":>8} {"Blown":>6} {"Score":>8}')
+    print(f'  {"-"*85}')
+    for r in fpfvg_on_ny1:
+        print(f'  {r["rank"]:<3} {r["sl_pct"]:>4.2f}% {r["tp_pct"]:>4.2f}% '
+              f'{r["rr"]:>5.2f} {r["win_rate"]:>6.1%} {r["sharpe"]:>8.3f} '
+              f'{r["pf"]:>6.3f} {r["sqn"]:>7.3f} {r["max_dd_pct"]:>7.1f}% '
+              f'{"YES" if r["blown"] else "no":>6}  {r["composite"]:>8.4f}')
+
     out = {
         'table':             args.table,
         'grid':              f'{N}×{N} = {N*N} combinations',
@@ -367,6 +431,7 @@ def main():
         'filled_trades':     n_filled,
         'combos_not_blown':  surviving,
         'scoring':           'Sharpe 25% + PF 20% + EV 15% + SQN 15% + MaxDD 10% + RoR 10% + CE 5%',
+        'fpfvg_combos_on_ny1': fpfvg_on_ny1,
         f'top{top_n}':       top_results,
     }
     with open(OUT_JSON, 'w') as f:

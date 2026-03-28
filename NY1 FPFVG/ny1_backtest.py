@@ -54,21 +54,28 @@ TIMEFRAMES = [
     ('1m',   30),
 ]
 
-# ── Top-10 fixed SL/TP profiles (from FVG2_FIXED ranked spreadsheet) ──────────
-# Ranked by weighted composite: Sharpe 25% + PF 20% + EV 15% + SQN 15% + MaxDD 10% + RoR 10% + CE 5%
-# Derived from top unique SL/TP pairs across all direction-classified FPFVG sheets.
-# (rank, sl_pct, tp_pct)  —  sl/tp are percentages, e.g. 0.10 = 0.10%
+# ── Top-10 fixed SL/TP profiles — ranked by NY1 weighted composite score ──────
+# Scoring: Sharpe 25% + PF 20% + EV 15% + SQN 15% + MaxDD 10% + RoR 10% + CE 5%
+# Source: fixed_profile_scan.py on NY1 data (SL ≥ 0.03%, not blown).
+# Note: SL=0.10% FPFVG combos are blown on NY1 — classification filtering boosted
+# their WR in FPFVG; NY1 runs without any classification.
+# (rank, sl_pct, tp_pct)  —  sl/tp are percentages, e.g. 0.03 = 0.03%
+# ── Top-10 fixed SL/TP profiles — verified clean in all timeframes ─────────────
+# Ranked by NY1 weighted composite (Sharpe 25%+PF 20%+EV 15%+SQN 15%+MaxDD 10%+RoR 10%+CE 5%)
+# All confirmed NOT blown in all, 2y, 1y, 6m, 3m, 1m windows.
+# sl003_tp007 excluded despite scan rank: min_equity $599 all-time (87% DD, near-blown).
+# (rank, sl_pct, tp_pct)
 TOP10_FIXED_PROFILES = [
-    (1,  0.10, 0.05),  # score 0.8815 — SL 0.10% / TP 0.05% · R:R 0.5
-    (2,  0.10, 0.06),  # score 0.8219 — SL 0.10% / TP 0.06% · R:R 0.6
-    (3,  0.04, 0.07),  # score 0.7421 — SL 0.04% / TP 0.07% · R:R 1.75
-    (4,  0.05, 0.09),  # score 0.7403 — SL 0.05% / TP 0.09% · R:R 1.8
-    (5,  0.04, 0.08),  # score 0.7353 — SL 0.04% / TP 0.08% · R:R 2.0
-    (6,  0.05, 0.08),  # score 0.7218 — SL 0.05% / TP 0.08% · R:R 1.6
-    (7,  0.05, 0.06),  # score 0.7198 — SL 0.05% / TP 0.06% · R:R 1.2
-    (8,  0.05, 0.07),  # score 0.7136 — SL 0.05% / TP 0.07% · R:R 1.4
-    (9,  0.04, 0.06),  # score 0.7081 — SL 0.04% / TP 0.06% · R:R 1.5
-    (10, 0.03, 0.06),  # score 0.6885 — SL 0.03% / TP 0.06% · R:R 2.0
+    (1,  0.03, 0.08),  # scan #1  score 0.9489 — 2.67R  MaxDD 23%
+    (2,  0.03, 0.09),  # scan #5  score 0.9229 — 3.00R  MaxDD 35%
+    (3,  0.03, 0.10),  # scan #7  score 0.8851 — 3.33R  MaxDD 35%
+    (4,  0.03, 0.11),  # scan #8  score 0.8599 — 3.67R  MaxDD 36%
+    (5,  0.03, 0.16),  # scan #10 score 0.8396 — 5.33R  MaxDD 31%
+    (6,  0.03, 0.14),  # scan #11 score 0.8232 — 4.67R  MaxDD 41%
+    (7,  0.03, 0.12),  # scan #12 score 0.8172 — 4.00R  MaxDD 42%
+    (8,  0.03, 0.15),  # scan #13 score 0.8127 — 5.00R  MaxDD 34%
+    (9,  0.03, 0.13),  # scan #14 score 0.8094 — 4.33R  MaxDD 37%
+    (10, 0.03, 0.17),  # scan #15 score 0.8039 — 5.67R  MaxDD 33%
 ]
 
 def profile_key(sl_pct: float, tp_pct: float) -> str:
