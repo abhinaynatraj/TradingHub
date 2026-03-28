@@ -119,3 +119,26 @@ The single long-scroll page has been replaced with a **5-tab layout**:
 - Tab buttons sit in the sticky nav bar — no page scrolling required
 - Switching tabs scrolls to top and re-renders any canvases that need sizing
 - Timeframe selector stays visible across all tabs
+
+---
+
+### 6. Trades Table — TP1 Price Column
+**2026-03-28**
+
+A **TP1 $** column has been added to the recent trades table:
+
+- **WIN trades** (TP1+EOD / TP1+STOP): TP1 price shown in green
+- **LOSS trades** (STOPPED): TP1 target price shown in faint gray, with a thin progress bar beneath it indicating how far MFE got toward the 0.10% target (turns orange at ≥70%)
+
+---
+
+### 7. Hub Page — Text Fixes
+**2026-03-28**
+
+Fixed stale/incorrect text on the Statistic.ally hub page (`index.html`):
+
+- Expanded abbreviation: "First Presented FVG" → **"First Presented Fair Value Gap"**
+- Fixed typo: "TP1 (POTQ)" → **"TP1 (PTQ)"**
+- Updated position split: "80% / Runner 20%" → **"50% / Runner 50%"** to match current model
+- Updated subtitle: "Fixed % Stop" → **"Structural Stop"**
+- Updated kv tile: "Position Split 80 / 20" → **"50 / 50"**

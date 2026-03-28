@@ -78,3 +78,23 @@ RUNNER_SIZE = 0.50     # 50% runner at BE
 - **Equity curve**: uses `tp1_count` for P&L calculation
 - **Section pills**: MFE and MAE sections updated to reflect PhD-level analysis
 - **Tab navigation**: single long-scroll page replaced with 5-tab layout (Overview · Performance · MFE Study · MAE Study · Trades); tabs in sticky nav, canvas re-renders on tab switch
+- **Trades table TP1 column**: TP1 target price shown for every trade; STOPPED trades include a MFE progress bar toward the 0.10% target
+
+---
+
+## Hub Page — Text Fixes
+**Date:** 2026-03-28
+
+- "First Presented FVG" → **"First Presented Fair Value Gap"** (title + subtitle)
+- "TP1 (POTQ)" → **"TP1 (PTQ)"** (typo fix)
+- Position split updated **80/20 → 50/50** to match current split-exit model
+- Subtitle updated: "Fixed % Stop" → **"Structural Stop"**
+
+---
+
+## Data — candle_science.duckdb Updated
+**Date:** 2026-03-28
+
+- Fetched differential bars from Databento (GLBX.MDP3, `ohlcv-1m`)
+- Inserted **6,900 new rows** each for `nq_1m` and `es_1m`
+- Database now current to **2026-03-27 16:59 ET** (was 2026-03-20)
