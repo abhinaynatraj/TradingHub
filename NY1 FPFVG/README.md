@@ -112,18 +112,29 @@ This creates `ny1_trades.xlsx` in the same folder. Each tab in the spreadsheet c
 
 ## The Risk Profiles
 
-The dashboard lets you compare multiple ways to manage the trade:
+The dashboard lets you compare multiple ways to manage the trade via the **Risk Profile** dropdown.
 
+**Structural:**
 | Profile | Stop | Target |
 |---|---|---|
-| Cashflow | Structural (dynamic) | Fixed 0.10% |
-| Cashflow Extended | Structural (dynamic) | Runner exit |
-| 0.35% / 0.35% | Fixed 0.35% | Fixed 0.35% |
-| 0.35% / 0.25% | Fixed 0.35% | Fixed 0.25% |
-| 0.50% / 0.50% | Fixed 0.50% | Fixed 0.50% |
-| 1.00% / 1.00% | Fixed 1.00% | Fixed 1.00% |
-| 1.00% / 1.50% | Fixed 1.00% | Fixed 1.50% |
-| 1.00% / 2.00% | Fixed 1.00% | Fixed 2.00% |
+| Structural | Dynamic (candle low/high) | TP1 0.10% + runner to 16:00 |
+
+**Fixed SL/TP — Top 10 (Weighted Score):**
+
+Ranked by composite score (Sharpe 25%, PF 20%, EV 15%, SQN 15%, MaxDD 10%, RoR 10%, CE 5%) on NY1 data only — no daily classification applied. All use SL=0.03%. Verified non-blown across all 6 timeframes.
+
+| Rank | Profile key | SL | TP | R:R |
+|---|---|---|---|---|
+| #1 | `sl003_tp008` | 0.03% | 0.08% | 2.67R |
+| #2 | `sl003_tp009` | 0.03% | 0.09% | 3.00R |
+| #3 | `sl003_tp010` | 0.03% | 0.10% | 3.33R |
+| #4 | `sl003_tp011` | 0.03% | 0.11% | 3.67R |
+| #5 | `sl003_tp016` | 0.03% | 0.16% | 5.33R |
+| #6 | `sl003_tp014` | 0.03% | 0.14% | 4.67R |
+| #7 | `sl003_tp012` | 0.03% | 0.12% | 4.00R |
+| #8 | `sl003_tp015` | 0.03% | 0.15% | 5.00R |
+| #9 | `sl003_tp013` | 0.03% | 0.13% | 4.33R |
+| #10 | `sl003_tp017` | 0.03% | 0.17% | 5.67R |
 
 ---
 

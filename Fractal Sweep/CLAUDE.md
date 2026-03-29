@@ -31,6 +31,21 @@ python3 -m http.server 8000         # serve dashboard at localhost:8000
 - Entry: next candle open | Stop: sweep extreme | Target: 2R (1:2)
 - RTH window: 07:00–16:00 ET (all models)
 
+## Hourly Normalization
+
+MAE/MFE are normalized by the entry hour's range to be comparable across volatility regimes:
+- `hour_range_pts` — high minus low of all 1m bars sharing the trade's (date, hour)
+- `mae_pct_hr = mae_pts / hour_range_pts × 100` — MAE as % of hourly range
+- `mfe_pct_hr = mfe_pts / hour_range_pts × 100` — MFE as % of hourly range
+- `agg()` emits `avg_mae`, `avg_mfe`, `avg_mae_hr`, `avg_mfe_hr` in all breakdowns (by_hour, by_session, by_dow, dir_summary, by_year)
+- Dashboard tooltips show hour-normalized values
+
+## Equity Tracking
+
+- `min_equity_usd` — actual running minimum equity (not final equity)
+- `max_dd_usd` — dollar amount of the worst peak-to-trough drawdown
+- `max_dd_pct` — percentage drawdown from running peak
+
 ## Analysis Scripts Convention
 - Reference point for candle analysis: use `close` of the anchor candle
 - Scan window: anchor+1 bar through 16:00 ET same day

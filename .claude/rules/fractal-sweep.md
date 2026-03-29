@@ -36,6 +36,21 @@ python3 daily_update.py                         # fetch new bars from Databento
 
 Prior range floor, sweep min size, sweep max cap, close-back required, CISD speed — applied cumulatively.
 
+## Trade Row Fields
+
+Each resolved trade row carries:
+- `mae_pct` / `mfe_pct` — MAE/MFE as % of entry price
+- `hour_range_pts` — high-low of the entry hour's 1m candles (precomputed lookup by date+hour)
+- `mae_pct_hr` / `mfe_pct_hr` — MAE/MFE as % of hourly range (regime-independent)
+- `min_equity_usd` — actual running minimum equity (not final equity)
+- `max_dd_usd` — dollar value of worst peak-to-trough drawdown
+- `date_range` — always `YYYY-MM-DD to YYYY-MM-DD` format
+
+## Aggregation (agg function)
+
+`agg(g)` returns: `n, wins, wr, ev, pf, avg_risk_pts, avg_rr, avg_mae, avg_mfe, avg_mae_hr, avg_mfe_hr`
+Used in: `by_hour`, `by_session`, `by_dow`, `dir_summary`, `by_year`, `tspot_breakdown`
+
 ## Database
 
 - `candle_science.duckdb` — primary DB (gitignored), tables: `nq_1m`, `es_1m`
