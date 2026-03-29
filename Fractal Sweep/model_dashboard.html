@@ -1080,15 +1080,15 @@ function switchCisd(c){  activeCisd=c;  renderControls(); renderActive(); }
 // ── DATE FORMATTING ─────────────────────────────────────────────────────────
 function fmtDate(s) {
   if (!s) return '';
-  // Accepts "2014-09-08", "2014-09-08T00:00:00.000000", or already-formatted
-  const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return s;
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return `${months[+m[2]-1]} ${+m[3]}, ${m[1]}`;
+  // Trim to YYYY-MM-DD (handles ISO timestamps like 2014-09-08T00:00:00.000000)
+  const m = String(s).match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : String(s);
 }
 function fmtDateRange(dr) {
   if (!dr) return '';
-  return dr.split(/\s*[–—-]\s*(?=\d)/).map(fmtDate).join(' – ');
+  // Split only on en-dash/em-dash surrounded by spaces — not on hyphens within dates
+  const parts = String(dr).split(/\s+[–—]\s+/);
+  return parts.map(fmtDate).join(' to ');
 }
 
 // ── MAIN RENDER ────────────────────────────────────────────────────────────
