@@ -608,12 +608,13 @@ footer{
     <div class="sec-head" id="trades">
       <span class="sec-label">Trade Log</span>
       <span class="sec-line"></span>
-      <span class="sec-pill">Last 40 trades</span>
+      <span class="sec-pill" id="tradesPill">Last 40 trades</span>
     </div>
     <div class="panel">
       <div class="panel-hd">
         <span class="panel-title">Recent Trades</span>
         <span class="panel-note" id="tradesNote"></span>
+        <button onclick="downloadNY1Trades()" style="margin-left:auto;font-family:var(--font-data);font-size:11px;font-weight:600;letter-spacing:.04em;padding:5px 14px;border-radius:6px;border:1px solid var(--border);background:var(--card-alt);color:var(--subtle);cursor:pointer;" onmouseover="this.style.background='var(--cyan)';this.style.color='#fff'" onmouseout="this.style.background='var(--card-alt)';this.style.color='var(--subtle)'">↓ Download CSV</button>
       </div>
       <div class="panel-body" style="padding:0">
         <div class="trades-wrap">
@@ -763,7 +764,10 @@ function renderAll(d) {
     '2y':'Last 2Y','1y':'Last 1Y','6m':'Last 6M','3m':'Last 3M','1m':'Last 1M'
   }[_activeTF] || _activeTF);
   document.getElementById('perfPill').textContent = d.meta.n + ' resolved trades · ' + tfLabel;
-  document.getElementById('tradesNote').textContent = 'Most recent ' + (d.recent_trades?.length || 40) + ' of ' + d.meta.n + ' resolved · ' + tfLabel;
+  const fullCount = (_activeTF === 'all' ? d.trades?.length : null) || d.meta.n;
+  document.getElementById('tradesNote').textContent = 'Showing 40 of ' + fullCount + ' resolved · ' + tfLabel + ' · full export via Download CSV';
+  const pillEl = document.getElementById('tradesPill');
+  if (pillEl) pillEl.textContent = fullCount.toLocaleString() + ' trades';
 }
 
 // ─── MAE ANALYSIS ─────────────────────────────────────────────────────────────
@@ -1497,6 +1501,30 @@ function nqContract(dateStr) {
     if (d < tf) return `NQ${code}${String(y).slice(-2)}`;
   }
   return `NQH${String(y + 1).slice(-2)}`;
+}
+
+// ── DOWNLOAD ─────────────────────────────────────────────────────────────────
+function _csvEscape(v) { const s = v==null?'':String(v); return s.includes(',') ? `"${s}"` : s; }
+function _triggerCSV(rows, headers, filename) {
+  const lines = [headers.join(','), ...rows.map(r => headers.map(h => _csvEscape(r[h])).join(','))];
+  const blob = new Blob([lines.join('\n')], {type:'text/csv'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = filename; a.click(); URL.revokeObjectURL(a.href);
+}
+function downloadNY1Trades() {
+  // For all-TF: use full trades array. For sub-TF: filter all-TF trades by date range.
+  const allTFData = _data?.['all']?.['profiles']?.[_activeProfile];
+  const activeTFData = _activeData();
+  let trades = allTFData?.trades || [];
+  if (_activeTF !== 'all' && activeTFData?.meta?.date_range) {
+    const parts = activeTFData.meta.date_range.split(/\s+to\s+/);
+    const [dFrom, dTo] = [parts[0]?.trim(), parts[1]?.trim()];
+    if (dFrom && dTo) trades = trades.filter(t => t.date >= dFrom && t.date <= dTo);
+  }
+  if (!trades.length) { alert('No trades available for download.'); return; }
+  const headers = ['date','direction','dow_name','fill_hr','fill_mn','entry','stop','risk_pts','mae_pct','mfe_pct','tp1_price','exit_price','exit_type','combined_r'];
+  const filename = `ny1_fpfvg_${_activeProfile}_${_activeTF}_${new Date().toISOString().slice(0,10)}.csv`;
+  _triggerCSV(trades, headers, filename);
 }
 
 function renderTradesTable(allTrades) {

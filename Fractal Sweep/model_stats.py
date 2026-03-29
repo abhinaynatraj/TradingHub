@@ -1308,12 +1308,12 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         tspot_breakdown[tk] = dict(
             overall=agg(grp), heatmap=hm, by_hour=bh, by_dow=bd, top_combos=tc[:10])
 
-    # Most recent 25 resolved trades
+    # All resolved trades (capped at 500 for JSON size; sub-TF slices are uncapped)
     recent_cols = ['date','direction','hr','mn','session','dow','entry_price',
                    'sweep_extreme','target_price','risk_pts','r','outcome']
     recent_rows = (wl[recent_cols]
                    .sort_values('date', ascending=False)
-                   .head(40)
+                   .head(500)
                    .copy())
     recent_rows['dow_name'] = recent_rows['dow'].map(lambda d: DOW_NAMES.get(int(d), '?'))
     recent_trades = recent_rows.to_dict('records')
@@ -1717,11 +1717,11 @@ def _compute_by_tf(wl_full, wl_sorted_full, stop_mult, target_mult,
             {'bucket': f'-1R (loss)', 'n': n - wins, 'fill': 'loss'},
             {'bucket': f'{rr_actual}R (target)', 'n': wins, 'fill': 'win'},
         ]
-        # recent_trades (last 40 in slice)
+        # All trades in this TF slice (sub-TF windows are naturally bounded)
         recent_cols = ['date','direction','hr','mn','session','dow','entry_price',
                        'sweep_extreme','target_price','risk_pts','r','outcome']
         available = [c for c in recent_cols if c in wl_sub.columns]
-        rt = wl_sub[available].sort_values('date', ascending=False).head(40).copy()
+        rt = wl_sub[available].sort_values('date', ascending=False).copy()
         rt['dow_name'] = rt['dow'].map(lambda d: dow_names.get(int(d), '?'))
         recent_trades = rt.to_dict('records')
         for t in recent_trades:

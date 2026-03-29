@@ -438,7 +438,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
   <div class="page-pane" id="pane-trades">
     <div class="sec-label">Most Recent Trades</div>
     <div class="panel">
-      <div class="ph"><span class="ph-title">Last 40 Resolved Trades</span><span class="ph-note">WIN / LOSS only · newest first · active profile</span></div>
+      <div class="ph"><span class="ph-title" id="trades-panel-title">Resolved Trades</span><span class="ph-note">WIN / LOSS only · newest first · active profile</span><button onclick="downloadFSTrades()" style="margin-left:auto;font-family:var(--font-data);font-size:11px;font-weight:600;letter-spacing:.04em;padding:5px 14px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-primary);cursor:pointer;" onmouseover="this.style.background='var(--accent)';this.style.color='#fff'" onmouseout="this.style.background='var(--bg-raised)';this.style.color='var(--text-primary)'">↓ Download CSV</button></div>
       <div class="pb"><div id="recent-trades-table"></div></div>
     </div>
   </div>
@@ -1467,6 +1467,25 @@ function drawSweepMAEBell(canvas, bell, currentSlPct) {
   }
 }
 
+// ── DOWNLOAD HELPERS ───────────────────────────────────────────────────────
+function csvEscape(v) { const s = v==null?'':String(v); return s.includes(',') ? `"${s}"` : s; }
+function triggerCSVDownload(rows, headers, filename) {
+  const lines = [headers.join(','), ...rows.map(r => headers.map(h => csvEscape(r[h])).join(','))];
+  const blob = new Blob([lines.join('\n')], {type:'text/csv'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = filename; a.click(); URL.revokeObjectURL(a.href);
+}
+function downloadFSTrades() {
+  const baseD2 = getProfileData(`${activeModel}_${activeMode}_${activeCisd}`, activeProfile);
+  const D = getActiveTFData(baseD2);
+  const trades = D?.recent_trades;
+  if (!trades || !trades.length) return;
+  const headers = ['date','direction','session','hr','mn','dow_name','entry_price','sweep_extreme','target_price','risk_pts','r','outcome'];
+  const tf = _activeTF || 'all';
+  const filename = `fractal_sweep_${activeModel}_${activeProfile}_${tf}_${new Date().toISOString().slice(0,10)}.csv`;
+  triggerCSVDownload(trades, headers, filename);
+}
+
 // ── RECENT TRADES ──────────────────────────────────────────────────────────
 function renderRecentTrades() {
   const el = document.getElementById('recent-trades-table');
@@ -1474,10 +1493,13 @@ function renderRecentTrades() {
   const baseD2 = getProfileData(`${activeModel}_${activeMode}_${activeCisd}`, activeProfile);
   const D = getActiveTFData(baseD2);
   const trades = D?.recent_trades;
+  const titleEl = document.getElementById('trades-panel-title');
   if (!trades || !trades.length) {
     el.innerHTML = '<p style="color:var(--text-muted);font-size:13px;padding:8px 0;">No trades data. Run <code>python3 model_stats.py</code> to generate.</p>';
+    if (titleEl) titleEl.textContent = 'Resolved Trades';
     return;
   }
+  if (titleEl) titleEl.textContent = `${trades.length.toLocaleString()} Resolved Trades`;
   const DOW_NAMES = {0:'Sun',1:'Mon',2:'Tue',3:'Wed',4:'Thu',5:'Fri',6:'Sat'}; // DuckDB: 0=Sunday
   let html = `<div style="overflow-x:auto;">
   <table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:12px;">
