@@ -1077,6 +1077,20 @@ function switchModel(k){ activeModel=k; renderModelDropdown(); renderControls();
 function switchMode(m){  activeMode=m;  renderControls(); renderActive(); }
 function switchCisd(c){  activeCisd=c;  renderControls(); renderActive(); }
 
+// ── DATE FORMATTING ─────────────────────────────────────────────────────────
+function fmtDate(s) {
+  if (!s) return '';
+  // Accepts "2014-09-08", "2014-09-08T00:00:00.000000", or already-formatted
+  const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return s;
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[+m[2]-1]} ${+m[3]}, ${m[1]}`;
+}
+function fmtDateRange(dr) {
+  if (!dr) return '';
+  return dr.split(/\s*[–—-]\s*(?=\d)/).map(fmtDate).join(' – ');
+}
+
 // ── MAIN RENDER ────────────────────────────────────────────────────────────
 function renderActive(){
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
@@ -1091,7 +1105,7 @@ function renderActive(){
   const note = document.getElementById('profile-note');
   if(note) note.textContent = activeTF === 'all'
     ? 'Stop & Target = fixed % of entry price · DDLI weighted ranking'
-    : `Showing: ${tfLabels[activeTF]} · ${D.meta?.date_range || ''}`;
+    : `Showing: ${tfLabels[activeTF]} · ${fmtDateRange(D.meta?.date_range)}`;
   renderModel(D);
   renderProfileCompare();
 }
@@ -1127,21 +1141,22 @@ function renderModel(D){
   const ceVal = rs.ce;
   const ceCls = ceVal == null ? 'w' : ceVal >= 3 ? 'g' : ceVal >= 1.5 ? 'a' : ceVal >= 1 ? 'b' : 'r';
   const pnlCls = totalPnl == null ? 'w' : totalPnl > 0 ? 'g' : 'r';
-  const tradesStr = (rs.trades ?? m.total_wl ?? 0).toLocaleString() + ' trades · ' + (m.date_range || '');
+  const dr = fmtDateRange(m.date_range);
+  const tradesStr = (rs.trades ?? m.total_wl ?? 0).toLocaleString() + ' trades · ' + dr;
   [
     {label:'Win Rate',    val:m.win_rate!=null?pct(m.win_rate):'—',           sub:tradesStr,                                      cls:wrCls,  vc:wrCls},
     {label:'EV (R)',      val:evVal!=null?(evVal>0?'+':'')+evVal.toFixed(3)+'R':'—', sub:'Expected value per R risked',             cls:evVal==null?'w':evVal>0?'g':'r', vc:evVal==null?'w':evVal>0?'g':'r'},
     {label:'Prof Factor', val:pfVal!=null?pfVal.toFixed(3):'—',               sub:'Gross profit ÷ gross loss',                    cls:pfCls,  vc:pfCls},
     {label:'CE',          val:ceVal!=null?ceVal.toFixed(3):'—',               sub:'Certainty Equivalent · MFE/MAE ratio',         cls:ceCls,  vc:ceCls},
-    {label:'Total P&L',   val:totalPnlStr,                                    sub:`$${acct.toLocaleString()} account · $${(rs.risk_per_trade??225).toLocaleString()}/trade · ${m.date_range||''}`, cls:pnlCls, vc:pnlCls},
+    {label:'Total P&L',   val:totalPnlStr,                                    sub:`$${acct.toLocaleString()} account · $${(rs.risk_per_trade??225).toLocaleString()}/trade · ${dr}`, cls:pnlCls, vc:pnlCls},
     {label:'Sharpe',      val:sharpeStr,                                      sub:'Annualised Sharpe ratio',                      cls:sharpeCls, vc:sharpeCls},
     {label:'SL %',        val:rs.sl_pct!=null?rs.sl_pct.toFixed(2)+'%':'—',  sub:'Fixed stop-loss % from entry',                 cls:'a',    vc:'a'},
     {label:'TP %',        val:rs.tp_pct!=null?rs.tp_pct.toFixed(2)+'%':'—',  sub:'Fixed take-profit % from entry',               cls:'g',    vc:'g'},
     {label:'R:R',         val:rrStr,                                          sub:'Reward-to-risk ratio (TP÷SL)',                 cls:'b',    vc:'b'},
-    {label:'Blown',       val:blown==null?'—':blown?'YES':'NO',               sub:`Account blown in ${m.date_range||'backtest'}?`,cls:blown?'r':'g', vc:blown?'r':'g'},
-    {label:'Max DD',      val:maxDdStr,                                       sub:`-$${maxDdUsd!=null?Math.round(maxDdUsd).toLocaleString():'—'} from peak · ${m.date_range||''}`, cls:ddCls, vc:ddCls},
-    {label:'Max W Run',   val:rs.max_consec_wins??'—',                        sub:'Longest winning streak · '+( m.date_range||''),cls:'g',    vc:'g'},
-    {label:'Max L Run',   val:rs.max_consec_losses??'—',                      sub:'Longest losing streak · '+(m.date_range||''), cls:'r',    vc:'r'},
+    {label:'Blown',       val:blown==null?'—':blown?'YES':'NO',               sub:`Account blown in ${dr||'backtest'}?`,          cls:blown?'r':'g', vc:blown?'r':'g'},
+    {label:'Max DD',      val:maxDdStr,                                       sub:`-$${maxDdUsd!=null?Math.round(maxDdUsd).toLocaleString():'—'} from peak · ${dr}`, cls:ddCls, vc:ddCls},
+    {label:'Max W Run',   val:rs.max_consec_wins??'—',                        sub:'Longest winning streak · '+dr,                 cls:'g',    vc:'g'},
+    {label:'Max L Run',   val:rs.max_consec_losses??'—',                      sub:'Longest losing streak · '+dr,                  cls:'r',    vc:'r'},
   ].forEach(card=>{
     const el=document.createElement('div'); el.className=`mc ${card.cls}`;
     el.innerHTML=`<div class="mc-accent"></div><div class="mc-lbl">${card.label}</div><div class="mc-val ${card.vc}">${card.val}</div><div class="mc-sub">${card.sub}</div>`;
@@ -2597,7 +2612,7 @@ function render(){
   document.getElementById('demo-badge').style.display=isDemo?'':'none';
   document.getElementById('infobar').style.display=isDemo?'':'none';
   const D = getProfileData(`${activeModel}_${activeMode}_${activeCisd}`, activeProfile);
-  document.getElementById('hdr-sub').textContent=`Multi-TF Probability Engine · ${D?.meta?.instrument||'NQ'} · ${D?.meta?.date_range||''}`;
+  document.getElementById('hdr-sub').textContent=`Multi-TF Probability Engine · ${D?.meta?.instrument||'NQ'} · ${fmtDateRange(D?.meta?.date_range)}`;
   renderModelDropdown();
   renderControls();
   renderActive();

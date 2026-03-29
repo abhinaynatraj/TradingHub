@@ -1434,7 +1434,7 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
             'cisd_mode':          'CISD',
             'cisd_mode_label':    'Body CISD — close through open of last opposing run',
             'instrument':         TABLE.split('_')[0].upper(),
-            'date_range':         f"{df['date'].min()} – {df['date'].max()}"
+            'date_range':         f"{str(df['date'].min())[:10]} – {str(df['date'].max())[:10]}"
                                   if len(df) else '—',
             'trading_days':       trading_days,
             'total_raw':          len(df_raw),
