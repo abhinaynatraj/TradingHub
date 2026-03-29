@@ -20,6 +20,7 @@ Setup:
     3. python3 "Live Scanner/live_scanner.py"
 """
 
+import asyncio
 import logging
 import os
 import subprocess
@@ -28,6 +29,12 @@ import time
 from collections import deque
 from datetime import datetime, timedelta
 
+# Python 3.10+ no longer auto-creates an event loop — ib_insync needs one present at import time
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
 import numpy as np
 import pandas as pd
 import requests
@@ -35,7 +42,7 @@ from ib_insync import IB, ContFuture, util
 
 # ── USER CONFIG ───────────────────────────────────────────────────────────────
 IB_HOST        = '127.0.0.1'
-IB_PORT        = 7497          # see port table above
+IB_PORT        = 4002          # IB Gateway paper; live = 4001, TWS paper = 7497, TWS live = 7496
 IB_CLIENT_ID   = 10            # any int; must not conflict with other IB connections
 DISCORD_WEBHOOK = os.environ.get('DISCORD_WEBHOOK', '')   # or paste URL directly
 INSTRUMENTS    = ['NQ', 'ES']  # instruments to scan
@@ -424,7 +431,7 @@ class LiveScanner:
     def connect(self) -> None:
         log.info('Connecting to IB at %s:%d (clientId=%d) ...', IB_HOST, IB_PORT, IB_CLIENT_ID)
         self.ib.connect(IB_HOST, IB_PORT, clientId=IB_CLIENT_ID)
-        log.info('Connected.  Server version: %s', self.ib.serverVersion())
+        log.info('Connected.  Client id: %d', IB_CLIENT_ID)
 
     # ── Subscriptions ─────────────────────────────────────────────────────────
 
