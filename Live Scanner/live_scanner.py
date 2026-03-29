@@ -27,7 +27,7 @@ import subprocess
 import threading
 import time
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Python 3.10+ no longer auto-creates an event loop — ib_insync needs one present at import time
 try:
@@ -35,16 +35,18 @@ try:
 except RuntimeError:
     asyncio.set_event_loop(asyncio.new_event_loop())
 
+import json
 import numpy as np
 import pandas as pd
 import requests
 from ib_insync import IB, ContFuture, util
+from pathlib import Path
 
 # ── USER CONFIG ───────────────────────────────────────────────────────────────
 IB_HOST        = '127.0.0.1'
 IB_PORT        = 4002          # IB Gateway paper; live = 4001, TWS paper = 7497, TWS live = 7496
 IB_CLIENT_ID   = 10            # any int; must not conflict with other IB connections
-DISCORD_WEBHOOK = os.environ.get('DISCORD_WEBHOOK', '')   # or paste URL directly
+DISCORD_WEBHOOK = os.environ.get('DISCORD_WEBHOOK', 'https://discord.com/api/webhooks/1487896746758770843/cg8Q6aLRc5s9TD3li9tuwEm1bj9uFCuI1k7kPLgZbS_YyCzosWrYaDqtRCxu20Kuh5iY')
 INSTRUMENTS    = ['NQ', 'ES']  # instruments to scan
 ACTIVE_MODELS  = ['4H_15M', '1H_5M', '1H_3M', '30M_3M']
 TIMEZONE       = 'America/New_York'
@@ -74,6 +76,36 @@ logging.basicConfig(
 )
 log = logging.getLogger('sweep_scanner')
 
+# ── LOAD HISTORICAL MAE/MFE AVERAGES FROM model_stats.json ───────────────────
+# Keyed by (model_key, session, direction) → {avg_mae, avg_mfe}
+_STATS_JSON = Path(__file__).parent.parent / 'Fractal Sweep' / 'model_stats.json'
+_SESSION_STATS: dict = {}
+
+def _load_session_stats() -> None:
+    """
+    Parse model_stats.json and build a lookup of avg MAE/MFE %
+    by (model_key, session, direction) using the default profile sl_026_tp_018.
+    Falls back gracefully if the file is missing or malformed.
+    """
+    global _SESSION_STATS
+    try:
+        data = json.loads(_STATS_JSON.read_text())
+        for full_key, model_data in data.items():
+            # full_key e.g. '1H_5M_PREV_CISD'
+            model_key = full_key.replace('_PREV_CISD', '')
+            profile = (model_data.get('profiles') or {}).get('sl_026_tp_018') or {}
+            for row in profile.get('by_session') or []:
+                k = (model_key, row.get('session', ''), row.get('direction', ''))
+                _SESSION_STATS[k] = {
+                    'avg_mae': row.get('avg_mae'),
+                    'avg_mfe': row.get('avg_mfe'),
+                }
+        log.info('Loaded session MAE/MFE stats for %d breakdowns', len(_SESSION_STATS))
+    except Exception as exc:
+        log.warning('Could not load model_stats.json for MAE/MFE context: %s', exc)
+
+_load_session_stats()
+
 
 # ── NOTIFICATIONS ─────────────────────────────────────────────────────────────
 
@@ -95,26 +127,49 @@ def _notify_discord(setup: dict) -> None:
     if not DISCORD_WEBHOOK:
         return
     direction = setup['direction']
-    color     = 0x10B981 if direction == 'LONG' else 0xF87171  # green / red
-    arrow     = '▲' if direction == 'LONG' else '▼'
+    is_long   = direction == 'LONG'
+    color     = 0x10B981 if is_long else 0xF87171  # green / red
+    arrow     = '▲' if is_long else '▼'
+    side_emoji= '🟢' if is_long else '🔴'
     entry     = setup['entry_price']
     stop      = setup['stop_price']
     target    = setup['target_price']
     risk_pts  = setup['risk_pts']
     rr        = round(abs(target - entry) / risk_pts, 2) if risk_pts else 0
+    sweep_pct = setup['sweep_pct'] * 100
+
+    # Historical MAE/MFE averages for this model + session + direction
+    hist = _SESSION_STATS.get((setup['model_key'], setup['session'], direction), {})
+    avg_mae = hist.get('avg_mae')
+    avg_mfe = hist.get('avg_mfe')
+    mae_str = f'**{avg_mae:.4f}%**' if avg_mae is not None else '—'
+    mfe_str = f'**{avg_mfe:.4f}%**' if avg_mfe is not None else '—'
+    sl_pct  = abs(entry - stop)   / entry * 100
+    tp_pct  = abs(target - entry) / entry * 100
 
     embed = {
-        'title':       f'🔔  {setup["symbol"]}  {direction} {arrow}',
-        'description': f'**{setup["model_label"]}**  ·  {setup["session"]}',
-        'color':       color,
+        'title': f'{side_emoji}  {setup["symbol"]}  {direction} {arrow}',
+        'description': (
+            f'### {setup["model_label"]}\n'
+            f'`{setup["session"]}`  ·  {setup["ts_et"]}'
+        ),
+        'color': color,
         'fields': [
-            {'name': 'Entry',   'value': f'`{entry:.2f}`',                          'inline': True},
-            {'name': 'Stop',    'value': f'`{stop:.2f}`  (−{risk_pts:.1f} pts)',    'inline': True},
-            {'name': 'Target',  'value': f'`{target:.2f}`  ({rr:.1f}R)',            'inline': True},
-            {'name': 'Sweep %', 'value': f'{setup["sweep_pct"]*100:.1f}% of range', 'inline': True},
+            # Row 1 — price levels with % distance from entry
+            {'name': '📍 Entry',   'value': f'```{entry:.2f}```',                          'inline': True},
+            {'name': '🛑 Stop',    'value': f'```{stop:.2f}```\n−{sl_pct:.3f}%',          'inline': True},
+            {'name': '🎯 Target',  'value': f'```{target:.2f}```\n+{tp_pct:.3f}%',        'inline': True},
+            # Row 2 — trade metrics
+            {'name': '⚠️ Risk',    'value': f'**{risk_pts:.1f} pts**',                    'inline': True},
+            {'name': '📐 R:R',     'value': f'**{rr:.1f}R**',                             'inline': True},
+            {'name': '📊 Sweep',   'value': f'**{sweep_pct:.1f}%** of range',             'inline': True},
+            # Row 3 — historical excursion context
+            {'name': '📉 Avg MAE', 'value': mae_str,  'inline': True},
+            {'name': '📈 Avg MFE', 'value': mfe_str,  'inline': True},
+            {'name': '\u200b',     'value': '\u200b',  'inline': True},
         ],
-        'footer':    {'text': f'Fractal Sweep Live  ·  {setup["ts_et"]}'},
-        'timestamp': datetime.utcnow().isoformat(),
+        'footer': {'text': 'Fractal Sweep Live  ·  MAE/MFE = historical avg for this session & direction'},
+        'timestamp': datetime.now(timezone.utc).isoformat(),
     }
     try:
         r = requests.post(
