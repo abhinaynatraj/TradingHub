@@ -126,26 +126,34 @@ def _notify_macos(title: str, body: str) -> None:
 def _notify_discord(setup: dict) -> None:
     if not DISCORD_WEBHOOK:
         return
-    direction = setup['direction']
-    is_long   = direction == 'LONG'
-    color     = 0x10B981 if is_long else 0xF87171  # green / red
-    arrow     = '▲' if is_long else '▼'
-    side_emoji= '🟢' if is_long else '🔴'
-    entry     = setup['entry_price']
-    stop      = setup['stop_price']
-    target    = setup['target_price']
-    risk_pts  = setup['risk_pts']
-    rr        = round(abs(target - entry) / risk_pts, 2) if risk_pts else 0
-    sweep_pct = setup['sweep_pct'] * 100
+    direction  = setup['direction']
+    is_long    = direction == 'LONG'
+    color      = 0x10B981 if is_long else 0xF87171
+    arrow      = '▲' if is_long else '▼'
+    side_emoji = '🟢' if is_long else '🔴'
+    entry      = setup['entry_price']
+    base_risk  = setup['base_risk']
+    sweep_pct  = setup['sweep_pct'] * 100
+
+    # Structural levels
+    struct_stop = setup['stop_price']
+    tp1         = setup['tp1_price']
+    struct_sl_pct = abs(entry - struct_stop) / entry * 100
+    tp1_pct       = abs(tp1  - entry)        / entry * 100
+
+    # Fixed % levels (sl_026_tp_018)
+    fixed_sl   = setup['fixed_sl']
+    fixed_tp   = setup['fixed_tp']
+    fixed_sl_pct = abs(entry - fixed_sl) / entry * 100
+    fixed_tp_pct = abs(fixed_tp - entry) / entry * 100
+    fixed_rr     = round(fixed_tp_pct / fixed_sl_pct, 2) if fixed_sl_pct else 0
 
     # Historical MAE/MFE averages for this model + session + direction
-    hist = _SESSION_STATS.get((setup['model_key'], setup['session'], direction), {})
+    hist    = _SESSION_STATS.get((setup['model_key'], setup['session'], direction), {})
     avg_mae = hist.get('avg_mae')
     avg_mfe = hist.get('avg_mfe')
     mae_str = f'**{avg_mae:.4f}%**' if avg_mae is not None else '—'
     mfe_str = f'**{avg_mfe:.4f}%**' if avg_mfe is not None else '—'
-    sl_pct  = abs(entry - stop)   / entry * 100
-    tp_pct  = abs(target - entry) / entry * 100
 
     embed = {
         'title': f'{side_emoji}  {setup["symbol"]}  {direction} {arrow}',
@@ -155,20 +163,20 @@ def _notify_discord(setup: dict) -> None:
         ),
         'color': color,
         'fields': [
-            # Row 1 — price levels with % distance from entry
-            {'name': '📍 Entry',   'value': f'```{entry:.2f}```',                          'inline': True},
-            {'name': '🛑 Stop',    'value': f'```{stop:.2f}```\n−{sl_pct:.3f}%',          'inline': True},
-            {'name': '🎯 Target',  'value': f'```{target:.2f}```\n+{tp_pct:.3f}%',        'inline': True},
-            # Row 2 — trade metrics
-            {'name': '⚠️ Risk',    'value': f'**{risk_pts:.1f} pts**',                    'inline': True},
-            {'name': '📐 R:R',     'value': f'**{rr:.1f}R**',                             'inline': True},
-            {'name': '📊 Sweep',   'value': f'**{sweep_pct:.1f}%** of range',             'inline': True},
-            # Row 3 — historical excursion context
-            {'name': '📉 Avg MAE', 'value': mae_str,  'inline': True},
-            {'name': '📈 Avg MFE', 'value': mfe_str,  'inline': True},
-            {'name': '\u200b',     'value': '\u200b',  'inline': True},
+            # Row 1 — Structural profile (SL = sweep extreme, TP1 = 1R, runner w/ BE)
+            {'name': '📍 Entry',              'value': f'```{entry:.2f}```',                                       'inline': True},
+            {'name': '🛑 Struct Stop',        'value': f'```{struct_stop:.2f}```\n−{struct_sl_pct:.3f}%',         'inline': True},
+            {'name': '🎯 TP1 (1R) + Runner',  'value': f'```{tp1:.2f}```\n+{tp1_pct:.3f}%',                      'inline': True},
+            # Row 2 — Fixed % profile (sl_026_tp_018)
+            {'name': '⚠️ Base Risk',          'value': f'**{base_risk:.1f} pts**',                                'inline': True},
+            {'name': '🛑 Fixed SL (0.26%)',   'value': f'`{fixed_sl:.2f}`  −{fixed_sl_pct:.3f}%',                'inline': True},
+            {'name': '🎯 Fixed TP (0.18%)',   'value': f'`{fixed_tp:.2f}`  +{fixed_tp_pct:.3f}%  ({fixed_rr}R)', 'inline': True},
+            # Row 3 — Context
+            {'name': '📊 Sweep',              'value': f'**{sweep_pct:.1f}%** of range',                          'inline': True},
+            {'name': '📉 Avg MAE',            'value': mae_str,                                                    'inline': True},
+            {'name': '📈 Avg MFE',            'value': mfe_str,                                                    'inline': True},
         ],
-        'footer': {'text': 'Fractal Sweep Live  ·  MAE/MFE = historical avg for this session & direction'},
+        'footer': {'text': 'Struct: SL=sweep extreme, TP1=1R 50% exit + runner w/ BE  ·  Fixed: sl_026_tp_018'},
         'timestamp': datetime.now(timezone.utc).isoformat(),
     }
     try:
@@ -190,13 +198,13 @@ def fire_alerts(setup: dict) -> None:
         f'{setup["model_label"]}  ·  '
         f'Entry {setup["entry_price"]:.2f}  '
         f'SL {setup["stop_price"]:.2f}  '
-        f'TP {setup["target_price"]:.2f}  '
-        f'Risk {setup["risk_pts"]:.1f} pts'
+        f'TP1 {setup["tp1_price"]:.2f}  '
+        f'Risk {setup["base_risk"]:.1f} pts'
     )
     log.info(
-        'ALERT  %s  %s %s  |  entry=%.2f  stop=%.2f  tp=%.2f  [%s]',
+        'ALERT  %s  %s %s  |  entry=%.2f  struct_stop=%.2f  tp1=%.2f  [%s]',
         setup['symbol'], direction, arrow,
-        setup['entry_price'], setup['stop_price'], setup['target_price'],
+        setup['entry_price'], setup['stop_price'], setup['tp1_price'],
         setup['model_label'],
     )
     _notify_macos(title, body)
@@ -435,36 +443,54 @@ def check_model(
         if base_risk < MIN_RISK_PTS:
             continue
 
-        stop_price   = sweep_extreme
-        target_price = (entry_price + 2 * base_risk
-                        if direction == 'LONG'
-                        else entry_price - 2 * base_risk)
+        # Structural profile: SL = sweep extreme, TP1 = entry ± 1R (50% exit),
+        # runner holds with breakeven stop
+        struct_stop = sweep_extreme
+        struct_tp1  = (entry_price + base_risk
+                       if direction == 'LONG'
+                       else entry_price - base_risk)
+
+        # Fixed % profiles (top 2 from backtester, default sl_026_tp_018)
+        def _fixed(sl_pct, tp_pct):
+            if direction == 'LONG':
+                return (round(entry_price * (1 - sl_pct / 100), 2),
+                        round(entry_price * (1 + tp_pct / 100), 2))
+            else:
+                return (round(entry_price * (1 + sl_pct / 100), 2),
+                        round(entry_price * (1 - tp_pct / 100), 2))
+
+        fixed_sl, fixed_tp = _fixed(0.26, 0.18)   # sl_026_tp_018 (default / best ranked)
 
         ts_label = (entry_ts.strftime('%Y-%m-%d %H:%M ET')
                     if hasattr(entry_ts, 'strftime') else str(entry_ts))
 
         setup = dict(
-            symbol      = symbol,
-            model_key   = model_key,
-            model_label = cfg['label'],
-            direction   = direction,
-            entry_price = round(float(entry_price), 2),
-            stop_price  = round(float(stop_price), 2),
-            target_price= round(float(target_price), 2),
-            risk_pts    = round(float(base_risk), 1),
-            sweep_pct   = round(sweep_ext / ref_range, 3) if ref_range > 0 else 0.0,
-            cisd_level  = round(float(cisd_level), 2) if cisd_level else None,
-            session     = get_session(now_et.hour, now_et.minute),
-            ts_et       = ts_label,
-            anchor_start= str(curr_start),
+            symbol       = symbol,
+            model_key    = model_key,
+            model_label  = cfg['label'],
+            direction    = direction,
+            entry_price  = round(float(entry_price), 2),
+            # Structural
+            stop_price   = round(float(struct_stop), 2),
+            tp1_price    = round(float(struct_tp1), 2),
+            base_risk    = round(float(base_risk), 1),
+            # Fixed % (sl_026_tp_018)
+            fixed_sl     = fixed_sl,
+            fixed_tp     = fixed_tp,
+            sweep_pct    = round(sweep_ext / ref_range, 3) if ref_range > 0 else 0.0,
+            cisd_level   = round(float(cisd_level), 2) if cisd_level else None,
+            session      = get_session(now_et.hour, now_et.minute),
+            ts_et        = ts_label,
+            anchor_start = str(curr_start),
         )
 
         fired.add(dedup)
         new_setups.append(setup)
         log.info(
-            'Setup found:  %s  %s  %s  entry=%.2f  stop=%.2f  tp=%.2f',
+            'Setup found:  %s  %s  %s  entry=%.2f  struct_stop=%.2f  tp1=%.2f  fixed_sl=%.2f  fixed_tp=%.2f',
             symbol, direction, cfg['label'],
-            setup['entry_price'], setup['stop_price'], setup['target_price'],
+            setup['entry_price'], setup['stop_price'], setup['tp1_price'],
+            setup['fixed_sl'], setup['fixed_tp'],
         )
 
     return new_setups
