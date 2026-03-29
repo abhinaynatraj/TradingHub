@@ -1114,6 +1114,7 @@ function renderModel(D){
   const totalPnlStr = totalPnl != null ? (totalPnl >= 0 ? '+$' : '-$') + Math.abs(totalPnl).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}) : '—';
   const maxDdPct = rs.max_dd_pct;
   const maxDdStr = maxDdPct != null ? maxDdPct.toFixed(1)+'%' : '—';
+  const maxDdUsd = rs.max_dd_usd != null ? rs.max_dd_usd : (maxDdPct != null ? Math.round(maxDdPct / 100 * acct) : null);
   const sharpeVal = rs.sharpe;
   const sharpeStr = sharpeVal != null ? sharpeVal.toFixed(2) : '—';
   const sharpeCls = sharpeVal == null ? 'w' : sharpeVal >= 2 ? 'g' : sharpeVal >= 1 ? 'a' : 'r';
@@ -1138,7 +1139,7 @@ function renderModel(D){
     {label:'TP %',        val:rs.tp_pct!=null?rs.tp_pct.toFixed(2)+'%':'—',  sub:'Fixed take-profit % from entry',               cls:'g',    vc:'g'},
     {label:'R:R',         val:rrStr,                                          sub:'Reward-to-risk ratio (TP÷SL)',                 cls:'b',    vc:'b'},
     {label:'Blown',       val:blown==null?'—':blown?'YES':'NO',               sub:`Account blown in ${m.date_range||'backtest'}?`,cls:blown?'r':'g', vc:blown?'r':'g'},
-    {label:'Max DD',      val:maxDdStr,                                       sub:`-$${minEq!=null?Math.round(acct-minEq).toLocaleString():'—'} from $${acct.toLocaleString()} initial · ${m.date_range||''}`, cls:ddCls, vc:ddCls},
+    {label:'Max DD',      val:maxDdStr,                                       sub:`-$${maxDdUsd!=null?Math.round(maxDdUsd).toLocaleString():'—'} from peak · ${m.date_range||''}`, cls:ddCls, vc:ddCls},
     {label:'Max W Run',   val:rs.max_consec_wins??'—',                        sub:'Longest winning streak · '+( m.date_range||''),cls:'g',    vc:'g'},
     {label:'Max L Run',   val:rs.max_consec_losses??'—',                      sub:'Longest losing streak · '+(m.date_range||''), cls:'r',    vc:'r'},
   ].forEach(card=>{

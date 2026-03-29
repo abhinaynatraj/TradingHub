@@ -1586,7 +1586,7 @@ def _compute_by_tf(wl_full, wl_sorted_full, stop_mult, target_mult,
 
         # Equity / risk stats
         ws_sorted = wl_sub.sort_values('date')
-        eq = float(ACCOUNT_SIZE); peak_eq = eq; max_dd = 0.0
+        eq = float(ACCOUNT_SIZE); peak_eq = eq; max_dd = 0.0; max_dd_usd = 0.0; min_eq = eq
         daily_pnl: dict = {}
         def _mc(seq, val):
             mx = cur = 0
@@ -1598,9 +1598,12 @@ def _compute_by_tf(wl_full, wl_sorted_full, stop_mult, target_mult,
             if r_val is None or np.isnan(float(r_val)): continue
             tp = float(r_val) * RISK_PER_TRADE
             eq += tp
+            if eq < min_eq: min_eq = eq
             if eq > peak_eq: peak_eq = eq
             dd = (peak_eq - eq) / peak_eq if peak_eq > 0 else 0.0
-            if dd > max_dd: max_dd = dd
+            if dd > max_dd:
+                max_dd = dd
+                max_dd_usd = peak_eq - eq
             try:
                 td = str(row['date'])[:10]
                 daily_pnl[td] = daily_pnl.get(td, 0.0) + tp
@@ -1688,7 +1691,8 @@ def _compute_by_tf(wl_full, wl_sorted_full, stop_mult, target_mult,
             'risk_stats': {
                 'account_size': ACCOUNT_SIZE, 'risk_per_trade': RISK_PER_TRADE,
                 'trades': n, 'wins': wins, 'losses': n - wins, 'be_count': 0,
-                'blown': blown, 'min_equity_usd': round(eq, 2),
+                'blown': blown, 'min_equity_usd': round(min_eq, 2),
+                'max_dd_usd': round(max_dd_usd, 2),
                 'max_consec_wins': mcw, 'max_consec_losses': mcl,
                 'sl_pct': sl_pct_val, 'tp_pct': tp_pct_val,
                 'max_dd_pct': max_dd_pct, 'total_pnl_usd': total_pnl,
