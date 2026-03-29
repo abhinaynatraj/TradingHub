@@ -1760,10 +1760,13 @@ def _compute_by_tf(wl_full, wl_sorted_full, stop_mult, target_mult,
 
     result = {}
     dates_str = wl_full['date'].astype(str).str[:10]
-    for tf_key, cutoff in TF_CUTOFFS.items():
+    tf_keys = list(TF_CUTOFFS.items())
+    for idx, (tf_key, cutoff) in enumerate(tf_keys, 1):
+        print(f"        by_tf [{idx}/{len(tf_keys)}] {tf_key} ...", flush=True)
         mask = dates_str >= cutoff.isoformat()
         sub  = wl_full[mask]
         result[tf_key] = _slice_stats(sub)
+        print(f"           {len(sub):,} trades  ✓", flush=True)
 
     return result
 
@@ -1874,14 +1877,17 @@ def main():
 
         print(f"      Resolving outcomes across {len(RR_PROFILES)} profiles ...")
         model_profiles = {}
-        for stop_val, target_val, pk, ptype in RR_PROFILES:
+        for p_idx, (stop_val, target_val, pk, ptype) in enumerate(RR_PROFILES, 1):
+            print(f"      [{p_idx}/{len(RR_PROFILES)}] profile {pk} ...", flush=True)
             df_p = apply_profile_and_resolve(
                 base_rows, base_pending, m1, stop_val, target_val, ptype)
             if df_p.empty:
                 continue
+            print(f"         building stats + TF slices ...", flush=True)
             stats = build_model_stats(
                 df_p, trading_days, mk, cfg, stop_val, target_val, pk, ptype)
             model_profiles[pk] = stats
+            print(f"         profile {pk} done ✓", flush=True)
 
         if not model_profiles:
             continue

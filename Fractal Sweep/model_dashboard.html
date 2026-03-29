@@ -1499,7 +1499,11 @@ function renderRecentTrades() {
     if (titleEl) titleEl.textContent = 'Resolved Trades';
     return;
   }
-  if (titleEl) titleEl.textContent = `${trades.length.toLocaleString()} Resolved Trades`;
+  const displayTrades = trades.slice(0, 40);
+  const totalCount = trades.length;
+  if (titleEl) titleEl.textContent = totalCount > 40
+    ? `Showing ${displayTrades.length} of ${totalCount.toLocaleString()} Resolved Trades`
+    : `${totalCount.toLocaleString()} Resolved Trades`;
   const DOW_NAMES = {0:'Sun',1:'Mon',2:'Tue',3:'Wed',4:'Thu',5:'Fri',6:'Sat'}; // DuckDB: 0=Sunday
   let html = `<div style="overflow-x:auto;">
   <table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:12px;">
@@ -1516,7 +1520,7 @@ function renderRecentTrades() {
       <th style="padding:8px 6px;text-align:center;">Result</th>
     </tr></thead><tbody>`;
 
-  trades.forEach((t, i) => {
+  displayTrades.forEach((t, i) => {
     const bg = i % 2 === 0 ? 'transparent' : 'color-mix(in srgb,var(--bg-raised) 60%,transparent)';
     const isWin = t.outcome === 'WIN';
     const resColor = isWin ? 'var(--green)' : 'var(--red)';
