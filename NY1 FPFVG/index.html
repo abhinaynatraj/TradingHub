@@ -620,6 +620,7 @@ footer{
         <div class="trades-wrap">
           <table class="trades-table" id="tradesTable"></table>
         </div>
+        <div id="ny1-trades-pagination" style="display:none;align-items:center;gap:8px;padding:10px 12px 8px;font-family:var(--font-data);font-size:11px;"></div>
       </div>
     </div>
 
@@ -721,13 +722,13 @@ function _activeData() {
 }
 
 function switchTF(tf) {
-  _activeTF = tf;
+  _activeTF = tf; _ny1TradesPage = 0;
   const d = _activeData();
   if (d) renderAll(d);
 }
 
 function switchProfile(profile) {
-  _activeProfile = profile;
+  _activeProfile = profile; _ny1TradesPage = 0;
   const d = _activeData();
   if (d) renderAll(d);
 }
@@ -765,7 +766,7 @@ function renderAll(d) {
   }[_activeTF] || _activeTF);
   document.getElementById('perfPill').textContent = d.meta.n + ' resolved trades · ' + tfLabel;
   const fullCount = (_activeTF === 'all' ? d.trades?.length : null) || d.meta.n;
-  document.getElementById('tradesNote').textContent = 'Showing 40 of ' + fullCount + ' resolved · ' + tfLabel + ' · full export via Download CSV';
+  document.getElementById('tradesNote').textContent = fullCount + ' resolved trades · ' + tfLabel + ' · paginated · full export via Download CSV';
   const pillEl = document.getElementById('tradesPill');
   if (pillEl) pillEl.textContent = fullCount.toLocaleString() + ' trades';
 }
@@ -1543,10 +1544,22 @@ function downloadNY1Trades() {
   _triggerCSV(trades, headers, filename);
 }
 
-function renderTradesTable(allTrades) {
-  const sorted = [...(allTrades || [])]
-    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-    .slice(0, 40);
+let _ny1TradesPage = 0;
+const NY1_TRADES_PER_PAGE = 40;
+let _ny1AllTrades = [];
+
+function renderTradesTable(allTrades, page) {
+  if (allTrades !== undefined) {
+    _ny1AllTrades = [...(allTrades || [])].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    _ny1TradesPage = 0;
+  }
+  if (page !== undefined) _ny1TradesPage = page;
+  const totalCount = _ny1AllTrades.length;
+  const totalPages = Math.ceil(totalCount / NY1_TRADES_PER_PAGE);
+  _ny1TradesPage = Math.max(0, Math.min(_ny1TradesPage, totalPages - 1));
+  const start = _ny1TradesPage * NY1_TRADES_PER_PAGE;
+  const sorted = _ny1AllTrades.slice(start, start + NY1_TRADES_PER_PAGE);
+  const end = start + sorted.length;
 
   const cols = [
     { key: 'date',         label: 'Date' },
@@ -1630,23 +1643,42 @@ function renderTradesTable(allTrades) {
       _sortCol = col;
       _sortDir = col === 'date' ? -1 : 1;
     }
-    const sorted2 = [...sorted].sort((a, b) => {
+    _ny1AllTrades.sort((a, b) => {
       let av = a[col], bv = b[col];
       if (av == null) av = -Infinity;
       if (bv == null) bv = -Infinity;
       if (typeof av === 'string') return _sortDir * av.localeCompare(bv);
       return _sortDir * (av - bv);
     });
-    table.innerHTML = buildTable(sorted2);
-    table.querySelectorAll('th[data-col]').forEach(th => {
-      th.addEventListener('click', () => sortAndRender(th.dataset.col));
-    });
+    _ny1TradesPage = 0;
+    renderTradesTable(undefined);
   }
 
   table.innerHTML = buildTable(sorted);
   table.querySelectorAll('th[data-col]').forEach(th => {
     th.addEventListener('click', () => sortAndRender(th.dataset.col));
   });
+
+  // Pagination controls
+  const pgEl = document.getElementById('ny1-trades-pagination');
+  if (!pgEl) return;
+  if (totalPages <= 1) { pgEl.style.display = 'none'; return; }
+  const btnS = (dis) => `font-family:var(--font-data);font-size:11px;font-weight:600;padding:4px 12px;border-radius:5px;border:1px solid var(--border);background:var(--card-alt);color:${dis?'var(--faint)':'var(--subtle)'};cursor:${dis?'default':'pointer'};opacity:${dis?'0.4':'1'}`;
+  const pageNums = [];
+  const show = new Set([0, totalPages-1, _ny1TradesPage-1, _ny1TradesPage, _ny1TradesPage+1].filter(p=>p>=0&&p<totalPages));
+  [...show].sort((a,b)=>a-b).forEach((p,i,arr)=>{
+    if(i>0 && arr[i]-arr[i-1]>1) pageNums.push('…');
+    pageNums.push(p);
+  });
+  pgEl.style.display = 'flex';
+  pgEl.innerHTML = [
+    `<button style="${btnS(_ny1TradesPage===0)}" onclick="if(${_ny1TradesPage}>0)renderTradesTable(undefined,${_ny1TradesPage-1})" ${_ny1TradesPage===0?'disabled':''}>‹ Prev</button>`,
+    ...pageNums.map(p => p==='…'
+      ? `<span style="color:var(--faint);padding:0 2px">…</span>`
+      : `<button style="${btnS(false)};${p===_ny1TradesPage?'background:var(--cyan);color:#fff;border-color:var(--cyan)':''}" onclick="renderTradesTable(undefined,${p})">${p+1}</button>`),
+    `<button style="${btnS(_ny1TradesPage===totalPages-1)}" onclick="if(${_ny1TradesPage}<${totalPages-1})renderTradesTable(undefined,${_ny1TradesPage+1})" ${_ny1TradesPage===totalPages-1?'disabled':''}>Next ›</button>`,
+    `<span style="color:var(--faint);margin-left:4px">Page ${_ny1TradesPage+1} of ${totalPages}</span>`,
+  ].join('');
 }
 
 // ─── MFE DISTRIBUTION ────────────────────────────────────────────────────────

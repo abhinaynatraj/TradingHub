@@ -439,7 +439,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
     <div class="sec-label">Most Recent Trades</div>
     <div class="panel">
       <div class="ph"><span class="ph-title" id="trades-panel-title">Resolved Trades</span><span class="ph-note">WIN / LOSS only · newest first · active profile</span><button onclick="downloadFSTrades()" style="margin-left:auto;font-family:var(--font-data);font-size:11px;font-weight:600;letter-spacing:.04em;padding:5px 14px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-primary);cursor:pointer;" onmouseover="this.style.background='var(--accent)';this.style.color='#fff'" onmouseout="this.style.background='var(--bg-raised)';this.style.color='var(--text-primary)'">↓ Download CSV</button></div>
-      <div class="pb"><div id="recent-trades-table"></div></div>
+      <div class="pb"><div id="recent-trades-table"></div><div id="recent-trades-pagination" style="display:none;align-items:center;gap:8px;padding:10px 0 2px;font-family:var(--font-data);font-size:11px;"></div></div>
     </div>
   </div>
 
@@ -1047,7 +1047,7 @@ function renderProfileDropdown(){
 }
 
 function switchProfile(pk){
-  activeProfile=pk;
+  activeProfile=pk; _tradesPage=0;
   const note = document.getElementById('profile-note');
   if(note) note.textContent = 'Stop & Target = fixed % of entry price · DDLI weighted ranking';
   renderProfileDropdown(); renderModelDropdown(); renderActive();
@@ -1075,8 +1075,8 @@ function renderControls(){
   renderProfileDropdown();
 }
 
-function switchModel(k){ activeModel=k; renderModelDropdown(); renderControls(); renderActive(); }
-function switchMode(m){  activeMode=m;  renderControls(); renderActive(); }
+function switchModel(k){ activeModel=k; _tradesPage=0; renderModelDropdown(); renderControls(); renderActive(); }
+function switchMode(m){  activeMode=m;  _tradesPage=0; renderControls(); renderActive(); }
 function switchCisd(c){  activeCisd=c;  renderControls(); renderActive(); }
 
 // ── DATE FORMATTING ─────────────────────────────────────────────────────────
@@ -1487,8 +1487,12 @@ function downloadFSTrades() {
 }
 
 // ── RECENT TRADES ──────────────────────────────────────────────────────────
-function renderRecentTrades() {
+let _tradesPage = 0;
+const TRADES_PER_PAGE = 40;
+
+function renderRecentTrades(page) {
   const el = document.getElementById('recent-trades-table');
+  const pgEl = document.getElementById('recent-trades-pagination');
   if (!el) return;
   const baseD2 = getProfileData(`${activeModel}_${activeMode}_${activeCisd}`, activeProfile);
   const D = getActiveTFData(baseD2);
@@ -1497,12 +1501,18 @@ function renderRecentTrades() {
   if (!trades || !trades.length) {
     el.innerHTML = '<p style="color:var(--text-muted);font-size:13px;padding:8px 0;">No trades data. Run <code>python3 model_stats.py</code> to generate.</p>';
     if (titleEl) titleEl.textContent = 'Resolved Trades';
+    if (pgEl) pgEl.style.display = 'none';
     return;
   }
-  const displayTrades = trades.slice(0, 40);
   const totalCount = trades.length;
-  if (titleEl) titleEl.textContent = totalCount > 40
-    ? `Showing ${displayTrades.length} of ${totalCount.toLocaleString()} Resolved Trades`
+  const totalPages = Math.ceil(totalCount / TRADES_PER_PAGE);
+  if (page !== undefined) _tradesPage = page;
+  _tradesPage = Math.max(0, Math.min(_tradesPage, totalPages - 1));
+  const start = _tradesPage * TRADES_PER_PAGE;
+  const displayTrades = trades.slice(start, start + TRADES_PER_PAGE);
+  const end = start + displayTrades.length;
+  if (titleEl) titleEl.textContent = totalPages > 1
+    ? `Showing ${start + 1}–${end} of ${totalCount.toLocaleString()} Resolved Trades`
     : `${totalCount.toLocaleString()} Resolved Trades`;
   const DOW_NAMES = {0:'Sun',1:'Mon',2:'Tue',3:'Wed',4:'Thu',5:'Fri',6:'Sat'}; // DuckDB: 0=Sunday
   let html = `<div style="overflow-x:auto;">
@@ -1542,6 +1552,27 @@ function renderRecentTrades() {
   });
   html += '</tbody></table></div>';
   el.innerHTML = html;
+
+  // Pagination controls
+  if (!pgEl) return;
+  if (totalPages <= 1) { pgEl.style.display = 'none'; return; }
+  const btnStyle = (disabled) => `font-family:var(--font-data);font-size:11px;font-weight:600;padding:4px 12px;border-radius:5px;border:1px solid var(--border-mid);background:var(--bg-raised);color:${disabled?'var(--text-muted)':'var(--text-primary)'};cursor:${disabled?'default':'pointer'};opacity:${disabled?'0.4':'1'}`;
+  const pageNums = [];
+  const show = new Set([0, totalPages-1, _tradesPage-1, _tradesPage, _tradesPage+1].filter(p=>p>=0&&p<totalPages));
+  [...show].sort((a,b)=>a-b).forEach((p,i,arr)=>{
+    if(i>0 && arr[i]-arr[i-1]>1) pageNums.push('…');
+    pageNums.push(p);
+  });
+  const paginationHTML = [
+    `<button style="${btnStyle(_tradesPage===0)}" onclick="if(${_tradesPage}>0)renderRecentTrades(${_tradesPage-1})" ${_tradesPage===0?'disabled':''}>‹ Prev</button>`,
+    ...pageNums.map(p => p==='…'
+      ? `<span style="color:var(--text-muted);padding:0 2px">…</span>`
+      : `<button style="${btnStyle(false)};${p===_tradesPage?'background:var(--accent);color:#fff;border-color:var(--accent)':''}" onclick="renderRecentTrades(${p})">${p+1}</button>`),
+    `<button style="${btnStyle(_tradesPage===totalPages-1)}" onclick="if(${_tradesPage}<${totalPages-1})renderRecentTrades(${_tradesPage+1})" ${_tradesPage===totalPages-1?'disabled':''}>Next ›</button>`,
+    `<span style="color:var(--text-muted);margin-left:4px">Page ${_tradesPage+1} of ${totalPages}</span>`,
+  ].join('');
+  pgEl.style.display = 'flex';
+  pgEl.innerHTML = paginationHTML;
 }
 
 // ── SETUP VISUALIZER ───────────────────────────────────────────────────────
