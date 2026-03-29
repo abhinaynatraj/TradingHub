@@ -406,6 +406,22 @@ def resolve_fixed_profile(arrs: dict, fill_idx: int, fvg: dict, eod_idx: int,
 
 # ── Stats helpers ─────────────────────────────────────────────────────────────
 _VALID_EXITS = ('TP1+EOD', 'TP1+STOP', 'STOPPED')
+_DOW_ORDER   = [1, 2, 3, 4, 5]
+_DOW_LABELS  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+
+def _build_excursion_heatmap(trades: list[dict], col: str, n_bins: int = 20) -> dict:
+    """Bin mae_pct or mfe_pct by day-of-week into a pre-computed density grid."""
+    valid = [t for t in trades if t.get(col) is not None and t[col] >= 0 and t.get('dow') in _DOW_ORDER]
+    if len(valid) < 5:
+        return {'grid': [], 'val_max': 0.5, 'labels': _DOW_LABELS, 'n': 0}
+    vals = sorted(t[col] for t in valid)
+    val_max = vals[min(int(len(vals) * 0.95), len(vals) - 1)] or 0.5
+    grid = [[0] * n_bins for _ in range(5)]
+    for t in valid:
+        di = _DOW_ORDER.index(t['dow'])
+        xi = min(int(t[col] / val_max * n_bins), n_bins - 1)
+        grid[di][xi] += 1
+    return {'grid': grid, 'val_max': round(val_max, 4), 'labels': _DOW_LABELS, 'n': len(valid)}
 
 def _agg(trades: list[dict]) -> dict:
     wl = [t for t in trades if t.get('exit_type') in _VALID_EXITS]
@@ -853,6 +869,8 @@ def build_stats(trades: list, meta_extra: dict,
         'mae_bell':          mae_bell,
         'mae_dist':          mae_dist,
         'mfe_dist':          mfe_dist,
+        'mae_heatmap':       _build_excursion_heatmap(trades, 'mae_pct'),
+        'mfe_heatmap':       _build_excursion_heatmap(trades, 'mfe_pct'),
     }
 
     result = {

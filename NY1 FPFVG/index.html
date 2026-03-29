@@ -1061,21 +1061,20 @@ function renderMAEAnalysis(rs) {
   ctx.fillText(maxC, padL-4, padT+4);
   ctx.fillText('0', padL-4, padT+cH+4);
 
-  // ── Probability Curve + Heatmap ──────────────────────────────────────────
+  // ── Probability Curve + MAE Heatmap ──────────────────────────────────────
   el.insertAdjacentHTML('beforeend', `
     <div class="panel" style="margin-bottom:14px">
       <div class="panel-hd"><span class="panel-title">MAE Probability Curve</span><span class="panel-note">CDF · P(false stop | MAE≥X) · P(genuine loss | MAE≥X) vs SL level</span></div>
       <div class="panel-body" style="padding:12px 12px 6px"><canvas id="ny1-mae-prob-canvas" height="140" style="width:100%;display:block;border-radius:6px;background:var(--canvas-bg)"></canvas></div>
     </div>
     <div class="panel" style="margin-bottom:14px">
-      <div class="panel-hd"><span class="panel-title">MAE × MFE Joint Heatmap</span><span class="panel-note">trade density by excursion bucket · orange = MAE median · teal = MFE median</span></div>
-      <div class="panel-body" style="padding:12px 12px 6px"><canvas id="ny1-mae-heat" height="240" style="width:100%;display:block;border-radius:6px;background:var(--canvas-bg)"></canvas></div>
+      <div class="panel-hd"><span class="panel-title">MAE Heatmap by Day of Week</span><span class="panel-note">trade density by MAE bucket per weekday · median line shown</span></div>
+      <div class="panel-body" style="padding:12px 12px 6px"><canvas id="ny1-mae-heat" height="160" style="width:100%;display:block;border-radius:6px;background:var(--canvas-bg)"></canvas></div>
     </div>
   `);
   requestAnimationFrame(() => {
     _ny1DrawMAEProbCurve(document.getElementById('ny1-mae-prob-canvas'), dist.sl_sweep || [], dist);
-    const prof = _data?.[_activeTF]?.profiles?.[_activeProfile];
-    _ny1DrawHeatmap(document.getElementById('ny1-mae-heat'), prof?.trades || [], dist, rs.mfe_dist);
+    _ny1DrawExcursionHeatmap(document.getElementById('ny1-mae-heat'), rs.mae_heatmap, dist.median, 'MAE %');
   });
 }
 
@@ -2003,14 +2002,13 @@ function renderMFEDistribution(rs) {
       <div class="panel-body" style="padding:12px 12px 6px"><canvas id="ny1-mfe-prob-canvas" height="140" style="width:100%;display:block;border-radius:6px;background:var(--canvas-bg)"></canvas></div>
     </div>
     <div class="panel" style="margin-bottom:14px">
-      <div class="panel-hd"><span class="panel-title">MAE × MFE Joint Heatmap</span><span class="panel-note">trade density by excursion bucket · orange = MAE median · teal = MFE median</span></div>
-      <div class="panel-body" style="padding:12px 12px 6px"><canvas id="ny1-mfe-heat" height="240" style="width:100%;display:block;border-radius:6px;background:var(--canvas-bg)"></canvas></div>
+      <div class="panel-hd"><span class="panel-title">MFE Heatmap by Day of Week</span><span class="panel-note">trade density by MFE bucket per weekday · median line shown</span></div>
+      <div class="panel-body" style="padding:12px 12px 6px"><canvas id="ny1-mfe-heat" height="160" style="width:100%;display:block;border-radius:6px;background:var(--canvas-bg)"></canvas></div>
     </div>
   `);
   requestAnimationFrame(() => {
     _ny1DrawMFEProbCurve(document.getElementById('ny1-mfe-prob-canvas'), dist.be_triggers || [], dist);
-    const prof = _data?.[_activeTF]?.profiles?.[_activeProfile];
-    _ny1DrawHeatmap(document.getElementById('ny1-mfe-heat'), prof?.trades || [], rs.mae_dist, dist);
+    _ny1DrawExcursionHeatmap(document.getElementById('ny1-mfe-heat'), rs.mfe_heatmap, dist.median, 'MFE %');
   });
 }
 
@@ -2113,65 +2111,44 @@ function _ny1DrawMFEProbCurve(canvas, triggers, dist) {
   });
 }
 
-function _ny1DrawHeatmap(canvas, trades, maeDist, mfeDist) {
+function _ny1DrawExcursionHeatmap(canvas, hm, median, axisLabel) {
+  // hm = rs.mae_heatmap or rs.mfe_heatmap — {grid (5×n_bins), val_max, labels, n}
   if(!canvas)return;
-  const W=canvas.offsetWidth||700, H=240;
+  const W=canvas.offsetWidth||700, H=canvas.height||160;
   canvas.width=W*devicePixelRatio; canvas.height=H*devicePixelRatio;
   const ctx=canvas.getContext('2d'); ctx.scale(devicePixelRatio,devicePixelRatio);
   const cc=_ny1CC();
-  const padL=48,padR=24,padT=14,padB=34,cW=W-padL-padR,cH=H-padT-padB;
-  const filtered=(trades||[]).filter(t=>t.mae_pct!=null&&t.mfe_pct!=null&&t.mae_pct>=0&&t.mfe_pct>=0);
+  const padL=36,padR=24,padT=10,padB=30,cW=W-padL-padR,cH=H-padT-padB;
   ctx.fillStyle=cc.bg; ctx.fillRect(0,0,W,H);
-  if(filtered.length<5){
+  if(!hm||!hm.grid||hm.grid.length===0||hm.n<5){
     ctx.fillStyle=cc.text;ctx.font='11px IBM Plex Mono,monospace';ctx.textAlign='center';
-    ctx.fillText('No trade data available',W/2,H/2);return;
+    ctx.fillText('No data — run python3 ny1_backtest.py first',W/2,H/2);return;
   }
-  const BINS=20;
-  const maeP95=maeDist?.percentiles?.p95||null;
-  const mfeP95=mfeDist?.percentiles?.p95||null;
-  const maeSorted=[...filtered.map(t=>t.mae_pct)].sort((a,b)=>a-b);
-  const mfeSorted=[...filtered.map(t=>t.mfe_pct)].sort((a,b)=>a-b);
-  const maeMax=maeP95||maeSorted[Math.floor(maeSorted.length*0.95)]||0.5;
-  const mfeMax=mfeP95||mfeSorted[Math.floor(mfeSorted.length*0.95)]||0.5;
-  const grid=Array.from({length:BINS},()=>Array(BINS).fill(0));
-  filtered.forEach(t=>{
-    const xi=Math.min(Math.floor(t.mae_pct/maeMax*BINS),BINS-1);
-    const yi=Math.min(Math.floor(t.mfe_pct/mfeMax*BINS),BINS-1);
-    if(xi>=0&&yi>=0)grid[yi][xi]++;
-  });
+  const grid=hm.grid, valMax=hm.val_max, labels=hm.labels||['Mon','Tue','Wed','Thu','Fri'];
+  const nRows=grid.length, nCols=grid[0].length;
   const maxCount=Math.max(...grid.flat(),1);
-  const cellW=cW/BINS, cellH=cH/BINS;
-  for(let yi=0;yi<BINS;yi++){
-    for(let xi=0;xi<BINS;xi++){
+  const cellW=cW/nCols, cellH=cH/nRows;
+  for(let yi=0;yi<nRows;yi++){
+    for(let xi=0;xi<nCols;xi++){
       const c=grid[yi][xi];
-      if(c===0){ctx.fillStyle=_ny1Dark()?'rgba(17,24,39,0.5)':'rgba(241,245,249,0.5)';ctx.fillRect(padL+xi*cellW,padT+(BINS-1-yi)*cellH,cellW,cellH);continue;}
+      if(c===0){ctx.fillStyle=_ny1Dark()?'rgba(17,24,39,0.5)':'rgba(241,245,249,0.5)';ctx.fillRect(padL+xi*cellW,padT+yi*cellH,cellW,cellH);continue;}
       const col=_ny1HeatColor(c/maxCount);
-      if(col){ctx.fillStyle=col;ctx.fillRect(padL+xi*cellW,padT+(BINS-1-yi)*cellH,cellW,cellH);}
+      if(col){ctx.fillStyle=col;ctx.fillRect(padL+xi*cellW,padT+yi*cellH,cellW,cellH);}
     }
   }
   ctx.strokeStyle=cc.grid;ctx.lineWidth=0.5;ctx.strokeRect(padL,padT,cW,cH);
-  const maeMed=maeDist?.median, mfeMed=mfeDist?.median;
-  if(maeMed!=null&&maeMed<=maeMax){
-    const mx=padL+(maeMed/maeMax)*cW;
-    ctx.strokeStyle='rgba(251,146,60,.7)';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
+  if(median!=null&&median<=valMax){
+    const mx=padL+(median/valMax)*cW;
+    ctx.strokeStyle='rgba(251,146,60,.8)';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
     ctx.beginPath();ctx.moveTo(mx,padT);ctx.lineTo(mx,padT+cH);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle='#fb923c';ctx.font='9px IBM Plex Mono,monospace';ctx.textAlign='left';ctx.fillText('MAE med',mx+3,padT+cH-4);
+    ctx.fillStyle='#fb923c';ctx.font='9px IBM Plex Mono,monospace';ctx.textAlign='left';ctx.fillText('Med',mx+3,padT+10);
   }
-  if(mfeMed!=null&&mfeMed<=mfeMax){
-    const my=padT+cH-(mfeMed/mfeMax)*cH;
-    ctx.strokeStyle='rgba(16,185,129,.7)';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
-    ctx.beginPath();ctx.moveTo(padL,my);ctx.lineTo(padL+cW,my);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle='#10b981';ctx.font='9px IBM Plex Mono,monospace';ctx.textAlign='left';ctx.fillText('MFE med',padL+3,my-3);
-  }
-  ctx.fillStyle=cc.text;ctx.font='9px IBM Plex Mono,monospace';
+  ctx.fillStyle=cc.text;ctx.font='9px IBM Plex Mono,monospace';ctx.textAlign='right';
+  labels.forEach((lbl,i)=>ctx.fillText(lbl,padL-4,padT+i*cellH+cellH/2+4));
   ctx.textAlign='center';
-  [0,.25,.5,.75,1].forEach(f=>ctx.fillText((maeMax*f).toFixed(3)+'%',padL+f*cW,padT+cH+14));
-  ctx.fillText('MAE %',padL+cW/2,padT+cH+26);
-  ctx.textAlign='right';
-  [0,.5,1].forEach(f=>ctx.fillText((mfeMax*f).toFixed(3)+'%',padL-4,padT+cH*(1-f)+4));
-  ctx.save();ctx.translate(14,padT+cH/2);ctx.rotate(-Math.PI/2);
-  ctx.textAlign='center';ctx.fillText('MFE %',0,0);ctx.restore();
-  const bx=padL+cW+4,bw=10;
+  [0,.25,.5,.75,1].forEach(f=>ctx.fillText((valMax*f).toFixed(3)+'%',padL+f*cW,padT+cH+14));
+  ctx.fillText(`${axisLabel}  (${hm.n.toLocaleString()} trades)`,padL+cW/2,padT+cH+26);
+  const bx=padL+cW+4,bw=8;
   for(let i=0;i<100;i++){const c=_ny1HeatColor((i+1)/100);if(c){ctx.fillStyle=c;ctx.fillRect(bx,padT+(99-i)/100*cH,bw,cH/100+1);}}
   ctx.fillStyle=cc.text;ctx.font='8px IBM Plex Mono,monospace';ctx.textAlign='left';
   ctx.fillText('Hi',bx,padT+8);ctx.fillText('Lo',bx,padT+cH+3);

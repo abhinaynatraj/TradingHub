@@ -2302,20 +2302,20 @@ function renderMAEStudy(D) {
   [0,.25,.5,.75,1].forEach(f=>{const xVal=edges[0]+f*(xMax-edges[0]);ctx.fillText(xVal.toFixed(2)+'%',padL+f*cW,padT+cH+16);});
   ctx.textAlign='right';ctx.fillText(maxC,padL-4,padT+4);ctx.fillText('0',padL-4,padT+cH+4);
 
-  // ── Probability Curve + Heatmap ──────────────────────────────────────────
+  // ── Probability Curve + MAE Heatmap ──────────────────────────────────────
   el.insertAdjacentHTML('beforeend',`
     <div class="panel" style="margin-bottom:14px">
       <div class="panel-hd"><span class="panel-title">MAE Probability Curve</span><span class="panel-note">CDF · P(false stop | MAE≥X) · P(genuine loss | MAE≥X) vs SL level</span></div>
       <div class="panel-body" style="padding:12px 12px 6px"><canvas id="mae-prob-canvas" height="140" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas></div>
     </div>
     <div class="panel" style="margin-bottom:14px">
-      <div class="panel-hd"><span class="panel-title">MAE × MFE Joint Heatmap</span><span class="panel-note">trade density by excursion bucket · orange = MAE median · teal = MFE median</span></div>
-      <div class="panel-body" style="padding:12px 12px 6px"><canvas id="mae-mfe-heatmap" height="240" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas></div>
+      <div class="panel-hd"><span class="panel-title">MAE Heatmap by Day of Week</span><span class="panel-note">trade density by MAE bucket per weekday · median line shown</span></div>
+      <div class="panel-body" style="padding:12px 12px 6px"><canvas id="mae-dow-heatmap" height="160" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas></div>
     </div>
   `);
   requestAnimationFrame(()=>{
     _drawMAEProbCurve(document.getElementById('mae-prob-canvas'), dist.sl_sweep||[], dist);
-    _drawMAEMFEHeatmap(document.getElementById('mae-mfe-heatmap'), D.mae_mfe_heatmap, dist, D.rich_mfe);
+    _drawExcursionHeatmap(document.getElementById('mae-dow-heatmap'), D.mae_heatmap, dist.median, 'MAE %');
   });
 }
 
@@ -2549,20 +2549,20 @@ function renderMFEStudy(D) {
   [0,.25,.5,.75,1].forEach(f=>{const xVal=edges[0]+f*(xMax-edges[0]);ctx.fillText(xVal.toFixed(2)+'%',padL+f*cW,padT+cH+16);});
   ctx.textAlign='right';ctx.fillText(maxC,padL-4,padT+4);ctx.fillText('0',padL-4,padT+cH+4);
 
-  // ── Probability Curve + Heatmap ──────────────────────────────────────────
+  // ── Probability Curve + MFE Heatmap ──────────────────────────────────────
   el.insertAdjacentHTML('beforeend',`
     <div class="panel" style="margin-bottom:14px">
       <div class="panel-hd"><span class="panel-title">MFE Probability Curve</span><span class="panel-note">P(MFE≥X) reach rate · P(+exit | MFE≥X) · PTQ recommendation</span></div>
       <div class="panel-body" style="padding:12px 12px 6px"><canvas id="mfe-prob-canvas" height="140" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas></div>
     </div>
     <div class="panel" style="margin-bottom:14px">
-      <div class="panel-hd"><span class="panel-title">MAE × MFE Joint Heatmap</span><span class="panel-note">trade density by excursion bucket · orange = MAE median · teal = MFE median</span></div>
-      <div class="panel-body" style="padding:12px 12px 6px"><canvas id="mfe-mfe-heatmap" height="240" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas></div>
+      <div class="panel-hd"><span class="panel-title">MFE Heatmap by Day of Week</span><span class="panel-note">trade density by MFE bucket per weekday · median line shown</span></div>
+      <div class="panel-body" style="padding:12px 12px 6px"><canvas id="mfe-dow-heatmap" height="160" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas></div>
     </div>
   `);
   requestAnimationFrame(()=>{
     _drawMFEProbCurve(document.getElementById('mfe-prob-canvas'), dist.be_triggers||[], dist);
-    _drawMAEMFEHeatmap(document.getElementById('mfe-mfe-heatmap'), D.mae_mfe_heatmap, D.rich_mae, dist);
+    _drawExcursionHeatmap(document.getElementById('mfe-dow-heatmap'), D.mfe_heatmap, dist.median, 'MFE %');
   });
 }
 
@@ -2658,55 +2658,49 @@ function _drawMFEProbCurve(canvas, triggers, dist) {
   });
 }
 
-function _drawMAEMFEHeatmap(canvas, hm, maeDist, mfeDist) {
-  // hm = D.mae_mfe_heatmap — pre-binned {grid, mae_max, mfe_max, n} from model_stats.py
+function _drawExcursionHeatmap(canvas, hm, median, axisLabel) {
+  // hm = D.mae_heatmap or D.mfe_heatmap — {grid (5×n_bins), val_max, labels, n}
   if (!canvas) return;
-  const W=canvas.offsetWidth||600, H=240;
+  const W=canvas.offsetWidth||600, H=canvas.height||160;
   canvas.width=W*devicePixelRatio; canvas.height=H*devicePixelRatio;
   const ctx=canvas.getContext('2d'); ctx.scale(devicePixelRatio,devicePixelRatio);
   const cc=C();
-  const padL=48,padR=24,padT=14,padB=34,cW=W-padL-padR,cH=H-padT-padB;
+  const padL=36,padR=24,padT=10,padB=30,cW=W-padL-padR,cH=H-padT-padB;
   ctx.fillStyle=cc.bgCard; ctx.fillRect(0,0,W,H);
   if(!hm||!hm.grid||hm.grid.length===0||hm.n<5){
     ctx.fillStyle=cc.axisText;ctx.font='11px JetBrains Mono,monospace';ctx.textAlign='center';
-    ctx.fillText('No MAE/MFE data — regenerate model_stats.json',W/2,H/2);
+    ctx.fillText('No data — regenerate model_stats.json',W/2,H/2);
     return;
   }
-  const grid=hm.grid, maeMax=hm.mae_max, mfeMax=hm.mfe_max;
-  const BINS=grid.length;
+  const grid=hm.grid, valMax=hm.val_max, labels=hm.labels||['Mon','Tue','Wed','Thu','Fri'];
+  const nRows=grid.length, nCols=grid[0].length;
   const maxCount=Math.max(...grid.flat(),1);
-  const cellW=cW/BINS, cellH=cH/BINS;
-  for(let yi=0;yi<BINS;yi++){
-    for(let xi=0;xi<BINS;xi++){
+  const cellW=cW/nCols, cellH=cH/nRows;
+  for(let yi=0;yi<nRows;yi++){
+    for(let xi=0;xi<nCols;xi++){
       const c=grid[yi][xi];
-      if(c===0){ctx.fillStyle=isDark?'rgba(17,24,39,0.5)':'rgba(241,245,249,0.5)';ctx.fillRect(padL+xi*cellW,padT+(BINS-1-yi)*cellH,cellW,cellH);continue;}
+      if(c===0){ctx.fillStyle=isDark?'rgba(17,24,39,0.5)':'rgba(241,245,249,0.5)';ctx.fillRect(padL+xi*cellW,padT+yi*cellH,cellW,cellH);continue;}
       const col=_heatColor(c/maxCount);
-      if(col){ctx.fillStyle=col;ctx.fillRect(padL+xi*cellW,padT+(BINS-1-yi)*cellH,cellW,cellH);}
+      if(col){ctx.fillStyle=col;ctx.fillRect(padL+xi*cellW,padT+yi*cellH,cellW,cellH);}
     }
   }
   ctx.strokeStyle=cc.gridLine;ctx.lineWidth=0.5;ctx.strokeRect(padL,padT,cW,cH);
-  const maeMed=maeDist?.median, mfeMed=mfeDist?.median;
-  if(maeMed!=null&&maeMed<=maeMax){
-    const mx=padL+(maeMed/maeMax)*cW;
-    ctx.strokeStyle='rgba(251,146,60,.7)';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
+  // Median line
+  if(median!=null&&median<=valMax){
+    const mx=padL+(median/valMax)*cW;
+    ctx.strokeStyle='rgba(251,146,60,.8)';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
     ctx.beginPath();ctx.moveTo(mx,padT);ctx.lineTo(mx,padT+cH);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle='#fb923c';ctx.font='9px JetBrains Mono,monospace';ctx.textAlign='left';ctx.fillText('MAE med',mx+3,padT+cH-4);
+    ctx.fillStyle='#fb923c';ctx.font='9px JetBrains Mono,monospace';ctx.textAlign='left';ctx.fillText('Med',mx+3,padT+10);
   }
-  if(mfeMed!=null&&mfeMed<=mfeMax){
-    const my=padT+cH-(mfeMed/mfeMax)*cH;
-    ctx.strokeStyle='rgba(16,185,129,.7)';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
-    ctx.beginPath();ctx.moveTo(padL,my);ctx.lineTo(padL+cW,my);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle='#10b981';ctx.font='9px JetBrains Mono,monospace';ctx.textAlign='left';ctx.fillText('MFE med',padL+3,my-3);
-  }
-  ctx.fillStyle=cc.axisText;ctx.font='9px JetBrains Mono,monospace';
+  // Row labels (DOW)
+  ctx.fillStyle=cc.axisText;ctx.font='9px JetBrains Mono,monospace';ctx.textAlign='right';
+  labels.forEach((lbl,i)=>ctx.fillText(lbl,padL-4,padT+i*cellH+cellH/2+4));
+  // X-axis labels
   ctx.textAlign='center';
-  [0,.25,.5,.75,1].forEach(f=>ctx.fillText((maeMax*f).toFixed(3)+'%',padL+f*cW,padT+cH+14));
-  ctx.fillText(`MAE %  (${hm.n.toLocaleString()} trades)`,padL+cW/2,padT+cH+26);
-  ctx.textAlign='right';
-  [0,.5,1].forEach(f=>ctx.fillText((mfeMax*f).toFixed(3)+'%',padL-4,padT+cH*(1-f)+4));
-  ctx.save();ctx.translate(14,padT+cH/2);ctx.rotate(-Math.PI/2);
-  ctx.textAlign='center';ctx.fillText('MFE %',0,0);ctx.restore();
-  const bx=padL+cW+4,bw=10;
+  [0,.25,.5,.75,1].forEach(f=>ctx.fillText((valMax*f).toFixed(3)+'%',padL+f*cW,padT+cH+14));
+  ctx.fillText(`${axisLabel}  (${hm.n.toLocaleString()} trades)`,padL+cW/2,padT+cH+26);
+  // Color scale
+  const bx=padL+cW+4,bw=8;
   for(let i=0;i<100;i++){const c=_heatColor((i+1)/100);if(c){ctx.fillStyle=c;ctx.fillRect(bx,padT+(99-i)/100*cH,bw,cH/100+1);}}
   ctx.fillStyle=cc.axisText;ctx.font='8px JetBrains Mono,monospace';ctx.textAlign='left';
   ctx.fillText('Hi',bx,padT+8);ctx.fillText('Lo',bx,padT+cH+3);

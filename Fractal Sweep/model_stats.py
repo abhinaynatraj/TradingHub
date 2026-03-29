@@ -618,24 +618,25 @@ def _clusters(vals, n):
     return out
 
 
-def _build_heatmap(wl, n_bins=20):
-    """Pre-bin all trades into a MAE×MFE density grid for the dashboard heatmap.
-    Returns a compact dict: {grid, mae_max, mfe_max, n} — only ~400 integers."""
-    mae = wl['mae_pct'].dropna()
-    mfe = wl['mfe_pct'].dropna()
-    valid = wl[['mae_pct','mfe_pct']].dropna()
-    valid = valid[(valid['mae_pct'] >= 0) & (valid['mfe_pct'] >= 0)]
-    if len(valid) < 5:
-        return {'grid': [], 'mae_max': 0.5, 'mfe_max': 0.5, 'n': 0}
-    mae_max = float(valid['mae_pct'].quantile(0.95)) or 0.5
-    mfe_max = float(valid['mfe_pct'].quantile(0.95)) or 0.5
-    grid = [[0] * n_bins for _ in range(n_bins)]
-    for row in valid.itertuples():
-        xi = min(int(row.mae_pct / mae_max * n_bins), n_bins - 1)
-        yi = min(int(row.mfe_pct / mfe_max * n_bins), n_bins - 1)
-        if xi >= 0 and yi >= 0:
-            grid[yi][xi] += 1
-    return {'grid': grid, 'mae_max': round(mae_max, 4), 'mfe_max': round(mfe_max, 4), 'n': len(valid)}
+_DOW_ORDER  = [1, 2, 3, 4, 5]          # DuckDB dow: 1=Mon … 5=Fri
+_DOW_LABELS = ['Mon','Tue','Wed','Thu','Fri']
+
+def _build_excursion_heatmap(wl, col, n_bins=20):
+    """Pre-bin MAE or MFE by day-of-week.
+    Returns {grid (5×n_bins), val_max, labels, n} — compact for JSON."""
+    vals = wl[[col, 'dow']].dropna()
+    vals = vals[vals[col] >= 0]
+    if len(vals) < 5:
+        return {'grid': [], 'val_max': 0.5, 'labels': _DOW_LABELS, 'n': 0}
+    val_max = float(vals[col].quantile(0.95)) or 0.5
+    grid = [[0] * n_bins for _ in range(5)]
+    for row in vals.itertuples():
+        dow_idx = _DOW_ORDER.index(int(row.dow)) if int(row.dow) in _DOW_ORDER else None
+        if dow_idx is None:
+            continue
+        xi = min(int(getattr(row, col) / val_max * n_bins), n_bins - 1)
+        grid[dow_idx][xi] += 1
+    return {'grid': grid, 'val_max': round(val_max, 4), 'labels': _DOW_LABELS, 'n': len(vals)}
 
 
 def _full_mae_stats(wl, ce=None, n_bins=50):
@@ -1548,7 +1549,8 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         'mae_loss_dist':    mae_loss_dist,
         'mfe_loss_dist':    mfe_loss_dist,
         'tspot_breakdown':  tspot_breakdown,
-        'mae_mfe_heatmap':  _build_heatmap(wl),
+        'mae_heatmap':      _build_excursion_heatmap(wl, 'mae_pct'),
+        'mfe_heatmap':      _build_excursion_heatmap(wl, 'mfe_pct'),
         'recent_trades':    recent_trades,
         'risk_stats':       risk_stats,
         'structural_stats': structural_stats,
@@ -1781,7 +1783,8 @@ def _compute_by_tf(wl_full, wl_sorted_full, stop_mult, target_mult,
             'by_year':         by_yr,
             'r_hist':          r_hist,
             'by_classification': _compute_by_classification(ws_sorted),
-            'mae_mfe_heatmap':   _build_heatmap(wl_sub),
+            'mae_heatmap':       _build_excursion_heatmap(wl_sub, 'mae_pct'),
+            'mfe_heatmap':       _build_excursion_heatmap(wl_sub, 'mfe_pct'),
             'recent_trades':   recent_trades,
         }
 
