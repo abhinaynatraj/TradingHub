@@ -834,6 +834,60 @@ html {
 }
 
 /* ===========================================
+   LIGHT MODE
+   =========================================== */
+[data-theme="light"] {
+  --bg:           #f5f5ef;
+  --bg-raised:    #ebebe3;
+  --accent:       #111111;
+  --accent-dim:   rgba(17,17,17,0.14);
+  --accent-faint: rgba(17,17,17,0.04);
+  --white:        #111111;
+  --muted:        rgba(0,0,0,0.38);
+  --border:       rgba(0,0,0,0.12);
+}
+[data-theme="light"] body { background: var(--bg); color: var(--white); }
+[data-theme="light"] .slide { background: var(--bg); }
+[data-theme="light"] .brk-tl,
+[data-theme="light"] .brk-tr,
+[data-theme="light"] .brk-bl,
+[data-theme="light"] .brk-br { border-color: rgba(0,0,0,0.25); }
+[data-theme="light"] .scan-line { background: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.08) 20%, rgba(0,0,0,0.25) 50%, rgba(0,0,0,0.08) 80%, transparent 100%); }
+[data-theme="light"] .sb-item   { color: rgba(0,0,0,0.28); }
+[data-theme="light"] .sb-item.hi { color: rgba(0,0,0,0.65); }
+[data-theme="light"] .progress-bar { background: var(--accent); }
+[data-theme="light"] .dot { background: rgba(0,0,0,0.2); }
+[data-theme="light"] .dot.active { background: var(--accent); box-shadow: none; }
+[data-theme="light"] .edit-toggle { background: rgba(245,245,239,0.92); border-color: rgba(0,0,0,0.2); color: var(--accent); }
+[data-theme="light"] .edit-toggle.active { background: rgba(0,0,0,0.08); border-color: var(--accent); }
+[data-theme="light"] .edit-banner { background: var(--accent); box-shadow: 0 0 12px rgba(0,0,0,0.3); }
+[data-theme="light"] [contenteditable="true"] { border-bottom-color: rgba(0,0,0,0.3); }
+[data-theme="light"] [contenteditable="true"]:focus { border-bottom-color: var(--accent); background: rgba(0,0,0,0.03); }
+[data-theme="light"] .keyboard-hint { color: rgba(0,0,0,0.2); }
+[data-theme="light"] .theme-toggle { border-color: rgba(0,0,0,0.2); background: rgba(245,245,239,0.92); color: var(--accent); }
+
+/* ===========================================
+   THEME TOGGLE BUTTON
+   =========================================== */
+.theme-toggle {
+  position: fixed; top: 14px; left: 58px;
+  z-index: 10001;
+  width: 36px; height: 36px;
+  border-radius: 4px;
+  border: 1px solid rgba(224,255,0,0.3);
+  background: rgba(6,6,6,0.9);
+  color: var(--accent);
+  font-size: 15px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, border-color 0.2s;
+  backdrop-filter: blur(4px);
+}
+.theme-toggle.show { opacity: 1; pointer-events: auto; }
+
+/* ===========================================
    KEYBOARD HINT
    =========================================== */
 .keyboard-hint {
@@ -858,10 +912,11 @@ html {
 <!-- Inline edit controls -->
 <div class="edit-hotzone" id="editHotzone"></div>
 <button class="edit-toggle" id="editToggle" title="Edit mode (E)" aria-label="Toggle edit mode">✏</button>
+<button class="theme-toggle" id="themeToggle" title="Toggle theme (T)" aria-label="Toggle light/dark mode">☀</button>
 <div class="edit-banner" id="editBanner"></div>
 
 <!-- Keyboard hint -->
-<p class="keyboard-hint">← → NAVIGATE &nbsp;·&nbsp; E EDIT</p>
+<p class="keyboard-hint">← → NAVIGATE &nbsp;·&nbsp; E EDIT &nbsp;·&nbsp; T THEME</p>
 
 
 <!-- ══════════════════════════════════════════
@@ -1448,13 +1503,16 @@ class InlineEditor {
   /* Hotzone hover — show button with 400ms grace period */
   bindHotzone() {
     let hideTimer = null;
-    const show = () => { clearTimeout(hideTimer); this.toggle.classList.add('show'); };
-    const hide = () => { hideTimer = setTimeout(() => { if (!this.isActive) this.toggle.classList.remove('show'); }, 400); };
+    const themeBtn = document.getElementById('themeToggle');
+    const show = () => { clearTimeout(hideTimer); this.toggle.classList.add('show'); themeBtn.classList.add('show'); };
+    const hide = () => { hideTimer = setTimeout(() => { if (!this.isActive) { this.toggle.classList.remove('show'); themeBtn.classList.remove('show'); } }, 400); };
     this.hotzone.addEventListener('mouseenter', show);
     this.hotzone.addEventListener('mouseleave', hide);
     this.hotzone.addEventListener('click', () => this.toggleEditMode());
     this.toggle.addEventListener('mouseenter', show);
     this.toggle.addEventListener('mouseleave', hide);
+    themeBtn.addEventListener('mouseenter', show);
+    themeBtn.addEventListener('mouseleave', hide);
   }
 
   /* E key shortcut */
@@ -1541,9 +1599,35 @@ class InlineEditor {
   }
 }
 
+/* Theme toggle */
+class ThemeManager {
+  constructor() {
+    this.STORAGE = 'hub-theme';
+    this.btn = document.getElementById('themeToggle');
+    const saved = localStorage.getItem(this.STORAGE) || 'dark';
+    this.apply(saved);
+    this.btn.addEventListener('click', () => this.toggle());
+    document.addEventListener('keydown', e => {
+      if ((e.key === 't' || e.key === 'T') && !e.target.getAttribute('contenteditable')) {
+        this.toggle();
+      }
+    });
+  }
+  apply(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    this.btn.textContent = theme === 'dark' ? '☀' : '🌙';
+    try { localStorage.setItem(this.STORAGE, theme); } catch(e) {}
+  }
+  toggle() {
+    const current = document.documentElement.getAttribute('data-theme') || 'dark';
+    this.apply(current === 'dark' ? 'light' : 'dark');
+  }
+}
+
 /* Boot */
 const pres = new SlidePresentation();
 const editor = new InlineEditor();
+const theme = new ThemeManager();
 </script>
 </body>
 </html>
