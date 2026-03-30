@@ -162,53 +162,23 @@ if long_valid
     r_end  = bar_index + rr_extend
 
     // R:R boxes: red = risk zone (SL→entry), green = reward zone (entry→TP1)
+    tp2_l = entry + 2 * risk
     if show_rr
-        box.new(bar_index, entry, r_end, sl,
-                border_color=color.new(color.red, 60),
-                bgcolor=color.new(color.red, 85))
-        box.new(bar_index, tp1, r_end, entry,
-                border_color=color.new(color.teal, 60),
-                bgcolor=color.new(color.teal, 85))
-        // Entry line
-        line.new(bar_index, entry, r_end, entry,
-                 color=color.white, width=1, style=line.style_solid)
-        // TP1 label (right edge)
-        label.new(r_end, tp1,
-                  "TP1  +" + str.tostring(risk, "#.#") + " pts\n1:1 R",
-                  color=color.new(color.teal, 20), textcolor=color.white,
-                  style=label.style_label_left, size=size.tiny)
-        // SL label (right edge)
-        label.new(r_end, sl,
-                  "SL  −" + str.tostring(risk, "#.#") + " pts",
-                  color=color.new(color.red, 20), textcolor=color.white,
-                  style=label.style_label_left, size=size.tiny)
-        // Runner target (2R) — dashed line above TP1
-        tp2 = entry + 2 * risk
-        line.new(bar_index, tp2, r_end, tp2,
-                 color=color.new(color.teal, 40), width=1, style=line.style_dashed)
-        label.new(r_end, tp2,
-                  "Runner  +" + str.tostring(2 * risk, "#.#") + " pts\n2:1 R",
-                  color=color.new(color.teal, 50), textcolor=color.new(color.teal, 0),
-                  style=label.style_label_left, size=size.tiny)
+        box.new(bar_index, entry, r_end, sl, border_color=color.new(color.red, 60), bgcolor=color.new(color.red, 85))
+        box.new(bar_index, tp1, r_end, entry, border_color=color.new(color.teal, 60), bgcolor=color.new(color.teal, 85))
+        line.new(bar_index, entry, r_end, entry, color=color.white, width=1, style=line.style_solid)
+        line.new(bar_index, tp2_l, r_end, tp2_l, color=color.new(color.teal, 40), width=1, style=line.style_dashed)
+        label.new(r_end, tp1, "TP1  +" + str.tostring(risk, "#.#") + " pts  1:1R", color=color.new(color.teal, 20), textcolor=color.white, style=label.style_label_left, size=size.tiny)
+        label.new(r_end, sl, "SL  -" + str.tostring(risk, "#.#") + " pts", color=color.new(color.red, 20), textcolor=color.white, style=label.style_label_left, size=size.tiny)
+        label.new(r_end, tp2_l, "Runner  +" + str.tostring(2 * risk, "#.#") + " pts  2:1R", color=color.new(color.teal, 50), textcolor=color.new(color.teal, 0), style=label.style_label_left, size=size.tiny)
 
     if show_entry
-        label.new(bar_index, low - ta.atr(14),
-             "▲ LONG\nEntry " + str.tostring(entry, "#.##") +
-             "\nSL " + str.tostring(sl, "#.##") +
-             "\nTP1 " + str.tostring(tp1, "#.##"),
-             color=color.new(color.teal, 10), textcolor=color.white,
-             style=label.style_label_up, size=size.small)
+        label.new(bar_index, low - ta.atr(14), "LONG\nEntry " + str.tostring(entry, "#.##") + "\nSL " + str.tostring(sl, "#.##") + "\nTP1 " + str.tostring(tp1, "#.##"), color=color.new(color.teal, 10), textcolor=color.white, style=label.style_label_up, size=size.small)
 
     if show_sweep and not na(sweep_ext_long)
-        label.new(bar_index, sweep_ext_long, "sweep", color=color.new(color.orange, 60),
-                  textcolor=color.orange, style=label.style_cross, size=size.tiny)
+        label.new(bar_index, sweep_ext_long, "sweep", color=color.new(color.orange, 60), textcolor=color.orange, style=label.style_cross, size=size.tiny)
 
-    alert("LONG " + syminfo.ticker + " | Entry " + str.tostring(entry, "#.##") +
-          " | SL " + str.tostring(sl, "#.##") +
-          " | TP1 " + str.tostring(tp1, "#.##") +
-          " | Risk " + str.tostring(long_risk, "#.#") + " pts" +
-          " | Sweep TF " + sweep_tf + "M · CISD chart TF",
-          alert.freq_once_per_bar_close)
+    alert("LONG " + syminfo.ticker + " | Entry " + str.tostring(entry, "#.##") + " | SL " + str.tostring(sl, "#.##") + " | TP1 " + str.tostring(tp1, "#.##") + " | Risk " + str.tostring(long_risk, "#.#") + " pts | Sweep " + sweep_tf + "M", alert.freq_once_per_bar_close)
 
 if short_valid
     alerted_short := true
@@ -219,53 +189,23 @@ if short_valid
     r_end  = bar_index + rr_extend
 
     // R:R boxes: red = risk zone (entry→SL), green = reward zone (TP1→entry)
+    tp2_s = entry - 2 * risk
     if show_rr
-        box.new(bar_index, sl, r_end, entry,
-                border_color=color.new(color.red, 60),
-                bgcolor=color.new(color.red, 85))
-        box.new(bar_index, entry, r_end, tp1,
-                border_color=color.new(color.red, 60),
-                bgcolor=color.new(color.green, 85))
-        // Entry line
-        line.new(bar_index, entry, r_end, entry,
-                 color=color.white, width=1, style=line.style_solid)
-        // TP1 label
-        label.new(r_end, tp1,
-                  "TP1  +" + str.tostring(risk, "#.#") + " pts\n1:1 R",
-                  color=color.new(color.green, 20), textcolor=color.white,
-                  style=label.style_label_left, size=size.tiny)
-        // SL label
-        label.new(r_end, sl,
-                  "SL  −" + str.tostring(risk, "#.#") + " pts",
-                  color=color.new(color.red, 20), textcolor=color.white,
-                  style=label.style_label_left, size=size.tiny)
-        // Runner target (2R)
-        tp2 = entry - 2 * risk
-        line.new(bar_index, tp2, r_end, tp2,
-                 color=color.new(color.green, 40), width=1, style=line.style_dashed)
-        label.new(r_end, tp2,
-                  "Runner  +" + str.tostring(2 * risk, "#.#") + " pts\n2:1 R",
-                  color=color.new(color.green, 50), textcolor=color.new(color.green, 0),
-                  style=label.style_label_left, size=size.tiny)
+        box.new(bar_index, sl, r_end, entry, border_color=color.new(color.red, 60), bgcolor=color.new(color.red, 85))
+        box.new(bar_index, entry, r_end, tp1, border_color=color.new(color.green, 60), bgcolor=color.new(color.green, 85))
+        line.new(bar_index, entry, r_end, entry, color=color.white, width=1, style=line.style_solid)
+        line.new(bar_index, tp2_s, r_end, tp2_s, color=color.new(color.green, 40), width=1, style=line.style_dashed)
+        label.new(r_end, tp1, "TP1  +" + str.tostring(risk, "#.#") + " pts  1:1R", color=color.new(color.green, 20), textcolor=color.white, style=label.style_label_left, size=size.tiny)
+        label.new(r_end, sl, "SL  -" + str.tostring(risk, "#.#") + " pts", color=color.new(color.red, 20), textcolor=color.white, style=label.style_label_left, size=size.tiny)
+        label.new(r_end, tp2_s, "Runner  +" + str.tostring(2 * risk, "#.#") + " pts  2:1R", color=color.new(color.green, 50), textcolor=color.new(color.green, 0), style=label.style_label_left, size=size.tiny)
 
     if show_entry
-        label.new(bar_index, high + ta.atr(14),
-             "▼ SHORT\nEntry " + str.tostring(entry, "#.##") +
-             "\nSL " + str.tostring(sl, "#.##") +
-             "\nTP1 " + str.tostring(tp1, "#.##"),
-             color=color.new(color.red, 10), textcolor=color.white,
-             style=label.style_label_down, size=size.small)
+        label.new(bar_index, high + ta.atr(14), "SHORT\nEntry " + str.tostring(entry, "#.##") + "\nSL " + str.tostring(sl, "#.##") + "\nTP1 " + str.tostring(tp1, "#.##"), color=color.new(color.red, 10), textcolor=color.white, style=label.style_label_down, size=size.small)
 
     if show_sweep and not na(sweep_ext_short)
-        label.new(bar_index, sweep_ext_short, "sweep", color=color.new(color.orange, 60),
-                  textcolor=color.orange, style=label.style_cross, size=size.tiny)
+        label.new(bar_index, sweep_ext_short, "sweep", color=color.new(color.orange, 60), textcolor=color.orange, style=label.style_cross, size=size.tiny)
 
-    alert("SHORT " + syminfo.ticker + " | Entry " + str.tostring(entry, "#.##") +
-          " | SL " + str.tostring(sl, "#.##") +
-          " | TP1 " + str.tostring(tp1, "#.##") +
-          " | Risk " + str.tostring(short_risk, "#.#") + " pts" +
-          " | Sweep TF " + sweep_tf + "M · CISD chart TF",
-          alert.freq_once_per_bar_close)
+    alert("SHORT " + syminfo.ticker + " | Entry " + str.tostring(entry, "#.##") + " | SL " + str.tostring(sl, "#.##") + " | TP1 " + str.tostring(tp1, "#.##") + " | Risk " + str.tostring(short_risk, "#.#") + " pts | Sweep " + sweep_tf + "M", alert.freq_once_per_bar_close)
 
 // ── BACKGROUND: highlight Q1 window ───────────────────────────────────────────
 bgcolor(in_q1 ? color.new(color.yellow, 93) : na, title="Q1 Window")
