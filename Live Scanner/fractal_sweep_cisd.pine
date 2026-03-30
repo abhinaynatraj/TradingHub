@@ -1,5 +1,5 @@
 //@version=5
-indicator("Fractal Sweep + CISD", overlay=true, max_labels_count=100, max_lines_count=100)
+indicator("Fractal Sweep + CISD", overlay=true, max_labels_count=200, max_lines_count=200, max_boxes_count=100)
 
 // ── INPUTS ────────────────────────────────────────────────────────────────────
 var string G1 = "Model"
@@ -18,7 +18,9 @@ rth_only   = input.bool(true,   "RTH Only (07:00–16:00 ET)", group=G2)
 var string G3 = "Display"
 show_sweep = input.bool(true,  "Show Sweep Markers",  group=G3)
 show_entry = input.bool(true,  "Show Entry Labels",   group=G3)
-show_sl    = input.bool(true,  "Show SL/TP Lines",    group=G3)
+show_sl    = input.bool(false, "Show SL/TP Lines (legacy)", group=G3)
+show_rr    = input.bool(true,  "Show R:R Box",        group=G3)
+rr_extend  = input.int(20,     "R:R Box Width (bars)", group=G3, minval=5, maxval=100)
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 is_rth() =>
@@ -156,6 +158,38 @@ if long_valid
     entry  = close
     sl     = sweep_ext_long
     tp1    = entry + (entry - sl)  // 1R
+    risk   = entry - sl
+    r_end  = bar_index + rr_extend
+
+    // R:R boxes: red = risk zone (SL→entry), green = reward zone (entry→TP1)
+    if show_rr
+        box.new(bar_index, entry, r_end, sl,
+                border_color=color.new(color.red, 60),
+                bgcolor=color.new(color.red, 85))
+        box.new(bar_index, tp1, r_end, entry,
+                border_color=color.new(color.teal, 60),
+                bgcolor=color.new(color.teal, 85))
+        // Entry line
+        line.new(bar_index, entry, r_end, entry,
+                 color=color.white, width=1, style=line.style_solid)
+        // TP1 label (right edge)
+        label.new(r_end, tp1,
+                  "TP1  +" + str.tostring(risk, "#.#") + " pts\n1:1 R",
+                  color=color.new(color.teal, 20), textcolor=color.white,
+                  style=label.style_label_left, size=size.tiny)
+        // SL label (right edge)
+        label.new(r_end, sl,
+                  "SL  −" + str.tostring(risk, "#.#") + " pts",
+                  color=color.new(color.red, 20), textcolor=color.white,
+                  style=label.style_label_left, size=size.tiny)
+        // Runner target (2R) — dashed line above TP1
+        tp2 = entry + 2 * risk
+        line.new(bar_index, tp2, r_end, tp2,
+                 color=color.new(color.teal, 40), width=1, style=line.style_dashed)
+        label.new(r_end, tp2,
+                  "Runner  +" + str.tostring(2 * risk, "#.#") + " pts\n2:1 R",
+                  color=color.new(color.teal, 50), textcolor=color.new(color.teal, 0),
+                  style=label.style_label_left, size=size.tiny)
 
     if show_entry
         label.new(bar_index, low - ta.atr(14),
@@ -165,15 +199,10 @@ if long_valid
              color=color.new(color.teal, 10), textcolor=color.white,
              style=label.style_label_up, size=size.small)
 
-    if show_sl
-        line.new(bar_index, sl,  bar_index + 10, sl,  color=color.red,   width=1, style=line.style_dashed)
-        line.new(bar_index, tp1, bar_index + 10, tp1, color=color.green, width=1, style=line.style_dashed)
-
     if show_sweep and not na(sweep_ext_long)
         label.new(bar_index, sweep_ext_long, "sweep", color=color.new(color.orange, 60),
                   textcolor=color.orange, style=label.style_cross, size=size.tiny)
 
-    // TradingView alert — configure in Alerts panel (supports Discord webhook)
     alert("LONG " + syminfo.ticker + " | Entry " + str.tostring(entry, "#.##") +
           " | SL " + str.tostring(sl, "#.##") +
           " | TP1 " + str.tostring(tp1, "#.##") +
@@ -186,6 +215,38 @@ if short_valid
     entry  = close
     sl     = sweep_ext_short
     tp1    = entry - (sl - entry)  // 1R
+    risk   = sl - entry
+    r_end  = bar_index + rr_extend
+
+    // R:R boxes: red = risk zone (entry→SL), green = reward zone (TP1→entry)
+    if show_rr
+        box.new(bar_index, sl, r_end, entry,
+                border_color=color.new(color.red, 60),
+                bgcolor=color.new(color.red, 85))
+        box.new(bar_index, entry, r_end, tp1,
+                border_color=color.new(color.red, 60),
+                bgcolor=color.new(color.green, 85))
+        // Entry line
+        line.new(bar_index, entry, r_end, entry,
+                 color=color.white, width=1, style=line.style_solid)
+        // TP1 label
+        label.new(r_end, tp1,
+                  "TP1  +" + str.tostring(risk, "#.#") + " pts\n1:1 R",
+                  color=color.new(color.green, 20), textcolor=color.white,
+                  style=label.style_label_left, size=size.tiny)
+        // SL label
+        label.new(r_end, sl,
+                  "SL  −" + str.tostring(risk, "#.#") + " pts",
+                  color=color.new(color.red, 20), textcolor=color.white,
+                  style=label.style_label_left, size=size.tiny)
+        // Runner target (2R)
+        tp2 = entry - 2 * risk
+        line.new(bar_index, tp2, r_end, tp2,
+                 color=color.new(color.green, 40), width=1, style=line.style_dashed)
+        label.new(r_end, tp2,
+                  "Runner  +" + str.tostring(2 * risk, "#.#") + " pts\n2:1 R",
+                  color=color.new(color.green, 50), textcolor=color.new(color.green, 0),
+                  style=label.style_label_left, size=size.tiny)
 
     if show_entry
         label.new(bar_index, high + ta.atr(14),
@@ -194,10 +255,6 @@ if short_valid
              "\nTP1 " + str.tostring(tp1, "#.##"),
              color=color.new(color.red, 10), textcolor=color.white,
              style=label.style_label_down, size=size.small)
-
-    if show_sl
-        line.new(bar_index, sl,  bar_index + 10, sl,  color=color.red,   width=1, style=line.style_dashed)
-        line.new(bar_index, tp1, bar_index + 10, tp1, color=color.green, width=1, style=line.style_dashed)
 
     if show_sweep and not na(sweep_ext_short)
         label.new(bar_index, sweep_ext_short, "sweep", color=color.new(color.orange, 60),
