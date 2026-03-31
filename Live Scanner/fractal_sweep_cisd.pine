@@ -269,7 +269,7 @@ f_cisd_long() =>
                 else
                     break
         cisd_lvl := open[run_start]
-    [not na(cisd_lvl) and close > cisd_lvl, cisd_lvl]
+    [not na(cisd_lvl) and close > cisd_lvl, cisd_lvl, run_start]
 
 f_cisd_short() =>
     cisd_lvl  = float(na)
@@ -286,10 +286,10 @@ f_cisd_short() =>
                 else
                     break
         cisd_lvl := open[run_start]
-    [not na(cisd_lvl) and close < cisd_lvl, cisd_lvl]
+    [not na(cisd_lvl) and close < cisd_lvl, cisd_lvl, run_start]
 
-[cisd_long_fired,  cisd_long_lvl]  = f_cisd_long()
-[cisd_short_fired, cisd_short_lvl] = f_cisd_short()
+[cisd_long_fired,  cisd_long_lvl,  cisd_long_off]  = f_cisd_long()
+[cisd_short_fired, cisd_short_lvl, cisd_short_off] = f_cisd_short()
 
 // ── CISD PREVIEW — live expected CISD level while in Q1 ──────────────────────
 // Draws a dashed line at the current CISD level (open of the opposing run) while
@@ -327,8 +327,10 @@ if long_valid
     risk  = entry - sl
     tp    = entry + risk * rr_ratio
     r_end = bar_index + rr_extend
-    line.new(bar_index, cisd_long_lvl, r_end, cisd_long_lvl, color=color.blue, width=2, style=cisd_lstyle)
-    label.new(bar_index + cisd_lbl_x, cisd_long_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(color.blue, 100), textcolor=color.blue, style=cisd_lbl_style, size=size.small)
+    cisd_bar = bar_index - cisd_long_off
+    line.new(cisd_bar, cisd_long_lvl, r_end, cisd_long_lvl, color=color.blue, width=2, style=cisd_lstyle)
+    cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : cisd_bar
+    label.new(cisd_x, cisd_long_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(color.blue, 100), textcolor=color.blue, style=cisd_lbl_style, size=size.small)
     sl_anchor = not na(sweep_bar_long) ? sweep_bar_long : bar_index
     line.new(sl_anchor, sl, r_end, sl, color=color.red, width=2, style=sweep_lstyle)
     box.new(bar_index, entry, r_end, sl,  border_color=rr_risk_border, bgcolor=rr_risk_col)
@@ -349,8 +351,10 @@ if short_valid
     risk  = sl - entry
     tp    = entry - risk * rr_ratio
     r_end = bar_index + rr_extend
-    line.new(bar_index, cisd_short_lvl, r_end, cisd_short_lvl, color=color.blue, width=2, style=cisd_lstyle)
-    label.new(bar_index + cisd_lbl_x, cisd_short_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(color.blue, 100), textcolor=color.blue, style=cisd_lbl_style, size=size.small)
+    cisd_bar = bar_index - cisd_short_off
+    line.new(cisd_bar, cisd_short_lvl, r_end, cisd_short_lvl, color=color.blue, width=2, style=cisd_lstyle)
+    cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : cisd_bar
+    label.new(cisd_x, cisd_short_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(color.blue, 100), textcolor=color.blue, style=cisd_lbl_style, size=size.small)
     sl_anchor = not na(sweep_bar_short) ? sweep_bar_short : bar_index
     line.new(sl_anchor, sl, r_end, sl, color=color.red, width=2, style=sweep_lstyle)
     box.new(bar_index, sl,    r_end, entry, border_color=rr_risk_border, bgcolor=rr_risk_col)
