@@ -173,7 +173,7 @@ q1_just_ended = prev_in_q1 and not in_q1
 prev_in_q1   := in_q1
 
 if q1_just_ended
-    // remove all sweep & preview drawings if CISD never fired
+    // remove all sweep & preview drawings AND reset state if CISD never fired
     if not alerted_long
         line.delete(sweep_line_long)
         sweep_line_long := na
@@ -181,6 +181,9 @@ if q1_just_ended
         sweep_lbl_long  := na
         line.delete(cisd_prev_long)
         cisd_prev_long  := na
+        swept_long      := false
+        ret_long        := false
+        sweep_ext_long  := na
     if not alerted_short
         line.delete(sweep_line_short)
         sweep_line_short := na
@@ -188,6 +191,9 @@ if q1_just_ended
         sweep_lbl_short  := na
         line.delete(cisd_prev_short)
         cisd_prev_short  := na
+        swept_short      := false
+        ret_short        := false
+        sweep_ext_short  := na
 
 // ── PHASE 1: SWEEP ────────────────────────────────────────────────────────────
 // sweep_ext_long/short = wick extreme (SL level)
