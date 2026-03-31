@@ -147,12 +147,18 @@ if is_new_anchor and tf_supported
     alerted_long    := false
     alerted_short   := false
     // clean up any leftover drawings from previous Q1
-    line.delete(sweep_line_long),  sweep_line_long  := na
-    label.delete(sweep_lbl_long),  sweep_lbl_long   := na
-    line.delete(sweep_line_short), sweep_line_short := na
-    label.delete(sweep_lbl_short), sweep_lbl_short  := na
-    line.delete(cisd_prev_long),   cisd_prev_long   := na
-    line.delete(cisd_prev_short),  cisd_prev_short  := na
+    line.delete(sweep_line_long)
+    sweep_line_long  := na
+    label.delete(sweep_lbl_long)
+    sweep_lbl_long   := na
+    line.delete(sweep_line_short)
+    sweep_line_short := na
+    label.delete(sweep_lbl_short)
+    sweep_lbl_short  := na
+    line.delete(cisd_prev_long)
+    cisd_prev_long   := na
+    line.delete(cisd_prev_short)
+    cisd_prev_short  := na
 
 // ── Q1 COUNTER ────────────────────────────────────────────────────────────────
 if in_q1
@@ -164,15 +170,21 @@ q1_just_ended = prev_in_q1 and not in_q1
 prev_in_q1   := in_q1
 
 if q1_just_ended
-    // remove sweep & preview if CISD never fired
+    // remove all sweep & preview drawings if CISD never fired
     if not alerted_long
-        line.delete(sweep_line_long),  sweep_line_long := na
-        label.delete(sweep_lbl_long),  sweep_lbl_long  := na
-        line.delete(cisd_prev_long),   cisd_prev_long  := na
+        line.delete(sweep_line_long)
+        sweep_line_long := na
+        label.delete(sweep_lbl_long)
+        sweep_lbl_long  := na
+        line.delete(cisd_prev_long)
+        cisd_prev_long  := na
     if not alerted_short
-        line.delete(sweep_line_short), sweep_line_short := na
-        label.delete(sweep_lbl_short), sweep_lbl_short  := na
-        line.delete(cisd_prev_short),  cisd_prev_short  := na
+        line.delete(sweep_line_short)
+        sweep_line_short := na
+        label.delete(sweep_lbl_short)
+        sweep_lbl_short  := na
+        line.delete(cisd_prev_short)
+        cisd_prev_short  := na
 
 // ── PHASE 1: SWEEP ────────────────────────────────────────────────────────────
 // sweep_ext_long/short = wick extreme (SL level)
@@ -269,7 +281,8 @@ if rth_only
 // ── FIRE: LONG ────────────────────────────────────────────────────────────────
 if long_valid
     alerted_long := true
-    line.delete(cisd_prev_long), cisd_prev_long := na
+    line.delete(cisd_prev_long)
+    cisd_prev_long := na
     entry = close
     sl    = sweep_ext_long
     risk  = entry - sl
@@ -288,7 +301,8 @@ if long_valid
 // ── FIRE: SHORT ───────────────────────────────────────────────────────────────
 if short_valid
     alerted_short := true
-    line.delete(cisd_prev_short), cisd_prev_short := na
+    line.delete(cisd_prev_short)
+    cisd_prev_short := na
     entry = close
     sl    = sweep_ext_short
     risk  = sl - entry
