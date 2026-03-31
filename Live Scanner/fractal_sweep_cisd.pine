@@ -222,8 +222,10 @@ q1_just_ended = prev_in_q1 and not in_q1
 prev_in_q1   := in_q1
 
 if q1_just_ended
-    // remove all sweep & preview drawings AND reset state if CISD never fired
-    if not alerted_long
+    // Only reset if sweep+return didn't BOTH complete within Q1.
+    // If both completed, keep state alive — CISD can fire after Q1
+    // (backtest allows CISD up to 8 CISD-TF bars from return point).
+    if not alerted_long and not (swept_long and ret_long)
         line.delete(sweep_line_long)
         sweep_line_long := na
         label.delete(sweep_lbl_long)
@@ -234,7 +236,7 @@ if q1_just_ended
         ret_long        := false
         sweep_ext_long  := na
         sweep_bar_long  := na
-    if not alerted_short
+    if not alerted_short and not (swept_short and ret_short)
         line.delete(sweep_line_short)
         sweep_line_short := na
         label.delete(sweep_lbl_short)
