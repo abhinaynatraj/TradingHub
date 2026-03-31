@@ -331,6 +331,11 @@ if long_valid
     line.new(cisd_bar, cisd_long_lvl, r_end, cisd_long_lvl, color=color.blue, width=2, style=cisd_lstyle)
     cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : cisd_bar
     label.new(cisd_x, cisd_long_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(color.blue, 100), textcolor=color.blue, style=cisd_lbl_style, size=size.small)
+    // extend sweep line to match R:R box right edge
+    if not na(sweep_line_long)
+        line.set_x2(sweep_line_long, r_end)
+    if not na(sweep_lbl_long) and sweep_lbl_pos == "Right"
+        label.set_x(sweep_lbl_long, r_end)
     sl_anchor = not na(sweep_bar_long) ? sweep_bar_long : bar_index
     line.new(sl_anchor, sl, r_end, sl, color=color.red, width=2, style=sweep_lstyle)
     box.new(bar_index, entry, r_end, sl,  border_color=rr_risk_border, bgcolor=rr_risk_col)
@@ -355,6 +360,11 @@ if short_valid
     line.new(cisd_bar, cisd_short_lvl, r_end, cisd_short_lvl, color=color.blue, width=2, style=cisd_lstyle)
     cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : cisd_bar
     label.new(cisd_x, cisd_short_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(color.blue, 100), textcolor=color.blue, style=cisd_lbl_style, size=size.small)
+    // extend sweep line to match R:R box right edge
+    if not na(sweep_line_short)
+        line.set_x2(sweep_line_short, r_end)
+    if not na(sweep_lbl_short) and sweep_lbl_pos == "Right"
+        label.set_x(sweep_lbl_short, r_end)
     sl_anchor = not na(sweep_bar_short) ? sweep_bar_short : bar_index
     line.new(sl_anchor, sl, r_end, sl, color=color.red, width=2, style=sweep_lstyle)
     box.new(bar_index, sl,    r_end, entry, border_color=rr_risk_border, bgcolor=rr_risk_col)
