@@ -120,8 +120,9 @@ RR_PROFILES = [
     (0.19, 0.19, 'sl_019_tp_019', 'pct'),
     # --- Structural Dynamic: SL = sweep extreme (1×base_risk), TP1 = 1R, 50% exit; runner with BE stop ---
     (1.0, 1.0, 'structural_dynamic', 'structural'),
-    # --- Split-exit: TP1 @ 0.3473% of entry (80% off), 20% runner free with BE stop ---
-    (1.0, 0.3473, 'split_80_20', 'split_tp'),
+    # --- Split-exit: TP1 @ structural PTQ level (90% off), 10% runner free with BE stop ---
+    # target_val is a placeholder; overridden per-model with structural ptq_level at runtime
+    (1.0, 0.0, 'split_80_20', 'split_tp'),
 ]
 DEFAULT_PROFILE = 'sl_026_tp_018'
 
@@ -540,12 +541,12 @@ def resolve_outcomes_structural(m1_arrs, pending):
 
 # ── SPLIT-TP OUTCOME RESOLUTION ───────────────────────────────────────────────
 def resolve_outcomes_split_tp(m1_arrs, pending,
-                               tp1_size: float = 0.80, tp2_size: float = 0.20):
+                               tp1_size: float = 0.90, tp2_size: float = 0.10):
     """
     Split-exit profile (runner-free):
-      - TP1 at target_price (= entry ± entry × tp1_pct/100, already set in pending)
-        → exits tp1_size (80%) of position; tp1_r = TP1_dist / base_risk (variable per trade)
-      - Runner (tp2_size = 20%) holds with BE stop, runs free to EOD (no fixed TP2 target)
+      - TP1 at target_price (= entry ± entry × ptq_level/100, already set in pending)
+        → exits tp1_size (90%) of position; tp1_r = TP1_dist / base_risk (variable per trade)
+      - Runner (tp2_size = 10%) holds with BE stop, runs free to EOD (no fixed TP2 target)
       - SL (stop_price) hit before TP1 → full LOSS, r = -1.0
       - net_r = tp1_size × tp1_r + tp2_size × runner_exit_r
     """
@@ -611,7 +612,7 @@ def resolve_outcomes_split_tp(m1_arrs, pending,
             results.append(('LOSS', -1.0, mae_pct, mfe_pct, False, 0.0))
             continue
 
-        # ── TP1 hit first — 80% off; 20% runner free with BE stop ────────────
+        # ── TP1 hit first — 90% off; 10% runner free with BE stop ────────────
         tp1_dist = abs(target_price - entry_price)
         tp1_r    = tp1_dist / base_risk   # R-multiple locked in at TP1 (variable per trade)
 
@@ -1594,11 +1595,11 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
     full_key = f"{model_key}_PREV_CISD"
     # Breakeven WR:
     #   structural:  wr × 0.5R = (1-wr) × 1R  →  wr = 2/3
-    #   split_tp:    wr × 0.8R = (1-wr) × 1R  →  wr = 1/1.8 ≈ 0.5556
+    #   split_tp:    wr × 0.9R = (1-wr) × 1R  →  wr = 1/1.9 ≈ 0.5263
     if profile_type == 'structural':
         be_wr = round(2.0 / 3.0, 4)
     elif profile_type == 'split_tp':
-        be_wr = round(1.0 / 1.8, 4)
+        be_wr = round(1.0 / 1.9, 4)
     else:
         be_wr = round(stop_mult / (stop_mult + target_mult), 4)
 
@@ -1642,6 +1643,7 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
             'rr_target':          rr_actual,
             'stop_mult':          stop_mult,
             'target_mult':        target_mult,
+            'tp1_pct':            round(target_mult, 4) if profile_type == 'split_tp' else None,
             **{f'risk_{k}': v for k, v in risk_dist.items()},
             **{f'mae_{k}':  v for k, v in mae_dist_legacy.items()},
             **{f'mfe_{k}':  v for k, v in mfe_dist_legacy.items()},
@@ -2025,8 +2027,17 @@ def main():
 
         print(f"      Resolving outcomes across {len(RR_PROFILES)} profiles ...")
         model_profiles = {}
+        structural_ptq = None  # captured after structural_dynamic, injected into split_80_20
         for p_idx, (stop_val, target_val, pk, ptype) in enumerate(RR_PROFILES, 1):
-            print(f"      [{p_idx}/{len(RR_PROFILES)}] profile {pk} ...", flush=True)
+            # Use PTQ level from structural profile as TP1 for split_80_20
+            if pk == 'split_80_20':
+                if structural_ptq is None:
+                    print(f"      [{p_idx}/{len(RR_PROFILES)}] profile {pk} — skipped (no structural PTQ)", flush=True)
+                    continue
+                target_val = structural_ptq
+                print(f"      [{p_idx}/{len(RR_PROFILES)}] profile {pk} (TP1={target_val:.4f}% PTQ) ...", flush=True)
+            else:
+                print(f"      [{p_idx}/{len(RR_PROFILES)}] profile {pk} ...", flush=True)
             df_p = apply_profile_and_resolve(
                 base_rows, base_pending, m1, stop_val, target_val, ptype)
             if df_p.empty:
@@ -2035,6 +2046,9 @@ def main():
             stats = build_model_stats(
                 df_p, trading_days, mk, cfg, stop_val, target_val, pk, ptype)
             model_profiles[pk] = stats
+            # Capture PTQ level for the split profile
+            if pk == 'structural_dynamic':
+                structural_ptq = (stats.get('rich_mfe') or {}).get('ptq_level')
             print(f"         profile {pk} done ✓", flush=True)
 
         if not model_profiles:

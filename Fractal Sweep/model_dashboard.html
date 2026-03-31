@@ -912,7 +912,7 @@ const PROFILE_LABELS = {
   'sl_018_tp_019':      'SL 0.18% / TP 0.19%  (R:R 1.06)',
   'sl_019_tp_019':      'SL 0.19% / TP 0.19%  (R:R 1.00)',
   'structural_dynamic': 'Structural Dynamic — TP1 @ 1R · 50% exit · Runner Free',
-  'split_80_20':        'Split Exit — TP1 @ 0.3473% (80%) · Runner Free (20%) · BE stop after TP1',
+  'split_80_20':        'Split Exit — TP1 @ PTQ level (90%) · Runner Free (10%) · BE stop after TP1',
 };
 const PCT_PROFILES = new Set(RR_PROFILES.filter(k => k !== 'structural_dynamic' && k !== 'split_80_20'));
 const STRUCTURAL_PROFILE = 'structural_dynamic';
@@ -1298,7 +1298,11 @@ function renderProfileDropdown(){
   function optHtml(pk){
     const d  = getProfileData(fullKey, pk);
     const ev = d?.meta?.ev_per_trade;
-    const label = (PROFILE_LABELS[pk] || pk) + (ev != null ? '  ·  EV ' + (ev>0?'+':'') + ev.toFixed(3) + 'R' : '');
+    let baseLabel = PROFILE_LABELS[pk] || pk;
+    if (pk === 'split_80_20' && d?.meta?.tp1_pct != null) {
+      baseLabel = `Split Exit — TP1 @ ${(+d.meta.tp1_pct).toFixed(4)}% PTQ (90%) · Runner Free (10%) · BE stop after TP1`;
+    }
+    const label = baseLabel + (ev != null ? '  ·  EV ' + (ev>0?'+':'') + ev.toFixed(3) + 'R' : '');
     return `<option value="${pk}" ${pk===activeProfile?'selected':''}>${label}</option>`;
   }
   const availProfiles = isDemo ? RR_PROFILES : (getAvailableProfiles(`${activeModel}_${activeMode}_${activeCisd}`) || RR_PROFILES);
@@ -1797,15 +1801,15 @@ function renderRecentTrades(page) {
     const dirArrow = t.direction === 'LONG' ? '▲' : '▼';
     const dowName  = t.dow_name || DOW_NAMES[t.dow] || '?';
     html += `<tr style="background:${bg};border-bottom:1px solid color-mix(in srgb,var(--border-mid) 40%,transparent);">
-      <td style="padding:7px 10px;color:var(--text-muted);">${String(t.date).slice(0,10)}</td>
-      <td style="padding:7px 6px;color:var(--text-muted);">${dowName}</td>
-      <td style="padding:7px 6px;text-align:center;color:var(--text-muted);">${String(t.hr).padStart(2,'0')}:${String(t.mn ?? 0).padStart(2,'0')}</td>
-      <td style="padding:7px 6px;color:var(--text-muted);font-size:11px;">${t.session||'—'}</td>
+      <td style="padding:7px 10px;color:var(--text-primary);">${String(t.date).slice(0,10)}</td>
+      <td style="padding:7px 6px;color:var(--text-primary);">${dowName}</td>
+      <td style="padding:7px 6px;text-align:center;color:var(--text-primary);">${String(t.hr).padStart(2,'0')}:${String(t.mn ?? 0).padStart(2,'0')}</td>
+      <td style="padding:7px 6px;color:var(--text-primary);font-size:11px;">${t.session||'—'}</td>
       <td style="padding:7px 6px;color:${dirColor};font-weight:700;">${dirArrow} ${t.direction}</td>
       <td style="padding:7px 6px;text-align:right;color:var(--text-primary);">${t.entry_price != null ? t.entry_price.toFixed(2) : '—'}</td>
       <td style="padding:7px 6px;text-align:right;color:var(--red);">${t.sweep_extreme != null ? t.sweep_extreme.toFixed(2) : '—'}</td>
       <td style="padding:7px 6px;text-align:right;color:var(--green);">${t.target_price != null ? t.target_price.toFixed(2) : '—'}</td>
-      <td style="padding:7px 6px;text-align:right;color:var(--text-muted);">${t.risk_pts != null ? t.risk_pts.toFixed(1) : '—'}</td>
+      <td style="padding:7px 6px;text-align:right;color:var(--text-primary);">${t.risk_pts != null ? t.risk_pts.toFixed(1) : '—'}</td>
       <td style="padding:7px 6px;text-align:center;font-weight:700;color:${resColor};">${isWin ? '✓ WIN' : '✗ LOSS'}</td>
     </tr>`;
   });
@@ -3013,8 +3017,8 @@ function renderStructuralPanel(D){
   }
 
   const isSplit8020 = activeProfile === 'split_80_20';
-  const tp1Size  = isSplit8020 ? 0.80 : 0.50;
-  const tp2Size  = isSplit8020 ? 0.20 : 0.50;
+  const tp1Size  = isSplit8020 ? 0.90 : 0.50;
+  const tp2Size  = isSplit8020 ? 0.10 : 0.50;
   const pct = v => v != null ? (v*100).toFixed(1)+'%' : '—';
   const fp3 = v => v != null ? (+v).toFixed(3)+'R' : '—';
   const fp4 = v => v != null ? (+v).toFixed(4)+'%' : '—';
@@ -3027,7 +3031,8 @@ function renderStructuralPanel(D){
   // Net EV estimate
   const netEV = tp1 != null && rs.mean != null
     ? (+(tp1 * (tp1Size + tp2Size * rs.mean) + (1 - tp1) * (-1.0)).toFixed(3)) : null;
-  const beWR = isSplit8020 ? (1/1.8) : (2/3);
+  const beWR = isSplit8020 ? (1/1.9) : (2/3);
+  const tp1PctLabel = isSplit8020 ? (m.tp1_pct != null ? (+m.tp1_pct).toFixed(4)+'% (PTQ)' : 'PTQ level') : '1R';
 
   bodyEl.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
@@ -3077,7 +3082,7 @@ function renderStructuralPanel(D){
         </table>
         <div style="margin-top:12px;padding:10px 12px;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;font-family:var(--font-data);font-size:10px;color:var(--text-muted);line-height:1.7">
           <strong style="color:var(--text-secondary)">Net R formula:</strong><br>
-          ${(tp1Size*100).toFixed(0)}% exits at <span style="color:var(--green)">TP1 (0.3473% of entry)</span> when hit<br>
+          ${(tp1Size*100).toFixed(0)}% exits at <span style="color:var(--green)">TP1 (${tp1PctLabel})</span> when hit<br>
           ${(tp2Size*100).toFixed(0)}% runner free — BE stop, runs to EOD<br>
           <span style="color:var(--amber)">Net = ${tp1Size} × tp1_r + ${tp2Size} × runner_exit_r</span>${isSplit8020 ? '<br><span style="color:var(--text-muted)">tp1_r = TP1_dist ÷ base_risk (variable per trade)</span>' : ''}
         </div>
