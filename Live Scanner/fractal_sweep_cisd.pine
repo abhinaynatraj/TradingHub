@@ -146,7 +146,8 @@ if in_q1
         in_q1 := false
 
 // ── PHASE 1: SWEEP ────────────────────────────────────────────────────────────
-// Sweep line drawn at the wick extreme (= SL level), not the prior candle boundary
+// sweep_ext_long/short = wick extreme (SL level)
+// sweep line drawn at anc_lo/anc_hi (prior candle boundary — the swept level)
 if tf_supported and in_q1 and not na(anc_hi) and not na(anc_lo)
     ref_range = anc_hi - anc_lo
     if ref_range > 0
@@ -155,15 +156,15 @@ if tf_supported and in_q1 and not na(anc_hi) and not na(anc_lo)
             if low < anc_lo and ext / ref_range >= sweep_min and ext / ref_range <= sweep_max
                 swept_long     := true
                 sweep_ext_long := low
-                line.new(bar_index, low, bar_index + rr_extend + 15, low, color=color.red, width=2, style=sweep_lstyle)
-                label.new(bar_index + sweep_lbl_x, low, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.red, style=sweep_lbl_style, size=size.small)
+                line.new(bar_index, anc_lo, bar_index + rr_extend + 15, anc_lo, color=color.red, width=2, style=sweep_lstyle)
+                label.new(bar_index + sweep_lbl_x, anc_lo, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.red, style=sweep_lbl_style, size=size.small)
         if not swept_short
             ext = high - anc_hi
             if high > anc_hi and ext / ref_range >= sweep_min and ext / ref_range <= sweep_max
                 swept_short     := true
                 sweep_ext_short := high
-                line.new(bar_index, high, bar_index + rr_extend + 15, high, color=color.red, width=2, style=sweep_lstyle)
-                label.new(bar_index + sweep_lbl_x, high, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.red, style=sweep_lbl_style, size=size.small)
+                line.new(bar_index, anc_hi, bar_index + rr_extend + 15, anc_hi, color=color.red, width=2, style=sweep_lstyle)
+                label.new(bar_index + sweep_lbl_x, anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.red, style=sweep_lbl_style, size=size.small)
 
 // ── PHASE 2: RETURN TO RANGE ──────────────────────────────────────────────────
 if in_q1
