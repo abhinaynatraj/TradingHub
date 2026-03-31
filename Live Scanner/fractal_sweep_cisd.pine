@@ -133,8 +133,9 @@ var label sweep_lbl_short   = na
 var line  cisd_prev_long    = na
 var line  cisd_prev_short   = na
 var bool  prev_in_q1        = false
-// bar index of the anchor candle (prior TF period close)
-var int   anc_bar_index     = na
+// bar index of the candle that made the prior TF high / low
+var int   anc_hi_bar        = na
+var int   anc_lo_bar        = na
 
 // ── ANCHOR RESET ──────────────────────────────────────────────────────────────
 if is_new_anchor and tf_supported
@@ -152,7 +153,17 @@ if is_new_anchor and tf_supported
     ret_short       := false
     alerted_long    := false
     alerted_short   := false
-    anc_bar_index   := bar_index - 1
+    // find which bar made the prior TF high and low
+    anc_hi_bar := bar_index - 1
+    anc_lo_bar := bar_index - 1
+    for k = 1 to 30
+        if high[k] == prior_high
+            anc_hi_bar := bar_index - k
+            break
+    for k = 1 to 30
+        if low[k] == prior_low
+            anc_lo_bar := bar_index - k
+            break
     // clean up any leftover drawings from previous Q1
     line.delete(sweep_line_long)
     sweep_line_long  := na
@@ -213,8 +224,8 @@ if tf_supported and in_q1 and not na(anc_hi) and not na(anc_lo)
                 swept_long      := true
                 sweep_ext_long  := low
                 sweep_bar_long  := bar_index
-                sweep_x_long    = sweep_lbl_pos == "Right" ? bar_index + rr_extend + 15 : anc_bar_index
-                sweep_line_long := line.new(anc_bar_index, anc_lo, bar_index + rr_extend + 15, anc_lo, color=color.red, width=2, style=sweep_lstyle)
+                sweep_x_long    = sweep_lbl_pos == "Right" ? bar_index + rr_extend + 15 : anc_lo_bar
+                sweep_line_long := line.new(anc_lo_bar, anc_lo, bar_index + rr_extend + 15, anc_lo, color=color.red, width=2, style=sweep_lstyle)
                 sweep_lbl_long  := label.new(sweep_x_long, anc_lo, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.red, style=sweep_lbl_style, size=size.small)
         if not swept_short
             ext = high - anc_hi
@@ -222,8 +233,8 @@ if tf_supported and in_q1 and not na(anc_hi) and not na(anc_lo)
                 swept_short      := true
                 sweep_ext_short  := high
                 sweep_bar_short  := bar_index
-                sweep_x_short    = sweep_lbl_pos == "Right" ? bar_index + rr_extend + 15 : anc_bar_index
-                sweep_line_short := line.new(anc_bar_index, anc_hi, bar_index + rr_extend + 15, anc_hi, color=color.red, width=2, style=sweep_lstyle)
+                sweep_x_short    = sweep_lbl_pos == "Right" ? bar_index + rr_extend + 15 : anc_hi_bar
+                sweep_line_short := line.new(anc_hi_bar, anc_hi, bar_index + rr_extend + 15, anc_hi, color=color.red, width=2, style=sweep_lstyle)
                 sweep_lbl_short  := label.new(sweep_x_short, anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.red, style=sweep_lbl_style, size=size.small)
 
 // Track swing extreme — SL = lowest low / highest high from sweep until fire
