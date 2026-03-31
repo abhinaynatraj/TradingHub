@@ -28,14 +28,6 @@ cisd_style_inp  = input.string("Dotted", "Line Style",     options=["Dotted", "D
 cisd_text       = input.string("CISD",   "Label Text",     group=G5, tooltip="TF is appended automatically")
 cisd_lbl_pos    = input.string("Right",  "Label Position", options=["Left", "Right"], group=G5)
 
-var string G7 = "Fib Extension"
-show_fib      = input.bool(true,       "Show Fib Extension",  group=G7)
-fib_max_r     = input.float(5.0,       "Max R Levels",        group=G7, step=0.5, minval=1.0)
-fib_step      = input.float(0.5,       "Step Size",           group=G7, step=0.25, minval=0.25)
-fib_color     = input.color(color.gray, "Level Color",        group=G7)
-fib_hl_level  = input.float(2.5,       "Highlight R Level",   group=G7, step=0.5)
-fib_hl_color  = input.color(color.red,  "Highlight Color",    group=G7)
-
 var string G6 = "R:R Labels"
 rr_lbl_pos    = input.string("Right",                        "Label Position", options=["Left", "Right"], group=G6)
 rr_lbl_tp_col = input.color(color.new(color.teal, 20), "TP Label Color",    group=G6)
@@ -355,15 +347,6 @@ if long_valid
     label.new(bar_index + rr_lbl_x, tp,    "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=rr_lbl_tp_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
     label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=rr_lbl_en_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
     label.new(bar_index + rr_lbl_x, sl,    "SL  -" + str.tostring(risk, "#.##") + " pts", color=rr_lbl_sl_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
-    // fib extension
-    if show_fib
-        fib_steps = int(fib_max_r / fib_step)
-        for i = 1 to fib_steps
-            r_val = i * fib_step
-            lvl   = entry + r_val * risk
-            lc    = math.abs(r_val - fib_hl_level) < 0.01 ? fib_hl_color : fib_color
-            line.new(bar_index, lvl, r_end, lvl, color=lc, width=1, style=line.style_dashed)
-            label.new(r_end, lvl, "-" + str.tostring(r_val, "#.#") + " (" + str.tostring(lvl, "#.##") + ")", color=color.new(lc, 100), textcolor=lc, style=label.style_label_left, size=size.tiny)
     alert("LONG " + syminfo.ticker + " | Entry " + str.tostring(entry, "#.##") + " | SL " + str.tostring(sl, "#.##") + " | TP " + str.tostring(tp, "#.##") + " | Risk " + str.tostring(long_risk, "#.#") + " pts | " + combo, alert.freq_once_per_bar_close)
 
 // ── FIRE: SHORT ───────────────────────────────────────────────────────────────
@@ -396,13 +379,4 @@ if short_valid
     label.new(bar_index + rr_lbl_x, tp,    "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=rr_lbl_tp_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
     label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=rr_lbl_en_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
     label.new(bar_index + rr_lbl_x, sl,    "SL  -" + str.tostring(risk, "#.##") + " pts", color=rr_lbl_sl_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
-    // fib extension
-    if show_fib
-        fib_steps = int(fib_max_r / fib_step)
-        for i = 1 to fib_steps
-            r_val = i * fib_step
-            lvl   = entry - r_val * risk
-            lc    = math.abs(r_val - fib_hl_level) < 0.01 ? fib_hl_color : fib_color
-            line.new(bar_index, lvl, r_end, lvl, color=lc, width=1, style=line.style_dashed)
-            label.new(r_end, lvl, "-" + str.tostring(r_val, "#.#") + " (" + str.tostring(lvl, "#.##") + ")", color=color.new(lc, 100), textcolor=lc, style=label.style_label_left, size=size.tiny)
     alert("SHORT " + syminfo.ticker + " | Entry " + str.tostring(entry, "#.##") + " | SL " + str.tostring(sl, "#.##") + " | TP " + str.tostring(tp, "#.##") + " | Risk " + str.tostring(short_risk, "#.#") + " pts | " + combo, alert.freq_once_per_bar_close)
