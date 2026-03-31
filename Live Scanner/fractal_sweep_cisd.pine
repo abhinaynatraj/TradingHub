@@ -119,6 +119,8 @@ var bool  swept_long      = false
 var bool  swept_short     = false
 var float sweep_ext_long  = na
 var float sweep_ext_short = na
+var int   sweep_bar_long  = na
+var int   sweep_bar_short = na
 var bool  ret_long        = false
 var bool  ret_short       = false
 var bool  alerted_long    = false
@@ -144,6 +146,8 @@ if is_new_anchor and tf_supported
     swept_short     := false
     sweep_ext_long  := na
     sweep_ext_short := na
+    sweep_bar_long  := na
+    sweep_bar_short := na
     ret_long        := false
     ret_short       := false
     alerted_long    := false
@@ -184,6 +188,7 @@ if q1_just_ended
         swept_long      := false
         ret_long        := false
         sweep_ext_long  := na
+        sweep_bar_long  := na
     if not alerted_short
         line.delete(sweep_line_short)
         sweep_line_short := na
@@ -194,6 +199,7 @@ if q1_just_ended
         swept_short      := false
         ret_short        := false
         sweep_ext_short  := na
+        sweep_bar_short  := na
 
 // ── PHASE 1: SWEEP ────────────────────────────────────────────────────────────
 // sweep_ext_long/short = wick extreme (SL level)
@@ -206,6 +212,7 @@ if tf_supported and in_q1 and not na(anc_hi) and not na(anc_lo)
             if low < anc_lo and ext / ref_range >= sweep_min and ext / ref_range <= sweep_max
                 swept_long      := true
                 sweep_ext_long  := low
+                sweep_bar_long  := bar_index
                 sweep_x_long    = sweep_lbl_pos == "Right" ? bar_index + rr_extend + 15 : anc_bar_index
                 sweep_line_long := line.new(anc_bar_index, anc_lo, bar_index + rr_extend + 15, anc_lo, color=color.red, width=2, style=sweep_lstyle)
                 sweep_lbl_long  := label.new(sweep_x_long, anc_lo, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.red, style=sweep_lbl_style, size=size.small)
@@ -214,6 +221,7 @@ if tf_supported and in_q1 and not na(anc_hi) and not na(anc_lo)
             if high > anc_hi and ext / ref_range >= sweep_min and ext / ref_range <= sweep_max
                 swept_short      := true
                 sweep_ext_short  := high
+                sweep_bar_short  := bar_index
                 sweep_x_short    = sweep_lbl_pos == "Right" ? bar_index + rr_extend + 15 : anc_bar_index
                 sweep_line_short := line.new(anc_bar_index, anc_hi, bar_index + rr_extend + 15, anc_hi, color=color.red, width=2, style=sweep_lstyle)
                 sweep_lbl_short  := label.new(sweep_x_short, anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.red, style=sweep_lbl_style, size=size.small)
@@ -301,14 +309,11 @@ if long_valid
     r_end = bar_index + rr_extend
     line.new(bar_index, cisd_long_lvl, r_end, cisd_long_lvl, color=color.blue, width=2, style=cisd_lstyle)
     label.new(bar_index + cisd_lbl_x, cisd_long_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(color.blue, 100), textcolor=color.blue, style=cisd_lbl_style, size=size.small)
+    sl_anchor = not na(sweep_bar_long) ? sweep_bar_long : bar_index
+    line.new(sl_anchor, sl, r_end, sl, color=color.red, width=2, style=sweep_lstyle)
     box.new(bar_index, entry, r_end, sl,  border_color=rr_risk_border, bgcolor=rr_risk_col)
     box.new(bar_index, tp,    r_end, entry, border_color=rr_rew_border,  bgcolor=rr_rew_col)
     line.new(bar_index, entry, r_end, entry, color=rr_entry_col, width=1, style=line.style_solid)
-    s1 = swept_long ? "✅" : "❌"
-    s2 = cisd_long_fired ? "✅" : "❌"
-    s3 = long_risk >= min_risk ? "✅" : "❌"
-    summary_txt = s1 + " " + sweep_tf_lbl + " sweep\n" + s2 + " " + cisd_tf_lbl + " CISD\n" + s3 + " " + str.tostring(rr_ratio, "#.#") + "R"
-    label.new(bar_index + 1, (entry + sl) / 2, summary_txt, color=color.new(color.black, 100), textcolor=color.black, style=label.style_label_left, size=size.normal)
     label.new(bar_index + rr_lbl_x, tp,    "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=rr_lbl_tp_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
     label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=rr_lbl_en_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
     label.new(bar_index + rr_lbl_x, sl,    "SL  -" + str.tostring(risk, "#.##") + " pts", color=rr_lbl_sl_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
@@ -326,14 +331,11 @@ if short_valid
     r_end = bar_index + rr_extend
     line.new(bar_index, cisd_short_lvl, r_end, cisd_short_lvl, color=color.blue, width=2, style=cisd_lstyle)
     label.new(bar_index + cisd_lbl_x, cisd_short_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(color.blue, 100), textcolor=color.blue, style=cisd_lbl_style, size=size.small)
+    sl_anchor = not na(sweep_bar_short) ? sweep_bar_short : bar_index
+    line.new(sl_anchor, sl, r_end, sl, color=color.red, width=2, style=sweep_lstyle)
     box.new(bar_index, sl,    r_end, entry, border_color=rr_risk_border, bgcolor=rr_risk_col)
     box.new(bar_index, entry, r_end, tp,    border_color=rr_rew_border,  bgcolor=rr_rew_col)
     line.new(bar_index, entry, r_end, entry, color=rr_entry_col, width=1, style=line.style_solid)
-    s1 = swept_short ? "✅" : "❌"
-    s2 = cisd_short_fired ? "✅" : "❌"
-    s3 = short_risk >= min_risk ? "✅" : "❌"
-    summary_txt = s1 + " " + sweep_tf_lbl + " sweep\n" + s2 + " " + cisd_tf_lbl + " CISD\n" + s3 + " " + str.tostring(rr_ratio, "#.#") + "R"
-    label.new(bar_index + 1, (sl + entry) / 2, summary_txt, color=color.new(color.black, 100), textcolor=color.black, style=label.style_label_left, size=size.normal)
     label.new(bar_index + rr_lbl_x, tp,    "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=rr_lbl_tp_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
     label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=rr_lbl_en_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
     label.new(bar_index + rr_lbl_x, sl,    "SL  -" + str.tostring(risk, "#.##") + " pts", color=rr_lbl_sl_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
