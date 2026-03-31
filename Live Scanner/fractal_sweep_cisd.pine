@@ -299,7 +299,7 @@ if long_valid
     box.new(bar_index, tp,    r_end, entry, border_color=rr_rew_border,  bgcolor=rr_rew_col)
     line.new(bar_index, entry, r_end, entry, color=rr_entry_col, width=1, style=line.style_solid)
     summary_txt = "✅ " + sweep_tf_lbl + " sweep\n✅ " + cisd_tf_lbl + " CISD\n✅ " + str.tostring(rr_ratio, "#.#") + "R"
-    label.new(bar_index + rr_lbl_x, tp, summary_txt, color=color.new(color.black, 100), textcolor=color.white, style=label.style_label_down, size=size.small)
+    label.new(bar_index + rr_extend / 2, (entry + sl) / 2, summary_txt, color=color.new(color.black, 100), textcolor=color.black, style=label.style_none, size=size.small)
     label.new(bar_index + rr_lbl_x, tp,    "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=rr_lbl_tp_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
     label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=rr_lbl_en_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
     label.new(bar_index + rr_lbl_x, sl,    "SL  -" + str.tostring(risk, "#.##") + " pts", color=rr_lbl_sl_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
@@ -321,7 +321,7 @@ if short_valid
     box.new(bar_index, entry, r_end, tp,    border_color=rr_rew_border,  bgcolor=rr_rew_col)
     line.new(bar_index, entry, r_end, entry, color=rr_entry_col, width=1, style=line.style_solid)
     summary_txt = "✅ " + sweep_tf_lbl + " sweep\n✅ " + cisd_tf_lbl + " CISD\n✅ " + str.tostring(rr_ratio, "#.#") + "R"
-    label.new(bar_index + rr_lbl_x, tp, summary_txt, color=color.new(color.black, 100), textcolor=color.white, style=label.style_label_up, size=size.small)
+    label.new(bar_index + rr_extend / 2, (sl + entry) / 2, summary_txt, color=color.new(color.black, 100), textcolor=color.black, style=label.style_none, size=size.small)
     label.new(bar_index + rr_lbl_x, tp,    "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=rr_lbl_tp_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
     label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=rr_lbl_en_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
     label.new(bar_index + rr_lbl_x, sl,    "SL  -" + str.tostring(risk, "#.##") + " pts", color=rr_lbl_sl_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
