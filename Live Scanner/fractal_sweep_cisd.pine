@@ -123,6 +123,14 @@ var bool  ret_long        = false
 var bool  ret_short       = false
 var bool  alerted_long    = false
 var bool  alerted_short   = false
+// drawing object refs for cleanup
+var line  sweep_line_long   = na
+var label sweep_lbl_long    = na
+var line  sweep_line_short  = na
+var label sweep_lbl_short   = na
+var line  cisd_prev_long    = na
+var line  cisd_prev_short   = na
+var bool  prev_in_q1        = false
 
 // ── ANCHOR RESET ──────────────────────────────────────────────────────────────
 if is_new_anchor and tf_supported
@@ -138,12 +146,33 @@ if is_new_anchor and tf_supported
     ret_short       := false
     alerted_long    := false
     alerted_short   := false
+    // clean up any leftover drawings from previous Q1
+    line.delete(sweep_line_long),  sweep_line_long  := na
+    label.delete(sweep_lbl_long),  sweep_lbl_long   := na
+    line.delete(sweep_line_short), sweep_line_short := na
+    label.delete(sweep_lbl_short), sweep_lbl_short  := na
+    line.delete(cisd_prev_long),   cisd_prev_long   := na
+    line.delete(cisd_prev_short),  cisd_prev_short  := na
 
 // ── Q1 COUNTER ────────────────────────────────────────────────────────────────
 if in_q1
     q1_elapsed += 1
     if q1_elapsed >= q1_bars
         in_q1 := false
+
+q1_just_ended = prev_in_q1 and not in_q1
+prev_in_q1   := in_q1
+
+if q1_just_ended
+    // remove sweep & preview if CISD never fired
+    if not alerted_long
+        line.delete(sweep_line_long),  sweep_line_long := na
+        label.delete(sweep_lbl_long),  sweep_lbl_long  := na
+        line.delete(cisd_prev_long),   cisd_prev_long  := na
+    if not alerted_short
+        line.delete(sweep_line_short), sweep_line_short := na
+        label.delete(sweep_lbl_short), sweep_lbl_short  := na
+        line.delete(cisd_prev_short),  cisd_prev_short  := na
 
 // ── PHASE 1: SWEEP ────────────────────────────────────────────────────────────
 // sweep_ext_long/short = wick extreme (SL level)
@@ -154,17 +183,17 @@ if tf_supported and in_q1 and not na(anc_hi) and not na(anc_lo)
         if not swept_long
             ext = anc_lo - low
             if low < anc_lo and ext / ref_range >= sweep_min and ext / ref_range <= sweep_max
-                swept_long     := true
-                sweep_ext_long := low
-                line.new(bar_index, anc_lo, bar_index + rr_extend + 15, anc_lo, color=color.red, width=2, style=sweep_lstyle)
-                label.new(bar_index + sweep_lbl_x, anc_lo, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.red, style=sweep_lbl_style, size=size.small)
+                swept_long      := true
+                sweep_ext_long  := low
+                sweep_line_long := line.new(bar_index, anc_lo, bar_index + rr_extend + 15, anc_lo, color=color.red, width=2, style=sweep_lstyle)
+                sweep_lbl_long  := label.new(bar_index + sweep_lbl_x, anc_lo, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.red, style=sweep_lbl_style, size=size.small)
         if not swept_short
             ext = high - anc_hi
             if high > anc_hi and ext / ref_range >= sweep_min and ext / ref_range <= sweep_max
-                swept_short     := true
-                sweep_ext_short := high
-                line.new(bar_index, anc_hi, bar_index + rr_extend + 15, anc_hi, color=color.red, width=2, style=sweep_lstyle)
-                label.new(bar_index + sweep_lbl_x, anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.red, style=sweep_lbl_style, size=size.small)
+                swept_short      := true
+                sweep_ext_short  := high
+                sweep_line_short := line.new(bar_index, anc_hi, bar_index + rr_extend + 15, anc_hi, color=color.red, width=2, style=sweep_lstyle)
+                sweep_lbl_short  := label.new(bar_index + sweep_lbl_x, anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.red, style=sweep_lbl_style, size=size.small)
 
 // ── PHASE 2: RETURN TO RANGE ──────────────────────────────────────────────────
 if in_q1
@@ -211,6 +240,23 @@ f_cisd_short() =>
 [cisd_long_fired,  cisd_long_lvl]  = f_cisd_long()
 [cisd_short_fired, cisd_short_lvl] = f_cisd_short()
 
+// ── CISD PREVIEW — live expected CISD level while in Q1 ──────────────────────
+// Draws a dashed line at the current CISD level (open of the opposing run) while
+// waiting for confirmation. Deleted once CISD fires or Q1 ends without it.
+if tf_supported and in_q1
+    if swept_long and ret_long and not alerted_long and not na(cisd_long_lvl)
+        line.delete(cisd_prev_long)
+        cisd_prev_long := line.new(bar_index - cisd_lookback, cisd_long_lvl, bar_index + 5, cisd_long_lvl, color=color.new(color.blue, 50), width=1, style=line.style_dashed)
+    else
+        line.delete(cisd_prev_long)
+        cisd_prev_long := na
+    if swept_short and ret_short and not alerted_short and not na(cisd_short_lvl)
+        line.delete(cisd_prev_short)
+        cisd_prev_short := line.new(bar_index - cisd_lookback, cisd_short_lvl, bar_index + 5, cisd_short_lvl, color=color.new(color.blue, 50), width=1, style=line.style_dashed)
+    else
+        line.delete(cisd_prev_short)
+        cisd_prev_short := na
+
 // ── VALIDITY ──────────────────────────────────────────────────────────────────
 long_risk  = not na(sweep_ext_long)  ? math.abs(close - sweep_ext_long)  : 0.0
 short_risk = not na(sweep_ext_short) ? math.abs(close - sweep_ext_short) : 0.0
@@ -223,6 +269,7 @@ if rth_only
 // ── FIRE: LONG ────────────────────────────────────────────────────────────────
 if long_valid
     alerted_long := true
+    line.delete(cisd_prev_long), cisd_prev_long := na
     entry = close
     sl    = sweep_ext_long
     risk  = entry - sl
@@ -241,6 +288,7 @@ if long_valid
 // ── FIRE: SHORT ───────────────────────────────────────────────────────────────
 if short_valid
     alerted_short := true
+    line.delete(cisd_prev_short), cisd_prev_short := na
     entry = close
     sl    = sweep_ext_short
     risk  = sl - entry
