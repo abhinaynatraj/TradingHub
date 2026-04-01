@@ -89,10 +89,6 @@ else if timeframe.period == "3"
     combo        := "30M/3M"
     tf_supported := true
 
-// Show watermark if TF not supported
-if barstate.islast and not tf_supported
-    label.new(bar_index, high, "Abhi's Fractal Sweep\nUse 1H / 15M / 5M / 3M chart", color=color.new(color.gray, 80), textcolor=color.gray, style=label.style_label_left, size=size.normal)
-
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 is_rth() =>
     h = hour(time, "America/New_York")
