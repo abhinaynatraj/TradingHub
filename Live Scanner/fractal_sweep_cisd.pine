@@ -300,12 +300,12 @@ if in_q1
 
 f_cisd_long(int ret_bar) =>
     // LONG: find consecutive bearish run (close < open) backward from return bar
-    // Matches backtest: skip dojis, find first bearish candle, extend run back
+    // Scan back, skip dojis AND non-matching candles, find first bearish candle
     cisd_lvl  = float(na)
     run_end   = 0
     if not na(ret_bar)
         offset = bar_index - ret_bar
-        // Step 1: scan back from ret_bar, skip dojis, find first bearish candle
+        // Step 1: scan back from ret_bar — skip dojis and bullish candles to find bearish run
         found = false
         for step = 1 to cisd_lookback * 4
             k = offset + step
@@ -317,8 +317,7 @@ f_cisd_long(int ret_bar) =>
                 run_end := k
                 found := true
                 break
-            else
-                break
+            // skip non-matching candles (bullish) — keep searching
         if found
             // Step 2: extend run further back for consecutive bearish candles
             run_start = run_end
@@ -337,12 +336,12 @@ f_cisd_long(int ret_bar) =>
 
 f_cisd_short(int ret_bar) =>
     // SHORT: find consecutive bullish run (close > open) backward from return bar
-    // Matches backtest: skip dojis, find first bullish candle, extend run back
+    // Scan back, skip dojis AND non-matching candles, find first bullish candle
     cisd_lvl  = float(na)
     run_end   = 0
     if not na(ret_bar)
         offset = bar_index - ret_bar
-        // Step 1: scan back from ret_bar, skip dojis, find first bullish candle
+        // Step 1: scan back from ret_bar — skip dojis and bearish candles to find bullish run
         found = false
         for step = 1 to cisd_lookback * 4
             k = offset + step
@@ -354,8 +353,7 @@ f_cisd_short(int ret_bar) =>
                 run_end := k
                 found := true
                 break
-            else
-                break
+            // skip non-matching candles (bearish) — keep searching
         if found
             // Step 2: extend run further back for consecutive bullish candles
             run_start = run_end
