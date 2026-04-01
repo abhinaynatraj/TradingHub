@@ -423,6 +423,74 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
       </div>
     </div>
 
+    <!-- ── Differences from TTrades Model ─────────────────────────────────── -->
+    <div class="sec-label">Abhi's Fractal Sweep vs TTrades Fractal Model</div>
+    <div class="panel">
+      <div class="ph">
+        <span class="ph-title">Key Differences from TTFM</span>
+        <span class="ph-note">Same core concept · different implementation details</span>
+      </div>
+      <div class="pb">
+        <table class="model-tf-table" style="width:100%;font-size:12px">
+          <thead>
+            <tr><th style="width:22%">Aspect</th><th style="width:39%">Abhi's Fractal Sweep</th><th style="width:39%">TTrades Fractal Model (TTFM)</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Anchor Reference</strong></td>
+              <td>Prior HTF candle's high/low — fixed for each period</td>
+              <td>Prior HTF candle's high/low — same concept</td>
+            </tr>
+            <tr>
+              <td><strong>Sweep Detection</strong></td>
+              <td>Q1 window (first 8–60 min) OR pre-seeded if prior candle itself swept the prev-prev candle. Sweep % filter: 0.10%–1.50%</td>
+              <td>Detected when new HTF candle closes — checks if last closed candle swept prior candle's high/low. No % filter</td>
+            </tr>
+            <tr>
+              <td><strong>T-Spot Zone</strong></td>
+              <td>Log midpoint to close of the sweep bar on the LTF chart — computed per-bar at sweep detection</td>
+              <td>Log midpoint to close of the HTF sweep candle — the defining feature, used as the conviction zone</td>
+            </tr>
+            <tr>
+              <td><strong>CISD Method</strong></td>
+              <td>Backward scan from return bar: finds opposing delivery run, CISD level = open of the earliest candle. Skips dojis and non-matching candles</td>
+              <td>Forward scan from C2 bar: finds where consecutive same-polarity series breaks, CISD level = series extreme (high for bullish, low for bearish)</td>
+            </tr>
+            <tr>
+              <td><strong>Stop Loss</strong></td>
+              <td>Swing extreme — tracks the highest high / lowest low from sweep until entry (not just the first sweep bar)</td>
+              <td>Typically the sweep candle's wick extreme or the T-Spot zone boundary</td>
+            </tr>
+            <tr>
+              <td><strong>T-Spot Types</strong></td>
+              <td>ProTrend (&lt;0.30), Normal (0.30–0.80), Expansive (&gt;0.80) — classified by sweep % of prior range</td>
+              <td>Normal (sweep high/low), Expansive (2-candle sweep), ProTrend (midpoint sweep) — classified by sweep pattern</td>
+            </tr>
+            <tr>
+              <td><strong>Entry</strong></td>
+              <td>Close of the bar that confirms CISD (Pine) or next bar open after CISD close (backtest)</td>
+              <td>T-Spot sweep confirmation: pivot forms inside zone, then close breaks the pivot</td>
+            </tr>
+            <tr>
+              <td><strong>Projections</strong></td>
+              <td>CISD series range projected at configurable multiples (0.5, 1.0, 1.5, 2.0)</td>
+              <td>Same concept — CISD series range projected at configurable levels</td>
+            </tr>
+            <tr>
+              <td><strong>C2/C3 Labels</strong></td>
+              <td>C2 at the swept level (anchor high/low bar), C3 at CISD confirmation level</td>
+              <td>C2 at the protected level from sweep candle, C3/C4 at the T-Spot midpoint</td>
+            </tr>
+            <tr>
+              <td><strong>Backtested</strong></td>
+              <td>15 years of NQ/ES 1-minute data across 4 TF combos, 12 risk profiles, statistical dashboard with WR/EV/PF</td>
+              <td>Forward-tested discretionary model, no systematic backtest</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="meta-row" id="meta-row"></div>
 
     <div class="sec-label">Classification Breakdown</div>
