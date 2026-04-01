@@ -106,19 +106,34 @@ f_log_mid(float _h, float _l, float _o, float _c) =>
 // All 4 TFs are pre-fetched; correct one selected by chart TF below.
 ph_1D  = request.security(syminfo.tickerid, "1D",  high[1], lookahead=barmerge.lookahead_on)
 pl_1D  = request.security(syminfo.tickerid, "1D",  low[1],  lookahead=barmerge.lookahead_on)
+pc_1D  = request.security(syminfo.tickerid, "1D",  close[1], lookahead=barmerge.lookahead_on)
 at_1D  = request.security(syminfo.tickerid, "1D",  time,    lookahead=barmerge.lookahead_on)
+ph2_1D = request.security(syminfo.tickerid, "1D",  high[2], lookahead=barmerge.lookahead_on)
+pl2_1D = request.security(syminfo.tickerid, "1D",  low[2],  lookahead=barmerge.lookahead_on)
 ph_240 = request.security(syminfo.tickerid, "240", high[1], lookahead=barmerge.lookahead_on)
 pl_240 = request.security(syminfo.tickerid, "240", low[1],  lookahead=barmerge.lookahead_on)
+pc_240 = request.security(syminfo.tickerid, "240", close[1], lookahead=barmerge.lookahead_on)
 at_240 = request.security(syminfo.tickerid, "240", time,    lookahead=barmerge.lookahead_on)
+ph2_240 = request.security(syminfo.tickerid, "240", high[2], lookahead=barmerge.lookahead_on)
+pl2_240 = request.security(syminfo.tickerid, "240", low[2],  lookahead=barmerge.lookahead_on)
 ph_60  = request.security(syminfo.tickerid, "60",  high[1], lookahead=barmerge.lookahead_on)
 pl_60  = request.security(syminfo.tickerid, "60",  low[1],  lookahead=barmerge.lookahead_on)
+pc_60  = request.security(syminfo.tickerid, "60",  close[1], lookahead=barmerge.lookahead_on)
 at_60  = request.security(syminfo.tickerid, "60",  time,    lookahead=barmerge.lookahead_on)
+ph2_60 = request.security(syminfo.tickerid, "60",  high[2], lookahead=barmerge.lookahead_on)
+pl2_60 = request.security(syminfo.tickerid, "60",  low[2],  lookahead=barmerge.lookahead_on)
 ph_30  = request.security(syminfo.tickerid, "30",  high[1], lookahead=barmerge.lookahead_on)
 pl_30  = request.security(syminfo.tickerid, "30",  low[1],  lookahead=barmerge.lookahead_on)
+pc_30  = request.security(syminfo.tickerid, "30",  close[1], lookahead=barmerge.lookahead_on)
 at_30  = request.security(syminfo.tickerid, "30",  time,    lookahead=barmerge.lookahead_on)
+ph2_30 = request.security(syminfo.tickerid, "30",  high[2], lookahead=barmerge.lookahead_on)
+pl2_30 = request.security(syminfo.tickerid, "30",  low[2],  lookahead=barmerge.lookahead_on)
 
 prior_high    = timeframe.period == "60" ? ph_1D : timeframe.period == "15" ? ph_240 : timeframe.period == "5" ? ph_60 : ph_30
 prior_low     = timeframe.period == "60" ? pl_1D : timeframe.period == "15" ? pl_240 : timeframe.period == "5" ? pl_60 : pl_30
+prior_close   = timeframe.period == "60" ? pc_1D : timeframe.period == "15" ? pc_240 : timeframe.period == "5" ? pc_60 : pc_30
+prev2_high    = timeframe.period == "60" ? ph2_1D : timeframe.period == "15" ? ph2_240 : timeframe.period == "5" ? ph2_60 : ph2_30
+prev2_low     = timeframe.period == "60" ? pl2_1D : timeframe.period == "15" ? pl2_240 : timeframe.period == "5" ? pl2_60 : pl2_30
 anchor_time   = timeframe.period == "60" ? at_1D : timeframe.period == "15" ? at_240 : timeframe.period == "5" ? at_60 : at_30
 is_new_anchor = ta.change(anchor_time) != 0
 
@@ -183,17 +198,49 @@ if is_new_anchor and tf_supported
     ret_short       := false
     alerted_long    := false
     alerted_short   := false
-    // find which bar made the prior TF high and low
+    // find which bar made the anchor high and low (may be prev2 if pre-seeded)
     anc_hi_bar := bar_index - 1
     anc_lo_bar := bar_index - 1
-    for k = 1 to 30
-        if high[k] == prior_high
+    for k = 1 to 50
+        if high[k] == anc_hi
             anc_hi_bar := bar_index - k
             break
-    for k = 1 to 30
-        if low[k] == prior_low
+    for k = 1 to 50
+        if low[k] == anc_lo
             anc_lo_bar := bar_index - k
             break
+    // ── Pre-seed: did the prior candle itself sweep beyond the prev-prev range? ─
+    // If the just-closed HTF candle swept above prev2_high and closed back below,
+    // that IS a valid sweep+return — pre-seed state so only CISD is needed.
+    if not na(prev2_high) and not na(prev2_low)
+        pp_range = prev2_high - prev2_low
+        if pp_range > 0
+            // SHORT pre-seed: prior candle swept above prev-prev high, closed back below
+            if prior_high > prev2_high and prior_close <= prev2_high
+                ext_s = prior_high - prev2_high
+                if ext_s / pp_range >= sweep_min and ext_s / pp_range <= sweep_max
+                    swept_short      := true
+                    sweep_ext_short  := prior_high
+                    sweep_bar_short  := bar_index - 1
+                    sweep_pct_short  := ext_s / pp_range
+                    ret_short        := true
+                    ret_bar_short    := bar_index - 1
+                    // override anc_hi/lo to the prev-prev candle (the one that was swept)
+                    anc_hi := prev2_high
+                    anc_lo := prev2_low
+            // LONG pre-seed: prior candle swept below prev-prev low, closed back above
+            if prior_low < prev2_low and prior_close >= prev2_low
+                ext_l = prev2_low - prior_low
+                if ext_l / pp_range >= sweep_min and ext_l / pp_range <= sweep_max
+                    swept_long       := true
+                    sweep_ext_long   := prior_low
+                    sweep_bar_long   := bar_index - 1
+                    sweep_pct_long   := ext_l / pp_range
+                    ret_long         := true
+                    ret_bar_long     := bar_index - 1
+                    // override anc_hi/lo to the prev-prev candle (the one that was swept)
+                    anc_hi := prev2_high
+                    anc_lo := prev2_low
     // clean up any leftover drawings from previous Q1
     line.delete(sweep_line_long)
     sweep_line_long  := na
