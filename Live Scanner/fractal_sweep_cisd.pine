@@ -375,20 +375,19 @@ f_cisd_short(int ret_bar) =>
 [cisd_long_fired,  cisd_long_lvl,  cisd_long_off]  = f_cisd_long(ret_bar_long)
 [cisd_short_fired, cisd_short_lvl, cisd_short_off] = f_cisd_short(ret_bar_short)
 
-// ── CISD PREVIEW — live expected CISD level while in Q1 ──────────────────────
-// Draws a dashed line at the current CISD level (open of the opposing run) while
-// waiting for confirmation. Deleted once CISD fires or Q1 ends without it.
-if tf_supported and in_q1
+// ── CISD PREVIEW — live expected CISD level while waiting for confirmation ───
+// Shows during Q1 and also after Q1 if sweep+return completed (CISD pending).
+if tf_supported
     if swept_long and ret_long and not alerted_long and not na(cisd_long_lvl)
         line.delete(cisd_prev_long)
         cisd_prev_long := line.new(bar_index - cisd_lookback, cisd_long_lvl, bar_index + 5, cisd_long_lvl, color=color.new(color.blue, 50), width=1, style=line.style_dashed)
-    else
+    else if not swept_long or alerted_long
         line.delete(cisd_prev_long)
         cisd_prev_long := na
     if swept_short and ret_short and not alerted_short and not na(cisd_short_lvl)
         line.delete(cisd_prev_short)
         cisd_prev_short := line.new(bar_index - cisd_lookback, cisd_short_lvl, bar_index + 5, cisd_short_lvl, color=color.new(color.blue, 50), width=1, style=line.style_dashed)
-    else
+    else if not swept_short or alerted_short
         line.delete(cisd_prev_short)
         cisd_prev_short := na
 
