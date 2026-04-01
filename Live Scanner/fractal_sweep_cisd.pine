@@ -436,19 +436,6 @@ if tf_supported
         line.delete(cisd_prev_short)
         cisd_prev_short := na
 
-// ── DEBUG — temporary state labels (remove after fixing) ─────────────────────
-if barstate.islast and tf_supported
-    dbg = "S:" + (swept_short ? "Y" : "N") + " R:" + (ret_short ? "Y" : "N") + " A:" + (alerted_short ? "Y" : "N")
-    dbg := dbg + " | retBar:" + (na(ret_bar_short) ? "na" : str.tostring(ret_bar_short))
-    dbg := dbg + " | cisd:" + (na(cisd_short_lvl) ? "na" : str.tostring(cisd_short_lvl, "#.##"))
-    dbg := dbg + " | fire:" + (cisd_short_fired ? "Y" : "N")
-    dbg := dbg + "\nL S:" + (swept_long ? "Y" : "N") + " R:" + (ret_long ? "Y" : "N") + " A:" + (alerted_long ? "Y" : "N")
-    dbg := dbg + " | retBar:" + (na(ret_bar_long) ? "na" : str.tostring(ret_bar_long))
-    dbg := dbg + " | cisd:" + (na(cisd_long_lvl) ? "na" : str.tostring(cisd_long_lvl, "#.##"))
-    dbg := dbg + " | fire:" + (cisd_long_fired ? "Y" : "N")
-    dbg := dbg + "\nanc_hi:" + str.tostring(anc_hi, "#.##") + " anc_lo:" + str.tostring(anc_lo, "#.##") + " q1:" + (in_q1 ? "Y" : "N")
-    label.new(bar_index + 3, high, dbg, color=color.new(color.yellow, 70), textcolor=color.black, style=label.style_label_left, size=size.small)
-
 // ── VALIDITY ──────────────────────────────────────────────────────────────────
 long_risk  = not na(sweep_ext_long)  ? math.abs(close - sweep_ext_long)  : 0.0
 short_risk = not na(sweep_ext_short) ? math.abs(close - sweep_ext_short) : 0.0
