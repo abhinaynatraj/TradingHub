@@ -435,12 +435,6 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
         <span class="ph-note" id="q1-impact-note">Loading...</span>
       </div>
       <div class="pb">
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-          <select id="q1-profile-sel" style="font-family:var(--font-data);font-size:11px;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary)">
-            <option value="split_80_20">Split Exit (PTQ TP1 90% · Runner 10%)</option>
-            <option value="structural_dynamic">Structural (1:2 R:R)</option>
-          </select>
-        </div>
         <table class="model-tf-table" style="width:100%;font-size:12px" id="q1-impact-table">
           <thead><tr><th>Metric</th><th id="q1-col-orig">Q1 = ?</th><th id="q1-col-full">Full Period</th><th>Delta</th></tr></thead>
           <tbody id="q1-impact-body"></tbody>
@@ -3179,22 +3173,19 @@ function renderQ1Impact(){
   const note=document.getElementById('q1-impact-note');
   const summary=document.getElementById('q1-impact-summary');
   if(!body||!q1ImpactData)return;
-  // Map activeModel to q1 data key (strip _PREV_CISD suffix)
   const mk=activeModel;
   const md=q1ImpactData[mk];
-  if(!md){body.innerHTML='<tr><td colspan="4" style="color:var(--text-muted)">No Q1 data for '+mk+'</td></tr>';return;}
-  const sel=document.getElementById('q1-profile-sel');
-  const pk=sel?sel.value:'split_80_20';
+  if(!md){body.innerHTML='<tr><td colspan="4" style="color:var(--text-muted)">No Q1 data for '+mk+'</td></tr>';note.textContent='';summary.textContent='';return;}
+  // Map activeProfile to the closest Q1 data key
+  const pk=(activeProfile==='split_80_20'||activeProfile==='structural_dynamic')?activeProfile
+    :activeProfile.startsWith('sl_')?'split_80_20':'structural_dynamic';
   const pd=md.profiles[pk];
-  if(!pd){body.innerHTML='<tr><td colspan="4" style="color:var(--text-muted)">No data for '+pk+'</td></tr>';return;}
+  if(!pd){body.innerHTML='<tr><td colspan="4" style="color:var(--text-muted)">No data for '+activeProfile+'</td></tr>';return;}
   const o=pd.orig, f=pd.full;
-  // Update headers
   document.getElementById('q1-col-orig').textContent='Q1 = '+md.q1_orig+' min';
   document.getElementById('q1-col-full').textContent='Full '+md.q1_full+' min';
-  // Note
   const ptqStr=pk==='split_80_20'?'TP1 @ '+md.ptq+'% PTQ (90%) · Runner (10%) · BE stop':'Structural 1:2 R:R';
-  note.textContent=mk+' · '+ptqStr;
-  // Build rows
+  note.textContent=mk+' · '+ptqStr+(pk!==activeProfile?' (nearest match)':'');
   function pct(v){return(v*100).toFixed(1)+'%';}
   function delta(ov,fv,fmt,invert){
     const d=fv-ov;const s=d>=0?'+':'';
@@ -3208,26 +3199,21 @@ function renderQ1Impact(){
     ['Avg Risk',o.avg_risk.toFixed(0)+' pts',f.avg_risk.toFixed(0)+' pts',delta(o.avg_risk,f.avg_risk,d=>{const p=o.avg_risk?((d/o.avg_risk)*100).toFixed(0):'0';return(d>=0?'+':'')+p+'%';},true)],
     ['Trades',o.n.toLocaleString(),f.n.toLocaleString(),'<td style="color:var(--text-muted)">'+(f.n-o.n>=0?'+':'')+(f.n-o.n).toLocaleString()+'</td>'],
   ];
-  if(pk==='split_80_20'){
-    rows.push(['TP1 Hit Rate',pct(o.tp1_rate),pct(f.tp1_rate),delta(o.tp1_rate,f.tp1_rate,d=>(d*100).toFixed(1)+'pp',false)]);
-  }
+  if(pk==='split_80_20') rows.push(['TP1 Hit Rate',pct(o.tp1_rate),pct(f.tp1_rate),delta(o.tp1_rate,f.tp1_rate,d=>(d*100).toFixed(1)+'pp',false)]);
   body.innerHTML=rows.map(r=>'<tr><td>'+r[0]+'</td><td>'+(o.ev>=f.ev?'<strong>'+r[1]+'</strong>':r[1])+'</td><td>'+(f.ev>o.ev?'<strong>'+r[2]+'</strong>':r[2])+'</td>'+r[3]+'</tr>').join('');
-  // Summary
   const evDelta=o.ev!==0?((f.ev-o.ev)/o.ev*100).toFixed(0):0;
   const riskDelta=o.avg_risk!==0?((f.avg_risk-o.avg_risk)/o.avg_risk*100).toFixed(0):0;
-  const better=f.ev>o.ev?'full period':'Q1';
-  summary.innerHTML=better==='Q1'
-    ?'Higher WR without Q1 but <strong>EV drops '+Math.abs(evDelta)+'%</strong> — late sweeps have '+Math.abs(riskDelta)+'% wider stops. Q1 keeps risk tight.'
-    :'Full period improves EV by '+evDelta+'% for this combo. Consider relaxing Q1.';
+  summary.innerHTML=f.ev>o.ev
+    ?'Full period improves EV by '+Math.abs(evDelta)+'% for this combo. Consider relaxing Q1.'
+    :'Higher WR without Q1 but <strong>EV drops '+Math.abs(evDelta)+'%</strong> — late sweeps have '+Math.abs(riskDelta)+'% wider stops. Q1 keeps risk tight.';
 }
 fetch('./q1_impact.json').then(r=>r.ok?r.json():null).then(j=>{if(j){q1ImpactData=j;renderQ1Impact();}}).catch(()=>{});
-document.getElementById('q1-profile-sel')?.addEventListener('change',renderQ1Impact);
 
-// Hook into model switch to re-render Q1 panel
+// Hook into existing model and profile switches
 const _origSwitchModel=switchModel;
 switchModel=function(k){_origSwitchModel(k);renderQ1Impact();};
-// Hook into profile switch
-const _origRPsel=document.getElementById('rr-profile-sel');
+const _origSwitchProfile=switchProfile;
+switchProfile=function(pk){_origSwitchProfile(pk);renderQ1Impact();};
 
 fetch('./model_stats.json')
   .then(r=>{console.log('[sweep] fetch status:',r.status,r.ok);return r.ok?r.json():Promise.reject('HTTP '+r.status);})
