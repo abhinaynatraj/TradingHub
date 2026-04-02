@@ -1322,7 +1322,7 @@ function switchProfile(pk){
   if(note) note.textContent = 'Stop & Target = fixed % of entry price · DDLI weighted ranking';
   renderProfileDropdown(); renderModelDropdown(); renderActive();
 }
-function switchTF(tf){ activeTF=tf; renderActive(); }
+function switchTF(tf){ activeTF=tf; _tradesPage=0; renderActive(); }
 
 // Return the stats object for the current model/profile/TF
 // For non-all TFs merges the tf slice (hero+charts) with the full profile (heatmap, combos, etc.)
