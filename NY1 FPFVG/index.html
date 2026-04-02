@@ -800,9 +800,9 @@ function renderMAEAnalysis(rs) {
     { lbl:'Mode MAE',   v: fmtPct(dist.mode),    c:'#60a5fa', note:'most common heat' },
     { lbl:'Std Dev',    v: fmtPct(dist.std),      c:'#94a3b8', note:'dispersion' },
     { lbl:'Skewness',   v: fmt(dist.skewness,1),  c: dist.skewness > 2 ? '#f87171':'#94a3b8', note: dist.skewness > 2 ? 'heavy right tail' : 'mild' },
-    { lbl:'CE',         v: ce != null ? ce.toFixed(2) : '—',
-      c: ce >= 3 ? '#10b981' : ce >= 1.5 ? '#fbbf24' : '#f87171',
-      note: ce >= 3 ? 'strong entries' : ce >= 1.5 ? 'decent' : ce != null ? 'marginal' : 'n/a' },
+    { lbl:'CE',         v: ce != null ? ce.toFixed(3) : '—',
+      c: ce >= 0.40 ? '#10b981' : ce >= 0.20 ? '#fbbf24' : '#f87171',
+      note: ce >= 0.40 ? 'strong edge' : ce >= 0.20 ? 'workable edge' : ce != null ? 'weak edge' : 'n/a' },
   ];
 
   const pctRows = [
@@ -993,7 +993,7 @@ function renderMAEAnalysis(rs) {
         {lbl:'Median MAE', v:fmtPct(dist.median), c:'#fb923c'},
         {lbl:'Mean MAE',   v:fmtPct(dist.mean),   c:'#fbbf24'},
         {lbl:'Min False%', v:sweep.length ? (Math.min(...sweep.map(s=>s.p_recovered))*100).toFixed(1)+'%' : '—', c:'#f87171'},
-        {lbl:'CE Score',   v:ce != null ? ce.toFixed(2) : '—', c: ce >= 1.5 ? '#10b981' : '#fbbf24'},
+        {lbl:'CE Score',   v:ce != null ? ce.toFixed(3) : '—', c: ce >= 0.40 ? '#10b981' : ce >= 0.20 ? '#fbbf24' : '#f87171'},
       ].map(s=>`
       <div style="background:rgba(0,0,0,0.2);border:1px solid rgba(248,113,113,0.2);border-radius:8px;padding:10px 14px;text-align:center">
         <div style="font-family:var(--font-data);font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">${s.lbl}</div>
@@ -1118,8 +1118,8 @@ function renderHero(meta, rs) {
       cls: pf >= 1.5 ? 'green' : pf >= 1.2 ? 'amber' : 'red',
       hint: 'Gross profit ÷ gross loss', bar: cssVar('--blue') },
     { lbl: 'CE',        val: ce != null ? ce.toFixed(3) : '—',
-      cls: ce >= 3.0 ? 'green' : ce >= 1.5 ? 'amber' : ce >= 1.0 ? 'orange' : 'red',
-      hint: 'avg(MFE÷MAE) on surviving trades — entry quality', bar: cssVar('--purple') },
+      cls: ce >= 0.40 ? 'green' : ce >= 0.20 ? 'amber' : 'red',
+      hint: 'Combined Edge · EV/R × PF', bar: cssVar('--purple') },
     { lbl: 'Total P&L', val: fmtPL(pl_usd),
       cls: pl_usd > 0 ? 'green' : 'red',
       hint: '$4,500 account · $225/trade · '+tfHint, bar: cssVar('--green') },
@@ -1300,6 +1300,13 @@ function drawBarChart(ctx, labels, values, opts = {}) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillText(lbl, x + barW / 2, PAD.top + cH + 7);
+
+    // n-label (trade count) below x label
+    if (opts.nValues && opts.nValues[i] != null) {
+      ctx.fillStyle = textC;
+      ctx.font = '500 8px "JetBrains Mono",monospace';
+      ctx.fillText('n=' + opts.nValues[i], x + barW / 2, PAD.top + cH + 19);
+    }
   });
 }
 
@@ -1318,24 +1325,27 @@ function roundRect(ctx, x, y, w, h, r) {
 
 // DOW CHART
 function drawDow(byDow) {
-  const ctx = setupCanvas('cvDow', 210);
+  const ctx = setupCanvas('cvDow', 220);
   const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
   const values = labels.map(k => byDow[k] ? byDow[k].tp1_wr : 0);
+  const nValues = labels.map(k => byDow[k] ? byDow[k].n : 0);
   drawBarChart(ctx, labels, values, {
     minY: 0.40, maxY: 0.70,
     yFmt: v => (v * 100).toFixed(0) + '%',
     valFmt: v => (v * 100).toFixed(1) + '%',
     colorFn: wrColorBars,
     baseline50: true,
-    pad: { top: 28, right: 16, bottom: 32, left: 48 },
+    nValues,
+    pad: { top: 28, right: 16, bottom: 42, left: 48 },
   });
 }
 
 // HOUR CHART
 function drawHour(byHour) {
-  const ctx = setupCanvas('cvHour', 210);
+  const ctx = setupCanvas('cvHour', 220);
   const labels = ['9', '10', '11', '12', '13', '14', '15'];
   const values = labels.map(k => byHour[k] ? byHour[k].tp1_wr : 0);
+  const nValues = labels.map(k => byHour[k] ? byHour[k].n : 0);
   const displayLabels = labels.map(h => h + ':00');
   drawBarChart(ctx, displayLabels, values, {
     minY: 0.35, maxY: 0.80,
@@ -1343,7 +1353,8 @@ function drawHour(byHour) {
     valFmt: v => (v * 100).toFixed(0) + '%',
     colorFn: wrColorBars,
     baseline50: true,
-    pad: { top: 28, right: 16, bottom: 32, left: 48 },
+    nValues,
+    pad: { top: 28, right: 16, bottom: 42, left: 48 },
   });
 }
 

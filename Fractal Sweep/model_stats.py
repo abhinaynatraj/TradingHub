@@ -1552,14 +1552,15 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         'sharpe':           sharpe_val,
     }
 
-    # CE — Combined Edge: avg(MFE / MAE) for WIN trades
-    wins_wl = wl_sorted[wl_sorted['win'] == 1]
-    ce_mask = (wins_wl['mae_pct'] > 0) & (wins_wl['mfe_pct'] > 0)
-    if ce_mask.sum() > 0:
-        ce = round(float((wins_wl.loc[ce_mask, 'mfe_pct'] /
-                           wins_wl.loc[ce_mask, 'mae_pct']).mean()), 3)
-    else:
-        ce = None
+    # CE — Combined Edge: EV_R × PF
+    # EV_R = EV_dollar / risk_per_trade; CE = EV_R × PF
+    _pf = overall['pf']
+    _n_wins = risk_stats['wins']
+    _n_losses = risk_stats['losses']
+    _n_total = risk_stats['trades']
+    _ev_dollar = (avg_win_usd * _n_wins + avg_loss_usd * _n_losses) / _n_total if _n_total > 0 else 0
+    _ev_r = _ev_dollar / RISK_PER_TRADE if RISK_PER_TRADE > 0 else 0
+    ce = round(_ev_r * _pf, 6) if _pf and _n_total > 0 else None
     risk_stats['ce'] = ce
 
     # Rich MAE / MFE distribution studies (FPFVG-style)

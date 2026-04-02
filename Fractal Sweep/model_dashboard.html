@@ -1398,7 +1398,7 @@ function renderModel(D){
   const pfVal = m.profit_factor;
   const pfCls = pfVal == null ? 'w' : pfVal >= 1.5 ? 'g' : pfVal >= 1.2 ? 'a' : pfVal >= 1.0 ? 'b' : 'r';
   const ceVal = rs.ce;
-  const ceCls = ceVal == null ? 'w' : ceVal >= 3 ? 'g' : ceVal >= 1.5 ? 'a' : ceVal >= 1 ? 'b' : 'r';
+  const ceCls = ceVal == null ? 'w' : ceVal >= 0.40 ? 'g' : ceVal >= 0.20 ? 'a' : 'r';
   const pnlCls = totalPnl == null ? 'w' : totalPnl > 0 ? 'g' : 'r';
   const dr = fmtDateRange(m.date_range);
   const tradesStr = (rs.trades ?? m.total_wl ?? 0).toLocaleString() + ' trades · ' + dr;
@@ -1406,7 +1406,7 @@ function renderModel(D){
     {label:'Win Rate',    val:m.win_rate!=null?pct(m.win_rate):'—',           sub:tradesStr,                                      cls:wrCls,  vc:wrCls},
     {label:'EV (R)',      val:evVal!=null?(evVal>0?'+':'')+evVal.toFixed(3)+'R':'—', sub:'Expected value per R risked',             cls:evVal==null?'w':evVal>0?'g':'r', vc:evVal==null?'w':evVal>0?'g':'r'},
     {label:'Prof Factor', val:pfVal!=null?pfVal.toFixed(3):'—',               sub:'Gross profit ÷ gross loss',                    cls:pfCls,  vc:pfCls},
-    {label:'CE',          val:ceVal!=null?ceVal.toFixed(3):'—',               sub:'Certainty Equivalent · MFE/MAE ratio',         cls:ceCls,  vc:ceCls},
+    {label:'CE',          val:ceVal!=null?ceVal.toFixed(3):'—',               sub:'Combined Edge · EV/R × PF',                    cls:ceCls,  vc:ceCls},
     {label:'Total P&L',   val:totalPnlStr,                                    sub:`$${acct.toLocaleString()} account · $${(rs.risk_per_trade??225).toLocaleString()}/trade · ${dr}`, cls:pnlCls, vc:pnlCls},
     {label:'Sharpe',      val:sharpeStr,                                      sub:'Annualised Sharpe ratio',                      cls:sharpeCls, vc:sharpeCls},
     {label:'SL %',        val:rs.sl_pct!=null?rs.sl_pct.toFixed(2)+'%':'—',  sub:'Fixed stop-loss % from entry',                 cls:'a',    vc:'a'},
@@ -1584,8 +1584,8 @@ function renderSweepMAEAnalysis(D) {
 
   const fp = v => v != null ? v.toFixed(4) + '%' : '—';
 
-  const ceColor  = ce == null ? 'var(--text-muted)' : ce >= 3.0 ? 'var(--green)' : ce >= 1.5 ? 'var(--amber)' : ce >= 1.0 ? '#fb923c' : 'var(--red)';
-  const ceRating = ce == null ? '—' : ce >= 3.0 ? 'Strong' : ce >= 1.5 ? 'Decent' : ce >= 1.0 ? 'Marginal' : 'Weak';
+  const ceColor  = ce == null ? 'var(--text-muted)' : ce >= 0.40 ? 'var(--green)' : ce >= 0.20 ? 'var(--amber)' : 'var(--red)';
+  const ceRating = ce == null ? '—' : ce >= 0.40 ? 'Strong' : ce >= 0.20 ? 'Workable' : 'Weak';
 
   const candidates = bell ? [
     {label:'Mean (μ)',  val:bell.mean,      cov:bell.cov_mean,  color:'#60a5fa'},

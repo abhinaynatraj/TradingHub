@@ -374,56 +374,89 @@ if in_ret_window
         ret_bar_short := bar_index
 
 // ── PHASE 3: CISD (matches backtest _find_cisd) ──────────────────────────────
-// Scan backward from RETURN BAR across all bars in the window
-// CISD level = highest open (long) / lowest open (short) among all opposing-direction candles found
-// = the open of the very first candle that started the delivery into the sweep
-// Fire when current bar closes through that level
+// Scan backward from RETURN BAR to find the consecutive opposing delivery run.
+// CISD level = open of the FIRST (earliest) candle in that run.
+// Fire when current bar closes through that level.
+//
+// Algorithm (same as Python _find_cisd):
+//   1. From ret_bar, scan backward — skip dojis, find nearest opposing candle
+//   2. Continue backward through consecutive opposing candles (skip dojis)
+//   3. Stop when a same-direction candle is hit
+//   4. CISD level = open of the run_start (earliest opposing candle)
 
 f_cisd_long(int ret_bar) =>
-    // LONG: scan backward from ret_bar, find the NEAREST bearish candle (close < open)
-    // CISD level = open of that candle — the last bearish delivery candle before the return
-    // When price closes above this open, the bearish delivery is reversed = CISD confirmed
-    // Skips dojis. Stops at the first bearish candle found (nearest to return bar).
+    // LONG: find consecutive bearish delivery run, use open of earliest bearish candle
     cisd_lvl = float(na)
     cisd_off = 0
     if not na(ret_bar)
         offset = bar_index - ret_bar
-        for step = 1 to cisd_lookback
+        // Step 1: find nearest bearish candle
+        nearest_k = 0
+        for step = 1 to cisd_lookback * 4
             k = offset + step
             if k >= bar_index
                 break
             if close[k] == open[k]  // doji — skip
                 continue
-            if close[k] < open[k]  // nearest bearish candle
-                cisd_lvl := open[k]
-                cisd_off := k
+            if close[k] < open[k]  // bearish — found it
+                nearest_k := k
                 break
+            else  // bullish — no opposing delivery
+                break
+        // Step 2: walk backward through consecutive bearish candles
+        if nearest_k > 0
+            run_start_k = nearest_k
+            for step2 = nearest_k + 1 to cisd_lookback * 4
+                if step2 >= bar_index
+                    break
+                if close[step2] == open[step2]  // doji — neutral, skip
+                    continue
+                if close[step2] < open[step2]  // bearish — extend run
+                    run_start_k := step2
+                else  // bullish — run ended
+                    break
+            cisd_lvl := open[run_start_k]
+            cisd_off := run_start_k
     [not na(cisd_lvl) and close > cisd_lvl, cisd_lvl, na(cisd_lvl) ? 0 : cisd_off]
 
 f_cisd_short(int ret_bar) =>
-    // SHORT: scan backward from ret_bar, find the NEAREST bullish candle (close > open)
-    // CISD level = open of that candle — the last bullish delivery candle before the return
-    // When price closes below this open, the bullish delivery is reversed = CISD confirmed
-    // Skips dojis. Stops at the first bullish candle found (nearest to return bar).
+    // SHORT: find consecutive bullish delivery run, use open of earliest bullish candle
     cisd_lvl = float(na)
     cisd_off = 0
     if not na(ret_bar)
         offset = bar_index - ret_bar
-        for step = 1 to cisd_lookback
+        // Step 1: find nearest bullish candle
+        nearest_k = 0
+        for step = 1 to cisd_lookback * 4
             k = offset + step
             if k >= bar_index
                 break
             if close[k] == open[k]  // doji — skip
                 continue
-            if close[k] > open[k]  // nearest bullish candle
-                cisd_lvl := open[k]
-                cisd_off := k
+            if close[k] > open[k]  // bullish — found it
+                nearest_k := k
                 break
+            else  // bearish — no opposing delivery
+                break
+        // Step 2: walk backward through consecutive bullish candles
+        if nearest_k > 0
+            run_start_k = nearest_k
+            for step2 = nearest_k + 1 to cisd_lookback * 4
+                if step2 >= bar_index
+                    break
+                if close[step2] == open[step2]  // doji — neutral, skip
+                    continue
+                if close[step2] > open[step2]  // bullish — extend run
+                    run_start_k := step2
+                else  // bearish — run ended
+                    break
+            cisd_lvl := open[run_start_k]
+            cisd_off := run_start_k
     [not na(cisd_lvl) and close < cisd_lvl, cisd_lvl, na(cisd_lvl) ? 0 : cisd_off]
 
-// Use ret_bar when available, fall back to sweep_bar so CISD preview appears as soon as sweep is detected
-scan_bar_long  = not na(ret_bar_long)  ? ret_bar_long  : sweep_bar_long
-scan_bar_short = not na(ret_bar_short) ? ret_bar_short : sweep_bar_short
+// Use ret_bar when available, fall back to current bar so CISD preview updates as delivery continues
+scan_bar_long  = not na(ret_bar_long)  ? ret_bar_long  : bar_index
+scan_bar_short = not na(ret_bar_short) ? ret_bar_short : bar_index
 [cisd_long_fired,  cisd_long_lvl,  cisd_long_off]  = f_cisd_long(scan_bar_long)
 [cisd_short_fired, cisd_short_lvl, cisd_short_off] = f_cisd_short(scan_bar_short)
 
@@ -432,7 +465,7 @@ if tf_supported
     if swept_long and not alerted_long and not na(cisd_long_lvl)
         line.delete(cisd_prev_long)
         label.delete(cisd_prev_lbl_long)
-        cisd_prev_long     := line.new(bar_index - cisd_lookback, cisd_long_lvl, bar_index + 5, cisd_long_lvl, color=color.new(color.blue, 50), width=1, style=line.style_dashed)
+        cisd_prev_long     := line.new(bar_index - cisd_long_off, cisd_long_lvl, bar_index + 5, cisd_long_lvl, color=color.new(color.blue, 50), width=1, style=line.style_dashed)
         cisd_prev_lbl_long := label.new(bar_index + 5, cisd_long_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(color.blue, 100), textcolor=color.new(color.blue, 50), style=label.style_label_left, size=size.small)
     else if not swept_long or alerted_long
         line.delete(cisd_prev_long)
@@ -442,7 +475,7 @@ if tf_supported
     if swept_short and not alerted_short and not na(cisd_short_lvl)
         line.delete(cisd_prev_short)
         label.delete(cisd_prev_lbl_short)
-        cisd_prev_short     := line.new(bar_index - cisd_lookback, cisd_short_lvl, bar_index + 5, cisd_short_lvl, color=color.new(color.blue, 50), width=1, style=line.style_dashed)
+        cisd_prev_short     := line.new(bar_index - cisd_short_off, cisd_short_lvl, bar_index + 5, cisd_short_lvl, color=color.new(color.blue, 50), width=1, style=line.style_dashed)
         cisd_prev_lbl_short := label.new(bar_index + 5, cisd_short_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(color.blue, 100), textcolor=color.new(color.blue, 50), style=label.style_label_left, size=size.small)
     else if not swept_short or alerted_short
         line.delete(cisd_prev_short)
