@@ -1768,6 +1768,7 @@ function renderRecentTrades(page) {
   const baseD2 = getProfileData(`${activeModel}_${activeMode}_${activeCisd}`, activeProfile);
   const D = getActiveTFData(baseD2);
   const trades = D?.recent_trades;
+  console.log('[trades] activeTF=', activeTF, 'trades.length=', trades?.length, 'slice_has_trades=', !!baseD2?.by_tf?.[activeTF]?.recent_trades);
   const titleEl = document.getElementById('trades-panel-title');
   if (!trades || !trades.length) {
     el.innerHTML = '<p style="color:var(--text-muted);font-size:13px;padding:8px 0;">No trades data. Run <code>python3 model_stats.py</code> to generate.</p>';
