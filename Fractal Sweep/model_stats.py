@@ -93,8 +93,7 @@ ACCOUNT_SIZE     = 4500   # $ account size for risk metrics
 RISK_PER_TRADE   = 225    # $ risk per trade
 MIN_RISK_PTS     = 3.0
 OUTCOME_MAX_BARS = 360
-SWEEP_MIN_PCT    = 0.10
-SWEEP_MAX_PCT    = 1.50
+SWEEP_MAX_PCT    = 0.50
 CISD_FAST_BARS   = 8
 UNSWEPT_LOOKBACK = 10
 
@@ -1012,8 +1011,6 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
             rejected_by = ''
             if ref_range < min_range:
                 rejected_by = 'F1_SMALL_RANGE'
-            elif ref_range > 0 and (sweep_ext / ref_range) < SWEEP_MIN_PCT:
-                rejected_by = 'F2_SWEEP_TOO_SMALL'
             elif ref_range > 0 and (sweep_ext / ref_range) > SWEEP_MAX_PCT:
                 rejected_by = 'F3_SWEEP_TOO_LARGE'
 

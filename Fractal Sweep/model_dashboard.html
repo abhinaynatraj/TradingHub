@@ -223,14 +223,13 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 @media(max-width:760px){.cls-grid{grid-template-columns:1fr 1fr}}
 
 /* SELECTOR BAR */
-.sel-bar{background:var(--bg-card);border-bottom:1px solid var(--border);padding:10px 28px;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
-.sel-group{display:flex;align-items:center;gap:8px}
-.sel-label{font-family:var(--font-data);font-size:11px;font-weight:600;letter-spacing:0.04em;color:var(--text-muted);text-transform:uppercase;white-space:nowrap}
-.sel-drop{font-family:var(--font-data);font-size:12px;padding:6px 28px 6px 10px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-primary);cursor:pointer;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238ba4bc'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;transition:border-color .15s}
-.sel-drop:hover{border-color:var(--border-hi)}
-.sel-drop:focus{outline:none;border-color:var(--green)}
+.sel-bar{background:var(--bg-card);border-bottom:1px solid var(--border);padding:14px 28px;display:flex;gap:32px;align-items:flex-end;flex-wrap:wrap}
+.sel-group{display:flex;flex-direction:column;gap:5px}
+.sel-label{font-family:var(--font-data);font-size:10px;font-weight:600;letter-spacing:0.06em;color:var(--text-muted);text-transform:uppercase;white-space:nowrap}
+.sel-drop{font-family:var(--font-data);font-size:13px;padding:8px 32px 8px 12px;border-radius:8px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-primary);cursor:pointer;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238ba4bc'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;transition:border-color .15s,box-shadow .15s}
+.sel-drop:hover{border-color:var(--border-hi);box-shadow:0 1px 4px rgba(0,0,0,0.12)}
+.sel-drop:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 2px rgba(52,211,153,0.15)}
 .sel-drop option{background:var(--bg-card);color:var(--text-primary)}
-.sel-note{font-family:var(--font-data);font-size:11px;color:var(--text-muted);letter-spacing:0.02em;margin-left:auto}
 
 /* MODEL EXPLAINER */
 .model-explainer-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}
@@ -252,7 +251,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 .model-tf-table tr:last-child td{border-bottom:none}
 .model-tf-table td:first-child{font-weight:600;color:var(--green);letter-spacing:0.04em}
 .model-tf-table tbody tr:hover td{background:var(--bg-raised)}
-.model-def-note{font-family:var(--font-body);font-size:11px;color:var(--text-muted);line-height:1.65;padding:8px 10px;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px}
+.model-def-note{font-family:var(--font-body);font-size:12px;color:var(--text-secondary);line-height:1.7;padding:10px 12px;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px}
 .model-def-note code{font-family:var(--font-data);font-size:10px;color:var(--text-secondary);background:var(--border);padding:1px 5px;border-radius:3px}
 </style>
 </head>
@@ -299,7 +298,6 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
     <label class="sel-label">Risk Profile</label>
     <select id="profile-select" class="sel-drop" onchange="switchProfile(this.value)"></select>
   </div>
-  <span class="sel-note" id="profile-note">Stop &amp; Target = fixed % of entry price · DDLI weighted ranking</span>
 </div>
 
 <span class="mode-strip-note" id="mode-note" style="display:none;"></span>
@@ -343,7 +341,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
               <div class="model-step-num">1</div>
               <div>
                 <div class="model-step-title">Q1 Sweep</div>
-                <div class="model-step-body">Within Q1 (first 8–60 min of the anchor period), price sweeps the prior anchor candle's high or low. Sweep must be 0.10%–1.50% of the prior range.</div>
+                <div class="model-step-body">Within Q1 (first 8–60 min of the anchor period), price sweeps the prior anchor candle's high or low. Sweep must be ≤50% of the prior range.</div>
               </div>
             </div>
             <div class="model-step">
@@ -357,7 +355,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
               <div class="model-step-num">3</div>
               <div>
                 <div class="model-step-title">CISD Confirmation</div>
-                <div class="model-step-body">Change in State of Delivery: price closes beyond the open of the first candle of the opposing consecutive delivery leg within 8 CISD bars.</div>
+                <div class="model-step-body">Change in State of Delivery: price closes beyond the open of the first candle of the opposing consecutive delivery leg within 16 CISD bars.</div>
               </div>
             </div>
           </div>
@@ -371,15 +369,11 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
             </div>
             <div class="model-mech-row">
               <span class="model-mech-label">Stop</span>
-              <span class="model-mech-val">Sweep extreme — the wick that swept the anchor level</span>
+              <span class="model-mech-val">Profile-dependent — fixed % of entry (pct) or sweep extreme (structural/split)</span>
             </div>
             <div class="model-mech-row">
-              <span class="model-mech-label">TP1</span>
-              <span class="model-mech-val"><strong>1R</strong> — 1:1 risk-reward</span>
-            </div>
-            <div class="model-mech-row">
-              <span class="model-mech-label">Runner</span>
-              <span class="model-mech-val"><strong>2R</strong> — 1:2 risk-reward · primary backtest target</span>
+              <span class="model-mech-label">Target</span>
+              <span class="model-mech-val">Profile-dependent — fixed % of entry (pct), 1R TP1 + runner (structural/split)</span>
             </div>
             <div style="margin-top:14px">
               <div class="model-col-head">Filters</div>
@@ -393,7 +387,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
               </div>
               <div class="model-mech-row">
                 <span class="model-mech-label">Sweep %</span>
-                <span class="model-mech-val">0.10% – 1.50% of prior anchor range</span>
+                <span class="model-mech-val">≤50% of prior anchor range</span>
               </div>
             </div>
           </div>
@@ -420,7 +414,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
             <div class="model-def-note" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
               <strong>vs TTFM:</strong> &nbsp;
               Q1 window constrains sweep timing (TTFM uses full candle) &nbsp;·&nbsp;
-              Sweep size filtered 0.10%–1.50% (TTFM: any wick) &nbsp;·&nbsp;
+              Sweep size capped at 50% of prior range (TTFM: any wick) &nbsp;·&nbsp;
               Prior candle sweeps pre-seeded at anchor reset
             </div>
           </div>
@@ -1108,7 +1102,7 @@ function barChart(container,data,H,yMin,yMax){
     keys.forEach((k,ki)=>{
       const d=data.find(r=>r.group===g&&r.key===k);
       if(!d)return;
-      const x=gx-tw/2+ki*(bw+bgap),y=yS(d.val),bh=ch-y;
+      const x=gx-tw/2+ki*(bw+bgap),y=yS(d.val),bh=Math.max(0,ch-y);
       const baseCol=clrs[k]||c.blue;
       const alpha=d.val>=60?0.92:d.val>=50?0.78:d.val>=40?0.58:0.42;
       const gId=`bcg${gi}_${ki}`;
@@ -1273,7 +1267,7 @@ function renderClassificationBreakdown(){
         <div>
           <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Total P&amp;L</div>
           <div style="font-family:var(--font-display);font-size:18px;font-weight:800;color:${pnlCol};line-height:1">${fmt$(d.pnl)}</div>
-          <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-top:3px">Sharpe <span style="color:${shCol}">${d.sharpe.toFixed(2)}</span></div>
+          <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-top:3px">Sharpe <span style="color:${shCol}">${d.sharpe!=null?d.sharpe.toFixed(2):'—'}</span></div>
         </div>
       </div>
     </div>`;
@@ -1319,8 +1313,6 @@ function renderProfileDropdown(){
 
 function switchProfile(pk){
   activeProfile=pk; _tradesPage=0;
-  const note = document.getElementById('profile-note');
-  if(note) note.textContent = 'Stop & Target = fixed % of entry price · DDLI weighted ranking';
   renderProfileDropdown(); renderModelDropdown(); renderActive();
 }
 function switchTF(tf){ activeTF=tf; _tradesPage=0; renderActive(); }
@@ -1373,12 +1365,6 @@ function renderActive(){
     return;
   }
   const D = getActiveTFData(baseD);
-  // Show TF note in profile-note when not viewing all time
-  const tfLabels = {'all':'All Time (2014–2026)','2y':'Last 2 Years','1y':'Last 1 Year','6m':'Last 6 Months','3m':'Last 3 Months','1m':'Last 1 Month'};
-  const note = document.getElementById('profile-note');
-  if(note) note.textContent = activeTF === 'all'
-    ? 'Stop & Target = fixed % of entry price · DDLI weighted ranking'
-    : `Showing: ${tfLabels[activeTF]} · ${fmtDateRange(D.meta?.date_range)}`;
   renderModel(D);
   renderProfileCompare();
 }
