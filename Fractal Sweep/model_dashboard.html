@@ -3177,14 +3177,17 @@ function renderQ1Impact(){
   const md=q1ImpactData[mk];
   if(!md){body.innerHTML='<tr><td colspan="4" style="color:var(--text-muted)">No Q1 data for '+mk+'</td></tr>';note.textContent='';summary.textContent='';return;}
   // Map activeProfile to the closest Q1 data key
-  const pk=(activeProfile==='split_80_20'||activeProfile==='structural_dynamic')?activeProfile:'split_80_20';
+  const pk=md.profiles[activeProfile]?activeProfile:(activeProfile==='structural_dynamic'?'structural_dynamic':'split_80_20');
   const pd=md.profiles[pk];
-  if(!pd){body.innerHTML='<tr><td colspan="4" style="color:var(--text-muted)">No data for '+activeProfile+'</td></tr>';return;}
+  if(!pd){body.innerHTML='<tr><td colspan="4" style="color:var(--text-muted)">No data for '+activeProfile+'</td></tr>';note.textContent='';summary.textContent='';return;}
   const o=pd.orig, f=pd.full;
   document.getElementById('q1-col-orig').textContent='Q1 = '+md.q1_orig+' min';
   document.getElementById('q1-col-full').textContent='Full '+md.q1_full+' min';
-  const ptqStr=pk==='split_80_20'?'Split Exit — TP1 @ '+md.ptq+'% PTQ (90%) · Runner (10%) · BE stop':'Structural Dynamic — TP1 @ 1R · 50% exit · Runner Free · BE stop';
-  note.textContent=mk+' · '+ptqStr+(pk!==activeProfile?' (nearest match)':'');
+  // Build label from the profile dropdown text
+  const profSel=document.getElementById('profile-select');
+  const profLabel=profSel?profSel.options[profSel.selectedIndex]?.textContent:'';
+  const isExact=pk===activeProfile;
+  note.textContent=mk+' · '+(isExact?profLabel:'Using structural stop data — fixed-% profiles have sweep-independent stops');
   function pct(v){return(v*100).toFixed(1)+'%';}
   function delta(ov,fv,fmt,invert){
     const d=fv-ov;const s=d>=0?'+':'';
