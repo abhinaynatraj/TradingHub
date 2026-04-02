@@ -216,16 +216,18 @@ if is_new_anchor and tf_supported
     alerted_short   := false
     q1_sweep_long   := false
     q1_sweep_short  := false
-    // find which bar made the anchor high and low (may be prev2 if pre-seeded)
-    // Scan the entire prior HTF period; keep the EARLIEST bar that touched the level
+    // find the most recent bar that made the anchor high/low
+    // Scan backward, break on first match — most recent bar at that level
     anc_hi_bar := bar_index - 1
     anc_lo_bar := bar_index - 1
     for k = 1 to 50
         if high[k] >= anc_hi
             anc_hi_bar := bar_index - k
+            break
     for k = 1 to 50
         if low[k] <= anc_lo
             anc_lo_bar := bar_index - k
+            break
     // ── Pre-seed: did the prior candle itself sweep beyond the prev-prev range? ─
     // If the just-closed HTF candle swept above prev2_high and closed back below,
     // that IS a valid sweep+return — pre-seed state so only CISD is needed.
@@ -418,76 +420,72 @@ if can_return
 //   4. CISD level = open of the run_start (earliest opposing candle)
 
 f_cisd_long(int ret_bar) =>
-    // LONG: find consecutive bearish delivery run, use open of earliest bearish candle
+    // LONG: scan backward from ret_bar, skip dojis and bullish candles,
+    // find nearest bearish candle, then walk back through consecutive bearish run.
+    // CISD level = open of earliest bearish candle in the run.
     cisd_lvl = float(na)
     cisd_off = 0
     if not na(ret_bar)
         offset = bar_index - ret_bar
-        // Step 1: find nearest bearish candle — skip dojis only, break on bullish
         nearest_k = 0
         for step = 1 to cisd_lookback * 4
             k = offset + step
             if k >= bar_index
                 break
-            if close[k] == open[k]  // doji — skip
+            if close[k] == open[k]
                 continue
-            if close[k] < open[k]  // bearish — found it
+            if close[k] < open[k]
                 nearest_k := k
                 break
-            else  // bullish — no opposing delivery adjacent to return
-                break
-        // Step 2: walk backward through consecutive bearish candles
         if nearest_k > 0
             run_start_k = nearest_k
             for step2 = nearest_k + 1 to cisd_lookback * 4
                 if step2 >= bar_index
                     break
-                if close[step2] == open[step2]  // doji — neutral, skip
+                if close[step2] == open[step2]
                     continue
-                if close[step2] < open[step2]  // bearish — extend run
+                if close[step2] < open[step2]
                     run_start_k := step2
-                else  // bullish — run ended
+                else
                     break
             cisd_lvl := open[run_start_k]
             cisd_off := run_start_k
     [not na(cisd_lvl) and close > cisd_lvl, cisd_lvl, na(cisd_lvl) ? 0 : cisd_off]
 
 f_cisd_short(int ret_bar) =>
-    // SHORT: find consecutive bullish delivery run, use open of earliest bullish candle
+    // SHORT: scan backward from ret_bar, skip dojis and bearish candles,
+    // find nearest bullish candle, then walk back through consecutive bullish run.
+    // CISD level = open of earliest bullish candle in the run.
     cisd_lvl = float(na)
     cisd_off = 0
     if not na(ret_bar)
         offset = bar_index - ret_bar
-        // Step 1: find nearest bullish candle — skip dojis only, break on bearish
         nearest_k = 0
         for step = 1 to cisd_lookback * 4
             k = offset + step
             if k >= bar_index
                 break
-            if close[k] == open[k]  // doji — skip
+            if close[k] == open[k]
                 continue
-            if close[k] > open[k]  // bullish — found it
+            if close[k] > open[k]
                 nearest_k := k
                 break
-            else  // bearish — no opposing delivery adjacent to return
-                break
-        // Step 2: walk backward through consecutive bullish candles
         if nearest_k > 0
             run_start_k = nearest_k
             for step2 = nearest_k + 1 to cisd_lookback * 4
                 if step2 >= bar_index
                     break
-                if close[step2] == open[step2]  // doji — neutral, skip
+                if close[step2] == open[step2]
                     continue
-                if close[step2] > open[step2]  // bullish — extend run
+                if close[step2] > open[step2]
                     run_start_k := step2
-                else  // bearish — run ended
+                else
                     break
             cisd_lvl := open[run_start_k]
             cisd_off := run_start_k
     [not na(cisd_lvl) and close < cisd_lvl, cisd_lvl, na(cisd_lvl) ? 0 : cisd_off]
 
-// Use ret_bar when available, fall back to current bar so CISD preview updates as delivery continues
+// Fire + preview use the same scan
 scan_bar_long  = not na(ret_bar_long)  ? ret_bar_long  : bar_index
 scan_bar_short = not na(ret_bar_short) ? ret_bar_short : bar_index
 [cisd_long_fired,  cisd_long_lvl,  cisd_long_off]  = f_cisd_long(scan_bar_long)
@@ -549,11 +547,11 @@ if long_valid
     r_end = bar_index + rr_extend
     // Non-Q1 uses amber/yellow palette
     _is_q1_l  = q1_sweep_long
-    _risk_bg  = _is_q1_l ? rr_risk_col    : color.new(#f59e0b, 88)
-    _risk_br  = _is_q1_l ? rr_risk_border : color.new(#f59e0b, 40)
+    _risk_bg  = _is_q1_l ? rr_risk_col    : color.new(#dc2626, 90)
+    _risk_br  = _is_q1_l ? rr_risk_border : color.new(#dc2626, 50)
     _rew_bg   = _is_q1_l ? rr_rew_col     : color.new(#eab308, 88)
     _rew_br   = _is_q1_l ? rr_rew_border  : color.new(#eab308, 40)
-    _sl_col   = _is_q1_l ? color.red      : #f59e0b
+    _sl_col   = _is_q1_l ? color.red      : #dc2626
     _swp_col  = _is_q1_l ? color.red      : color.orange
     _cisd_col = _is_q1_l ? color.blue     : #eab308
     cisd_bar = bar_index - cisd_long_off
@@ -628,11 +626,11 @@ if short_valid
     r_end = bar_index + rr_extend
     // Non-Q1 uses amber/yellow palette
     _is_q1_s  = q1_sweep_short
-    _risk_bg  = _is_q1_s ? rr_risk_col    : color.new(#f59e0b, 88)
-    _risk_br  = _is_q1_s ? rr_risk_border : color.new(#f59e0b, 40)
+    _risk_bg  = _is_q1_s ? rr_risk_col    : color.new(#dc2626, 90)
+    _risk_br  = _is_q1_s ? rr_risk_border : color.new(#dc2626, 50)
     _rew_bg   = _is_q1_s ? rr_rew_col     : color.new(#eab308, 88)
     _rew_br   = _is_q1_s ? rr_rew_border  : color.new(#eab308, 40)
-    _sl_col   = _is_q1_s ? color.red      : #f59e0b
+    _sl_col   = _is_q1_s ? color.red      : #dc2626
     _swp_col  = _is_q1_s ? color.red      : color.orange
     _cisd_col = _is_q1_s ? color.blue     : #eab308
     cisd_bar = bar_index - cisd_short_off
