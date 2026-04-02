@@ -1,3 +1,5 @@
+// Statistic.ally — Fractal Sweep CISD Indicator
+// https://github.com/abhinaynatraj/TradingHub
 //@version=5
 indicator("Abhi's Fractal Sweep", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=500)
 
@@ -6,6 +8,9 @@ var string G2 = "Filters"
 sweep_max     = input.float(50.0, "Sweep Max %", group=G2, step=0.5) / 100
 min_risk      = input.float(3.0,  "Min Risk (pts)", group=G2)
 cisd_lookback = input.int(8,      "CISD Lookback Bars", group=G2)
+
+var string G8 = "Debug"
+show_debug    = input.bool(false, "Show Debug Labels", group=G8)
 
 var string G3 = "R:R Box"
 rr_extend      = input.int(20,    "Box Width (bars)", group=G3, minval=5, maxval=100)
@@ -156,6 +161,9 @@ var bool  ret_long        = false
 var bool  ret_short       = false
 var bool  alerted_long    = false
 var bool  alerted_short   = false
+// Q1 quality flag — true if sweep was detected within Q1 window
+var bool  q1_sweep_long   = false
+var bool  q1_sweep_short  = false
 // drawing object refs for cleanup
 var line  sweep_line_long   = na
 var label sweep_lbl_long    = na
@@ -203,17 +211,18 @@ if is_new_anchor and tf_supported
     ret_short       := false
     alerted_long    := false
     alerted_short   := false
+    q1_sweep_long   := false
+    q1_sweep_short  := false
     // find which bar made the anchor high and low (may be prev2 if pre-seeded)
+    // Scan the entire prior HTF period; keep the EARLIEST bar that touched the level
     anc_hi_bar := bar_index - 1
     anc_lo_bar := bar_index - 1
     for k = 1 to 50
-        if high[k] == anc_hi
+        if high[k] >= anc_hi
             anc_hi_bar := bar_index - k
-            break
     for k = 1 to 50
-        if low[k] == anc_lo
+        if low[k] <= anc_lo
             anc_lo_bar := bar_index - k
-            break
     // ── Pre-seed: did the prior candle itself sweep beyond the prev-prev range? ─
     // If the just-closed HTF candle swept above prev2_high and closed back below,
     // that IS a valid sweep+return — pre-seed state so only CISD is needed.
@@ -225,6 +234,7 @@ if is_new_anchor and tf_supported
                 ext_s = prior_high - prev2_high
                 if ext_s / pp_range <= sweep_max
                     swept_short      := true
+                    q1_sweep_short   := true
                     sweep_ext_short  := prior_high
                     sweep_bar_short  := bar_index - 1
                     sweep_pct_short  := ext_s / pp_range
@@ -238,6 +248,7 @@ if is_new_anchor and tf_supported
                 ext_l = prev2_low - prior_low
                 if ext_l / pp_range <= sweep_max
                     swept_long       := true
+                    q1_sweep_long    := true
                     sweep_ext_long   := prior_low
                     sweep_bar_long   := bar_index - 1
                     sweep_pct_long   := ext_l / pp_range
@@ -284,8 +295,8 @@ in_ret_window = q1_elapsed <= q1_bars + ret_bars
 ret_window_just_ended = q1_elapsed == q1_bars + ret_bars + 1
 
 if ret_window_just_ended
-    // Cleanup all unconfirmed setups — signal didn't fire within the full window
-    if not alerted_long
+    // Cleanup Q1 sweeps that didn't fire within the window. Non-Q1 sweeps stay alive.
+    if not alerted_long and q1_sweep_long
         line.delete(sweep_line_long)
         sweep_line_long     := na
         label.delete(sweep_lbl_long)
@@ -298,7 +309,7 @@ if ret_window_just_ended
         ret_long        := false
         sweep_ext_long  := na
         sweep_bar_long  := na
-    if not alerted_short
+    if not alerted_short and q1_sweep_short
         line.delete(sweep_line_short)
         sweep_line_short    := na
         label.delete(sweep_lbl_short)
@@ -315,23 +326,27 @@ if ret_window_just_ended
 // ── PHASE 1: SWEEP ────────────────────────────────────────────────────────────
 // sweep_ext_long/short = wick extreme (SL level)
 // sweep line drawn at anc_lo/anc_hi (prior candle boundary — the swept level)
-if tf_supported and in_q1 and not na(anc_hi) and not na(anc_lo)
+// Detects sweeps throughout the entire HTF period; tags Q1 vs non-Q1 for color coding
+sweep_line_col_long  = color.red
+sweep_line_col_short = color.red
+if tf_supported and not na(anc_hi) and not na(anc_lo)
     ref_range = anc_hi - anc_lo
     if ref_range > 0
         if not swept_long
             ext = anc_lo - low
             if low < anc_lo and ext / ref_range <= sweep_max
                 swept_long       := true
+                q1_sweep_long    := in_q1
                 sweep_ext_long   := low
                 sweep_bar_long   := bar_index
                 sweep_logmid_long := f_log_mid(high, low, open, close)
                 sweep_close_long  := close
                 sweep_pct_long    := ref_range > 0 ? ext / ref_range : 0.0
+                sweep_line_col_long := in_q1 ? color.red : color.orange
                 sweep_x_long    = sweep_lbl_pos == "Right" ? bar_index + rr_extend : anc_lo_bar
-                sweep_line_long := line.new(anc_lo_bar, anc_lo, bar_index + rr_extend, anc_lo, color=color.red, width=2, style=sweep_lstyle)
-                sweep_lbl_long  := label.new(sweep_x_long, anc_lo, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.red, style=sweep_lbl_style, size=size.small)
-                // Scan back over prior Q1 bars — earlier bars may have swept deeper but failed
-                // sweep_max filter. Use the true wick extreme as SL regardless of the filter.
+                sweep_line_long := line.new(anc_lo_bar, anc_lo, bar_index + rr_extend, anc_lo, color=sweep_line_col_long, width=2, style=sweep_lstyle)
+                sweep_lbl_long  := label.new(sweep_x_long, anc_lo, sweep_text + " " + sweep_tf_lbl + (in_q1 ? "" : " *"), color=color.new(sweep_line_col_long, 100), textcolor=sweep_line_col_long, style=sweep_lbl_style, size=size.small)
+                // Scan back over prior bars — earlier bars may have swept deeper
                 for k = 1 to q1_elapsed - 1
                     if low[k] < anc_lo and low[k] < sweep_ext_long
                         sweep_ext_long := low[k]
@@ -340,15 +355,17 @@ if tf_supported and in_q1 and not na(anc_hi) and not na(anc_lo)
             ext = high - anc_hi
             if high > anc_hi and ext / ref_range <= sweep_max
                 swept_short       := true
+                q1_sweep_short    := in_q1
                 sweep_ext_short   := high
                 sweep_bar_short   := bar_index
                 sweep_logmid_short := f_log_mid(high, low, open, close)
                 sweep_close_short  := close
                 sweep_pct_short    := ref_range > 0 ? ext / ref_range : 0.0
+                sweep_line_col_short := in_q1 ? color.red : color.orange
                 sweep_x_short    = sweep_lbl_pos == "Right" ? bar_index + rr_extend : anc_hi_bar
-                sweep_line_short := line.new(anc_hi_bar, anc_hi, bar_index + rr_extend, anc_hi, color=color.red, width=2, style=sweep_lstyle)
-                sweep_lbl_short  := label.new(sweep_x_short, anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.red, style=sweep_lbl_style, size=size.small)
-                // Same retroactive scan for short — check prior Q1 bars for higher wicks above anc_hi
+                sweep_line_short := line.new(anc_hi_bar, anc_hi, bar_index + rr_extend, anc_hi, color=sweep_line_col_short, width=2, style=sweep_lstyle)
+                sweep_lbl_short  := label.new(sweep_x_short, anc_hi, sweep_text + " " + sweep_tf_lbl + (in_q1 ? "" : " *"), color=color.new(sweep_line_col_short, 100), textcolor=sweep_line_col_short, style=sweep_lbl_style, size=size.small)
+                // Scan back over prior bars — earlier bars may have swept deeper
                 for k = 1 to q1_elapsed - 1
                     if high[k] > anc_hi and high[k] > sweep_ext_short
                         sweep_ext_short := high[k]
@@ -364,8 +381,9 @@ if tf_supported
         sweep_bar_short := bar_index
 
 // ── PHASE 2: RETURN TO RANGE ──────────────────────────────────────────────────
-// Sweep must happen in Q1, but return can happen within the full ret_bars window
-if in_ret_window
+// Q1 sweeps: return within ret_bars window. Non-Q1 sweeps: return anytime in HTF period.
+can_return = in_ret_window or (swept_long and not q1_sweep_long) or (swept_short and not q1_sweep_short)
+if can_return
     if swept_long  and not ret_long  and close >= anc_lo
         ret_long     := true
         ret_bar_long := bar_index
@@ -390,7 +408,7 @@ f_cisd_long(int ret_bar) =>
     cisd_off = 0
     if not na(ret_bar)
         offset = bar_index - ret_bar
-        // Step 1: find nearest bearish candle
+        // Step 1: find nearest bearish candle — skip dojis only, break on bullish
         nearest_k = 0
         for step = 1 to cisd_lookback * 4
             k = offset + step
@@ -401,7 +419,7 @@ f_cisd_long(int ret_bar) =>
             if close[k] < open[k]  // bearish — found it
                 nearest_k := k
                 break
-            else  // bullish — no opposing delivery
+            else  // bullish — no opposing delivery adjacent to return
                 break
         // Step 2: walk backward through consecutive bearish candles
         if nearest_k > 0
@@ -425,7 +443,7 @@ f_cisd_short(int ret_bar) =>
     cisd_off = 0
     if not na(ret_bar)
         offset = bar_index - ret_bar
-        // Step 1: find nearest bullish candle
+        // Step 1: find nearest bullish candle — skip dojis only, break on bearish
         nearest_k = 0
         for step = 1 to cisd_lookback * 4
             k = offset + step
@@ -436,7 +454,7 @@ f_cisd_short(int ret_bar) =>
             if close[k] > open[k]  // bullish — found it
                 nearest_k := k
                 break
-            else  // bearish — no opposing delivery
+            else  // bearish — no opposing delivery adjacent to return
                 break
         // Step 2: walk backward through consecutive bullish candles
         if nearest_k > 0
@@ -489,6 +507,18 @@ short_risk = not na(sweep_ext_short) ? math.abs(close - sweep_ext_short) : 0.0
 long_valid  = tf_supported and ret_long  and cisd_long_fired  and not alerted_long  and long_risk  >= min_risk
 short_valid = tf_supported and ret_short and cisd_short_fired and not alerted_short and short_risk >= min_risk
 
+// ── DEBUG ─────────────────────────────────────────────────────────────────────
+if show_debug and tf_supported and barstate.islast
+    dbg = "Q1=" + str.tostring(q1_elapsed) + "/" + str.tostring(q1_bars)
+         + "\nSWP_L=" + str.tostring(swept_long) + " RET_L=" + str.tostring(ret_long) + " ALT_L=" + str.tostring(alerted_long) + " Q1_L=" + str.tostring(q1_sweep_long)
+         + "\nSWP_S=" + str.tostring(swept_short) + " RET_S=" + str.tostring(ret_short) + " ALT_S=" + str.tostring(alerted_short) + " Q1_S=" + str.tostring(q1_sweep_short)
+         + "\nCISD_S_lvl=" + (not na(cisd_short_lvl) ? str.tostring(cisd_short_lvl, "#.##") : "na") + " fired=" + str.tostring(cisd_short_fired) + " off=" + str.tostring(cisd_short_off)
+         + "\nCISD_L_lvl=" + (not na(cisd_long_lvl) ? str.tostring(cisd_long_lvl, "#.##") : "na") + " fired=" + str.tostring(cisd_long_fired) + " off=" + str.tostring(cisd_long_off)
+         + "\nrisk_S=" + str.tostring(short_risk, "#.#") + " valid_S=" + str.tostring(short_valid)
+         + "\nanc_hi=" + str.tostring(anc_hi, "#.##") + " anc_lo=" + str.tostring(anc_lo, "#.##")
+    var label dbg_lbl = na
+    label.delete(dbg_lbl)
+    dbg_lbl := label.new(bar_index + 3, high, dbg, color=color.new(color.black, 20), textcolor=color.white, style=label.style_label_left, size=size.small, textalign=text.align_left)
 
 // ── FIRE: LONG ────────────────────────────────────────────────────────────────
 if long_valid
@@ -502,22 +532,31 @@ if long_valid
     risk  = entry - sl
     tp    = entry + risk * rr_ratio
     r_end = bar_index + rr_extend
+    // Non-Q1 uses amber/yellow palette
+    _is_q1_l  = q1_sweep_long
+    _risk_bg  = _is_q1_l ? rr_risk_col    : color.new(#f59e0b, 88)
+    _risk_br  = _is_q1_l ? rr_risk_border : color.new(#f59e0b, 40)
+    _rew_bg   = _is_q1_l ? rr_rew_col     : color.new(#eab308, 88)
+    _rew_br   = _is_q1_l ? rr_rew_border  : color.new(#eab308, 40)
+    _sl_col   = _is_q1_l ? color.red      : #f59e0b
+    _swp_col  = _is_q1_l ? color.red      : color.orange
+    _cisd_col = _is_q1_l ? color.blue     : #eab308
     cisd_bar = bar_index - cisd_long_off
-    line.new(cisd_bar, cisd_long_lvl, r_end, cisd_long_lvl, color=color.blue, width=2, style=cisd_lstyle)
+    line.new(cisd_bar, cisd_long_lvl, r_end, cisd_long_lvl, color=_cisd_col, width=2, style=cisd_lstyle)
     cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : cisd_bar
-    label.new(cisd_x, cisd_long_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(color.blue, 100), textcolor=color.blue, style=cisd_lbl_style, size=size.small)
+    label.new(cisd_x, cisd_long_lvl, cisd_text + " " + cisd_tf_lbl + (_is_q1_l ? "" : " *"), color=color.new(_cisd_col, 100), textcolor=_cisd_col, style=cisd_lbl_style, size=size.small)
     // redraw sweep line from anchor candle to r_end (may have been deleted by Q1 cleanup)
     if not na(sweep_line_long)
         line.delete(sweep_line_long)
     if not na(sweep_lbl_long)
         label.delete(sweep_lbl_long)
-    line.new(anc_lo_bar, anc_lo, r_end, anc_lo, color=color.red, width=2, style=sweep_lstyle)
+    line.new(anc_lo_bar, anc_lo, r_end, anc_lo, color=_swp_col, width=2, style=sweep_lstyle)
     sweep_x = sweep_lbl_pos == "Right" ? r_end : anc_lo_bar
-    label.new(sweep_x, anc_lo, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.red, style=sweep_lbl_style, size=size.small)
+    label.new(sweep_x, anc_lo, sweep_text + " " + sweep_tf_lbl + (_is_q1_l ? "" : " *"), color=color.new(_swp_col, 100), textcolor=_swp_col, style=sweep_lbl_style, size=size.small)
     sl_anchor = not na(sweep_bar_long) ? sweep_bar_long : bar_index
-    line.new(sl_anchor, sl, r_end, sl, color=color.red, width=2, style=sweep_lstyle)
-    box.new(bar_index, entry, r_end, sl,  border_color=rr_risk_border, bgcolor=rr_risk_col)
-    box.new(bar_index, tp,    r_end, entry, border_color=rr_rew_border,  bgcolor=rr_rew_col)
+    line.new(sl_anchor, sl, r_end, sl, color=_sl_col, width=2, style=sweep_lstyle)
+    box.new(bar_index, entry, r_end, sl,  border_color=_risk_br, bgcolor=_risk_bg)
+    box.new(bar_index, tp,    r_end, entry, border_color=_rew_br,  bgcolor=_rew_bg)
     line.new(bar_index, entry, r_end, entry, color=rr_entry_col, width=1, style=line.style_solid)
     label.new(bar_index + rr_lbl_x, tp,    "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=rr_lbl_tp_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
     label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=rr_lbl_en_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
@@ -572,22 +611,31 @@ if short_valid
     risk  = sl - entry
     tp    = entry - risk * rr_ratio
     r_end = bar_index + rr_extend
+    // Non-Q1 uses amber/yellow palette
+    _is_q1_s  = q1_sweep_short
+    _risk_bg  = _is_q1_s ? rr_risk_col    : color.new(#f59e0b, 88)
+    _risk_br  = _is_q1_s ? rr_risk_border : color.new(#f59e0b, 40)
+    _rew_bg   = _is_q1_s ? rr_rew_col     : color.new(#eab308, 88)
+    _rew_br   = _is_q1_s ? rr_rew_border  : color.new(#eab308, 40)
+    _sl_col   = _is_q1_s ? color.red      : #f59e0b
+    _swp_col  = _is_q1_s ? color.red      : color.orange
+    _cisd_col = _is_q1_s ? color.blue     : #eab308
     cisd_bar = bar_index - cisd_short_off
-    line.new(cisd_bar, cisd_short_lvl, r_end, cisd_short_lvl, color=color.blue, width=2, style=cisd_lstyle)
+    line.new(cisd_bar, cisd_short_lvl, r_end, cisd_short_lvl, color=_cisd_col, width=2, style=cisd_lstyle)
     cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : cisd_bar
-    label.new(cisd_x, cisd_short_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(color.blue, 100), textcolor=color.blue, style=cisd_lbl_style, size=size.small)
+    label.new(cisd_x, cisd_short_lvl, cisd_text + " " + cisd_tf_lbl + (_is_q1_s ? "" : " *"), color=color.new(_cisd_col, 100), textcolor=_cisd_col, style=cisd_lbl_style, size=size.small)
     // redraw sweep line from anchor candle to r_end (may have been deleted by Q1 cleanup)
     if not na(sweep_line_short)
         line.delete(sweep_line_short)
     if not na(sweep_lbl_short)
         label.delete(sweep_lbl_short)
-    line.new(anc_hi_bar, anc_hi, r_end, anc_hi, color=color.red, width=2, style=sweep_lstyle)
+    line.new(anc_hi_bar, anc_hi, r_end, anc_hi, color=_swp_col, width=2, style=sweep_lstyle)
     sweep_x = sweep_lbl_pos == "Right" ? r_end : anc_hi_bar
-    label.new(sweep_x, anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.red, style=sweep_lbl_style, size=size.small)
+    label.new(sweep_x, anc_hi, sweep_text + " " + sweep_tf_lbl + (_is_q1_s ? "" : " *"), color=color.new(_swp_col, 100), textcolor=_swp_col, style=sweep_lbl_style, size=size.small)
     sl_anchor = not na(sweep_bar_short) ? sweep_bar_short : bar_index
-    line.new(sl_anchor, sl, r_end, sl, color=color.red, width=2, style=sweep_lstyle)
-    box.new(bar_index, sl,    r_end, entry, border_color=rr_risk_border, bgcolor=rr_risk_col)
-    box.new(bar_index, entry, r_end, tp,    border_color=rr_rew_border,  bgcolor=rr_rew_col)
+    line.new(sl_anchor, sl, r_end, sl, color=_sl_col, width=2, style=sweep_lstyle)
+    box.new(bar_index, sl,    r_end, entry, border_color=_risk_br, bgcolor=_risk_bg)
+    box.new(bar_index, entry, r_end, tp,    border_color=_rew_br,  bgcolor=_rew_bg)
     line.new(bar_index, entry, r_end, entry, color=rr_entry_col, width=1, style=line.style_solid)
     label.new(bar_index + rr_lbl_x, tp,    "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=rr_lbl_tp_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
     label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=rr_lbl_en_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny)
