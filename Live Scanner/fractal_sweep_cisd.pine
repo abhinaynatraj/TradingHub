@@ -189,6 +189,9 @@ var int   ret_bar_short      = na
 
 // ── ANCHOR RESET ──────────────────────────────────────────────────────────────
 if is_new_anchor and tf_supported
+    // Capture fired state BEFORE resetting — used to preserve fired drawings
+    _was_alerted_long  = alerted_long
+    _was_alerted_short = alerted_short
     anc_hi          := prior_high
     anc_lo          := prior_low
     q1_elapsed      := 0
@@ -257,15 +260,25 @@ if is_new_anchor and tf_supported
                     // override anc_hi/lo to the prev-prev candle (the one that was swept)
                     anc_hi := prev2_high
                     anc_lo := prev2_low
-    // clean up any leftover drawings from previous Q1
-    line.delete(sweep_line_long)
-    sweep_line_long  := na
-    label.delete(sweep_lbl_long)
-    sweep_lbl_long   := na
-    line.delete(sweep_line_short)
-    sweep_line_short := na
-    label.delete(sweep_lbl_short)
-    sweep_lbl_short  := na
+    // clean up UNFIRED drawings only — fired setups keep their drawings
+    if not _was_alerted_long
+        line.delete(sweep_line_long)
+        sweep_line_long  := na
+        label.delete(sweep_lbl_long)
+        sweep_lbl_long   := na
+    else
+        // detach refs so fired drawings aren't deleted later
+        sweep_line_long  := na
+        sweep_lbl_long   := na
+    if not _was_alerted_short
+        line.delete(sweep_line_short)
+        sweep_line_short := na
+        label.delete(sweep_lbl_short)
+        sweep_lbl_short  := na
+    else
+        sweep_line_short := na
+        sweep_lbl_short  := na
+    // CISD previews are always pending — always clean up
     line.delete(cisd_prev_long)
     cisd_prev_long      := na
     label.delete(cisd_prev_lbl_long)
@@ -309,6 +322,7 @@ if ret_window_just_ended
         ret_long        := false
         sweep_ext_long  := na
         sweep_bar_long  := na
+        q1_sweep_long   := false
     if not alerted_short and q1_sweep_short
         line.delete(sweep_line_short)
         sweep_line_short    := na
@@ -322,6 +336,7 @@ if ret_window_just_ended
         ret_short        := false
         sweep_ext_short  := na
         sweep_bar_short  := na
+        q1_sweep_short  := false
 
 // ── PHASE 1: SWEEP ────────────────────────────────────────────────────────────
 // sweep_ext_long/short = wick extreme (SL level)
