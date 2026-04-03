@@ -192,16 +192,9 @@ var int   _running_lo_bar    = na
 var float _running_hi        = na
 var float _running_lo        = na
 
-// ── RUNNING HIGH/LOW TRACKER — updates every bar to track where the HTF high/low is made ─
-if tf_supported
-    if na(_running_hi) or high >= _running_hi
-        _running_hi     := high
-        _running_hi_bar := bar_index
-    if na(_running_lo) or low <= _running_lo
-        _running_lo     := low
-        _running_lo_bar := bar_index
-
 // ── ANCHOR RESET ──────────────────────────────────────────────────────────────
+// NOTE: Running hi/lo tracker is AFTER anchor reset so the reset bar's data
+// doesn't corrupt the prior period's tracked high/low.
 if is_new_anchor and tf_supported
     // Capture fired state BEFORE resetting — used to preserve fired drawings
     _was_alerted_long  = alerted_long
@@ -309,6 +302,16 @@ if is_new_anchor and tf_supported
         ps_x = sweep_lbl_pos == "Right" ? bar_index + rr_extend : anc_hi_bar
         sweep_line_short := line.new(anc_hi_bar, anc_hi, bar_index + rr_extend, anc_hi, color=color.red, width=2, style=sweep_lstyle)
         sweep_lbl_short  := label.new(ps_x, anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.red, style=sweep_lbl_style, size=size.small)
+
+// ── RUNNING HIGH/LOW TRACKER — updates every bar to track where the HTF high/low is made ─
+// Placed AFTER anchor reset so the reset bar starts fresh for the new period
+if tf_supported
+    if na(_running_hi) or high >= _running_hi
+        _running_hi     := high
+        _running_hi_bar := bar_index
+    if na(_running_lo) or low <= _running_lo
+        _running_lo     := low
+        _running_lo_bar := bar_index
 
 // ── Q1 COUNTER ────────────────────────────────────────────────────────────────
 q1_elapsed += 1
