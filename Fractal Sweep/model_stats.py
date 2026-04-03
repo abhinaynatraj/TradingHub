@@ -529,12 +529,15 @@ def resolve_outcomes_structural(m1_arrs, pending):
 
 # ── SPLIT-TP OUTCOME RESOLUTION ───────────────────────────────────────────────
 def resolve_outcomes_split_tp(m1_arrs, pending,
-                               tp1_size: float = 0.90, tp2_size: float = 0.10):
+                               tp1_size: float = 0.90, tp2_size: float = 0.10,
+                               tp2_pct: float = None):
     """
-    Split-exit profile (runner-free):
+    Split-exit profile:
       - TP1 at target_price (= entry ± entry × ptq_level/100, already set in pending)
         → exits tp1_size (90%) of position; tp1_r = TP1_dist / base_risk (variable per trade)
-      - Runner (tp2_size = 10%) holds with BE stop, runs free to EOD (no fixed TP2 target)
+      - Runner (tp2_size = 10%) holds with BE stop toward TP2
+        If tp2_pct is set: TP2 = entry ± entry × tp2_pct/100 (p50 MFE level)
+        If tp2_pct is None: runner runs free to EOD (legacy behavior)
       - SL (stop_price) hit before TP1 → full LOSS, r = -1.0
       - net_r = tp1_size × tp1_r + tp2_size × runner_exit_r
     """
@@ -600,7 +603,7 @@ def resolve_outcomes_split_tp(m1_arrs, pending,
             results.append(('LOSS', -1.0, mae_pct, mfe_pct, False, 0.0))
             continue
 
-        # ── TP1 hit first — 90% off; 10% runner free with BE stop ────────────
+        # ── TP1 hit first — 90% off; 10% runner toward TP2 with BE stop ────────
         tp1_dist = abs(target_price - entry_price)
         tp1_r    = tp1_dist / base_risk   # R-multiple locked in at TP1 (variable per trade)
 
@@ -608,25 +611,65 @@ def resolve_outcomes_split_tp(m1_arrs, pending,
         runner_end    = len(h)
         runner_exit_r = 0.0  # default: runner stopped at BE
 
+        # Compute TP2 price if tp2_pct is set
+        if tp2_pct is not None:
+            tp2_dist = entry_price * tp2_pct / 100.0
+            if direction == 'LONG':
+                tp2_price = entry_price + tp2_dist
+            else:
+                tp2_price = entry_price - tp2_dist
+        else:
+            tp2_price = None
+
         if runner_start < runner_end:
             rh = h[runner_start:runner_end]
             rl = l[runner_start:runner_end]
-            if direction == 'LONG':
-                be_hit_arr = rl <= entry_price
-            else:
-                be_hit_arr = rh >= entry_price
 
-            be_any = be_hit_arr.any()
-
-            if not be_any:
-                # Runner survived to EOD — mark to market
-                last_close = closes[start + runner_end - 1]
+            # Check TP2 hit (if set)
+            if tp2_price is not None:
                 if direction == 'LONG':
-                    runner_exit_r = (last_close - entry_price) / base_risk
+                    tp2_hit_arr = rh >= tp2_price
+                    be_hit_arr  = rl <= entry_price
                 else:
-                    runner_exit_r = (entry_price - last_close) / base_risk
-                runner_exit_r = max(0.0, round(float(runner_exit_r), 3))
-            # else: BE stop hit → runner_exit_r stays 0.0
+                    tp2_hit_arr = rl <= tp2_price
+                    be_hit_arr  = rh >= entry_price
+
+                tp2_any = tp2_hit_arr.any()
+                be_any  = be_hit_arr.any()
+                tp2_idx = int(np.argmax(tp2_hit_arr)) if tp2_any else len(rh)
+                be_idx  = int(np.argmax(be_hit_arr))  if be_any  else len(rh)
+
+                if tp2_any and (not be_any or tp2_idx <= be_idx):
+                    # TP2 hit before BE → runner exits at TP2
+                    runner_exit_r = round(float(tp2_dist / base_risk), 3)
+                elif be_any:
+                    # BE hit before TP2 → runner exits at breakeven
+                    runner_exit_r = 0.0
+                else:
+                    # Neither hit → mark to market at EOD
+                    last_close = closes[start + runner_end - 1]
+                    if direction == 'LONG':
+                        runner_exit_r = (last_close - entry_price) / base_risk
+                    else:
+                        runner_exit_r = (entry_price - last_close) / base_risk
+                    runner_exit_r = max(0.0, round(float(runner_exit_r), 3))
+            else:
+                # Legacy: runner free to EOD with BE stop
+                if direction == 'LONG':
+                    be_hit_arr = rl <= entry_price
+                else:
+                    be_hit_arr = rh >= entry_price
+
+                be_any = be_hit_arr.any()
+
+                if not be_any:
+                    last_close = closes[start + runner_end - 1]
+                    if direction == 'LONG':
+                        runner_exit_r = (last_close - entry_price) / base_risk
+                    else:
+                        runner_exit_r = (entry_price - last_close) / base_risk
+                    runner_exit_r = max(0.0, round(float(runner_exit_r), 3))
+                # else: BE stop hit → runner_exit_r stays 0.0
 
         net_r = round(tp1_size * tp1_r + tp2_size * runner_exit_r, 3)
         results.append(('WIN', net_r, mae_pct, mfe_pct, True, runner_exit_r))
@@ -1122,7 +1165,8 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
 
 # ── PROFILE OUTCOME RESOLVER ──────────────────────────────────────────────────
 def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
-                               stop_val, target_val, profile_type='mult'):
+                               stop_val, target_val, profile_type='mult',
+                               tp2_pct=None):
     """
     Compute stop / target for each detected setup and resolve outcomes.
 
@@ -1191,7 +1235,8 @@ def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
         if profile_type == 'structural':
             outcomes = resolve_outcomes_structural(m1_arrs, profile_pending)
         else:
-            outcomes = resolve_outcomes_split_tp(m1_arrs, profile_pending)
+            outcomes = resolve_outcomes_split_tp(m1_arrs, profile_pending,
+                                                tp2_pct=tp2_pct)
         for po, (outcome, r_val, mae_pct, mfe_pct, tp1_hit, runner_exit_r) in zip(profile_pending, outcomes):
             idx = po['idx']
             rows[idx]['outcome']       = outcome
@@ -2015,27 +2060,33 @@ def main():
         print(f"      Resolving outcomes across {len(RR_PROFILES)} profiles ...")
         model_profiles = {}
         structural_ptq = None  # captured after structural_dynamic, injected into split_80_20
+        structural_p50_mfe = None  # p50 MFE used as TP2 for split_80_20
         for p_idx, (stop_val, target_val, pk, ptype) in enumerate(RR_PROFILES, 1):
-            # Use PTQ level from structural profile as TP1 for split_80_20
+            # Use PTQ level from structural profile as TP1, p50 MFE as TP2 for split_80_20
             if pk == 'split_80_20':
                 if structural_ptq is None:
                     print(f"      [{p_idx}/{len(RR_PROFILES)}] profile {pk} — skipped (no structural PTQ)", flush=True)
                     continue
                 target_val = structural_ptq
-                print(f"      [{p_idx}/{len(RR_PROFILES)}] profile {pk} (TP1={target_val:.4f}% PTQ) ...", flush=True)
+                _tp2_label = f", TP2={structural_p50_mfe:.4f}% p50 MFE" if structural_p50_mfe else ""
+                print(f"      [{p_idx}/{len(RR_PROFILES)}] profile {pk} (TP1={target_val:.4f}% PTQ{_tp2_label}) ...", flush=True)
             else:
                 print(f"      [{p_idx}/{len(RR_PROFILES)}] profile {pk} ...", flush=True)
+            _tp2 = structural_p50_mfe if pk == 'split_80_20' else None
             df_p = apply_profile_and_resolve(
-                base_rows, base_pending, m1, stop_val, target_val, ptype)
+                base_rows, base_pending, m1, stop_val, target_val, ptype,
+                tp2_pct=_tp2)
             if df_p.empty:
                 continue
             print(f"         building stats + TF slices ...", flush=True)
             stats = build_model_stats(
                 df_p, trading_days, mk, cfg, stop_val, target_val, pk, ptype)
             model_profiles[pk] = stats
-            # Capture PTQ level for the split profile
+            # Capture PTQ level (TP1) and p50 MFE (TP2) for the split profile
             if pk == 'structural_dynamic':
                 structural_ptq = (stats.get('rich_mfe') or {}).get('ptq_level')
+                _mfe_pcts = (stats.get('rich_mfe') or {}).get('percentiles', {})
+                structural_p50_mfe = _mfe_pcts.get('p50')
             print(f"         profile {pk} done ✓", flush=True)
 
         if not model_profiles:
