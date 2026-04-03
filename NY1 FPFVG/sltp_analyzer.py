@@ -301,7 +301,7 @@ def simulate_fixed(trade_arrays, sl_pct, tp_pct, account_size, risk_per_trade, s
     avg_win_r  = avg_win_d / avg_loss_d if avg_loss_d > 0 else 0.0
     total_r    = (n_wins * avg_win_r) - (n_losses * 1.0)
     ev_dollar  = (wr * avg_win_d) - (lr * avg_loss_d)
-    ev_r       = ev_dollar / avg_loss_d if avg_loss_d > 0 else 0.0
+    ev_r       = ev_dollar / risk_per_trade if risk_per_trade > 0 else 0.0
     pf         = gross_w / gross_l if gross_l > 0 else 999.0
     ce         = ev_r * pf
     risk_pct   = risk_per_trade / account_size

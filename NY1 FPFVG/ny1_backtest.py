@@ -524,14 +524,19 @@ def build_stats(trades: list, meta_extra: dict,
         a   = (1 - edge) / (1 + edge)
         ror = round(min(1.0, a ** N_units), 4)
 
-    # ── CE — avg(MFE / MAE) for TP1+EOD trades ───────────────────────────────
-    ce_ratios = []
-    for t in [t for t in wl_resolved if t['exit_type'] == 'TP1+EOD']:
-        mae = t.get('mae_pct') or 0.0
-        mfe = t.get('mfe_pct') or 0.0
-        if mae > 0 and mfe > 0:
-            ce_ratios.append(mfe / mae)
-    ce = round(float(np.mean(ce_ratios)), 3) if ce_ratios else None
+    # ── CE — Combined Edge: EV_R × PF ─────────────────────────────────────────
+    # EV_R = EV_dollar / Risk_per_Trade; CE = EV_R × PF
+    _n_tp1 = len(tp1_list)
+    _n_stop = len(stopped_list)
+    _n_total = _n_tp1 + _n_stop
+    _wr = _n_tp1 / _n_total if _n_total > 0 else 0
+    _lr = _n_stop / _n_total if _n_total > 0 else 0
+    _ev_dollar = (_wr * avg_win_usd) - (_lr * abs(avg_loss_usd))
+    _ev_r = _ev_dollar / RISK_PER_TRADE if RISK_PER_TRADE > 0 else 0
+    _gross_win = _n_tp1 * avg_win_usd
+    _gross_loss = _n_stop * abs(avg_loss_usd)
+    _pf = _gross_win / _gross_loss if _gross_loss > 0 else 0
+    ce = round(_ev_r * _pf, 6) if _pf and _n_total > 0 else None
 
     # ── MAE deep analysis (PhD-level, mirrors MFE study) ─────────────────────
     mae_raw = [t['mae_pct'] for t in wl_resolved

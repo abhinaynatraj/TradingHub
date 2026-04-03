@@ -1805,12 +1805,9 @@ def _compute_by_tf(wl_full, wl_sorted_full, stop_mult, target_mult,
                      if dpnl.std(ddof=1) > 0 else None
         else:
             sharpe = None
-        # CE
-        wins_wl = wl_sub[wl_sub['win'] == 1]
-        ce_mask = (wins_wl['mae_pct'] > 0) & (wins_wl['mfe_pct'] > 0)
-        ce = round(float((wins_wl.loc[ce_mask, 'mfe_pct'] /
-                          wins_wl.loc[ce_mask, 'mae_pct']).mean()), 3) \
-             if ce_mask.sum() > 0 else None
+        # CE — Combined Edge: EV_R × PF
+        # ev is already in R units (sum(r)/n), so ev = EV_R
+        ce = round(ev * pf, 6) if pf and n > 0 else None
         # by_hour
         bh = []
         for (hr, direction), g in wl_sub.groupby(['hr', 'direction']):
