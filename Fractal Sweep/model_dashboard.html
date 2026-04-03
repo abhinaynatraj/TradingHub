@@ -222,6 +222,13 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 @media(max-width:1100px){.cls-grid{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:760px){.cls-grid{grid-template-columns:1fr 1fr}}
 
+/* CUSTOM RANGE SLOTS */
+.range-slot{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;border:1px solid var(--border-mid);background:var(--bg-raised)}
+.range-slot input[type="date"]{font-family:var(--font-data);font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg-card);color:var(--text-primary)}
+.range-swatch{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+.range-remove{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:0 4px}
+.range-remove:hover{color:var(--red)}
+
 /* SELECTOR BAR */
 .sel-bar{background:var(--bg-card);border-bottom:1px solid var(--border);padding:14px 28px;display:flex;gap:32px;align-items:flex-end;flex-wrap:wrap}
 .sel-group{display:flex;flex-direction:column;gap:5px}
@@ -288,6 +295,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
       <option value="6m">Last 6 Months</option>
       <option value="3m">Last 3 Months</option>
       <option value="1m">Last 1 Month</option>
+      <option value="custom">Custom Ranges</option>
     </select>
   </div>
   <div class="sel-group">
@@ -298,6 +306,15 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
     <label class="sel-label">Risk Profile</label>
     <select id="profile-select" class="sel-drop" onchange="switchProfile(this.value)"></select>
   </div>
+</div>
+
+<div id="custom-range-builder" style="display:none;background:var(--bg-card);border-bottom:1px solid var(--border);padding:14px 28px;">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+    <span style="font-family:var(--font-data);font-size:10px;font-weight:600;letter-spacing:0.06em;color:var(--text-muted);text-transform:uppercase;">Date Ranges</span>
+    <button id="add-range-btn" onclick="addCustomRange()" style="font-family:var(--font-data);font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-secondary);cursor:pointer;">+ Add Range</button>
+    <button onclick="applyCustomRanges()" style="font-family:var(--font-data);font-size:11px;font-weight:600;padding:4px 14px;border-radius:6px;border:1px solid var(--green);background:rgba(52,211,153,0.1);color:var(--green);cursor:pointer;">Apply</button>
+  </div>
+  <div id="range-slots" style="display:flex;flex-wrap:wrap;gap:10px;"></div>
 </div>
 
 <span class="mode-strip-note" id="mode-note" style="display:none;"></span>
@@ -585,6 +602,8 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
       <div class="pb"><div id="ls-recent-bars"></div></div>
     </div>
   </div>
+
+  <div id="custom-view" style="display:none;padding:0 28px 40px;"></div>
 
 </main>
 
@@ -1222,7 +1241,17 @@ function switchProfile(pk){
   activeProfile=pk; _tradesPage=0;
   renderProfileDropdown(); renderModelDropdown(); renderActive();
 }
-function switchTF(tf){ activeTF=tf; _tradesPage=0; renderActive(); }
+function switchTF(tf){
+  activeTF=tf; _tradesPage=0;
+  localStorage.setItem('fractal-active-tf', tf);
+  const builder = document.getElementById('custom-range-builder');
+  if(builder) builder.style.display = tf === 'custom' ? '' : 'none';
+  if(tf === 'custom'){
+    if(customRanges.length === 0) addCustomRange();
+    renderRangeSlots();
+  }
+  renderActive();
+}
 
 // Return the stats object for the current model/profile/TF
 // For non-all TFs merges the tf slice (hero+charts) with the full profile (heatmap, combos, etc.)
@@ -1263,8 +1292,437 @@ function fmtDateRange(dr) {
   return parts.map(fmtDate).join(' to ');
 }
 
+// ── CUSTOM DATE RANGES ────────────────────────────────────────────────────
+const RANGE_COLORS = ['#3b82f6','#f59e0b','#8b5cf6','#14b8a6'];
+const COMBINED_COLOR = '#94a3b8';
+let customRanges = JSON.parse(localStorage.getItem('fractal-custom-ranges') || '[]');
+
+function renderRangeSlots(){
+  const container = document.getElementById('range-slots');
+  if(!container) return;
+  container.innerHTML = customRanges.map((r, i) => `
+    <div class="range-slot">
+      <div class="range-swatch" style="background:${RANGE_COLORS[i]}"></div>
+      <input type="date" value="${r.start||''}" onchange="updateRange(${i},'start',this.value)">
+      <span style="color:var(--text-muted);font-size:11px">to</span>
+      <input type="date" value="${r.end||''}" onchange="updateRange(${i},'end',this.value)">
+      <button class="range-remove" onclick="removeRange(${i})">×</button>
+    </div>
+  `).join('');
+  const btn = document.getElementById('add-range-btn');
+  if(btn) btn.disabled = customRanges.length >= 4;
+}
+
+function addCustomRange(){
+  if(customRanges.length >= 4) return;
+  customRanges.push({start:'', end:''});
+  saveAndRenderRanges();
+}
+
+function removeRange(i){
+  customRanges.splice(i, 1);
+  saveAndRenderRanges();
+}
+
+function updateRange(i, field, val){
+  customRanges[i][field] = val;
+  saveAndRenderRanges();
+}
+
+function saveAndRenderRanges(){
+  localStorage.setItem('fractal-custom-ranges', JSON.stringify(customRanges));
+  renderRangeSlots();
+}
+
+function computeRangeStats(trades){
+  const n = trades.length;
+  if(n === 0) return null;
+  const wins = trades.filter(t => t.outcome === 'WIN');
+  const losses = trades.filter(t => t.outcome === 'LOSS');
+  const nWins = wins.length, nLosses = losses.length;
+  const wr = n > 0 ? nWins / n : 0;
+  const sumWinR = wins.reduce((s,t) => s + t.r, 0);
+  const sumLossR = losses.reduce((s,t) => s + Math.abs(t.r), 0);
+  const ev_r = n > 0 ? (sumWinR - sumLossR) / n : 0;
+  const pf = sumLossR > 0 ? sumWinR / sumLossR : 0;
+  const ce = ev_r * pf;
+  let mcl = 0, run = 0;
+  trades.forEach(t => { if(t.outcome==='LOSS'){run++;mcl=Math.max(mcl,run)}else{run=0} });
+  const ACCT = 4500, RPT = 225;
+  let eq = ACCT, peak = ACCT, minEq = ACCT, maxDD = 0;
+  const dailyPnl = {};
+  trades.slice().sort((a,b) => a.date.localeCompare(b.date)).forEach(t => {
+    const pnl = t.r * RPT;
+    eq += pnl;
+    if(eq < minEq) minEq = eq;
+    if(eq > peak) peak = eq;
+    const dd = peak > 0 ? (peak - eq) / peak : 0;
+    if(dd > maxDD) maxDD = dd;
+    dailyPnl[t.date] = (dailyPnl[t.date]||0) + pnl;
+  });
+  const totalPnl = eq - ACCT;
+  const blown = minEq <= 0;
+  const dpArr = Object.values(dailyPnl);
+  let sharpe = null;
+  if(dpArr.length > 1){
+    const mu = dpArr.reduce((s,v)=>s+v,0)/dpArr.length;
+    const sd = Math.sqrt(dpArr.reduce((s,v)=>s+(v-mu)**2,0)/(dpArr.length-1));
+    if(sd > 0) sharpe = Math.round(mu / sd * Math.sqrt(252) * 100) / 100;
+  }
+  const maxDDPct = Math.round(maxDD * 10000) / 100;
+  const byClass = {};
+  trades.forEach(t => {
+    const cls = t.classification || 'Unclassified';
+    if(!byClass[cls]) byClass[cls] = {n:0, wins:0};
+    byClass[cls].n++;
+    if(t.outcome === 'WIN') byClass[cls].wins++;
+  });
+  Object.values(byClass).forEach(c => { c.wr = c.n > 0 ? c.wins / c.n : 0; });
+  const maeVals = trades.map(t => t.mae_pct).filter(v => v != null && v > 0);
+  const mfeVals = trades.map(t => t.mfe_pct).filter(v => v != null && v > 0);
+  function distStats(vals){
+    if(vals.length === 0) return {mean:0, median:0, mode:0, std:0, values:[]};
+    const sorted = vals.slice().sort((a,b)=>a-b);
+    const mean = sorted.reduce((s,v)=>s+v,0) / sorted.length;
+    const median = sorted.length % 2 === 0 ? (sorted[sorted.length/2-1] + sorted[sorted.length/2]) / 2 : sorted[Math.floor(sorted.length/2)];
+    const bins = {};
+    sorted.forEach(v => { const b = Math.round(v * 100) / 100; bins[b] = (bins[b]||0)+1; });
+    let modeVal = 0, modeCount = 0;
+    Object.entries(bins).forEach(([b,c]) => { if(c > modeCount){modeCount=c; modeVal=+b} });
+    const variance = sorted.reduce((s,v)=>s+(v-mean)**2,0) / (sorted.length - 1 || 1);
+    const std = Math.sqrt(variance);
+    return {mean: Math.round(mean*10000)/10000, median: Math.round(median*10000)/10000, mode: Math.round(modeVal*10000)/10000, std: Math.round(std*10000)/10000, values: sorted};
+  }
+  const maeDist = distStats(maeVals);
+  const mfeDist = distStats(mfeVals);
+  const mfeMaeRatio = maeDist.median > 0 ? Math.round(mfeDist.median / maeDist.median * 100) / 100 : 0;
+  const longs = trades.filter(t => t.direction === 'LONG');
+  const shorts = trades.filter(t => t.direction === 'SHORT');
+  const longWR = longs.length > 0 ? longs.filter(t=>t.outcome==='WIN').length / longs.length : 0;
+  const shortWR = shorts.length > 0 ? shorts.filter(t=>t.outcome==='WIN').length / shorts.length : 0;
+  return { n, nWins, nLosses, wr, ev_r: Math.round(ev_r*1000)/1000, pf: Math.round(pf*1000)/1000, ce: Math.round(ce*1000)/1000, mcl, maxDDPct, totalPnl: Math.round(totalPnl), sharpe, blown, byClass, maeDist, mfeDist, mfeMaeRatio, longN: longs.length, shortN: shorts.length, longWR, shortWR, dateRange: trades.length > 0 ? trades.map(t=>t.date).sort()[0] + ' to ' + trades.map(t=>t.date).sort().pop() : '' };
+}
+
+function applyCustomRanges(){
+  const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
+  const baseD = getProfileData(fullKey, activeProfile);
+  if(!baseD || !baseD.recent_trades) return;
+  const allTrades = baseD.recent_trades;
+  const rangeResults = customRanges.map((r, i) => {
+    if(!r.start || !r.end) return null;
+    const filtered = allTrades.filter(t => t.date >= r.start && t.date <= r.end);
+    return { label: r.start + ' to ' + r.end, color: RANGE_COLORS[i], stats: computeRangeStats(filtered), trades: filtered };
+  }).filter(Boolean);
+  const allFiltered = rangeResults.flatMap(r => r.trades);
+  const combinedStats = computeRangeStats(allFiltered);
+  renderCustomView(rangeResults, combinedStats);
+}
+
+function renderCustomView(rangeResults, combinedStats){
+  const cv = document.getElementById('custom-view');
+  if(!cv) return;
+  const validRanges = rangeResults.filter(r => r.stats);
+  if(!combinedStats && validRanges.length === 0){
+    cv.innerHTML = '<div style="padding:40px 0;text-align:center;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">No trades found in selected ranges. Adjust dates and click Apply.</div>';
+    return;
+  }
+
+  function statColor(val, threshGood, threshBad, invert){
+    if(invert) return val <= threshGood ? 'var(--green)' : val >= threshBad ? 'var(--red)' : 'var(--amber)';
+    return val >= threshGood ? 'var(--green)' : val <= threshBad ? 'var(--red)' : 'var(--amber)';
+  }
+  function pct(v){ return (v*100).toFixed(1)+'%'; }
+  function heroTile(lbl, val, color, sub){
+    return `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px 18px;box-shadow:var(--shadow);position:relative;overflow:hidden">
+      <div style="position:absolute;top:0;left:0;width:100%;height:3px;background:${color};border-radius:10px 10px 0 0"></div>
+      <div style="font-family:var(--font-data);font-size:11px;font-weight:500;letter-spacing:0.04em;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">${lbl}</div>
+      <div style="font-family:var(--font-display);font-size:28px;font-weight:700;letter-spacing:-0.02em;line-height:1;margin-bottom:4px;color:${color}">${val}</div>
+      ${sub ? `<div style="font-family:var(--font-data);font-size:11px;color:var(--text-muted)">${sub}</div>` : ''}
+    </div>`;
+  }
+
+  let html = '';
+
+  // Section A: Combined Hero Tiles
+  if(combinedStats){
+    const cs = combinedStats;
+    html += `<div class="sec-label">Combined Stats (${cs.n} trades)</div>`;
+    html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">`;
+    html += heroTile('Win Rate', pct(cs.wr), statColor(cs.wr, 0.55, 0.45, false), `${cs.nWins}W / ${cs.nLosses}L`);
+    html += heroTile('EV (R)', cs.ev_r.toFixed(3), statColor(cs.ev_r, 0.05, -0.05, false), '');
+    html += heroTile('Profit Factor', cs.pf.toFixed(3), statColor(cs.pf, 1.5, 1.0, false), '');
+    html += heroTile('CE', cs.ce.toFixed(3), statColor(cs.ce, 0.1, 0, false), 'EV x PF');
+    html += heroTile('P&L', '$'+cs.totalPnl.toLocaleString(), statColor(cs.totalPnl, 0, -1, false), cs.blown ? 'ACCOUNT BLOWN' : '');
+    html += heroTile('Sharpe', cs.sharpe != null ? cs.sharpe.toFixed(2) : '—', cs.sharpe != null ? statColor(cs.sharpe, 1.5, 0.5, false) : 'var(--text-muted)', '');
+    html += heroTile('Max DD', cs.maxDDPct.toFixed(2)+'%', statColor(cs.maxDDPct, 10, 25, true), '');
+    html += heroTile('Max L Run', cs.mcl, statColor(cs.mcl, 5, 10, true), '');
+    html += `</div>`;
+  }
+
+  // Section B: Side-by-side hero tiles per range
+  if(validRanges.length > 1){
+    html += `<div class="sec-label">Range Comparison</div>`;
+    html += `<div style="display:grid;grid-template-columns:repeat(${validRanges.length},1fr);gap:14px;margin-bottom:20px">`;
+    validRanges.forEach(r => {
+      const s = r.stats;
+      html += `<div style="border:2px solid ${r.color};border-radius:12px;padding:16px;background:var(--bg-card)">`;
+      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><div style="width:10px;height:10px;border-radius:3px;background:${r.color}"></div><span style="font-family:var(--font-data);font-size:11px;font-weight:600;color:var(--text-secondary)">${r.label}</span><span style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);margin-left:auto">${s.n} trades</span></div>`;
+      html += `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">`;
+      const miniTile = (l,v,c) => `<div style="padding:8px 10px;background:var(--bg-raised);border-radius:6px;border:1px solid var(--border)"><div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em">${l}</div><div style="font-family:var(--font-display);font-size:18px;font-weight:700;color:${c}">${v}</div></div>`;
+      html += miniTile('WR', pct(s.wr), statColor(s.wr, 0.55, 0.45, false));
+      html += miniTile('EV', s.ev_r.toFixed(3), statColor(s.ev_r, 0.05, -0.05, false));
+      html += miniTile('PF', s.pf.toFixed(3), statColor(s.pf, 1.5, 1.0, false));
+      html += miniTile('CE', s.ce.toFixed(3), statColor(s.ce, 0.1, 0, false));
+      html += miniTile('P&L', '$'+s.totalPnl.toLocaleString(), statColor(s.totalPnl, 0, -1, false));
+      html += miniTile('Sharpe', s.sharpe != null ? s.sharpe.toFixed(2) : '—', s.sharpe != null ? statColor(s.sharpe, 1.5, 0.5, false) : 'var(--text-muted)');
+      html += miniTile('Max DD', s.maxDDPct.toFixed(2)+'%', statColor(s.maxDDPct, 10, 25, true));
+      html += miniTile('MCL', s.mcl, statColor(s.mcl, 5, 10, true));
+      html += `</div></div>`;
+    });
+    html += `</div>`;
+  }
+
+  // Section C: Classification breakdown
+  const allClasses = ['DWP','DNP','R1','R2','Unclassified'];
+  const classHeaders = validRanges.map((r,i) => `<th style="color:${r.color}">${r.label.split(' to ')[0]}</th>`).join('');
+  html += `<div class="sec-label">Classification Breakdown</div>`;
+  html += `<div class="panel"><div class="ph"><span class="ph-title">Win Rate by Classification</span></div><div class="pb">`;
+  html += `<table class="ct"><thead><tr><th>Class</th>${classHeaders}${combinedStats ? '<th style="color:'+COMBINED_COLOR+'">Combined</th>' : ''}</tr></thead><tbody>`;
+  allClasses.forEach(cls => {
+    let row = `<tr><td style="font-weight:600">${cls}</td>`;
+    validRanges.forEach(r => {
+      const c = r.stats?.byClass[cls];
+      if(c && c.n > 0){
+        const col = statColor(c.wr, 0.55, 0.45, false);
+        row += `<td><span style="color:${col};font-weight:600">${pct(c.wr)}</span> <span style="color:var(--text-muted);font-size:10px">(${c.n})</span></td>`;
+      } else {
+        row += `<td style="color:var(--text-muted)">—</td>`;
+      }
+    });
+    if(combinedStats){
+      const c = combinedStats.byClass[cls];
+      if(c && c.n > 0){
+        const col = statColor(c.wr, 0.55, 0.45, false);
+        row += `<td><span style="color:${col};font-weight:600">${pct(c.wr)}</span> <span style="color:var(--text-muted);font-size:10px">(${c.n})</span></td>`;
+      } else {
+        row += `<td style="color:var(--text-muted)">—</td>`;
+      }
+    }
+    row += `</tr>`;
+    html += row;
+  });
+  html += `</tbody></table></div></div>`;
+
+  // Section D & E: MAE and MFE Distribution
+  function renderDistCard(type, dist, color, label){
+    const id = 'hist-'+type+'-'+label.replace(/\s+/g,'-').replace(/[^a-zA-Z0-9-]/g,'');
+    return `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px;box-shadow:var(--shadow);min-width:200px;flex:1">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <div style="width:8px;height:8px;border-radius:2px;background:${color}"></div>
+        <span style="font-family:var(--font-data);font-size:10px;font-weight:600;letter-spacing:0.06em;color:var(--text-muted);text-transform:uppercase">${label}</span>
+      </div>
+      <canvas class="mini-hist" data-type="${type}" data-label="${label}" data-color="${color}" width="280" height="100" style="width:100%;height:100px;border-radius:6px;background:var(--bg-raised)"></canvas>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px">
+        <div style="text-align:center"><div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase">Mode</div><div style="font-family:var(--font-display);font-size:14px;font-weight:700;color:${color}">${dist.mode.toFixed(4)}</div></div>
+        <div style="text-align:center"><div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase">Median</div><div style="font-family:var(--font-display);font-size:14px;font-weight:700;color:${color}">${dist.median.toFixed(4)}</div></div>
+        <div style="text-align:center"><div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase">Mean</div><div style="font-family:var(--font-display);font-size:14px;font-weight:700;color:${color}">${dist.mean.toFixed(4)}</div></div>
+        <div style="text-align:center"><div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase">Std</div><div style="font-family:var(--font-display);font-size:14px;font-weight:700;color:var(--text-secondary)">${dist.std.toFixed(4)}</div></div>
+      </div>
+    </div>`;
+  }
+
+  ['MAE','MFE'].forEach(type => {
+    const key = type.toLowerCase()+'Dist';
+    html += `<div class="sec-label">${type} Distribution</div>`;
+    html += `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">`;
+    validRanges.forEach(r => {
+      if(r.stats) html += renderDistCard(type, r.stats[key], r.color, r.label);
+    });
+    if(combinedStats) html += renderDistCard(type, combinedStats[key], COMBINED_COLOR, 'Combined');
+    html += `</div>`;
+  });
+
+  // Section F: Variance comparison chart
+  html += `<div class="sec-label">Variance Comparison</div>`;
+  html += `<div class="panel"><div class="ph"><span class="ph-title">MAE / MFE / Ratio — Mode, Median, Std</span>`;
+  html += `<div style="display:flex;gap:14px;align-items:center">`;
+  html += `<span style="display:flex;align-items:center;gap:5px;font-family:var(--font-data);font-size:10px;color:var(--text-muted)"><span style="width:10px;height:10px;border-radius:2px;background:#f87171;display:inline-block"></span>MAE</span>`;
+  html += `<span style="display:flex;align-items:center;gap:5px;font-family:var(--font-data);font-size:10px;color:var(--text-muted)"><span style="width:10px;height:10px;border-radius:2px;background:#34d399;display:inline-block"></span>MFE</span>`;
+  html += `<span style="display:flex;align-items:center;gap:5px;font-family:var(--font-data);font-size:10px;color:var(--text-muted)"><span style="width:10px;height:10px;border-radius:2px;background:#60a5fa;display:inline-block"></span>Ratio</span>`;
+  html += `</div></div>`;
+  html += `<div class="pb"><canvas id="variance-chart" width="800" height="320" style="width:100%;height:320px"></canvas></div></div>`;
+
+  cv.innerHTML = html;
+
+  // Draw mini histograms
+  cv.querySelectorAll('canvas.mini-hist').forEach(canvas => {
+    const type = canvas.dataset.type;
+    const label = canvas.dataset.label;
+    const color = canvas.dataset.color;
+    let vals = [];
+    if(label === 'Combined' && combinedStats){
+      vals = combinedStats[type.toLowerCase()+'Dist'].values;
+    } else {
+      const r = validRanges.find(r => r.label === label);
+      if(r && r.stats) vals = r.stats[type.toLowerCase()+'Dist'].values;
+    }
+    drawMiniHist(canvas, vals, color);
+  });
+
+  // Draw variance chart
+  drawVarianceChart(validRanges, combinedStats);
+}
+
+function drawMiniHist(canvas, values, color){
+  if(!values || values.length === 0) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const numBins = Math.min(30, Math.max(8, Math.ceil(Math.sqrt(values.length))));
+  const min = values[0], max = values[values.length-1];
+  const range = max - min || 1;
+  const binW = range / numBins;
+  const bins = new Array(numBins).fill(0);
+  values.forEach(v => {
+    let b = Math.floor((v - min) / binW);
+    if(b >= numBins) b = numBins - 1;
+    bins[b]++;
+  });
+  const maxCount = Math.max(...bins);
+  const pad = {l:4, r:4, t:4, b:4};
+  const plotW = w - pad.l - pad.r, plotH = h - pad.t - pad.b;
+  const barW = plotW / numBins;
+
+  ctx.globalAlpha = 0.6;
+  bins.forEach((count, i) => {
+    const barH = maxCount > 0 ? (count / maxCount) * plotH : 0;
+    ctx.fillStyle = color;
+    ctx.fillRect(pad.l + i * barW, pad.t + plotH - barH, barW - 1, barH);
+  });
+  ctx.globalAlpha = 1;
+}
+
+function drawVarianceChart(ranges, combined){
+  const canvas = document.getElementById('variance-chart');
+  if(!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const validRanges = ranges.filter(r => r.stats);
+  const groups = [];
+  validRanges.forEach(r => groups.push({label: r.label.split(' to ')[0], color: r.color, stats: r.stats}));
+  if(combined) groups.push({label: 'Combined', color: COMBINED_COLOR, stats: combined});
+  if(groups.length === 0) return;
+
+  const pad = {l:60, r:20, t:30, b:50};
+  const plotW = w - pad.l - pad.r, plotH = h - pad.t - pad.b;
+  const groupW = plotW / groups.length;
+  const barTypes = [
+    {key:'mae', color:'#f87171', label:'MAE', getValue: s => s.maeDist},
+    {key:'mfe', color:'#34d399', label:'MFE', getValue: s => s.mfeDist},
+    {key:'ratio', color:'#60a5fa', label:'Ratio', getValue: s => ({mode: s.mfeMaeRatio, median: s.mfeMaeRatio, std: 0})}
+  ];
+
+  // Find max value for scale
+  let maxVal = 0;
+  groups.forEach(g => {
+    barTypes.forEach(bt => {
+      const d = bt.getValue(g.stats);
+      const top = d.mode + (bt.key !== 'ratio' ? d.std : 0);
+      if(top > maxVal) maxVal = top;
+    });
+  });
+  maxVal = maxVal * 1.15 || 1;
+
+  // Grid lines
+  const gridStyle = getComputedStyle(document.documentElement).getPropertyValue('--grid-line').trim() || 'rgba(255,255,255,0.04)';
+  const numGrid = 5;
+  ctx.strokeStyle = gridStyle;
+  ctx.lineWidth = 1;
+  ctx.font = '10px IBM Plex Mono';
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#4a6480';
+  ctx.textAlign = 'right';
+  for(let i = 0; i <= numGrid; i++){
+    const y = pad.t + plotH - (i / numGrid) * plotH;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+    ctx.fillText((maxVal * i / numGrid).toFixed(3), pad.l - 6, y + 3);
+  }
+
+  // Draw bars
+  const barsPerGroup = barTypes.length;
+  const barGap = 4;
+  const totalBarW = (groupW - 20) / barsPerGroup;
+
+  groups.forEach((g, gi) => {
+    const groupX = pad.l + gi * groupW;
+
+    barTypes.forEach((bt, bi) => {
+      const d = bt.getValue(g.stats);
+      const x = groupX + 10 + bi * totalBarW;
+      const barW = totalBarW - barGap;
+      const barH = (d.mode / maxVal) * plotH;
+
+      // Bar (mode height)
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = bt.color;
+      ctx.fillRect(x, pad.t + plotH - barH, barW, barH);
+      ctx.globalAlpha = 1;
+
+      // Median line
+      if(d.median > 0){
+        const medY = pad.t + plotH - (d.median / maxVal) * plotH;
+        ctx.strokeStyle = bt.color;
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x, medY); ctx.lineTo(x + barW, medY); ctx.stroke();
+      }
+
+      // Std dev whiskers (not for ratio)
+      if(bt.key !== 'ratio' && d.std > 0){
+        const centerX = x + barW / 2;
+        const modeY = pad.t + plotH - (d.mode / maxVal) * plotH;
+        const topY = pad.t + plotH - (Math.min(d.mode + d.std, maxVal) / maxVal) * plotH;
+        const botY = pad.t + plotH - (Math.max(d.mode - d.std, 0) / maxVal) * plotH;
+        ctx.strokeStyle = bt.color;
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(centerX, topY); ctx.lineTo(centerX, botY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(centerX - 4, topY); ctx.lineTo(centerX + 4, topY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(centerX - 4, botY); ctx.lineTo(centerX + 4, botY); ctx.stroke();
+      }
+    });
+
+    // Group label
+    ctx.fillStyle = g.color;
+    ctx.font = '10px IBM Plex Mono';
+    ctx.textAlign = 'center';
+    ctx.fillText(g.label, groupX + groupW / 2, h - pad.b + 16);
+  });
+}
+
 // ── MAIN RENDER ────────────────────────────────────────────────────────────
 function renderActive(){
+  const customView = document.getElementById('custom-view');
+  const pageNav = document.querySelector('.page-nav');
+  if(activeTF === 'custom'){
+    if(customView) customView.style.display = '';
+    if(pageNav) pageNav.style.display = 'none';
+    document.querySelectorAll('.page-pane').forEach(p => p.style.display = 'none');
+    document.getElementById('meta-row').innerHTML = '';
+    if(customRanges.some(r => r.start && r.end)) applyCustomRanges();
+    return;
+  } else {
+    if(customView) customView.style.display = 'none';
+    if(pageNav) pageNav.style.display = '';
+    // Restore active pane visibility
+    document.querySelectorAll('.page-pane').forEach(p => {
+      if(p.classList.contains('active')) p.style.display = 'block';
+    });
+  }
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
   const baseD = getProfileData(fullKey, activeProfile);
   if(!baseD){
@@ -3027,6 +3485,18 @@ function parseKey(k){
 }
 
 // ── INIT ────────────────────────────────────────────────────────────────────
+const savedTF = localStorage.getItem('fractal-active-tf');
+if(savedTF){
+  activeTF = savedTF;
+  const sel = document.getElementById('tf-select');
+  if(sel) sel.value = savedTF;
+  if(savedTF === 'custom'){
+    const builder = document.getElementById('custom-range-builder');
+    if(builder) builder.style.display = '';
+    if(customRanges.length === 0) addCustomRange();
+    renderRangeSlots();
+  }
+}
 render();
 drawSetupViz();
 let rt; window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{renderActive();drawSetupViz();},150);});
