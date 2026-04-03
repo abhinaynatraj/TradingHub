@@ -33,7 +33,7 @@ cisd_text       = input.string("CISD",   "Label Text",     group=G5, tooltip="TF
 cisd_lbl_pos    = input.string("Right",  "Label Position", options=["Left", "Right"], group=G5)
 
 var string G7 = "T-Spot Zone"
-show_tspot      = input.bool(true,        "Show T-Spot Zone",     group=G7)
+show_tspot      = input.bool(false,       "Show T-Spot Zone",     group=G7)
 tspot_transp    = input.int(85,           "Zone Transparency",    group=G7, minval=0, maxval=100)
 show_c_labels   = input.bool(true,        "Show C2/C3 Labels",   group=G7)
 show_tspot_type = input.bool(true,        "Show T-Spot Type",    group=G7)
@@ -200,9 +200,9 @@ f_reg_box(box b)     => array.push(fired_boxes, b)
 // helper: trim oldest drawings to keep only max_setups worth
 // each setup creates ~15 lines, ~8 labels, ~3 boxes
 f_trim_fired() =>
-    _per_setup_lines  = 12
+    _per_setup_lines  = 8
     _per_setup_labels = 12
-    _per_setup_boxes  = 4
+    _per_setup_boxes  = 2
     _max_lines  = max_setups * _per_setup_lines
     _max_labels = max_setups * _per_setup_labels
     _max_boxes  = max_setups * _per_setup_boxes
