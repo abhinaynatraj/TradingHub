@@ -1630,11 +1630,13 @@ function computeRegimeFingerprint(trades, startDate, endDate) {
 }
 
 function computeOverfitScore(trainEV, testEV) {
-  const score = trainEV !== 0 ? (testEV / trainEV) * 100 : 0;
+  if (trainEV == null || trainEV === 0) return { score: null, label: '\u2014', cls: 'var(--text-muted)' };
+  const score = Math.round((testEV / trainEV) * 100);
   let label, cls;
-  if (score >= 80 && score <= 120) { label = 'ROBUST'; cls = 'var(--green)'; }
-  else if (score >= 60 && score < 80) { label = 'MILD DECAY'; cls = 'var(--amber)'; }
-  else { label = 'OVERFIT'; cls = 'var(--red)'; }
+  if (score >= 80) { label = 'ROBUST'; cls = 'var(--green)'; }
+  else if (score >= 60) { label = 'MILD DECAY'; cls = 'var(--amber)'; }
+  else if (score >= 0) { label = 'OVERFIT'; cls = 'var(--red)'; }
+  else { label = 'INVERTED'; cls = 'var(--red)'; }
   return { score, label, cls };
 }
 
