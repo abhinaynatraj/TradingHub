@@ -43,12 +43,17 @@ python3 -m http.server 8000         # serve dashboard at localhost:8000
 | `split_tp` | `split_80_20` | SL = sweep extreme; TP1 @ PTQ level, 90% exit; 10% runner targets p50 MFE; BE stop on runner |
 
 ### split_tp profile mechanics
-- `stop_dist = 1 × base_risk` (structural stop at sweep extreme)
-- `target_price (TP1) = entry ± base_risk` (1:1)
-- Runner TP2 = `entry ± entry × 0.6724 / 100` (fixed % of entry, independent of sweep size)
-- After TP1: 20% runner holds with BE stop toward TP2
-- `net_r = 0.80 + 0.20 × runner_exit_r`
-- BE WR = 1/1.8 ≈ 55.56%
+- `stop_dist = min(1 × base_risk, entry × mae_p90 / 100)` — tighter of structural or MAE p90 of winners
+- `TP1 = entry ± entry × ptq_level / 100` (PTQ level from structural profile's winners-only MFE)
+- Runner TP2 = `entry ± entry × p50_mfe / 100` (p50 MFE from winners)
+- After TP1: 10% runner holds with BE stop toward TP2
+- `net_r = 0.90 × tp1_r + 0.10 × runner_exit_r`
+- All targets (PTQ, p50, MAE p90) are computed per TF period from the structural profile's winners
+
+### MAE/MFE Recommendation Logic
+- **PTQ**: highest reach_rate where P(positive exit | MFE ≥ X) ≥ 0.70, fallback 0.50
+- **opt_sl**: tightest MAE where P(genuine loss | MAE ≥ X) ≥ 0.70, fallback 0.50
+- Computed in both `model_stats.py` (backtest) and `model_dashboard.html` (client-side recent trades)
 
 ## Hourly Normalization
 

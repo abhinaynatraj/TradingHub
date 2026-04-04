@@ -43,11 +43,26 @@ Prior range floor, sweep min size, sweep max cap, close-back required, CISD spee
 | profile_type | Keys | Stop/Target |
 |---|---|---|
 | `pct` | `sl_026_tp_018` … `sl_019_tp_019` | Fixed % of entry price; SL and TP independent of sweep size |
-| `structural` | `structural_dynamic` | SL = sweep extreme (1×base_risk); TP1 @ 1R, 50% off; runner free with BE stop |
-| `split_tp` | `split_80_20` | SL = sweep extreme; TP1 @ 1R, 80% off; 20% runner → TP2 @ 0.6724% of entry; BE stop on runner |
+| `structural` | `structural_dynamic` | SL = sweep extreme (1×base_risk); TP1 @ 1R, 90% off; runner (10%) free with BE stop |
+| `split_tp` | `split_80_20` | SL = min(sweep extreme, MAE p90 winners); TP1 @ PTQ, 90% off; 10% runner → TP2 @ p50 MFE; BE stop |
 
-`split_tp` resolver: `resolve_outcomes_split_tp(m1_arrs, pending, tp2_pct=0.6724)`
-`net_r = 0.80 + 0.20 × runner_exit_r` | BE WR = 1/1.8 ≈ 55.56%
+`split_tp` resolver: `resolve_outcomes_split_tp(m1_arrs, pending, tp1_size=0.90, tp2_size=0.10)`
+`net_r = 0.90 × tp1_r + 0.10 × runner_exit_r`
+All split_tp targets (PTQ, p50 MFE, MAE p90) are computed per TF period from structural winners.
+
+## MAE/MFE Recommendation Logic
+
+Both Python (`model_stats.py`) and JS (client-side in `model_dashboard.html`) compute recommendations:
+
+- **PTQ (Protect the Queen)**: MFE BE trigger — highest reach_rate where P(positive exit | MFE ≥ X) ≥ 0.70, fallback to 0.50
+- **Optimal SL (opt_sl)**: MAE stop placement — tightest MAE threshold where P(genuine loss | MAE ≥ X) ≥ 0.70, fallback to 0.50
+- **Rescue Opportunity**: MFE losers — narrative only (median/p75), no threshold recommendation
+
+Segment behavior:
+- Winners MFE: p_pos ≈ 1.0 at all levels → PTQ = lowest trigger (highest reach)
+- Losers MFE: p_pos ≈ 0 → PTQ = None (correct)
+- Winners MAE: p_ko = 0 → opt_sl = None (use p90 percentile instead)
+- Losers MAE: p_ko = 1 → opt_sl = lowest threshold (validates stop)
 
 ## Trade Row Fields
 

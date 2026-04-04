@@ -57,8 +57,7 @@ Full distributional study on Max Favourable Excursion across all resolved trades
 
 Each MFE trigger level was evaluated for: reach rate, P(positive exit | MFE ≥ X), trades rescued, and EV improvement.
 
-> **Recommended PTQ level: 0.2965%**
-> Reached by 33% of trades. Once hit, 50.2% exit positively — the earliest trigger where odds flip in your favour. Moving to BE here saves ~447 trades from negative exits and improves EV by +0.1615R per trade.
+> PTQ selection: highest reach_rate trigger where P(positive exit) ≥ 70% (fallback 50%). Prioritizes practical reach — a level most trades actually hit — over extreme confidence at rarely-reached levels.
 
 ---
 
@@ -87,9 +86,9 @@ Full distributional study on Max Adverse Excursion across all resolved trades.
 
 **SL sweep analysis:**
 
-For each MAE level tested, the sweep measures P(false stop) — trades that touch the level but still recover to hit TP1. Across all 12 levels tested:
+For each MAE level tested, the sweep measures P(false stop) — trades that touch the level but still recover to hit TP1.
 
-> **P(false stop) never drops below 32%** — even at the widest SL tested (0.3646%), 67.6% of touched trades still recover.
+> Optimal SL (opt_sl) selection: tightest MAE threshold where P(genuine loss | MAE ≥ X) ≥ 70% (fallback 50%). Returns None for winners-only data (p_ko=0) — use p90 percentile instead.
 > **Conclusion: the structural stop is the natural boundary.** Any fixed % SL tighter than the structural stop cuts a large proportion of legitimate winners.
 
 ---

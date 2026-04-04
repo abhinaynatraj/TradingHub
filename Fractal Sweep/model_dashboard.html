@@ -379,7 +379,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
               <div class="model-step-num">3</div>
               <div>
                 <div class="model-step-title">CISD Confirmation</div>
-                <div class="model-step-body">Change in State of Delivery: price closes beyond the open of the first candle of the opposing consecutive delivery leg within 16 CISD bars.</div>
+                <div class="model-step-body">Change in State of Delivery: price closes beyond the open of the first candle of the opposing consecutive delivery leg.</div>
               </div>
             </div>
           </div>
@@ -958,7 +958,7 @@ const RR_PROFILES = [
 ];
 const PROFILE_LABELS = {
   'structural_dynamic': 'Structural Dynamic — TP1 @ 1R · 90% exit · Runner Free (10%)',
-  'split_80_20':        'Split Exit — TP1 @ PTQ (90%) · TP2 @ p50 MFE (10%) · BE stop after TP1',
+  'split_80_20':        'Split Exit — TP1 @ PTQ (90%) · TP2 @ p50 MFE (10%) · SL min(struct, MAE p90)',
 };
 const PCT_PROFILES = new Set();
 const STRUCTURAL_PROFILE = 'structural_dynamic';
@@ -1264,7 +1264,7 @@ function renderProfileDropdown(){
     const ev = d?.meta?.ev_per_trade;
     let baseLabel = PROFILE_LABELS[pk] || pk;
     if (pk === 'split_80_20' && d?.meta?.tp1_pct != null) {
-      baseLabel = `Split Exit — TP1 @ ${(+d.meta.tp1_pct).toFixed(4)}% PTQ (90%) · TP2 @ p50 MFE (10%) · BE stop after TP1`;
+      baseLabel = `Split Exit — TP1 @ ${(+d.meta.tp1_pct).toFixed(4)}% PTQ (90%) · TP2 @ p50 MFE (10%) · SL min(struct, MAE p90)`;
     }
     const label = baseLabel + (ev != null ? '  ·  EV ' + (ev>0?'+':'') + ev.toFixed(3) + 'R' : '');
     return `<option value="${pk}" ${pk===activeProfile?'selected':''}>${label}</option>`;
@@ -3229,7 +3229,7 @@ function computeRichStudy(trades, field) {
 
   if (isMAE) {
     sl_sweep = [];
-    let bestScore = -1;
+    let _optFallback = null;
     [5,10,15,20,25,30,33,40,50,60,75,90].forEach(exceedPct => {
       const thr = pct(exceedPct);
       const touched = trades.filter(t => t[field] != null && t[field] >= thr);
@@ -3242,14 +3242,18 @@ function computeRichStudy(trades, field) {
       const exc = Math.round(nt / totalTrades * 1000) / 10;
       sl_sweep.push({exceed_pct: exceedPct, threshold: Math.round(thr*10000)/10000,
                      n_exceeded: nt, p_recovered: pRec, p_ko: pKo, ev_cost: 0});
-      const score = pKo * exc;
-      if (score > bestScore) { bestScore = score; opt_sl = Math.round(thr*10000)/10000; }
+      // opt_sl: first threshold (highest reach) where p_ko >= 0.70
+      // = tightest stop where 70%+ of trades dipping this deep are genuine losses
+      if (opt_sl === null && pKo >= 0.70) { opt_sl = Math.round(thr*10000)/10000; }
+      if (_optFallback === null && pKo >= 0.50) { _optFallback = Math.round(thr*10000)/10000; }
     });
+    if (opt_sl === null) opt_sl = _optFallback;
   } else {
     be_triggers = [];
     // Compute base EV from all trades
     const rVals = trades.map(t => t.r).filter(v => v != null);
     const baseEV = rVals.length > 0 ? rVals.reduce((s,v) => s+v, 0) / rVals.length : 0;
+    let _ptqFallback = null, _ptqFallbackRR = null;
 
     [5,10,15,20,25,30,33,40,50,60,75,90].forEach(reachRate => {
       const thr = pct(100 - reachRate);
@@ -3267,11 +3271,19 @@ function computeRichStudy(trades, field) {
       be_triggers.push({reach_rate: reachRate, trigger_pct: Math.round(thr*10000)/10000,
                         n_reached: nr, p_pos_given: pPos, n_rescued: nRescued,
                         ev_delta: evDelta, new_ev: newEV});
-      if (ptq_level === null && pPos >= 0.50) {
+      // PTQ: highest reach_rate where p_pos >= 0.70; fallback to 0.50
+      // Iteration goes low→high reach, so keep overwriting to get highest reach
+      if (pPos >= 0.70) {
         ptq_level = Math.round(thr*10000)/10000;
         ptq_reach_rate = reachRate;
+      } else if (pPos >= 0.50) {
+        _ptqFallback = Math.round(thr*10000)/10000;
+        _ptqFallbackRR = reachRate;
       }
     });
+    if (ptq_level === null && _ptqFallback !== null) {
+      ptq_level = _ptqFallback; ptq_reach_rate = _ptqFallbackRR;
+    }
   }
 
   // CE score: concentration efficiency (median/mean ratio)
@@ -4082,11 +4094,19 @@ function renderStructuralPanel(D){
   const rrs = ss.runner_ran_stats || {};
   const m = D?.meta || {};
 
+  // Per-TF targets for split profile
+  const stt = D?.split_tf_targets || {};
+  const tfTgt = stt[activeTF] || stt['all'] || {};
+
   // Net EV estimate
   const netEV = tp1 != null && rs.mean != null
     ? (+(tp1 * (tp1Size + tp2Size * rs.mean) + (1 - tp1) * (-1.0)).toFixed(3)) : null;
   const beWR = isSplit8020 ? (1/1.9) : (2/3);
   const tp1PctLabel = isSplit8020 ? (m.tp1_pct != null ? (+m.tp1_pct).toFixed(4)+'% (PTQ)' : 'PTQ level') : '1R';
+  const slMaePct = m.sl_mae_p90_pct ?? tfTgt.sl_mae_p90_pct;
+  const slLabel = isSplit8020
+    ? (slMaePct != null ? `min(struct, ${(+slMaePct).toFixed(4)}%)` : 'structural')
+    : 'structural';
 
   bodyEl.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
@@ -4111,6 +4131,25 @@ function renderStructuralPanel(D){
         <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-top:4px">TP1_rate×(${tp1Size}×tp1_r+${tp2Size}×runner) − loss×1R</div>
       </div>
     </div>
+
+    ${isSplit8020 ? `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;padding:14px 16px;background:var(--bg-raised);border:1px solid var(--border);border-radius:8px">
+      <div>
+        <div style="font-family:var(--font-data);font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">TP1 (PTQ)</div>
+        <div style="font-family:var(--font-data);font-size:14px;font-weight:800;color:var(--green)">${m.tp1_pct != null ? (+m.tp1_pct).toFixed(4)+'%' : '—'}</div>
+        <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);margin-top:2px">90% exit · from winners MFE</div>
+      </div>
+      <div>
+        <div style="font-family:var(--font-data);font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">TP2 (p50 MFE)</div>
+        <div style="font-family:var(--font-data);font-size:14px;font-weight:800;color:var(--purple)">${m.tp2_pct != null ? (+m.tp2_pct).toFixed(4)+'%' : '—'}</div>
+        <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);margin-top:2px">10% runner · median winner MFE</div>
+      </div>
+      <div>
+        <div style="font-family:var(--font-data);font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">SL Cap (MAE p90)</div>
+        <div style="font-family:var(--font-data);font-size:14px;font-weight:800;color:var(--red)">${slLabel}</div>
+        <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);margin-top:2px">tighter of structural or MAE p90</div>
+      </div>
+    </div>` : ''}
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
       <!-- Runner distribution table -->
@@ -4138,7 +4177,7 @@ function renderStructuralPanel(D){
           <strong style="color:var(--text-secondary)">Net R formula:</strong><br>
           ${(tp1Size*100).toFixed(0)}% exits at <span style="color:var(--green)">TP1 (${tp1PctLabel})</span> when hit<br>
           ${(tp2Size*100).toFixed(0)}% runner free — BE stop, runs to EOD<br>
-          <span style="color:var(--amber)">Net = ${tp1Size} × tp1_r + ${tp2Size} × runner_exit_r</span>${isSplit8020 ? '<br><span style="color:var(--text-muted)">tp1_r = TP1_dist ÷ base_risk (variable per trade)</span>' : ''}
+          <span style="color:var(--amber)">Net = ${tp1Size} × tp1_r + ${tp2Size} × runner_exit_r</span>${isSplit8020 ? '<br><span style="color:var(--text-muted)">tp1_r = TP1_dist ÷ base_risk (variable per trade)</span><br><span style="color:var(--text-muted)">SL = min(sweep extreme, MAE p90 of winners)</span>' : ''}
         </div>
       </div>
     </div>`;

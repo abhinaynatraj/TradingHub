@@ -96,7 +96,7 @@ MIN_RISK_PTS     = 3.0
 MAX_RISK_PTS     = RISK_PER_TRADE / POINT_VALUE  # 112.5 pts for MNQ @ $225 risk
 OUTCOME_MAX_BARS = 360
 SWEEP_MAX_PCT    = 0.50
-CISD_FAST_BARS   = 8
+CISD_FAST_BARS   = None  # None = no limit; CISD can form any time before session end
 UNSWEPT_LOOKBACK = 10
 
 # ── RISK PROFILES ─────────────────────────────────────────────────────────────
@@ -325,13 +325,18 @@ def find_cisd(c_arrs, return_ts_ns, direction, max_bars, cisd_mode):
     """
     Uses searchsorted to find the integer index — no df.loc[].
     Returns (fired_ts_ns, cisd_level) or (None, None).
+    max_bars=None means no limit — scan to end of available data (session end).
     """
     start_idx = int(np.searchsorted(c_arrs['ts_ns'], return_ts_ns, side='left'))
     if start_idx >= len(c_arrs['ts_ns']):
         return None, None
+    if max_bars is None:
+        n_forward = len(c_arrs['ts_ns']) - start_idx
+    else:
+        n_forward = min(max_bars * 2, 40)
     return _find_cisd(
         c_arrs['open'], c_arrs['close'], c_arrs['ts_ns'],
-        start_idx, min(max_bars * 2, 40), direction
+        start_idx, n_forward, direction
     )
 
 
@@ -803,7 +808,7 @@ def _full_mae_stats(wl, ce=None, n_bins=50):
     raw_thresholds = [float(vals.quantile(p / 100)) for p in [5,10,15,20,25,30,35,40,50,60,70,80,90,95]]
     thresholds = sorted({round(t, 4) for t in raw_thresholds})
     sl_sweep = []
-    best_opt = None; best_score = -1.0
+    best_opt = None; _opt_fallback = None
     for thr in thresholds:
         touched = wl[wl['mae_pct'] >= thr]
         if len(touched) == 0:
@@ -815,9 +820,15 @@ def _full_mae_stats(wl, ce=None, n_bins=50):
         p_ko  = round(n_loss / nt, 4)
         exc   = round(nt / n * 100, 1)
         sl_sweep.append(dict(threshold=thr, exceed_pct=exc, p_recovered=p_rec, p_ko=p_ko))
-        score = p_ko * exc
-        if score > best_score:
-            best_score = score; best_opt = thr
+        # opt_sl: first threshold (highest reach) where p_ko >= 0.70
+        # = tightest stop where 70%+ of trades dipping this deep are genuine losses
+        if best_opt is None and p_ko >= 0.70:
+            best_opt = thr
+        if _opt_fallback is None and p_ko >= 0.50:
+            _opt_fallback = thr
+
+    if best_opt is None:
+        best_opt = _opt_fallback
 
     return dict(
         n          = n,
@@ -886,6 +897,7 @@ def _full_mfe_stats(wl, n_bins=50):
     triggers  = sorted({round(t, 4) for t in raw_trigs})
     be_triggers = []
     ptq_level = None; ptq_reach_rate = None
+    _ptq_fallback = None; _ptq_fallback_rr = None
     for thr in triggers:
         reached = wl[wl['mfe_pct'] >= thr]
         if len(reached) == 0:
@@ -910,8 +922,14 @@ def _full_mfe_stats(wl, n_bins=50):
             ev_delta    = ev_delta,
             new_ev      = new_ev,
         ))
-        if ptq_level is None and p_pos >= 0.50:
+        # PTQ: first trigger (highest reach) where p_pos >= 0.70; fallback to 0.50
+        if ptq_level is None and p_pos >= 0.70:
             ptq_level = thr; ptq_reach_rate = reach_rate
+        if _ptq_fallback is None and p_pos >= 0.50:
+            _ptq_fallback = thr; _ptq_fallback_rr = reach_rate
+
+    if ptq_level is None and _ptq_fallback is not None:
+        ptq_level = _ptq_fallback; ptq_reach_rate = _ptq_fallback_rr
 
     return dict(
         n           = n,
@@ -1168,7 +1186,7 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
 # ── PROFILE OUTCOME RESOLVER ──────────────────────────────────────────────────
 def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
                                stop_val, target_val, profile_type='mult',
-                               tp2_pct=None):
+                               tp2_pct=None, sl_mae_pct=None):
     """
     Compute stop / target for each detected setup and resolve outcomes.
 
@@ -1195,7 +1213,12 @@ def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
             stop_dist    = entry_price * stop_val   / 100.0
             target_dist  = entry_price * target_val / 100.0
         elif profile_type == 'split_tp':
-            stop_dist    = stop_val * base_risk          # 1× base_risk (sweep extreme)
+            structural_stop = stop_val * base_risk       # 1× base_risk (sweep extreme)
+            if sl_mae_pct is not None:
+                mae_stop = entry_price * sl_mae_pct / 100.0
+                stop_dist = min(structural_stop, mae_stop)
+            else:
+                stop_dist = structural_stop
             target_dist  = entry_price * target_val / 100.0  # TP1 = fixed % of entry
         else:  # 'mult' / 'structural'
             stop_dist    = stop_val   * base_risk
@@ -1286,6 +1309,33 @@ def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
 
 
 # ── STATISTICS ────────────────────────────────────────────────────────────────
+def agg(g):
+    """Aggregate a group of trades into summary stats."""
+    n = len(g)
+    if n == 0:
+        return dict(n=0, wins=0, wr=0, ev=0, pf=0, avg_risk_pts=0, avg_rr=0,
+                    avg_mae=None, avg_mfe=None, avg_mae_hr=None, avg_mfe_hr=None)
+    wins    = int(g['win'].sum())
+    wr      = round(wins / n, 4)
+    ev      = round(float(g['r'].sum()) / n, 3)
+    win_r   = float(g.loc[g['win'] == 1, 'r'].sum())
+    loss_r  = float(abs(g.loc[g['win'] == 0, 'r'].sum()))
+    pf      = round(win_r / max(loss_r, 0.001), 3)
+    avg_rr  = round(win_r / max(wins, 1), 2)
+    ar      = round(float(g['risk_pts'].mean()), 1) \
+              if 'risk_pts' in g.columns and g['risk_pts'].notna().any() else 0
+    _mae = g['mae_pct'].dropna() if 'mae_pct' in g.columns else None
+    _mfe = g['mfe_pct'].dropna() if 'mfe_pct' in g.columns else None
+    avg_mae = round(float(_mae.mean()), 4) if _mae is not None and len(_mae) > 0 else None
+    avg_mfe = round(float(_mfe.mean()), 4) if _mfe is not None and len(_mfe) > 0 else None
+    _mae_hr = g['mae_pct_hr'].dropna() if 'mae_pct_hr' in g.columns else None
+    _mfe_hr = g['mfe_pct_hr'].dropna() if 'mfe_pct_hr' in g.columns else None
+    avg_mae_hr = round(float(_mae_hr.mean()), 4) if _mae_hr is not None and len(_mae_hr) > 0 else None
+    avg_mfe_hr = round(float(_mfe_hr.mean()), 4) if _mfe_hr is not None and len(_mfe_hr) > 0 else None
+    return dict(n=n, wins=wins, wr=wr, ev=ev, pf=pf, avg_risk_pts=ar, avg_rr=avg_rr,
+                avg_mae=avg_mae, avg_mfe=avg_mfe, avg_mae_hr=avg_mae_hr, avg_mfe_hr=avg_mfe_hr)
+
+
 def build_model_stats(df_raw, trading_days, model_key, model_cfg,
                       stop_mult=1.0, target_mult=2.0, profile_key='1:2',
                       profile_type='mult'):
@@ -1307,33 +1357,6 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         return f'Expansive_{suffix}'
 
     wl['tspot_type'] = wl.apply(_classify_tspot, axis=1)
-
-    def agg(g):
-        n = len(g)
-        if n == 0:
-            return dict(n=0, wins=0, wr=0, ev=0, pf=0, avg_risk_pts=0, avg_rr=0,
-                        avg_mae=None, avg_mfe=None, avg_mae_hr=None, avg_mfe_hr=None)
-        wins    = int(g['win'].sum())
-        wr      = round(wins / n, 4)
-        # EV and PF from actual per-trade R (WIN r = actual_rr, LOSS r = -1.0)
-        ev      = round(float(g['r'].sum()) / n, 3)
-        win_r   = float(g.loc[g['win'] == 1, 'r'].sum())
-        loss_r  = float(abs(g.loc[g['win'] == 0, 'r'].sum()))
-        pf      = round(win_r / max(loss_r, 0.001), 3)
-        avg_rr  = round(win_r / max(wins, 1), 2)
-        ar      = round(float(g['risk_pts'].mean()), 1) \
-                  if 'risk_pts' in g.columns and g['risk_pts'].notna().any() else 0
-        # MAE/MFE averages — entry-price-normalized and hour-range-normalized
-        _mae = g['mae_pct'].dropna() if 'mae_pct' in g.columns else None
-        _mfe = g['mfe_pct'].dropna() if 'mfe_pct' in g.columns else None
-        avg_mae = round(float(_mae.mean()), 4) if _mae is not None and len(_mae) > 0 else None
-        avg_mfe = round(float(_mfe.mean()), 4) if _mfe is not None and len(_mfe) > 0 else None
-        _mae_hr = g['mae_pct_hr'].dropna() if 'mae_pct_hr' in g.columns else None
-        _mfe_hr = g['mfe_pct_hr'].dropna() if 'mfe_pct_hr' in g.columns else None
-        avg_mae_hr = round(float(_mae_hr.mean()), 4) if _mae_hr is not None and len(_mae_hr) > 0 else None
-        avg_mfe_hr = round(float(_mfe_hr.mean()), 4) if _mfe_hr is not None and len(_mfe_hr) > 0 else None
-        return dict(n=n, wins=wins, wr=wr, ev=ev, pf=pf, avg_risk_pts=ar, avg_rr=avg_rr,
-                    avg_mae=avg_mae, avg_mfe=avg_mfe, avg_mae_hr=avg_mae_hr, avg_mfe_hr=avg_mfe_hr)
 
     by_hour = []
     for (hr, direction), g in wl.groupby(['hr', 'direction']):
@@ -1798,6 +1821,151 @@ def _compute_by_classification(wl_sorted: 'pd.DataFrame') -> dict:
     return result
 
 
+def _build_slice_stats(wl_sub, stop_mult, target_mult, agg_fn, hr_labels,
+                       dow_names, date_classification=None):
+    """Build compact stats for a sub-timeframe slice. Used by _compute_by_tf and
+    per-TF split profile resolution."""
+    if len(wl_sub) == 0:
+        return None
+    wl_sub = wl_sub.copy()
+    if 'win' not in wl_sub.columns:
+        wl_sub['win'] = (wl_sub['outcome'] == 'WIN').astype(int)
+    n     = len(wl_sub)
+    wins  = int((wl_sub['win'] == 1).sum())
+    wr    = round(wins / n, 4)
+    ev    = round(float(wl_sub['r'].sum()) / n, 3)
+    win_r = float(wl_sub.loc[wl_sub['win'] == 1, 'r'].sum())
+    los_r = float(abs(wl_sub.loc[wl_sub['win'] == 0, 'r'].sum()))
+    pf    = round(win_r / max(los_r, 0.001), 3)
+    date_range = f"{str(wl_sub['date'].min())[:10]} – {str(wl_sub['date'].max())[:10]}"
+    sl_pct_val = None; tp_pct_val = None
+
+    # Equity / risk stats
+    ws_sorted = wl_sub.sort_values('date')
+    eq = float(ACCOUNT_SIZE); peak_eq = eq; max_dd = 0.0; max_dd_usd = 0.0; min_eq = eq
+    daily_pnl: dict = {}
+    def _mc(seq, val):
+        mx = cur = 0
+        for v in seq:
+            cur = cur + 1 if v == val else 0; mx = max(mx, cur)
+        return mx
+    for _, row in ws_sorted.iterrows():
+        r_val = row['r']
+        if r_val is None or np.isnan(float(r_val)): continue
+        tp = float(r_val) * RISK_PER_TRADE
+        eq += tp
+        if eq < min_eq: min_eq = eq
+        if eq > peak_eq: peak_eq = eq
+        dd = (peak_eq - eq) / peak_eq if peak_eq > 0 else 0.0
+        if dd > max_dd:
+            max_dd = dd
+            max_dd_usd = peak_eq - eq
+        try:
+            td = str(row['date'])[:10]
+            daily_pnl[td] = daily_pnl.get(td, 0.0) + tp
+        except Exception:
+            pass
+    outcomes_seq = ws_sorted['win'].tolist()
+    mcw = _mc(outcomes_seq, 1); mcl = _mc(outcomes_seq, 0)
+    total_pnl = round(eq - ACCOUNT_SIZE, 2)
+    max_dd_pct = round(max_dd * 100, 2)
+    blown = eq <= 0.0
+    if len(daily_pnl) > 1:
+        dpnl = np.array(list(daily_pnl.values()))
+        sharpe = round(float(dpnl.mean() / dpnl.std(ddof=1) * np.sqrt(252)), 2) \
+                 if dpnl.std(ddof=1) > 0 else None
+    else:
+        sharpe = None
+    ce = round(ev * pf, 6) if pf and n > 0 else None
+    # by_hour
+    bh = []
+    for (hr, direction), g in wl_sub.groupby(['hr', 'direction']):
+        s = agg_fn(g)
+        if s['n'] >= 3:
+            s.update(hr=int(hr), hr_label=hr_labels.get(int(hr), f'{int(hr):02d}:00'))
+            bh.append(s)
+    # by_session
+    def get_sess(hr):
+        h = float(hr)
+        if 8.5 <= h < 11.5: return 'NY1'
+        if 11.5 <= h < 16.0: return 'NY2'
+        return 'Other'
+    wl_sub2 = wl_sub.copy()
+    wl_sub2['session2'] = wl_sub2['hr'].apply(get_sess)
+    bs = []
+    for (sess, direction), g in wl_sub2.groupby(['session2', 'direction']):
+        if sess == 'Other': continue
+        s = agg_fn(g); s.update(session=sess, direction=direction); bs.append(s)
+    # by_dow
+    bd = []
+    for (dow, direction), g in wl_sub.groupby(['dow', 'direction']):
+        s = agg_fn(g)
+        if s['n'] >= 3:
+            s.update(dow=int(dow), dow_name=dow_names.get(int(dow), '?'))
+            bd.append(s)
+    # dir_summary
+    ds = []
+    for direction, g in wl_sub.groupby('direction'):
+        s = agg_fn(g); s['direction'] = direction; ds.append(s)
+    # by_year
+    wl_sub['year'] = wl_sub['date'].astype(str).str[:4].astype(int)
+    by_yr = []
+    for yr, g in wl_sub.groupby('year'):
+        s = agg_fn(g); s['yr'] = int(yr); by_yr.append(s)
+    # r_hist
+    rr_actual = round(target_mult / stop_mult, 4) if stop_mult > 0 else 2.0
+    r_hist = [
+        {'bucket': f'-1R (loss)', 'n': n - wins, 'fill': 'loss'},
+        {'bucket': f'{rr_actual}R (target)', 'n': wins, 'fill': 'win'},
+    ]
+    # recent trades
+    recent_cols = ['date','direction','hr','mn','session','dow','entry_price',
+                   'sweep_extreme','target_price','risk_pts','r','outcome',
+                   'mae_pct','mfe_pct']
+    available = [c for c in recent_cols if c in wl_sub.columns]
+    rt = wl_sub[available].sort_values('date', ascending=False).copy()
+    rt['dow_name'] = rt['dow'].map(lambda d: dow_names.get(int(d), '?'))
+    _dc = date_classification or DATE_CLASSIFICATION
+    rt['classification'] = rt['date'].astype(str).str[:10].map(
+        lambda d: _dc.get(d, 'Unclassified'))
+    recent_trades = rt.to_dict('records')
+    for t in recent_trades:
+        t['date'] = str(t['date'])[:10]
+        for k in ['dow','hr','mn']:
+            if k in t: t[k] = int(t[k])
+        for k in ['entry_price','sweep_extreme','target_price','risk_pts','r']:
+            if k in t and t[k] is not None:
+                t[k] = round(float(t[k]), 2)
+
+    return {
+        'meta': {
+            'total_wl': n, 'win_rate': wr, 'ev_per_trade': ev,
+            'profit_factor': pf, 'date_range': date_range,
+            'rr_target': rr_actual,
+        },
+        'risk_stats': {
+            'account_size': ACCOUNT_SIZE, 'risk_per_trade': RISK_PER_TRADE,
+            'trades': n, 'wins': wins, 'losses': n - wins, 'be_count': 0,
+            'blown': blown, 'min_equity_usd': round(min_eq, 2),
+            'max_dd_usd': round(max_dd_usd, 2),
+            'max_consec_wins': mcw, 'max_consec_losses': mcl,
+            'sl_pct': sl_pct_val, 'tp_pct': tp_pct_val,
+            'max_dd_pct': max_dd_pct, 'total_pnl_usd': total_pnl,
+            'sharpe': sharpe, 'ce': ce,
+        },
+        'by_hour':         bh,
+        'by_session':      bs,
+        'by_dow':          bd,
+        'dir_summary':     ds,
+        'by_year':         by_yr,
+        'r_hist':          r_hist,
+        'by_classification': _compute_by_classification(ws_sorted),
+        'mae_heatmap':       _build_excursion_heatmap(wl_sub, 'mae_pct'),
+        'mfe_heatmap':       _build_excursion_heatmap(wl_sub, 'mfe_pct'),
+        'recent_trades':   recent_trades,
+    }
+
+
 def _compute_by_tf(wl_full, wl_sorted_full, stop_mult, target_mult,
                    sl_pct_val, tp_pct_val, agg_fn, hr_labels, dow_names) -> dict:
     """Compute compact hero+chart stats for each sub-timeframe slice."""
@@ -1822,145 +1990,6 @@ def _compute_by_tf(wl_full, wl_sorted_full, stop_mult, target_mult,
         '1m': ref - timedelta(days=30),
     }
 
-    def _slice_stats(wl_sub):
-        if len(wl_sub) == 0:
-            return None
-        wl_sub = wl_sub.copy()
-        n     = len(wl_sub)
-        wins  = int((wl_sub['win'] == 1).sum())
-        wr    = round(wins / n, 4)
-        ev    = round(float(wl_sub['r'].sum()) / n, 3)
-        win_r = float(wl_sub.loc[wl_sub['win'] == 1, 'r'].sum())
-        los_r = float(abs(wl_sub.loc[wl_sub['win'] == 0, 'r'].sum()))
-        pf    = round(win_r / max(los_r, 0.001), 3)
-        date_range = f"{str(wl_sub['date'].min())[:10]} – {str(wl_sub['date'].max())[:10]}"
-
-        # Equity / risk stats
-        ws_sorted = wl_sub.sort_values('date')
-        eq = float(ACCOUNT_SIZE); peak_eq = eq; max_dd = 0.0; max_dd_usd = 0.0; min_eq = eq
-        daily_pnl: dict = {}
-        def _mc(seq, val):
-            mx = cur = 0
-            for v in seq:
-                cur = cur + 1 if v == val else 0; mx = max(mx, cur)
-            return mx
-        for _, row in ws_sorted.iterrows():
-            r_val = row['r']
-            if r_val is None or np.isnan(float(r_val)): continue
-            tp = float(r_val) * RISK_PER_TRADE
-            eq += tp
-            if eq < min_eq: min_eq = eq
-            if eq > peak_eq: peak_eq = eq
-            dd = (peak_eq - eq) / peak_eq if peak_eq > 0 else 0.0
-            if dd > max_dd:
-                max_dd = dd
-                max_dd_usd = peak_eq - eq
-            try:
-                td = str(row['date'])[:10]
-                daily_pnl[td] = daily_pnl.get(td, 0.0) + tp
-            except Exception:
-                pass
-        outcomes_seq = ws_sorted['win'].tolist()
-        mcw = _mc(outcomes_seq, 1); mcl = _mc(outcomes_seq, 0)
-        total_pnl = round(eq - ACCOUNT_SIZE, 2)
-        max_dd_pct = round(max_dd * 100, 2)
-        blown = eq <= 0.0
-        if len(daily_pnl) > 1:
-            dpnl = np.array(list(daily_pnl.values()))
-            sharpe = round(float(dpnl.mean() / dpnl.std(ddof=1) * np.sqrt(252)), 2) \
-                     if dpnl.std(ddof=1) > 0 else None
-        else:
-            sharpe = None
-        # CE — Combined Edge: EV_R × PF
-        # ev is already in R units (sum(r)/n), so ev = EV_R
-        ce = round(ev * pf, 6) if pf and n > 0 else None
-        # by_hour
-        bh = []
-        for (hr, direction), g in wl_sub.groupby(['hr', 'direction']):
-            s = agg_fn(g)
-            if s['n'] >= 3:
-                s.update(hr=int(hr), hr_label=hr_labels.get(int(hr), f'{int(hr):02d}:00'))
-                bh.append(s)
-        # by_session
-        def get_sess(hr):
-            h = float(hr)
-            if 8.5 <= h < 11.5: return 'NY1'
-            if 11.5 <= h < 16.0: return 'NY2'
-            return 'Other'
-        wl_sub2 = wl_sub.copy()
-        wl_sub2['session2'] = wl_sub2['hr'].apply(get_sess)
-        bs = []
-        for (sess, direction), g in wl_sub2.groupby(['session2', 'direction']):
-            if sess == 'Other': continue
-            s = agg_fn(g); s.update(session=sess, direction=direction); bs.append(s)
-        # by_dow
-        bd = []
-        for (dow, direction), g in wl_sub.groupby(['dow', 'direction']):
-            s = agg_fn(g)
-            if s['n'] >= 3:
-                s.update(dow=int(dow), dow_name=dow_names.get(int(dow), '?'))
-                bd.append(s)
-        # dir_summary
-        ds = []
-        for direction, g in wl_sub.groupby('direction'):
-            s = agg_fn(g); s['direction'] = direction; ds.append(s)
-        # by_year
-        wl_sub['year'] = wl_sub['date'].astype(str).str[:4].astype(int)
-        by_yr = []
-        for yr, g in wl_sub.groupby('year'):
-            s = agg_fn(g); s['yr'] = int(yr); by_yr.append(s)
-        # r_hist (simplified)
-        rr_actual = round(target_mult / stop_mult, 4) if stop_mult > 0 else 2.0
-        r_hist = [
-            {'bucket': f'-1R (loss)', 'n': n - wins, 'fill': 'loss'},
-            {'bucket': f'{rr_actual}R (target)', 'n': wins, 'fill': 'win'},
-        ]
-        # All trades in this TF slice (sub-TF windows are naturally bounded)
-        recent_cols = ['date','direction','hr','mn','session','dow','entry_price',
-                       'sweep_extreme','target_price','risk_pts','r','outcome',
-                       'mae_pct','mfe_pct']
-        available = [c for c in recent_cols if c in wl_sub.columns]
-        rt = wl_sub[available].sort_values('date', ascending=False).copy()
-        rt['dow_name'] = rt['dow'].map(lambda d: dow_names.get(int(d), '?'))
-        rt['classification'] = rt['date'].astype(str).str[:10].map(
-            lambda d: DATE_CLASSIFICATION.get(d, 'Unclassified'))
-        recent_trades = rt.to_dict('records')
-        for t in recent_trades:
-            t['date'] = str(t['date'])[:10]
-            for k in ['dow','hr','mn']:
-                if k in t: t[k] = int(t[k])
-            for k in ['entry_price','sweep_extreme','target_price','risk_pts','r']:
-                if k in t and t[k] is not None:
-                    t[k] = round(float(t[k]), 2)
-
-        return {
-            'meta': {
-                'total_wl': n, 'win_rate': wr, 'ev_per_trade': ev,
-                'profit_factor': pf, 'date_range': date_range,
-                'rr_target': round(target_mult / stop_mult, 4) if stop_mult > 0 else 2.0,
-            },
-            'risk_stats': {
-                'account_size': ACCOUNT_SIZE, 'risk_per_trade': RISK_PER_TRADE,
-                'trades': n, 'wins': wins, 'losses': n - wins, 'be_count': 0,
-                'blown': blown, 'min_equity_usd': round(min_eq, 2),
-                'max_dd_usd': round(max_dd_usd, 2),
-                'max_consec_wins': mcw, 'max_consec_losses': mcl,
-                'sl_pct': sl_pct_val, 'tp_pct': tp_pct_val,
-                'max_dd_pct': max_dd_pct, 'total_pnl_usd': total_pnl,
-                'sharpe': sharpe, 'ce': ce,
-            },
-            'by_hour':         bh,
-            'by_session':      bs,
-            'by_dow':          bd,
-            'dir_summary':     ds,
-            'by_year':         by_yr,
-            'r_hist':          r_hist,
-            'by_classification': _compute_by_classification(ws_sorted),
-            'mae_heatmap':       _build_excursion_heatmap(wl_sub, 'mae_pct'),
-            'mfe_heatmap':       _build_excursion_heatmap(wl_sub, 'mfe_pct'),
-            'recent_trades':   recent_trades,
-        }
-
     result = {}
     dates_str = wl_full['date'].astype(str).str[:10]
     tf_keys = list(TF_CUTOFFS.items())
@@ -1968,7 +1997,8 @@ def _compute_by_tf(wl_full, wl_sorted_full, stop_mult, target_mult,
         print(f"        by_tf [{idx}/{len(tf_keys)}] {tf_key} ...", flush=True)
         mask = dates_str >= cutoff.isoformat()
         sub  = wl_full[mask]
-        result[tf_key] = _slice_stats(sub)
+        result[tf_key] = _build_slice_stats(
+            sub, stop_mult, target_mult, agg_fn, hr_labels, dow_names)
         print(f"           {len(sub):,} trades  ✓", flush=True)
 
     return result
@@ -2022,8 +2052,9 @@ def main():
     parser.add_argument('--output',         default=str(OUT_PATH))
     parser.add_argument('--models',         nargs='+', default=list(MODELS.keys()),
                                             choices=list(MODELS.keys()))
-    parser.add_argument('--cisd-fast-bars', type=int,  default=CISD_FAST_BARS,
-                                            dest='cisd_fast_bars')
+    parser.add_argument('--cisd-fast-bars', type=int,  default=None,
+                                            dest='cisd_fast_bars',
+                                            help='Max CISD bars (default: no limit)')
     args = parser.parse_args()
     TABLE          = args.table
     CISD_FAST_BARS = args.cisd_fast_bars
@@ -2032,7 +2063,7 @@ def main():
     print(f"  SWEEP MODEL ENGINE v6.0  ·  {TABLE.upper()}")
     print(f"  Profiles: {', '.join(pk for _, __, pk, ___ in RR_PROFILES)}")
     print(f"  Models: {', '.join(args.models)}")
-    print(f"  Sweep mode: PREV  ·  CISD fast bars: {CISD_FAST_BARS}")
+    print(f"  Sweep mode: PREV  ·  CISD bars: {'unlimited' if CISD_FAST_BARS is None else CISD_FAST_BARS}")
     print("═"*65)
 
     con = connect(args.db)
@@ -2081,32 +2112,146 @@ def main():
 
         print(f"      Resolving outcomes across {len(RR_PROFILES)} profiles ...")
         model_profiles = {}
-        structural_ptq = None  # captured after structural_dynamic, injected into split_80_20
-        structural_p50_mfe = None  # p50 MFE used as TP2 for split_80_20
+        structural_df = None   # resolved trades from structural_dynamic (for per-TF PTQ)
+        structural_ptq = None  # all-time PTQ from structural_dynamic
+        structural_p50_mfe = None  # all-time p50 MFE
         for p_idx, (stop_val, target_val, pk, ptype) in enumerate(RR_PROFILES, 1):
-            # Use PTQ level from structural profile as TP1, p50 MFE as TP2 for split_80_20
+            # ── split_80_20: per-TF resolution with period-specific PTQ/p50 ──
             if pk == 'split_80_20':
-                if structural_ptq is None:
+                if structural_df is None or structural_ptq is None:
                     print(f"      [{p_idx}/{len(RR_PROFILES)}] profile {pk} — skipped (no structural PTQ)", flush=True)
                     continue
-                target_val = structural_ptq
-                _tp2_label = f", TP2={structural_p50_mfe:.4f}% p50 MFE" if structural_p50_mfe else ""
-                print(f"      [{p_idx}/{len(RR_PROFILES)}] profile {pk} (TP1={target_val:.4f}% PTQ{_tp2_label}) ...", flush=True)
-            else:
-                print(f"      [{p_idx}/{len(RR_PROFILES)}] profile {pk} ...", flush=True)
-            _tp2 = structural_p50_mfe if pk == 'split_80_20' else None
+
+                # Compute TF cutoff dates from structural trades
+                from datetime import date as _date, timedelta as _td
+                _max_date_str = str(structural_df[structural_df['rejected_by'] == '']['date'].max())[:10]
+                try:
+                    _ref = _date.fromisoformat(_max_date_str)
+                except Exception:
+                    _ref = _date.today()
+                _tf_cutoffs = {
+                    'all': None,
+                    '2y': (_ref - _td(days=730)).isoformat(),
+                    '1y': (_ref - _td(days=365)).isoformat(),
+                    '6m': (_ref - _td(days=182)).isoformat(),
+                    '3m': (_ref - _td(days=91)).isoformat(),
+                    '1m': (_ref - _td(days=30)).isoformat(),
+                }
+
+                # Extract per-TF PTQ/p50 from structural trades (winners' MFE)
+                _struct_wl = structural_df[(structural_df['rejected_by'] == '') &
+                                           structural_df['outcome'].isin(['WIN','LOSS'])].copy()
+                _struct_dates = _struct_wl['date'].astype(str).str[:10]
+
+                _tf_targets = {}
+                for _tfk, _cutoff in _tf_cutoffs.items():
+                    if _cutoff is not None:
+                        _sub = _struct_wl[_struct_dates >= _cutoff]
+                    else:
+                        _sub = _struct_wl
+                    _wins = _sub[_sub['outcome'] == 'WIN']
+                    if len(_wins) < 20:
+                        _wins = _sub  # fallback to all trades if too few winners
+                    _mfe_s = _full_mfe_stats(_wins) if len(_wins) >= 20 else None
+                    _mae_s = _full_mae_stats(_wins) if len(_wins) >= 20 else None
+                    if _mfe_s:
+                        _ptq = _mfe_s.get('ptq_level')
+                        _p50 = (_mfe_s.get('percentiles') or {}).get('p50')
+                    else:
+                        _ptq = None; _p50 = None
+                    # MAE p90 of winners = 90% of winners stay within this dip
+                    _mae_p90 = (_mae_s.get('percentiles') or {}).get('p90') if _mae_s else None
+                    _tf_targets[_tfk] = {'ptq': _ptq, 'p50': _p50, 'mae_p90': _mae_p90}
+
+                print(f"      [{p_idx}/{len(RR_PROFILES)}] profile {pk} — per-TF targets:", flush=True)
+                for _tfk, _tgt in _tf_targets.items():
+                    _ptq_v = f"{_tgt['ptq']:.4f}%" if _tgt['ptq'] else 'None'
+                    _p50_v = f"{_tgt['p50']:.4f}%" if _tgt['p50'] else 'None'
+                    _mae_v = f"{_tgt['mae_p90']:.4f}%" if _tgt['mae_p90'] else 'None'
+                    print(f"         {_tfk:>3s}: PTQ={_ptq_v}  p50={_p50_v}  MAE_p90={_mae_v}", flush=True)
+
+                # Use all-time targets for the main (all-time) resolution
+                _all_ptq = _tf_targets['all']['ptq'] or structural_ptq
+                _all_p50 = _tf_targets['all']['p50'] or structural_p50_mfe
+                _all_mae = _tf_targets['all']['mae_p90']
+                if _all_ptq is None:
+                    print(f"         skipped (no all-time PTQ)", flush=True)
+                    continue
+
+                # Resolve all-time first
+                target_val = _all_ptq
+                _tp2_label = f", TP2={_all_p50:.4f}% p50 MFE" if _all_p50 else ""
+                _sl_label = f", SL=min(struct,{_all_mae:.4f}% MAE_p90)" if _all_mae else ""
+                print(f"         all-time: TP1={target_val:.4f}% PTQ{_tp2_label}{_sl_label} ...", flush=True)
+                df_p = apply_profile_and_resolve(
+                    base_rows, base_pending, m1, stop_val, target_val, ptype,
+                    tp2_pct=_all_p50, sl_mae_pct=_all_mae)
+                if df_p.empty:
+                    continue
+                print(f"         building all-time stats + TF slices ...", flush=True)
+                stats = build_model_stats(
+                    df_p, trading_days, mk, cfg, stop_val, target_val, pk, ptype)
+                # Attach all-time TP2 and SL cap to meta
+                stats['meta']['tp2_pct'] = _all_p50
+                stats['meta']['sl_mae_p90_pct'] = _all_mae
+
+                # Re-resolve each sub-TF with period-specific targets and replace by_tf
+                for _tfk, _cutoff in _tf_cutoffs.items():
+                    if _tfk == 'all':
+                        continue
+                    _tgt = _tf_targets[_tfk]
+                    _tf_ptq = _tgt['ptq']
+                    _tf_p50 = _tgt['p50']
+                    if _tf_ptq is None:
+                        continue  # keep the sliced stats from all-time resolution
+
+                    _tf_mae = _tgt['mae_p90']
+                    _tp2_v = f", TP2={_tf_p50:.4f}%" if _tf_p50 else ""
+                    _sl_v = f", SL=min(struct,{_tf_mae:.4f}%)" if _tf_mae else ""
+                    print(f"         {_tfk}: TP1={_tf_ptq:.4f}% PTQ{_tp2_v}{_sl_v} ...", flush=True)
+                    _tf_df = apply_profile_and_resolve(
+                        base_rows, base_pending, m1, stop_val, _tf_ptq, ptype,
+                        tp2_pct=_tf_p50, sl_mae_pct=_tf_mae)
+                    if _tf_df.empty:
+                        continue
+                    # Filter to only trades in this TF period
+                    _tf_wl = _tf_df[(_tf_df['date'].astype(str).str[:10] >= _cutoff) &
+                                    (_tf_df['rejected_by'] == '') &
+                                    _tf_df['outcome'].isin(['WIN','LOSS'])]
+                    if len(_tf_wl) < 3:
+                        continue
+                    _slice = _build_slice_stats(
+                        _tf_wl, stop_val, target_val, agg, HR_LABELS, DOW_NAMES,
+                        DATE_CLASSIFICATION)
+                    if _slice:
+                        _slice['meta']['tp1_pct'] = _tf_ptq
+                        _slice['meta']['tp2_pct'] = _tf_p50
+                        _slice['meta']['sl_mae_p90_pct'] = _tf_mae
+                        stats['by_tf'][_tfk] = _slice
+                        print(f"           {len(_tf_wl):,} trades  ✓", flush=True)
+
+                # Store per-TF target metadata
+                stats['split_tf_targets'] = {
+                    k: {'tp1_ptq_pct': v['ptq'], 'tp2_p50_pct': v['p50'],
+                        'sl_mae_p90_pct': v['mae_p90']}
+                    for k, v in _tf_targets.items()
+                }
+                model_profiles[pk] = stats
+                print(f"         profile {pk} done ✓", flush=True)
+                continue
+
+            print(f"      [{p_idx}/{len(RR_PROFILES)}] profile {pk} ...", flush=True)
             df_p = apply_profile_and_resolve(
-                base_rows, base_pending, m1, stop_val, target_val, ptype,
-                tp2_pct=_tp2)
+                base_rows, base_pending, m1, stop_val, target_val, ptype)
             if df_p.empty:
                 continue
             print(f"         building stats + TF slices ...", flush=True)
             stats = build_model_stats(
                 df_p, trading_days, mk, cfg, stop_val, target_val, pk, ptype)
             model_profiles[pk] = stats
-            # Capture PTQ level (TP1) and p50 MFE (TP2) for the split profile
-            # Prefer winners-only data for more accurate TP placement
+            # Capture structural_dynamic's PTQ/p50 and resolved trades for split profile
             if pk == 'structural_dynamic':
+                structural_df = df_p
                 _mfe_wins = stats.get('rich_mfe_wins') or stats.get('rich_mfe') or {}
                 structural_ptq = _mfe_wins.get('ptq_level')
                 _mfe_pcts = _mfe_wins.get('percentiles', {})

@@ -40,7 +40,7 @@ RUNNER_SIZE = 0.50     # 50% runner at BE
 - Log-normal fit: μ=−1.7091, σ=1.2126, goodness r=0.9825
 - 3-tier natural clusters at p33/p75: Small / Moderate / Large
 - **Breakeven trigger analysis**: for 12 reach-rate levels, computes P(positive exit | MFE ≥ X), trades rescued, ΔEV
-- **Protect the Queen level**: 0.2965% (33% of trades reach it; 50.2% exit positively — earliest BE trigger with coin-flip confidence)
+- **Protect the Queen level**: highest reach_rate trigger where P(positive exit) ≥ 70% (fallback 50%) — prioritizes practical reach over extreme confidence
 - Histogram (60 bins, 0→p99) for canvas rendering
 
 **Dashboard** (`renderMFEDistribution`):
@@ -87,6 +87,15 @@ RUNNER_SIZE = 0.50     # 50% runner at BE
 
 - "First Presented FVG" → **"First Presented Fair Value Gap"** (title + subtitle)
 - "TP1 (POTQ)" → **"TP1 (PTQ)"** (typo fix)
+
+---
+
+## PTQ / opt_sl Recommendation Logic Fix
+**Date:** 2026-04-03
+
+- **PTQ (MFE)**: Changed from "first trigger where p_pos ≥ 0.50" to "highest reach_rate where p_pos ≥ 0.70" (fallback 0.50). JS client-side had a critical iteration-order bug that picked the lowest reach rate instead of highest.
+- **opt_sl (MAE)**: Changed from `p_ko × exceed_pct` scoring to "first threshold where p_ko ≥ 0.70" (fallback 0.50). Old metric was meaningless for winner/loser segments (p_ko=0 for winners, p_ko=1 for losers).
+- Fixed in both `model_stats.py` (backtest) and `model_dashboard.html` (client-side recent trades).
 - Position split updated **80/20 → 50/50** to match current split-exit model
 - Subtitle updated: "Fixed % Stop" → **"Structural Stop"**
 
