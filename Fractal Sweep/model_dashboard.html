@@ -402,12 +402,12 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
             <div style="margin-top:14px">
               <div class="model-col-head">Filters</div>
               <div class="model-mech-row">
-                <span class="model-mech-label">Window</span>
-                <span class="model-mech-val">RTH only · 07:00–16:00 ET</span>
-              </div>
-              <div class="model-mech-row">
                 <span class="model-mech-label">Min Risk</span>
                 <span class="model-mech-val">3 pts minimum stop size</span>
+              </div>
+              <div class="model-mech-row">
+                <span class="model-mech-label">Max Risk</span>
+                <span class="model-mech-val">112.5 pts ($225 at $2.00/pt MNQ)</span>
               </div>
               <div class="model-mech-row">
                 <span class="model-mech-label">Sweep %</span>
@@ -430,17 +430,6 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
                 <tr><td>30M_3M</td><td>30 Min</td><td>3 Min</td><td>First 8m</td></tr>
               </tbody>
             </table>
-            <div class="model-def-note">
-              <strong>PREV</strong> anchor = prior candle's high / low &nbsp;·&nbsp;
-              <strong>CISD</strong> level = open of the first candle of the opposing delivery run &nbsp;·&nbsp;
-              Entry fires on the bar <em>after</em> CISD close
-            </div>
-            <div class="model-def-note" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
-              <strong>vs TTFM:</strong> &nbsp;
-              Q1 window constrains sweep timing (TTFM uses full candle) &nbsp;·&nbsp;
-              Sweep size capped at 50% of prior range (TTFM: any wick) &nbsp;·&nbsp;
-              Prior candle sweeps pre-seeded at anchor reset
-            </div>
           </div>
 
         </div>
@@ -1260,11 +1249,11 @@ function renderProfileDropdown(){
   if (!sel) return;
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
   function optHtml(pk){
-    const d  = getProfileData(fullKey, pk);
+    const d  = getActiveTFData(getProfileData(fullKey, pk));
     const ev = d?.meta?.ev_per_trade;
     let baseLabel = PROFILE_LABELS[pk] || pk;
-    if (pk === 'split_80_20' && d?.meta?.tp1_pct != null) {
-      baseLabel = `Split Exit — TP1 @ ${(+d.meta.tp1_pct).toFixed(4)}% PTQ (90%) · TP2 @ p50 MFE (10%) · SL min(struct, MAE p90)`;
+    if (pk === 'split_80_20') {
+      baseLabel = `Split Exit — TP1 @ PTQ (90%) · TP2 @ p50 MFE (10%) · SL min(struct, MAE p90)`;
     }
     const label = baseLabel + (ev != null ? '  ·  EV ' + (ev>0?'+':'') + ev.toFixed(3) + 'R' : '');
     return `<option value="${pk}" ${pk===activeProfile?'selected':''}>${label}</option>`;
@@ -1286,7 +1275,7 @@ function switchTF(tf){
     if(customRanges.length === 0) addCustomRange();
     renderRangeSlots();
   }
-  renderActive();
+  renderProfileDropdown(); renderActive();
 }
 
 // Return the stats object for the current model/profile/TF
@@ -1329,7 +1318,8 @@ function fmtDateRange(dr) {
 }
 
 // ── CUSTOM DATE RANGES ────────────────────────────────────────────────────
-const RANGE_COLORS = ['#3b82f6','#f59e0b','#8b5cf6','#14b8a6'];
+const _RANGE_PALETTE = ['#3b82f6','#f59e0b','#8b5cf6','#14b8a6','#ef4444','#06b6d4','#ec4899','#84cc16','#f97316','#6366f1'];
+const RANGE_COLORS = new Proxy(_RANGE_PALETTE, { get: (t, p) => typeof p === 'string' && !isNaN(p) ? t[p % t.length] : t[p] });
 const COMBINED_COLOR = '#94a3b8';
 let customRanges = JSON.parse(localStorage.getItem('fractal-custom-ranges') || '[]');
 
@@ -1346,11 +1336,10 @@ function renderRangeSlots(){
     </div>
   `).join('');
   const btn = document.getElementById('add-range-btn');
-  if(btn) btn.disabled = customRanges.length >= 4;
+  if(btn) btn.disabled = false;
 }
 
 function addCustomRange(){
-  if(customRanges.length >= 4) return;
   customRanges.push({start:'', end:''});
   saveAndRenderRanges();
 }
@@ -1544,7 +1533,7 @@ function computeRangeStats(trades){
 
   return {
     n, nWins, nLosses, wr, ev_r: Math.round(ev_r*1000)/1000, pf: Math.round(pf*1000)/1000,
-    ce: Math.round(ce*1000)/1000, mcl, maxDDPct, totalPnl: Math.round(totalPnl), sharpe, blown,
+    ce: Math.round(ce*1000)/1000, mcl, mcw, maxDDPct, totalPnl: Math.round(totalPnl), sharpe, blown, minEq: Math.round(minEq),
     byClass, byHour, maeDist, mfeDist, mfeMaeRatio,
     longN: longs.length, shortN: shorts.length, longWR, shortWR, longEV: +longEV.toFixed(3), shortEV: +shortEV.toFixed(3),
     avgWinR: +avgWinR.toFixed(3),
@@ -1788,15 +1777,26 @@ function renderCustomViewV2(rangeResults, combinedStats){
   if(combinedStats){
     const cs = combinedStats;
     html += secHeader('Combined Stats (' + cs.n + ' trades)');
-    html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">`;
+    html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px">`;
     html += heroTile('Win Rate', pct(cs.wr), statColor(cs.wr, 0.55, 0.45, false), `${cs.nWins}W / ${cs.nLosses}L`);
-    html += heroTile('EV (R)', cs.ev_r.toFixed(3), statColor(cs.ev_r, 0.05, -0.05, false), '');
-    html += heroTile('Profit Factor', cs.pf.toFixed(3), statColor(cs.pf, 1.5, 1.0, false), '');
-    html += heroTile('CE', cs.ce.toFixed(3), statColor(cs.ce, 0.1, 0, false), 'EV x PF');
-    html += heroTile('P&L', '$'+cs.totalPnl.toLocaleString(), statColor(cs.totalPnl, 0, -1, false), cs.blown ? 'ACCOUNT BLOWN' : '');
-    html += heroTile('Sharpe', cs.sharpe != null ? cs.sharpe.toFixed(2) : '\u2014', cs.sharpe != null ? statColor(cs.sharpe, 1.5, 0.5, false) : 'var(--text-muted)', '');
-    html += heroTile('Max DD', cs.maxDDPct.toFixed(2)+'%', statColor(cs.maxDDPct, 10, 25, true), '');
-    html += heroTile('Max L Run', cs.mcl, statColor(cs.mcl, 5, 10, true), '');
+    html += heroTile('EV (R)', cs.ev_r.toFixed(3), statColor(cs.ev_r, 0.05, -0.05, false), 'per trade');
+    html += heroTile('Profit Factor', cs.pf.toFixed(3), statColor(cs.pf, 1.5, 1.0, false), 'gross win / gross loss');
+    html += heroTile('CE', cs.ce.toFixed(3), statColor(cs.ce, 0.1, 0, false), 'EV × PF');
+    html += `</div>`;
+    html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px">`;
+    html += heroTile('P&L', '$'+cs.totalPnl.toLocaleString(), statColor(cs.totalPnl, 0, -1, false), '$4,500 account');
+    html += heroTile('Min Equity', '$'+cs.minEq.toLocaleString(), statColor(cs.minEq, 3600, 2250, false), cs.blown ? '⚠ ACCOUNT BLOWN' : '');
+    html += heroTile('Max DD', cs.maxDDPct.toFixed(2)+'%', statColor(cs.maxDDPct, 10, 25, true), '$'+Math.round(cs.maxDDPct/100*4500).toLocaleString()+' drawdown');
+    html += heroTile('Sharpe', cs.sharpe != null ? cs.sharpe.toFixed(2) : '\u2014', cs.sharpe != null ? statColor(cs.sharpe, 1.5, 0.5, false) : 'var(--text-muted)', 'annualised');
+    html += `</div>`;
+    html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">`;
+    html += heroTile('Avg Win R', cs.avgWinR.toFixed(3)+'R', statColor(cs.avgWinR, 1.5, 0.5, false), 'mean winner size');
+    html += heroTile('Max W Run', cs.mcw, statColor(cs.mcw, 5, 3, false), 'consecutive wins');
+    html += heroTile('Max L Run', cs.mcl, statColor(cs.mcl, 5, 10, true), 'consecutive losses');
+    const _blownBadge = cs.blown
+      ? '<span style="font-family:var(--font-data);font-size:11px;font-weight:700;padding:4px 10px;border-radius:4px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:var(--red)">BLOWN</span>'
+      : '<span style="font-family:var(--font-data);font-size:11px;font-weight:700;padding:4px 10px;border-radius:4px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:var(--green)">SAFE</span>';
+    html += heroTile('Account', _blownBadge, 'var(--text-secondary)', '$4,500 @ $225/trade');
     html += `</div>`;
   }
 
@@ -1954,6 +1954,53 @@ function renderCustomViewV2(rangeResults, combinedStats){
     html += `<span style="display:flex;align-items:center;gap:6px;font-family:var(--font-data);font-size:10px;color:var(--text-muted)"><span style="width:10px;height:10px;border-radius:3px;background:${g.color};display:inline-block"></span>${g.label}</span>`;
   });
   html += `</div>`;
+
+  // ── SECTION L: Trades Table ──────────────────────────────────────────────
+  const allFilteredSorted = validRanges.flatMap(r => r.trades).sort((a,b) => b.date.localeCompare(a.date));
+  if(allFilteredSorted.length > 0){
+    html += secHeader(`Trades (${allFilteredSorted.length})`);
+    const DOW_NAMES = {0:'Sun',1:'Mon',2:'Tue',3:'Wed',4:'Thu',5:'Fri',6:'Sat'};
+    html += `<div style="overflow-x:auto;max-height:600px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;margin-bottom:20px">
+    <table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:12px;">
+      <thead><tr style="border-bottom:1px solid var(--border-mid);color:var(--text-muted);text-transform:uppercase;font-size:10px;letter-spacing:.06em;position:sticky;top:0;background:var(--bg-card);z-index:1">
+        <th style="padding:8px 10px;text-align:left;">Date</th>
+        <th style="padding:8px 6px;text-align:left;">Day</th>
+        <th style="padding:8px 6px;text-align:center;">Time</th>
+        <th style="padding:8px 6px;text-align:left;">Dir</th>
+        <th style="padding:8px 6px;text-align:right;">Entry</th>
+        <th style="padding:8px 6px;text-align:right;">Risk</th>
+        <th style="padding:8px 6px;text-align:right;">MAE %</th>
+        <th style="padding:8px 6px;text-align:right;">MFE %</th>
+        <th style="padding:8px 6px;text-align:right;">R</th>
+        <th style="padding:8px 6px;text-align:center;">Result</th>
+        <th style="padding:8px 6px;text-align:center;">Range</th>
+      </tr></thead><tbody>`;
+    allFilteredSorted.forEach((t, i) => {
+      const bg = i % 2 === 0 ? 'transparent' : 'color-mix(in srgb,var(--bg-raised) 60%,transparent)';
+      const isWin = t.outcome === 'WIN';
+      const resColor = isWin ? 'var(--green)' : 'var(--red)';
+      const dirColor = t.direction === 'LONG' ? 'var(--green)' : 'var(--red)';
+      const dirArrow = t.direction === 'LONG' ? '▲' : '▼';
+      const dowName = t.dow_name || DOW_NAMES[t.dow] || '?';
+      // Find which range this trade belongs to
+      const rIdx = rangeResults.findIndex(r => t.date >= r.label.split(' to ')[0] && t.date <= r.label.split(' to ')[1]);
+      const rangeColor = rIdx >= 0 ? rangeResults[rIdx].color : 'var(--text-muted)';
+      html += `<tr style="background:${bg};border-bottom:1px solid color-mix(in srgb,var(--border-mid) 40%,transparent);">
+        <td style="padding:7px 10px;color:var(--text-primary);">${String(t.date).slice(0,10)}</td>
+        <td style="padding:7px 6px;color:var(--text-muted);">${dowName}</td>
+        <td style="padding:7px 6px;text-align:center;color:var(--text-primary);">${String(t.hr).padStart(2,'0')}:${String(t.mn ?? 0).padStart(2,'0')}</td>
+        <td style="padding:7px 6px;color:${dirColor};font-weight:700;">${dirArrow} ${t.direction}</td>
+        <td style="padding:7px 6px;text-align:right;color:var(--text-primary);">${t.entry_price != null ? t.entry_price.toFixed(2) : '—'}</td>
+        <td style="padding:7px 6px;text-align:right;color:var(--text-primary);">${t.risk_pts != null ? t.risk_pts.toFixed(1) : '—'}</td>
+        <td style="padding:7px 6px;text-align:right;color:var(--red);font-size:11px;">${t.mae_pct != null ? t.mae_pct.toFixed(4) + '%' : '—'}</td>
+        <td style="padding:7px 6px;text-align:right;color:var(--green);font-size:11px;">${t.mfe_pct != null ? t.mfe_pct.toFixed(4) + '%' : '—'}</td>
+        <td style="padding:7px 6px;text-align:right;color:${resColor};font-weight:600;">${t.r != null ? (t.r > 0 ? '+' : '') + t.r.toFixed(2) : '—'}</td>
+        <td style="padding:7px 6px;text-align:center;font-weight:700;color:${resColor};">${isWin ? '✓ WIN' : '✗ LOSS'}</td>
+        <td style="padding:7px 6px;text-align:center;"><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${rangeColor}"></span></td>
+      </tr>`;
+    });
+    html += '</tbody></table></div>';
+  }
 
   cv.innerHTML = html;
 
@@ -2137,10 +2184,10 @@ function renderModel(D){
     {label:'CE',          val:ceVal!=null?ceVal.toFixed(3):'—',               sub:'Combined Edge · EV/R × PF',                    cls:ceCls,  vc:ceCls},
     {label:'Total P&L',   val:totalPnlStr,                                    sub:`$${acct.toLocaleString()} account · $${(rs.risk_per_trade??225).toLocaleString()}/trade · ${dr}`, cls:pnlCls, vc:pnlCls},
     {label:'Sharpe',      val:sharpeStr,                                      sub:'Annualised Sharpe ratio',                      cls:sharpeCls, vc:sharpeCls},
-    {label:'SL %',        val:rs.sl_pct!=null?rs.sl_pct.toFixed(2)+'%':'—',  sub:'Fixed stop-loss % from entry',                 cls:'a',    vc:'a'},
-    {label:'TP %',        val:rs.tp_pct!=null?rs.tp_pct.toFixed(2)+'%':'—',  sub:'Fixed take-profit % from entry',               cls:'g',    vc:'g'},
+    ...(rs.sl_pct!=null?[{label:'SL %',val:rs.sl_pct.toFixed(2)+'%',sub:'Fixed stop-loss % from entry',cls:'a',vc:'a'}]:[]),
+    ...(rs.tp_pct!=null?[{label:'TP %',val:rs.tp_pct.toFixed(2)+'%',sub:'Fixed take-profit % from entry',cls:'g',vc:'g'}]:[]),
     {label:'R:R',         val:rrStr,                                          sub:'Reward-to-risk ratio (TP÷SL)',                 cls:'b',    vc:'b'},
-    {label:'Blown',       val:blown==null?'—':blown?'YES':'NO',               sub:`Account blown in ${dr||'backtest'}?`,          cls:blown?'r':'g', vc:blown?'r':'g'},
+    {label:'Account',     val:blown==null?'—':blown?'<span style="font-family:var(--font-data);font-size:11px;font-weight:700;padding:4px 10px;border-radius:4px;background:var(--red-tint);border:1px solid var(--red-border);color:var(--red)">BLOWN</span>':'<span style="font-family:var(--font-data);font-size:11px;font-weight:700;padding:4px 10px;border-radius:4px;background:var(--green-tint);border:1px solid var(--green-border);color:var(--green)">SAFE</span>', sub:`$${acct.toLocaleString()} @ $${(rs.risk_per_trade??225).toLocaleString()}/trade`, cls:blown?'r':'g', vc:blown?'r':'g'},
     {label:'Max DD',      val:maxDdStr,                                       sub:`-$${maxDdUsd!=null?Math.round(maxDdUsd).toLocaleString():'—'} from peak · ${dr}`, cls:ddCls, vc:ddCls},
     {label:'Max W Run',   val:rs.max_consec_wins??'—',                        sub:'Longest winning streak · '+dr,                 cls:'g',    vc:'g'},
     {label:'Max L Run',   val:rs.max_consec_losses??'—',                      sub:'Longest losing streak · '+dr,                  cls:'r',    vc:'r'},
