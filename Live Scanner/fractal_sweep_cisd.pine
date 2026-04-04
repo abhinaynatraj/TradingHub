@@ -573,7 +573,7 @@ if long_valid
     risk  = entry - sl
     // Split profile: TP1 = entry + entry × PTQ%, TP2 = entry + entry × p50%
     tp    = use_split ? entry + entry * split_ptq_pct / 100 : entry + risk * rr_ratio
-    _tp2  = use_split ? entry + entry * split_p50_pct / 100 : na(0.0)
+    _tp2  = use_split ? entry + entry * split_p50_pct / 100 : float(na)
     _tp1_r = risk > 0 ? (tp - entry) / risk : 0.0
     r_end = bar_index + rr_extend
     // Non-Q1 uses amber/yellow palette
@@ -692,7 +692,7 @@ if short_valid
     risk  = sl - entry
     // Split profile: TP1 = entry - entry × PTQ%, TP2 = entry - entry × p50%
     tp    = use_split ? entry - entry * split_ptq_pct / 100 : entry - risk * rr_ratio
-    _tp2  = use_split ? entry - entry * split_p50_pct / 100 : na(0.0)
+    _tp2  = use_split ? entry - entry * split_p50_pct / 100 : float(na)
     _tp1_r = risk > 0 ? (entry - tp) / risk : 0.0
     r_end = bar_index + rr_extend
     // Non-Q1 uses amber/yellow palette
