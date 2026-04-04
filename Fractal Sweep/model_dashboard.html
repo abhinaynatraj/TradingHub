@@ -3316,9 +3316,15 @@ function renderMAEStudy(D) {
              : maeAll;
   const _segCount = _maeSegment === 'wins' ? winTrades.length : _maeSegment === 'losses' ? lossTrades.length : allTrades.length;
   const ce   = dist?.ce ?? D?.risk_stats?.ce;
+  // Segment selector (always visible)
+  const _segBtns = `<div style="display:flex;gap:6px;margin-bottom:14px;">
+    <button class="seg-btn${_maeSegment==='wins'?' seg-active-green':''}" onclick="switchMAESeg('wins')">Winners</button>
+    <button class="seg-btn${_maeSegment==='losses'?' seg-active-red':''}" onclick="switchMAESeg('losses')">Losers</button>
+    <button class="seg-btn${_maeSegment==='all'?' seg-active-blue':''}" onclick="switchMAESeg('all')">All Trades</button>
+  </div>`;
   if (!dist) {
     const _segName = _maeSegment === 'wins' ? 'winning' : _maeSegment === 'losses' ? 'losing' : '';
-    el.innerHTML = `<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">Not enough ${_segName} trades for MAE study (${_segCount} trades, need at least 3 with MAE &gt; 0).</div>`;
+    el.innerHTML = _segBtns + `<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">Not enough ${_segName} trades for MAE study (${_segCount} trades, need at least 3 with MAE &gt; 0).</div>`;
     return;
   }
 
@@ -3607,9 +3613,15 @@ function renderMFEStudy(D) {
              : _mfeSegment === 'losses' ? mfeLosses
              : mfeAll;
   const _segCount = _mfeSegment === 'wins' ? winTrades.length : _mfeSegment === 'losses' ? lossTrades.length : allTrades.length;
+  // Segment selector (always visible)
+  const _segBtns = `<div style="display:flex;gap:6px;margin-bottom:14px;">
+    <button class="seg-btn${_mfeSegment==='wins'?' seg-active-green':''}" onclick="switchMFESeg('wins')">Winners</button>
+    <button class="seg-btn${_mfeSegment==='losses'?' seg-active-amber':''}" onclick="switchMFESeg('losses')">Losers</button>
+    <button class="seg-btn${_mfeSegment==='all'?' seg-active-blue':''}" onclick="switchMFESeg('all')">All Trades</button>
+  </div>`;
   if (!dist) {
     const _segName = _mfeSegment === 'wins' ? 'winning' : _mfeSegment === 'losses' ? 'losing' : '';
-    el.innerHTML = `<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">Not enough ${_segName} trades for MFE study (${_segCount} trades, need at least 3 with MFE &gt; 0).</div>`;
+    el.innerHTML = _segBtns + `<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">Not enough ${_segName} trades for MFE study (${_segCount} trades, need at least 3 with MFE &gt; 0).</div>`;
     return;
   }
 
