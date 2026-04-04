@@ -1549,6 +1549,171 @@ function computeRangeStats(trades){
   };
 }
 
+/* ── Walk-Forward Regime Analysis: Core Computation Functions ─────── */
+
+function computeTrainParams(trades) {
+  const winners = trades.filter(t => t.outcome === 'WIN');
+  if (winners.length < 5) return null;
+
+  // Percentile helper (linear interpolation on sorted array)
+  function pctl(sorted, q) {
+    const i = q * (sorted.length - 1);
+    const lo = Math.floor(i), hi = Math.ceil(i);
+    return lo === hi ? sorted[lo] : sorted[lo] * (hi - i) + sorted[hi] * (i - lo);
+  }
+
+  // MAE percentiles from winners
+  const maeVals = winners.map(t => t.mae_pct).filter(v => v != null).sort((a, b) => a - b);
+  const maeMax = maeVals.length ? maeVals[maeVals.length - 1] : 0;
+  const maeP90 = maeVals.length ? pctl(maeVals, 0.90) : 0;
+  const maeP85 = maeVals.length ? pctl(maeVals, 0.85) : 0;
+  const maeP50 = maeVals.length ? pctl(maeVals, 0.50) : 0;
+
+  // MFE PTQ from winners: highest reach_rate where p_pos >= 0.70, fallback 0.50
+  const mfeVals = winners.map(t => t.mfe_pct).filter(v => v != null).sort((a, b) => a - b);
+  const mfeP50 = mfeVals.length ? pctl(mfeVals, 0.50) : 0;
+
+  let ptqLevel = null, ptqReachRate = null;
+  let _ptqFallback = null, _ptqFallbackRR = null;
+
+  if (mfeVals.length > 0) {
+    [5, 10, 15, 20, 25, 30, 33, 40, 50, 60, 75, 90].forEach(reachRate => {
+      const thr = pctl(mfeVals, 1 - reachRate / 100);
+      const reached = winners.filter(t => t.mfe_pct != null && t.mfe_pct >= thr);
+      if (reached.length === 0) return;
+      const nPos = reached.filter(t => t.outcome === 'WIN').length;
+      const pPos = nPos / reached.length;
+      if (pPos >= 0.70) { ptqLevel = thr; ptqReachRate = reachRate; }
+      else if (pPos >= 0.50 && _ptqFallback === null) { _ptqFallback = thr; _ptqFallbackRR = reachRate; }
+    });
+    if (ptqLevel === null && _ptqFallback !== null) { ptqLevel = _ptqFallback; ptqReachRate = _ptqFallbackRR; }
+  }
+
+  // KDE densities
+  const maeDensity = computeKDE(maeVals);
+  const mfeDensity = computeKDE(mfeVals);
+
+  return {
+    nWinners: winners.length,
+    mae: { max: maeMax, p90: maeP90, p85: maeP85, p50: maeP50 },
+    mfe: { ptq: ptqLevel, ptqReachRate, p50: mfeP50 },
+    maeDensity, mfeDensity
+  };
+}
+
+function resolveWithStopCap(trades, slCapPct) {
+  return trades.map(t => {
+    if (t.mae_pct > slCapPct) {
+      return Object.assign({}, t, { outcome: 'LOSS', r: -1.0 });
+    }
+    return Object.assign({}, t);
+  });
+}
+
+function computeRegimeFingerprint(trades, startDate, endDate) {
+  const n = trades.length;
+  const avgRisk = n > 0 ? trades.reduce((s, t) => s + (t.risk_pts || 0), 0) / n : 0;
+  const longPct = n > 0 ? trades.filter(t => t.direction === 'LONG').length / n * 100 : 0;
+
+  const maeVals = trades.map(t => t.mae_pct).filter(v => v != null).sort((a, b) => a - b);
+  const mfeVals = trades.map(t => t.mfe_pct).filter(v => v != null).sort((a, b) => a - b);
+  const medMAE = maeVals.length ? maeVals[Math.floor(maeVals.length / 2)] : 0;
+  const medMFE = mfeVals.length ? mfeVals[Math.floor(mfeVals.length / 2)] : 0;
+  const mfeMaeRatio = medMAE > 0 ? medMFE / medMAE : 0;
+
+  // Trades per calendar day
+  const d0 = new Date(startDate), d1 = new Date(endDate);
+  const calDays = Math.max(1, (d1 - d0) / (1000 * 60 * 60 * 24) + 1);
+  const density = n / calDays;
+
+  return { avgRisk, longPct, mfeMaeRatio, density };
+}
+
+function computeOverfitScore(trainEV, testEV) {
+  const score = trainEV !== 0 ? (testEV / trainEV) * 100 : 0;
+  let label, cls;
+  if (score >= 80 && score <= 120) { label = 'ROBUST'; cls = 'var(--green)'; }
+  else if (score >= 60 && score < 80) { label = 'MILD DECAY'; cls = 'var(--amber)'; }
+  else { label = 'OVERFIT'; cls = 'var(--red)'; }
+  return { score, label, cls };
+}
+
+function findBestVariant(pairs) {
+  const names = ['Max MAE', 'P90 MAE', 'P85 MAE', 'P50 MAE'];
+  let bestIdx = 0, bestCV = Infinity;
+
+  for (let vi = 0; vi < 4; vi++) {
+    const testEVs = pairs.map(p => p.variants[vi].test.ev_r).filter(v => v != null);
+    if (testEVs.length < 2) continue;
+    const mean = testEVs.reduce((s, v) => s + v, 0) / testEVs.length;
+    if (mean === 0) continue;
+    const std = Math.sqrt(testEVs.reduce((s, v) => s + (v - mean) ** 2, 0) / (testEVs.length - 1));
+    const cv = Math.abs(std / mean);
+    if (cv < bestCV) { bestCV = cv; bestIdx = vi; }
+  }
+
+  return { name: names[bestIdx], index: bestIdx, cv: bestCV };
+}
+
+function buildWalkForwardPairs(rangeResults) {
+  const pairs = [], unpaired = [];
+  const capNames = ['Max MAE', 'P90 MAE', 'P85 MAE', 'P50 MAE'];
+
+  for (let i = 0; i < rangeResults.length; i += 2) {
+    const train = rangeResults[i];
+    const test = rangeResults[i + 1];
+
+    // Odd last range → unpaired
+    if (!test) { unpaired.push(train); continue; }
+
+    const trainParams = computeTrainParams(train.trades);
+    if (!trainParams) {
+      // Too few winners — both go to unpaired
+      unpaired.push(train, test);
+      continue;
+    }
+
+    const caps = [trainParams.mae.max, trainParams.mae.p90, trainParams.mae.p85, trainParams.mae.p50];
+    const variants = caps.map((cap, ci) => {
+      const trainResolved = resolveWithStopCap(train.trades, cap);
+      const testResolved = resolveWithStopCap(test.trades, cap);
+      return {
+        name: capNames[ci],
+        cap,
+        train: computeRangeStats(trainResolved),
+        test: computeRangeStats(testResolved)
+      };
+    });
+
+    // Best variant for this pair: highest test EV
+    let bestIdx = 0;
+    for (let vi = 1; vi < variants.length; vi++) {
+      if (variants[vi].test && variants[bestIdx].test &&
+          variants[vi].test.ev_r > variants[bestIdx].test.ev_r) bestIdx = vi;
+    }
+
+    // Extract date ranges from labels
+    const trainDates = train.label.split(' to ');
+    const testDates = test.label.split(' to ');
+    const trainFP = computeRegimeFingerprint(train.trades, trainDates[0], trainDates[1]);
+    const testFP = computeRegimeFingerprint(test.trades, testDates[0], testDates[1]);
+
+    const bestVariant = variants[bestIdx];
+    const overfit = (bestVariant.train && bestVariant.test)
+      ? computeOverfitScore(bestVariant.train.ev_r, bestVariant.test.ev_r)
+      : { score: 0, label: 'N/A', cls: 'var(--text-secondary)' };
+
+    pairs.push({
+      train, test, trainParams, variants,
+      bestVariantIdx: bestIdx,
+      trainFingerprint: trainFP, testFingerprint: testFP,
+      overfit
+    });
+  }
+
+  return { pairs, unpaired };
+}
+
 function applyCustomRanges(){
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
   const baseD = getProfileData(fullKey, activeProfile);
@@ -1800,25 +1965,44 @@ function renderCustomViewV2(rangeResults, combinedStats){
     html += `</div>`;
   }
 
-  // ── SECTION B: Side-by-Side Range Cards ────────────────────────────────────
-  if(validRanges.length > 1){
-    html += secHeader('Range Comparison');
-    html += `<div style="display:grid;grid-template-columns:repeat(${Math.min(validRanges.length,4)},1fr);gap:14px;margin-bottom:20px">`;
+  // ── SECTION B: Range Result Cards ───────────────────────────────────────────
+  if(validRanges.length >= 1){
+    html += secHeader('Range Results');
+    const cols = Math.min(validRanges.length, 3);
+    html += `<div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:16px;margin-bottom:20px">`;
     validRanges.forEach(r => {
       const s = r.stats;
-      html += `<div style="border:2px solid ${r.color};border-radius:12px;padding:16px;background:var(--bg-card)">`;
-      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><div style="width:10px;height:10px;border-radius:3px;background:${r.color}"></div><span style="font-family:var(--font-data);font-size:11px;font-weight:600;color:var(--text-secondary)">${r.label}</span><span style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);margin-left:auto">${s.n} trades</span></div>`;
-      html += `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">`;
-      const miniTile = (l,v,c) => `<div style="padding:8px 10px;background:var(--bg-raised);border-radius:6px;border:1px solid var(--border)"><div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em">${l}</div><div style="font-family:var(--font-display);font-size:18px;font-weight:700;color:${c}">${v}</div></div>`;
-      html += miniTile('WR', pct(s.wr), statColor(s.wr, 0.55, 0.45, false));
-      html += miniTile('EV', s.ev_r.toFixed(3), statColor(s.ev_r, 0.05, -0.05, false));
-      html += miniTile('PF', s.pf.toFixed(3), statColor(s.pf, 1.5, 1.0, false));
-      html += miniTile('CE', s.ce.toFixed(3), statColor(s.ce, 0.1, 0, false));
-      html += miniTile('P&L', '$'+s.totalPnl.toLocaleString(), statColor(s.totalPnl, 0, -1, false));
-      html += miniTile('Sharpe', s.sharpe != null ? s.sharpe.toFixed(2) : '\u2014', s.sharpe != null ? statColor(s.sharpe, 1.5, 0.5, false) : 'var(--text-muted)');
-      html += miniTile('Max DD', s.maxDDPct.toFixed(2)+'%', statColor(s.maxDDPct, 10, 25, true));
-      html += miniTile('MCL', s.mcl, statColor(s.mcl, 5, 10, true));
-      html += `</div></div>`;
+      const acctSize = 4500, rpt = 225;
+      const finalBal = acctSize + s.totalPnl;
+      const blown = s.blown;
+      const statusBadge = blown
+        ? '<span style="font-family:var(--font-data);font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:var(--red)">BLOWN</span>'
+        : '<span style="font-family:var(--font-data);font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:var(--green)">SAFE</span>';
+
+      html += `<div style="border-left:3px solid ${r.color};border-radius:10px;background:var(--bg-card);overflow:hidden">`;
+      // Header
+      html += `<div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+        <div style="font-family:var(--font-data);font-size:13px;font-weight:800;color:${r.color};letter-spacing:-0.01em">${r.label}</div>
+        <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-top:3px">${s.n} trades · $${rpt}/trade ${statusBadge}</div>
+      </div>`;
+      // Metric rows
+      const row = (label, val, color) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;border-bottom:1px solid color-mix(in srgb,var(--border) 50%,transparent)">
+        <span style="font-family:var(--font-data);font-size:12px;color:var(--text-muted)">${label}</span>
+        <span style="font-family:var(--font-data);font-size:13px;font-weight:700;color:${color}">${val}</span>
+      </div>`;
+      html += row('Win Rate %', (s.wr*100).toFixed(2), statColor(s.wr, 0.55, 0.45, false));
+      html += row('EV R/trade', s.ev_r.toFixed(3), statColor(s.ev_r, 0.05, -0.05, false));
+      html += row('EV $/trade', '$'+(s.ev_r * rpt).toFixed(2), statColor(s.ev_r, 0.05, -0.05, false));
+      html += row('Sharpe', s.sharpe != null ? s.sharpe.toFixed(2) : '\u2014', s.sharpe != null ? statColor(s.sharpe, 1.5, 0.5, false) : 'var(--text-muted)');
+      html += row('Profit Factor', s.pf.toFixed(2), statColor(s.pf, 1.5, 1.0, false));
+      html += row('CE', s.ce.toFixed(3), statColor(s.ce, 0.1, 0, false));
+      html += row('Max DD $', '-$'+Math.round(s.maxDDPct/100*acctSize).toLocaleString(), statColor(s.maxDDPct, 10, 25, true));
+      html += row('Max DD %', s.maxDDPct.toFixed(2)+'%', statColor(s.maxDDPct, 10, 25, true));
+      html += row('Max Consec L', s.mcl, statColor(s.mcl, 5, 10, true));
+      html += row('Max Consec W', s.mcw, statColor(s.mcw, 5, 3, false));
+      html += row('Total $', '$'+s.totalPnl.toLocaleString(), statColor(s.totalPnl, 0, -1, false));
+      html += row('Final Bal $', '$'+Math.round(finalBal).toLocaleString(), statColor(finalBal, acctSize, acctSize*0.5, false));
+      html += `</div>`;
     });
     html += `</div>`;
   }
