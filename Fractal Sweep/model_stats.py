@@ -428,9 +428,9 @@ def resolve_outcomes_structural(m1_arrs, pending):
     Structural Dynamic profile:
       - Phase 1: scan for SL (stop_price) or TP1 (target_price = entry ± 1R)
       - If SL first → LOSS, r = -1.0
-      - If TP1 first → 50% exits at +1R; runner holds with BE (entry) stop
+      - If TP1 first → 90% exits at +1R; runner (10%) holds with BE (entry) stop
       - Phase 2 (runner): scan for BE stop or EOD; runner_exit_r in R units
-      - net_r = 0.5 × 1.0 + 0.5 × runner_exit_r
+      - net_r = 0.90 × 1.0 + 0.10 × runner_exit_r
 
     Returns list of (outcome, net_r, mae_pct, mfe_pct, tp1_hit, runner_exit_r)
     """
@@ -521,7 +521,7 @@ def resolve_outcomes_structural(m1_arrs, pending):
                 runner_exit_r = max(0.0, round(float(runner_exit_r), 3))
             # else: runner stopped at BE → runner_exit_r stays 0.0
 
-        net_r = round(0.5 * 1.0 + 0.5 * runner_exit_r, 3)
+        net_r = round(0.90 * 1.0 + 0.10 * runner_exit_r, 3)
         results.append(('WIN', net_r, mae_pct, mfe_pct, True, runner_exit_r))
 
     return results

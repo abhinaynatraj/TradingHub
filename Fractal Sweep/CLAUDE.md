@@ -39,8 +39,8 @@ python3 -m http.server 8000         # serve dashboard at localhost:8000
 | profile_type | Key | Description |
 |---|---|---|
 | `pct` | `sl_026_tp_018` … `sl_019_tp_019` | Fixed % SL/TP of entry price (DDLI top-10) |
-| `structural` | `structural_dynamic` | SL = sweep extreme (1×base_risk); TP1 @ 1R, 50% exit; runner with BE stop |
-| `split_tp` | `split_80_20` | SL = sweep extreme; TP1 @ 1R, 80% exit; 20% runner targets 0.6724% of entry; BE stop on runner |
+| `structural` | `structural_dynamic` | SL = sweep extreme (1×base_risk); TP1 @ 1R, 90% exit; runner (10%) free with BE stop |
+| `split_tp` | `split_80_20` | SL = sweep extreme; TP1 @ PTQ level, 90% exit; 10% runner targets p50 MFE; BE stop on runner |
 
 ### split_tp profile mechanics
 - `stop_dist = 1 × base_risk` (structural stop at sweep extreme)
