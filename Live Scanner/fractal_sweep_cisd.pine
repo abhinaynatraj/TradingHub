@@ -6,8 +6,10 @@ indicator("Abhi's Fractal Sweep", overlay=true, max_labels_count=500, max_lines_
 // ── INPUTS ────────────────────────────────────────────────────────────────────
 var string G2 = "Filters"
 sweep_max     = input.float(50.0, "Sweep Max %", group=G2, step=0.5) / 100
-min_risk      = input.float(3.0,  "Min Risk (pts)", group=G2)
-cisd_lookback = input.int(8,      "CISD Lookback Bars", group=G2)
+min_risk      = input.float(3.0,   "Min Risk (pts)", group=G2)
+max_risk      = input.float(112.5, "Max Risk (pts)", group=G2, tooltip="MNQ: $225 risk ÷ $2.00/pt = 112.5 pts")
+min_range     = input.float(12.0,  "Min Prior Range (pts)", group=G2, tooltip="Reject setups where prior candle range < this. Backtest: 4H=30, 1H=12, 30M=8")
+cisd_lookback = input.int(100,    "CISD Lookback Bars", group=G2, tooltip="Max bars to scan for CISD delivery run. 100 = effectively unlimited.")
 
 var string G8 = "Display"
 show_debug    = input.bool(false, "Show Debug Labels", group=G8)
@@ -63,7 +65,7 @@ rr_lbl_x     = rr_lbl_pos    == "Right" ? rr_extend      : 0
 // ── AUTO COMBO FROM CHART TIMEFRAME ──────────────────────────────────────────
 // 1H → 1D/1H | 15M → 4H/15M | 5M → 1H/5M | 3M → 30M/3M | other → inactive
 var int    q1_bars      = 0
-var int    ret_bars     = 0  // Q2 bars: total window = q1_bars*2 (sweep in Q1, CISD by Q2 end)
+// ret_bars removed — no window deadline; CISD can form anytime after sweep
 var string sweep_tf_lbl = ""
 var string cisd_tf_lbl  = ""
 var string combo        = ""
@@ -71,28 +73,28 @@ var bool   tf_supported = false
 
 if timeframe.period == "60"
     q1_bars      := 6
-    ret_bars     := 6   // total = 12 bars = 12h (q1_bars*2)
+    // ret_bars removed
     sweep_tf_lbl := "1D"
     cisd_tf_lbl  := "1H"
     combo        := "1D/1H"
     tf_supported := true
 else if timeframe.period == "15"
     q1_bars      := 4
-    ret_bars     := 4   // total = 8 bars = 2h (q1_bars*2)
+    // ret_bars removed
     sweep_tf_lbl := "4H"
     cisd_tf_lbl  := "15M"
     combo        := "4H/15M"
     tf_supported := true
 else if timeframe.period == "5"
     q1_bars      := 3
-    ret_bars     := 3   // total = 6 bars = 30m (q1_bars*2)
+    // ret_bars removed
     sweep_tf_lbl := "1H"
     cisd_tf_lbl  := "5M"
     combo        := "1H/5M"
     tf_supported := true
 else if timeframe.period == "3"
-    q1_bars      := 3
-    ret_bars     := 3   // total = 6 bars = 18m (q1_bars*2)
+    q1_bars      := 5
+    // ret_bars removed
     sweep_tf_lbl := "30M"
     cisd_tf_lbl  := "3M"
     combo        := "30M/3M"
@@ -262,7 +264,7 @@ if is_new_anchor and tf_supported
     // that IS a valid sweep+return — pre-seed state so only CISD is needed.
     if not na(prev2_high) and not na(prev2_low)
         pp_range = prev2_high - prev2_low
-        if pp_range > 0
+        if pp_range >= min_range
             // SHORT pre-seed: prior candle swept above prev-prev high, closed back below
             if prior_high > prev2_high and prior_close <= prev2_high
                 ext_s = prior_high - prev2_high
@@ -353,40 +355,8 @@ q1_elapsed += 1
 if q1_elapsed > q1_bars
     in_q1 := false
 
-// Return window: sweep must happen in Q1, return + CISD can complete within q1_bars+ret_bars total
-in_ret_window = q1_elapsed <= q1_bars + ret_bars
-ret_window_just_ended = q1_elapsed == q1_bars + ret_bars + 1
-
-if ret_window_just_ended
-    // Cleanup Q1 sweeps that didn't fire within the window. Non-Q1 sweeps stay alive.
-    if not alerted_long and q1_sweep_long
-        line.delete(sweep_line_long)
-        sweep_line_long     := na
-        label.delete(sweep_lbl_long)
-        sweep_lbl_long      := na
-        line.delete(cisd_prev_long)
-        cisd_prev_long      := na
-        label.delete(cisd_prev_lbl_long)
-        cisd_prev_lbl_long  := na
-        swept_long      := false
-        ret_long        := false
-        sweep_ext_long  := na
-        sweep_bar_long  := na
-        q1_sweep_long   := false
-    if not alerted_short and q1_sweep_short
-        line.delete(sweep_line_short)
-        sweep_line_short    := na
-        label.delete(sweep_lbl_short)
-        sweep_lbl_short     := na
-        line.delete(cisd_prev_short)
-        cisd_prev_short     := na
-        label.delete(cisd_prev_lbl_short)
-        cisd_prev_lbl_short := na
-        swept_short      := false
-        ret_short        := false
-        sweep_ext_short  := na
-        sweep_bar_short  := na
-        q1_sweep_short  := false
+// No return window deadline — CISD can form anytime after sweep within the HTF period.
+// Setups are cleaned up at anchor reset (next HTF candle), not by a bar-count timer.
 
 // ── PHASE 1: SWEEP ────────────────────────────────────────────────────────────
 // sweep_ext_long/short = wick extreme (SL level)
@@ -396,7 +366,7 @@ sweep_line_col_long  = color.red
 sweep_line_col_short = color.red
 if tf_supported and not na(anc_hi) and not na(anc_lo)
     ref_range = anc_hi - anc_lo
-    if ref_range > 0
+    if ref_range >= min_range
         if not swept_long
             ext = anc_lo - low
             if low < anc_lo and ext / ref_range <= sweep_max
@@ -436,18 +406,12 @@ if tf_supported and not na(anc_hi) and not na(anc_lo)
                         sweep_ext_short := high[k]
                         sweep_bar_short := bar_index - k
 
-// Track swing extreme — SL = lowest low / highest high from sweep until fire
-if tf_supported
-    if swept_long and not alerted_long and not na(sweep_ext_long) and low < sweep_ext_long
-        sweep_ext_long := low
-        sweep_bar_long := bar_index
-    if swept_short and not alerted_short and not na(sweep_ext_short) and high > sweep_ext_short
-        sweep_ext_short := high
-        sweep_bar_short := bar_index
+// Sweep extreme is locked at detection time — matches backtest which computes
+// the extreme once over the Q1 window. No continuous tracking after detection.
 
 // ── PHASE 2: RETURN TO RANGE ──────────────────────────────────────────────────
-// Q1 sweeps: return within ret_bars window. Non-Q1 sweeps: return anytime in HTF period.
-can_return = in_ret_window or (swept_long and not q1_sweep_long) or (swept_short and not q1_sweep_short)
+// Return can happen anytime after sweep within the HTF period.
+can_return = swept_long or swept_short
 if can_return
     if swept_long  and not ret_long  and close >= anc_lo
         ret_long     := true
@@ -565,8 +529,8 @@ if tf_supported
 // ── VALIDITY ──────────────────────────────────────────────────────────────────
 long_risk  = not na(sweep_ext_long)  ? math.abs(close - sweep_ext_long)  : 0.0
 short_risk = not na(sweep_ext_short) ? math.abs(close - sweep_ext_short) : 0.0
-long_valid  = tf_supported and ret_long  and cisd_long_fired  and not alerted_long  and long_risk  >= min_risk
-short_valid = tf_supported and ret_short and cisd_short_fired and not alerted_short and short_risk >= min_risk
+long_valid  = tf_supported and ret_long  and cisd_long_fired  and not alerted_long  and long_risk  >= min_risk and long_risk  <= max_risk
+short_valid = tf_supported and ret_short and cisd_short_fired and not alerted_short and short_risk >= min_risk and short_risk <= max_risk
 
 // ── DEBUG ─────────────────────────────────────────────────────────────────────
 if show_debug and tf_supported and barstate.islast
