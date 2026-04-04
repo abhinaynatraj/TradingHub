@@ -243,21 +243,25 @@ if is_new_anchor and tf_supported
     alerted_short   := false
     q1_sweep_long   := false
     q1_sweep_short  := false
-    // find the FIRST LTF bar that reached the prior HTF high/low
-    // Scan from oldest to newest — first match = earliest bar at that level
-    // Use tolerance (0.25 pts) for floating point differences between HTF and LTF values
-    _htf_n = timeframe.period == "60" ? 24 : timeframe.period == "15" ? 16 : timeframe.period == "5" ? 12 : 10
+    // find the FIRST (earliest) LTF bar within the prior HTF period that reached the high/low
+    // Scan from newest (k=1) outward. Track the last match seen. Stop when we leave the period.
+    // This way we find the earliest match within the prior period, not from older periods.
     _tol = syminfo.mintick * 2
+    _htf_bars = timeframe.period == "60" ? 24 : timeframe.period == "15" ? 16 : timeframe.period == "5" ? 12 : 10
     anc_hi_bar := bar_index - 1
     anc_lo_bar := bar_index - 1
-    for k = _htf_n to 1
+    // Scan newest to oldest: each match overwrites with an older bar.
+    // At the end, anc_hi_bar/anc_lo_bar = earliest match within the scan range.
+    for k = 1 to _htf_bars
+        if k >= bar_index
+            break
         if high[k] >= anc_hi - _tol
             anc_hi_bar := bar_index - k
+    for k = 1 to _htf_bars
+        if k >= bar_index
             break
-    for k = _htf_n to 1
         if low[k] <= anc_lo + _tol
             anc_lo_bar := bar_index - k
-            break
     // ── Pre-seed: did the prior candle itself sweep beyond the prev-prev range? ─
     // If the just-closed HTF candle swept above prev2_high and closed back below,
     // that IS a valid sweep+return — pre-seed state so only CISD is needed.
@@ -279,11 +283,11 @@ if is_new_anchor and tf_supported
                     anc_hi := prev2_high
                     anc_lo := prev2_low
                     // re-search for anchor bars in prev-prev period (wider range)
-                    for k2 = _htf_n * 3 to 1
+                    for k2 = _htf_bars * 2 to 1
                         if high[k2] >= prev2_high - _tol
                             anc_hi_bar := bar_index - k2
                             break
-                    for k2 = _htf_n * 3 to 1
+                    for k2 = _htf_bars * 2 to 1
                         if low[k2] <= prev2_low + _tol
                             anc_lo_bar := bar_index - k2
                             break
@@ -302,11 +306,11 @@ if is_new_anchor and tf_supported
                     anc_hi := prev2_high
                     anc_lo := prev2_low
                     // re-search for anchor bars in prev-prev period (wider range)
-                    for k2 = _htf_n * 3 to 1
+                    for k2 = _htf_bars * 2 to 1
                         if high[k2] >= prev2_high - _tol
                             anc_hi_bar := bar_index - k2
                             break
-                    for k2 = _htf_n * 3 to 1
+                    for k2 = _htf_bars * 2 to 1
                         if low[k2] <= prev2_low + _tol
                             anc_lo_bar := bar_index - k2
                             break
@@ -528,8 +532,12 @@ if tf_supported
 // ── VALIDITY ──────────────────────────────────────────────────────────────────
 long_risk  = not na(sweep_ext_long)  ? math.abs(close - sweep_ext_long)  : 0.0
 short_risk = not na(sweep_ext_short) ? math.abs(close - sweep_ext_short) : 0.0
-long_valid  = tf_supported and ret_long  and cisd_long_fired  and not alerted_long  and long_risk  >= min_risk and long_risk  <= max_risk
-short_valid = tf_supported and ret_short and cisd_short_fired and not alerted_short and short_risk >= min_risk and short_risk <= max_risk
+long_base   = tf_supported and ret_long  and cisd_long_fired  and not alerted_long  and long_risk  >= min_risk
+short_base  = tf_supported and ret_short and cisd_short_fired and not alerted_short and short_risk >= min_risk
+long_valid  = long_base  and long_risk  <= max_risk
+short_valid = short_base and short_risk <= max_risk
+long_over   = long_base  and long_risk  > max_risk
+short_over  = short_base and short_risk > max_risk
 
 // ── DEBUG ─────────────────────────────────────────────────────────────────────
 if show_debug and tf_supported and barstate.islast
@@ -782,3 +790,134 @@ if short_valid
                     box.delete(array.shift(fired_boxes))
     _alert_tp = use_split ? "TP1 " + str.tostring(tp, "#.##") + " (" + str.tostring(split_tp1_size, "#") + "%) | TP2 " + str.tostring(_tp2, "#.##") + " (runner)" : "TP " + str.tostring(tp, "#.##")
     alert("SHORT " + syminfo.ticker + " | Entry " + str.tostring(entry, "#.##") + " | SL " + str.tostring(sl, "#.##") + " | " + _alert_tp + " | Risk " + str.tostring(short_risk, "#.#") + " pts | " + combo, alert.freq_once_per_bar_close)
+
+// ── FIRE: OVER-RISK LONG ─────────────────────────────────────────────────────
+// Setup is valid but risk exceeds max_risk — drawn muted (gray, dashed, no R:R box)
+if long_over
+    alerted_long := true
+    line.delete(cisd_prev_long)
+    cisd_prev_long := na
+    label.delete(cisd_prev_lbl_long)
+    cisd_prev_lbl_long := na
+    if not alerted_short
+        line.delete(sweep_line_short)
+        sweep_line_short := na
+        label.delete(sweep_lbl_short)
+        sweep_lbl_short := na
+        line.delete(cisd_prev_short)
+        cisd_prev_short := na
+        label.delete(cisd_prev_lbl_short)
+        cisd_prev_lbl_short := na
+    _snap_lines  := array.size(fired_lines)
+    _snap_labels := array.size(fired_labels)
+    _snap_boxes  := array.size(fired_boxes)
+    entry = close
+    sl    = sweep_ext_long
+    risk  = entry - sl
+    tp    = entry + risk * rr_ratio
+    r_end = bar_index + rr_extend
+    _ov_col  = color.new(#ff6600, 30)
+    cisd_bar = bar_index - cisd_long_off
+    if not na(sweep_line_long)
+        line.delete(sweep_line_long)
+    if not na(sweep_lbl_long)
+        label.delete(sweep_lbl_long)
+    f_reg_line(line.new(anc_lo_bar, anc_lo, r_end, anc_lo, color=_ov_col, width=1, style=line.style_dashed))
+    sweep_x = sweep_lbl_pos == "Right" ? r_end : anc_lo_bar
+    f_reg_label(label.new(sweep_x, anc_lo, sweep_text + " " + sweep_tf_lbl, color=color.new(#ff6600, 100), textcolor=_ov_col, style=sweep_lbl_style, size=size.small))
+    f_reg_line(line.new(cisd_bar, cisd_long_lvl, r_end, cisd_long_lvl, color=_ov_col, width=1, style=line.style_dashed))
+    cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : cisd_bar
+    f_reg_label(label.new(cisd_x, cisd_long_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(#ff6600, 100), textcolor=_ov_col, style=cisd_lbl_style, size=size.small))
+    sl_anchor = not na(sweep_bar_long) ? sweep_bar_long : bar_index
+    f_reg_line(line.new(sl_anchor, sl, r_end, sl, color=_ov_col, width=1, style=line.style_dashed))
+    f_reg_line(line.new(bar_index, entry, r_end, entry, color=_ov_col, width=1, style=line.style_dashed))
+    f_reg_box(box.new(bar_index, entry, r_end, sl, border_color=color.new(color.red, 60), bgcolor=color.new(color.red, 92)))
+    f_reg_box(box.new(bar_index, tp, r_end, entry, border_color=color.new(color.teal, 60), bgcolor=color.new(color.teal, 92)))
+    f_reg_label(label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=color.new(#ff6600, 40), textcolor=color.white, style=rr_lbl_style, size=size.tiny))
+    f_reg_label(label.new(bar_index + rr_lbl_x, sl, "SL  -" + str.tostring(risk, "#.##") + " pts", color=color.new(color.red, 30), textcolor=color.white, style=rr_lbl_style, size=size.tiny))
+    f_reg_label(label.new(bar_index + rr_lbl_x, tp, "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=color.new(color.teal, 30), textcolor=color.white, style=rr_lbl_style, size=size.tiny))
+    f_reg_label(label.new(bar_index, tp + (tp - entry) * 0.1, "OVER RISK  " + str.tostring(risk, "#.#") + " pts", color=color.new(#ff6600, 10), textcolor=color.white, style=label.style_label_down, size=size.small))
+    array.push(setup_line_counts,  array.size(fired_lines)  - _snap_lines)
+    array.push(setup_label_counts, array.size(fired_labels) - _snap_labels)
+    array.push(setup_box_counts,   array.size(fired_boxes)  - _snap_boxes)
+    while array.size(setup_line_counts) > max_setups
+        _nl = array.shift(setup_line_counts)
+        _nb = array.shift(setup_label_counts)
+        _nx = array.shift(setup_box_counts)
+        if _nl > 0
+            for _i = 1 to _nl
+                if array.size(fired_lines) > 0
+                    line.delete(array.shift(fired_lines))
+        if _nb > 0
+            for _i = 1 to _nb
+                if array.size(fired_labels) > 0
+                    label.delete(array.shift(fired_labels))
+        if _nx > 0
+            for _i = 1 to _nx
+                if array.size(fired_boxes) > 0
+                    box.delete(array.shift(fired_boxes))
+
+// ── FIRE: OVER-RISK SHORT ────────────────────────────────────────────────────
+if short_over
+    alerted_short := true
+    line.delete(cisd_prev_short)
+    cisd_prev_short := na
+    label.delete(cisd_prev_lbl_short)
+    cisd_prev_lbl_short := na
+    if not alerted_long
+        line.delete(sweep_line_long)
+        sweep_line_long := na
+        label.delete(sweep_lbl_long)
+        sweep_lbl_long := na
+        line.delete(cisd_prev_long)
+        cisd_prev_long := na
+        label.delete(cisd_prev_lbl_long)
+        cisd_prev_lbl_long := na
+    _snap_lines  := array.size(fired_lines)
+    _snap_labels := array.size(fired_labels)
+    _snap_boxes  := array.size(fired_boxes)
+    entry = close
+    sl    = sweep_ext_short
+    risk  = sl - entry
+    tp    = entry - risk * rr_ratio
+    r_end = bar_index + rr_extend
+    _ov_col  = color.new(#ff6600, 30)
+    cisd_bar = bar_index - cisd_short_off
+    if not na(sweep_line_short)
+        line.delete(sweep_line_short)
+    if not na(sweep_lbl_short)
+        label.delete(sweep_lbl_short)
+    f_reg_line(line.new(anc_hi_bar, anc_hi, r_end, anc_hi, color=_ov_col, width=1, style=line.style_dashed))
+    sweep_x = sweep_lbl_pos == "Right" ? r_end : anc_hi_bar
+    f_reg_label(label.new(sweep_x, anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(#ff6600, 100), textcolor=_ov_col, style=sweep_lbl_style, size=size.small))
+    f_reg_line(line.new(cisd_bar, cisd_short_lvl, r_end, cisd_short_lvl, color=_ov_col, width=1, style=line.style_dashed))
+    cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : cisd_bar
+    f_reg_label(label.new(cisd_x, cisd_short_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(#ff6600, 100), textcolor=_ov_col, style=cisd_lbl_style, size=size.small))
+    sl_anchor = not na(sweep_bar_short) ? sweep_bar_short : bar_index
+    f_reg_line(line.new(sl_anchor, sl, r_end, sl, color=_ov_col, width=1, style=line.style_dashed))
+    f_reg_line(line.new(bar_index, entry, r_end, entry, color=_ov_col, width=1, style=line.style_dashed))
+    f_reg_box(box.new(bar_index, sl, r_end, entry, border_color=color.new(color.red, 60), bgcolor=color.new(color.red, 92)))
+    f_reg_box(box.new(bar_index, entry, r_end, tp, border_color=color.new(color.teal, 60), bgcolor=color.new(color.teal, 92)))
+    f_reg_label(label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=color.new(#ff6600, 40), textcolor=color.white, style=rr_lbl_style, size=size.tiny))
+    f_reg_label(label.new(bar_index + rr_lbl_x, sl, "SL  -" + str.tostring(risk, "#.##") + " pts", color=color.new(color.red, 30), textcolor=color.white, style=rr_lbl_style, size=size.tiny))
+    f_reg_label(label.new(bar_index + rr_lbl_x, tp, "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=color.new(color.teal, 30), textcolor=color.white, style=rr_lbl_style, size=size.tiny))
+    f_reg_label(label.new(bar_index, tp - (entry - tp) * 0.1, "OVER RISK  " + str.tostring(risk, "#.#") + " pts", color=color.new(#ff6600, 10), textcolor=color.white, style=label.style_label_up, size=size.small))
+    array.push(setup_line_counts,  array.size(fired_lines)  - _snap_lines)
+    array.push(setup_label_counts, array.size(fired_labels) - _snap_labels)
+    array.push(setup_box_counts,   array.size(fired_boxes)  - _snap_boxes)
+    while array.size(setup_line_counts) > max_setups
+        _nl = array.shift(setup_line_counts)
+        _nb = array.shift(setup_label_counts)
+        _nx = array.shift(setup_box_counts)
+        if _nl > 0
+            for _i = 1 to _nl
+                if array.size(fired_lines) > 0
+                    line.delete(array.shift(fired_lines))
+        if _nb > 0
+            for _i = 1 to _nb
+                if array.size(fired_labels) > 0
+                    label.delete(array.shift(fired_labels))
+        if _nx > 0
+            for _i = 1 to _nx
+                if array.size(fired_boxes) > 0
+                    box.delete(array.shift(fired_boxes))
