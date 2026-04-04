@@ -549,7 +549,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
       <div class="panel">
         <div class="ph">
           <span class="ph-title">TP1 Hit Rate · Runner Distribution · Net R Breakdown</span>
-          <span class="ph-note">50% exits at 1R (TP1) · Runner holds with BE stop · Remaining 50% tracks free</span>
+          <span class="ph-note">90% exits at 1R (TP1) · Runner (10%) holds with BE stop · Tracks free</span>
         </div>
         <div class="pb"><div id="structural-runner-body"></div></div>
       </div>
@@ -3712,8 +3712,8 @@ function renderStructuralPanel(D){
   }
 
   const isSplit8020 = activeProfile === 'split_80_20';
-  const tp1Size  = isSplit8020 ? 0.90 : 0.50;
-  const tp2Size  = isSplit8020 ? 0.10 : 0.50;
+  const tp1Size  = 0.90;
+  const tp2Size  = 0.10;
   const pct = v => v != null ? (v*100).toFixed(1)+'%' : '—';
   const fp3 = v => v != null ? (+v).toFixed(3)+'R' : '—';
   const fp4 = v => v != null ? (+v).toFixed(4)+'%' : '—';
