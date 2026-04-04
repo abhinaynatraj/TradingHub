@@ -91,7 +91,9 @@ print(f'  Loaded {len(DATE_CLASSIFICATION)} date→classification mappings')
 # ── GLOBAL CONSTANTS ──────────────────────────────────────────────────────────
 ACCOUNT_SIZE     = 4500   # $ account size for risk metrics
 RISK_PER_TRADE   = 225    # $ risk per trade
+POINT_VALUE      = 2.0    # $ per point for MNQ (Micro NQ); NQ = 20.0
 MIN_RISK_PTS     = 3.0
+MAX_RISK_PTS     = RISK_PER_TRADE / POINT_VALUE  # 112.5 pts for MNQ @ $225 risk
 OUTCOME_MAX_BARS = 360
 SWEEP_MAX_PCT    = 0.50
 CISD_FAST_BARS   = 8
@@ -358,7 +360,7 @@ def resolve_outcomes_vectorised(m1_arrs, pending):
         direction    = e['direction']
 
         risk = abs(entry_price - stop_price)
-        if risk < MIN_RISK_PTS:
+        if risk < MIN_RISK_PTS or risk > MAX_RISK_PTS:
             results.append(('INVALID', 0.0, 0.0, 0.0))
             continue
 
@@ -449,7 +451,7 @@ def resolve_outcomes_structural(m1_arrs, pending):
         direction    = e['direction']
 
         risk = abs(entry_price - stop_price)
-        if risk < MIN_RISK_PTS:
+        if risk < MIN_RISK_PTS or risk > MAX_RISK_PTS:
             results.append(('INVALID', 0.0, 0.0, 0.0, False, 0.0))
             continue
 
@@ -556,7 +558,7 @@ def resolve_outcomes_split_tp(m1_arrs, pending,
         direction    = e['direction']
 
         base_risk = abs(entry_price - stop_price)
-        if base_risk < MIN_RISK_PTS:
+        if base_risk < MIN_RISK_PTS or base_risk > MAX_RISK_PTS:
             results.append(('INVALID', 0.0, 0.0, 0.0, False, 0.0))
             continue
 
@@ -1215,6 +1217,10 @@ def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
         if risk_pts < MIN_RISK_PTS:
             rows[idx]['outcome']     = 'INVALID'
             rows[idx]['rejected_by'] = rows[idx]['rejected_by'] or 'INVALID_RISK'
+            continue
+        if risk_pts > MAX_RISK_PTS:
+            rows[idx]['outcome']     = 'INVALID'
+            rows[idx]['rejected_by'] = rows[idx]['rejected_by'] or 'RISK_TOO_LARGE'
             continue
 
         profile_pending.append(dict(
@@ -1970,14 +1976,15 @@ def _compute_by_tf(wl_full, wl_sorted_full, stop_mult, target_mult,
 
 def compute_filter_impact(df_all):
     FILTER_ORDER  = ['F1_SMALL_RANGE','F2_SWEEP_TOO_SMALL','F3_SWEEP_TOO_LARGE',
-                     'F4_NO_CLOSE_BACK','NO_CISD','INVALID_RISK']
+                     'F4_NO_CLOSE_BACK','NO_CISD','INVALID_RISK','RISK_TOO_LARGE']
     FILTER_LABELS_MAP = {
         'F1_SMALL_RANGE':    'F1: Prior Range Floor',
         'F2_SWEEP_TOO_SMALL':'F2: Sweep Min Size',
         'F3_SWEEP_TOO_LARGE':'F3: Sweep Max Cap',
         'F4_NO_CLOSE_BACK':  'F4: Close-Back Required',
         'NO_CISD':           'No CISD Formed',
-        'INVALID_RISK':      'Invalid Risk',
+        'INVALID_RISK':      'Invalid Risk (< min)',
+        'RISK_TOO_LARGE':    'Risk Too Large (> $225 MNQ)',
     }
     def ev_of(df):
         wl = df[df['outcome'].isin(['WIN','LOSS'])].copy()
