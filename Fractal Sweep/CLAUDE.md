@@ -17,7 +17,7 @@ Statistical backtesting engine for NQ and ES futures. Detects sweep + CISD setup
 - `model_stats.py` — sweep+CISD detection engine → `model_stats.json`
 - `daily_update.py` — cron entry point (weekdays 7am); fetches missing bars from Databento
 - `model_dashboard.html` — sweep model dashboard (loads `model_stats.json`)
-- `fractal_sweep_cisd.pine` — TradingView Pine v5 indicator (live alert equivalent of the backtest)
+- `../Live Scanner/fractal_sweep_cisd.pine` — TradingView Pine v5 indicator (live alert equivalent of the backtest)
 
 ## Running
 ```bash
@@ -29,8 +29,9 @@ python3 -m http.server 8000         # serve dashboard at localhost:8000
 ## Trading Model
 - 4 timeframe pairs: `4H_15M`, `1H_5M`, `1H_3M`, `30M_3M`
 - Setup: prior candle swept in Q1 → price returns inside range → CISD confirms
-- Entry: next candle open | Stop: sweep extreme | Target: 2R (1:2)
-- RTH window: 07:00–16:00 ET (all models)
+- Entry: next candle open | Stop: sweep extreme | Target: 1R (structural)
+- CISD: no bar limit — can form anytime after sweep returns within the HTF period
+- Filters: min range (8-30 pts per model), sweep max 50%, min risk 3 pts, max risk 112.5 pts
 
 ## Risk Profiles (RR_PROFILES in model_stats.py)
 

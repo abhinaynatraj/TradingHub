@@ -1,7 +1,7 @@
 # Abhi's Fractal Sweep — Pine v5 Indicator
 
 **File:** `fractal_sweep_cisd.pine`
-**Version:** v5 | **Last updated:** 2026-03-31
+**Version:** v5 | **Last updated:** 2026-04-04
 
 ---
 
@@ -15,10 +15,10 @@ Detects fractal sweep + CISD trade setups on NQ/ES futures across 4 auto-detecte
 
 | Chart TF | Sweep TF | CISD TF | Q1 Window (bars) |
 |----------|----------|---------|-------------------|
-| 1H       | 1D       | 1H      | 14                |
+| 1H       | 1D       | 1H      | 6                 |
 | 15M      | 4H       | 15M     | 4                 |
 | 5M       | 1H       | 5M      | 3                 |
-| 3M       | 30M      | 3M      | 3                 |
+| 3M       | 30M/1H   | 3M      | 5                 |
 
 Any other chart TF shows a watermark: "Use 1H / 15M / 5M / 3M chart".
 
@@ -26,27 +26,28 @@ Any other chart TF shows a watermark: "Use 1H / 15M / 5M / 3M chart".
 
 ## Setup Phases
 
-### Phase 1 — Sweep (Q1 only)
-- Price breaks beyond the prior higher-TF candle's high or low within Q1
-- Sweep must be between `sweep_min` (0.10%) and `sweep_max` (1.50%) of the prior candle's range
-- Sweep line drawn at `anc_hi`/`anc_lo`, anchored to the bar that formed the prior TF high/low
-- `sweep_ext` = swing extreme (lowest low for long, highest high for short) — tracked continuously from sweep until fire
+### Phase 1 — Sweep
+- Price breaks beyond the prior higher-TF candle's high or low
+- Sweep detected throughout the HTF period; tagged Q1 (red) vs non-Q1 (orange)
+- Sweep must be ≤ `sweep_max` (50%) of the prior candle's range
+- Prior candle range must be ≥ `min_range` (12 pts default)
+- `sweep_ext` = swing extreme (lowest low for long, highest high for short) — locked at detection time
 
-### Phase 2 — Return to Range (Q1 only)
-- Price must close back inside the prior candle's range within Q1
+### Phase 2 — Return to Range
+- Price must close back inside the prior candle's range
+- Can happen anytime after sweep within the HTF period (no window deadline)
 - `ret_bar` stored for CISD backward scan anchor
 
-### Phase 3 — CISD (can fire after Q1)
+### Phase 3 — CISD
 - **Backward scan** from the return bar to find the opposing delivery run (consecutive same-polarity candles before the return)
 - **CISD level** = open of the FIRST (earliest) candle in that run
 - **Fire** when current close crosses through the CISD level
 - Dojis (close == open) are skipped, do not break the run
-- If sweep + return both completed within Q1, state stays alive for CISD to fire after Q1 (matches backtest behavior)
+- No bar limit on CISD formation — can fire anytime after return within the HTF period
+- Lookback default: 100 bars (effectively unlimited)
 
-### Q1 Expiry Rules
-- If sweep didn't happen by Q1 end → state reset, no setup
-- If sweep happened but return didn't → state reset, drawings deleted
-- If sweep + return both completed → state kept alive, CISD can fire after Q1
+### Validity Filters
+- Risk (entry to SL) must be ≥ `min_risk` (3 pts) and ≤ `max_risk` (112.5 pts)
 - New anchor period always resets everything
 
 ---
@@ -86,11 +87,11 @@ Any other chart TF shows a watermark: "Use 1H / 15M / 5M / 3M chart".
 ## Input Groups
 
 ### Filters (G2)
-- `Sweep Min %` — minimum sweep penetration (default: 0.10%)
-- `Sweep Max %` — maximum sweep penetration (default: 1.50%)
+- `Sweep Max %` — maximum sweep penetration (default: 50%)
 - `Min Risk (pts)` — minimum entry-to-SL distance (default: 3.0)
-- `CISD Lookback Bars` — max bars to scan for opposing run (default: 8)
-- `RTH Only` — restrict to 07:00–16:00 ET (default: true)
+- `Max Risk (pts)` — maximum entry-to-SL distance (default: 112.5, MNQ $225 ÷ $2/pt)
+- `Min Prior Range (pts)` — reject tiny prior candles (default: 12.0)
+- `CISD Lookback Bars` — max bars to scan for opposing run (default: 100, effectively unlimited)
 
 ### R:R Box (G3)
 - `Box Width (bars)` — how far right the box extends (default: 20)
@@ -143,21 +144,28 @@ LONG NQ | Entry 24025.25 | SL 23974.50 | TP 24076.00 | Risk 50.8 pts | 1H/5M
 
 | Aspect | Backtest | Pine |
 |--------|----------|------|
-| Swing extreme tracking | Q1 bars only (`q1_h[swept_mask].max()`) | Continuous from sweep until fire |
+| Sweep extreme tracking | Locked at Q1 detection | Locked at detection — **matched** |
+| CISD bar limit | None (unlimited) | 100 bars (effectively unlimited) — **matched** |
 | CISD scan origin | Return bar (backward) | Return bar (backward) — **matched** |
-| CISD fire window | 8 CISD-TF bars from return | After Q1 if sweep+return completed — **matched** |
+| Min range filter | Per-model (8-30 pts) | Single input (12 pts default) |
+| Max risk filter | 112.5 pts | 112.5 pts — **matched** |
+| Non-Q1 sweeps | Not detected | Detected (orange color) — indicator is more permissive |
 | Entry | Next CISD-TF candle open | Current bar close |
+| Split exit / runner | 90/10 split with BE stop | Single exit (all-in/all-out) |
 
 ---
 
 ## Changelog
 
+- **2026-04-04** — Removed CISD bar limit (was 8→32 bars, now 100 = unlimited)
+- **2026-04-04** — Removed ret_window deadline — CISD can form anytime after sweep within HTF period
+- **2026-04-04** — Added max_risk input (112.5 pts MNQ default) to validity gate
+- **2026-04-04** — Added min_range input (12 pts default) — rejects tiny prior candle ranges
+- **2026-04-04** — Fixed 3M Q1 window: 3→5 bars (15 min, matches 1H_3M backtest)
+- **2026-04-04** — Sweep extreme locked at detection time (no continuous deepening)
 - **2026-03-31** — CISD rewritten to scan backward from return bar (match backtest `_find_cisd`)
 - **2026-03-31** — Q1 state kept alive if sweep+return both completed (CISD can fire after Q1)
 - **2026-03-31** — Added T-Spot zone (log midpoint), C2/C3 labels, T-Spot type classification
 - **2026-03-31** — Added CISD series projections (configurable multiples)
 - **2026-03-31** — Sweep line anchored to bar that formed prior TF high/low
-- **2026-03-31** — SL tracks swing extreme continuously from sweep until fire
-- **2026-03-31** — CISD line anchored to the opposing run's candle
-- **2026-03-31** — Sweep line redrawn at fire time (survives Q1 cleanup)
 - **2026-03-31** — Initial version with auto TF detection, 4 combos, configurable visuals

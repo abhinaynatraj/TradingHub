@@ -28,9 +28,10 @@ python3 daily_update.py                         # fetch new bars from Databento
 
 ## Key Constants (model_stats.py)
 
-- `SWEEP_MIN_PCT = 0.10`, `SWEEP_MAX_PCT = 1.50`
-- `CISD_FAST_BARS = 8` — CISD must form within 8 CISD-TF bars
-- RTH window: 07:00–16:00 ET (all models)
+- `SWEEP_MAX_PCT = 0.50` — sweep must be ≤50% of prior range
+- `CISD_FAST_BARS = None` — no bar limit, CISD can form anytime after sweep
+- `MIN_RISK_PTS = 3.0`, `MAX_RISK_PTS = 112.5` (MNQ $225 ÷ $2.00/pt)
+- `min_range` per model: 4H=30, 1H=12, 30M=8 pts
 
 ## Refinement Filters (F1–F5)
 
