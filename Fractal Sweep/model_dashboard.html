@@ -3311,12 +3311,14 @@ function renderMAEStudy(D) {
   const maeWins = computeRichStudy(winTrades, 'mae_pct');
   const maeLosses = computeRichStudy(lossTrades, 'mae_pct');
 
-  const dist = _maeSegment === 'wins' ? (maeWins || maeAll)
-             : _maeSegment === 'losses' ? (maeLosses || maeAll)
+  const dist = _maeSegment === 'wins' ? maeWins
+             : _maeSegment === 'losses' ? maeLosses
              : maeAll;
+  const _segCount = _maeSegment === 'wins' ? winTrades.length : _maeSegment === 'losses' ? lossTrades.length : allTrades.length;
   const ce   = dist?.ce ?? D?.risk_stats?.ce;
   if (!dist) {
-    el.innerHTML = `<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">Not enough data for MAE study (need at least 3 trades with MAE &gt; 0).</div>`;
+    const _segName = _maeSegment === 'wins' ? 'winning' : _maeSegment === 'losses' ? 'losing' : '';
+    el.innerHTML = `<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">Not enough ${_segName} trades for MAE study (${_segCount} trades, need at least 3 with MAE &gt; 0).</div>`;
     return;
   }
 
@@ -3601,11 +3603,13 @@ function renderMFEStudy(D) {
   const mfeWins = computeRichStudy(winTrades, 'mfe_pct');
   const mfeLosses = computeRichStudy(lossTrades, 'mfe_pct');
 
-  const dist = _mfeSegment === 'wins' ? (mfeWins || mfeAll)
-             : _mfeSegment === 'losses' ? (mfeLosses || mfeAll)
+  const dist = _mfeSegment === 'wins' ? mfeWins
+             : _mfeSegment === 'losses' ? mfeLosses
              : mfeAll;
+  const _segCount = _mfeSegment === 'wins' ? winTrades.length : _mfeSegment === 'losses' ? lossTrades.length : allTrades.length;
   if (!dist) {
-    el.innerHTML = `<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">Not enough data for MFE study (need at least 3 trades with MFE &gt; 0).</div>`;
+    const _segName = _mfeSegment === 'wins' ? 'winning' : _mfeSegment === 'losses' ? 'losing' : '';
+    el.innerHTML = `<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">Not enough ${_segName} trades for MFE study (${_segCount} trades, need at least 3 with MFE &gt; 0).</div>`;
     return;
   }
 
