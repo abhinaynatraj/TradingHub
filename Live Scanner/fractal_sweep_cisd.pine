@@ -334,12 +334,12 @@ if is_new_anchor and tf_supported
     // Phase 1 detection only runs in Q1, so pre-seeded setups need lines drawn here.
     if swept_long
         ps_x = sweep_lbl_pos == "Right" ? bar_index + rr_extend : anc_lo_bar
-        sweep_line_long := line.new(anc_lo_bar, anc_lo, bar_index + rr_extend, anc_lo, color=color.red, width=2, style=sweep_lstyle)
-        sweep_lbl_long  := label.new(ps_x, anc_lo, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.red, style=sweep_lbl_style, size=size.small)
+        sweep_line_long := line.new(anc_lo_bar, anc_lo, bar_index + rr_extend, anc_lo, color=color.new(color.red, 50), width=1, style=line.style_dashed)
+        sweep_lbl_long  := label.new(ps_x, anc_lo, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.new(color.red, 50), style=sweep_lbl_style, size=size.small)
     if swept_short
         ps_x = sweep_lbl_pos == "Right" ? bar_index + rr_extend : anc_hi_bar
-        sweep_line_short := line.new(anc_hi_bar, anc_hi, bar_index + rr_extend, anc_hi, color=color.red, width=2, style=sweep_lstyle)
-        sweep_lbl_short  := label.new(ps_x, anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.red, style=sweep_lbl_style, size=size.small)
+        sweep_line_short := line.new(anc_hi_bar, anc_hi, bar_index + rr_extend, anc_hi, color=color.new(color.red, 50), width=1, style=line.style_dashed)
+        sweep_lbl_short  := label.new(ps_x, anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(color.red, 100), textcolor=color.new(color.red, 50), style=sweep_lbl_style, size=size.small)
 
 
 // ── Q1 COUNTER ────────────────────────────────────────────────────────────────
@@ -371,8 +371,8 @@ if tf_supported and not na(anc_hi) and not na(anc_lo)
                 sweep_pct_long    := ref_range > 0 ? ext / ref_range : 0.0
                 sweep_line_col_long := in_q1 ? color.red : color.orange
                 sweep_x_long    = sweep_lbl_pos == "Right" ? bar_index + rr_extend : anc_lo_bar
-                sweep_line_long := line.new(anc_lo_bar, anc_lo, bar_index + rr_extend, anc_lo, color=sweep_line_col_long, width=2, style=sweep_lstyle)
-                sweep_lbl_long  := label.new(sweep_x_long, anc_lo, sweep_text + " " + sweep_tf_lbl + (in_q1 ? "" : " *"), color=color.new(sweep_line_col_long, 100), textcolor=sweep_line_col_long, style=sweep_lbl_style, size=size.small)
+                sweep_line_long := line.new(anc_lo_bar, anc_lo, bar_index + rr_extend, anc_lo, color=color.new(sweep_line_col_long, 50), width=1, style=line.style_dashed)
+                sweep_lbl_long  := label.new(sweep_x_long, anc_lo, sweep_text + " " + sweep_tf_lbl + (in_q1 ? "" : " *"), color=color.new(sweep_line_col_long, 100), textcolor=color.new(sweep_line_col_long, 50), style=sweep_lbl_style, size=size.small)
                 // Scan back over prior bars — earlier bars may have swept deeper
                 for k = 1 to q1_elapsed - 1
                     if low[k] < anc_lo and low[k] < sweep_ext_long
@@ -390,8 +390,8 @@ if tf_supported and not na(anc_hi) and not na(anc_lo)
                 sweep_pct_short    := ref_range > 0 ? ext / ref_range : 0.0
                 sweep_line_col_short := in_q1 ? color.red : color.orange
                 sweep_x_short    = sweep_lbl_pos == "Right" ? bar_index + rr_extend : anc_hi_bar
-                sweep_line_short := line.new(anc_hi_bar, anc_hi, bar_index + rr_extend, anc_hi, color=sweep_line_col_short, width=2, style=sweep_lstyle)
-                sweep_lbl_short  := label.new(sweep_x_short, anc_hi, sweep_text + " " + sweep_tf_lbl + (in_q1 ? "" : " *"), color=color.new(sweep_line_col_short, 100), textcolor=sweep_line_col_short, style=sweep_lbl_style, size=size.small)
+                sweep_line_short := line.new(anc_hi_bar, anc_hi, bar_index + rr_extend, anc_hi, color=color.new(sweep_line_col_short, 50), width=1, style=line.style_dashed)
+                sweep_lbl_short  := label.new(sweep_x_short, anc_hi, sweep_text + " " + sweep_tf_lbl + (in_q1 ? "" : " *"), color=color.new(sweep_line_col_short, 100), textcolor=color.new(sweep_line_col_short, 50), style=sweep_lbl_style, size=size.small)
                 // Scan back over prior bars — earlier bars may have swept deeper
                 for k = 1 to q1_elapsed - 1
                     if high[k] > anc_hi and high[k] > sweep_ext_short
@@ -574,14 +574,14 @@ if long_valid
     _swp_col  = _is_q1_l ? color.red      : color.orange
     _cisd_col = _is_q1_l ? color.blue     : #eab308
     cisd_bar = bar_index - cisd_long_off
-    f_reg_line(line.new(cisd_bar, cisd_long_lvl, r_end, cisd_long_lvl, color=_cisd_col, width=2, style=cisd_lstyle))
+    f_reg_line(line.new(cisd_bar, cisd_long_lvl, r_end, cisd_long_lvl, color=_cisd_col, width=2, style=line.style_solid))
     cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : cisd_bar
     f_reg_label(label.new(cisd_x, cisd_long_lvl, cisd_text + " " + cisd_tf_lbl + (_is_q1_l ? "" : " *"), color=color.new(_cisd_col, 100), textcolor=_cisd_col, style=cisd_lbl_style, size=size.small))
     if not na(sweep_line_long)
         line.delete(sweep_line_long)
     if not na(sweep_lbl_long)
         label.delete(sweep_lbl_long)
-    f_reg_line(line.new(anc_lo_bar, anc_lo, r_end, anc_lo, color=_swp_col, width=2, style=sweep_lstyle))
+    f_reg_line(line.new(anc_lo_bar, anc_lo, r_end, anc_lo, color=_swp_col, width=2, style=line.style_solid))
     sweep_x = sweep_lbl_pos == "Right" ? r_end : anc_lo_bar
     f_reg_label(label.new(sweep_x, anc_lo, sweep_text + " " + sweep_tf_lbl + (_is_q1_l ? "" : " *"), color=color.new(_swp_col, 100), textcolor=_swp_col, style=sweep_lbl_style, size=size.small))
     sl_anchor = not na(sweep_bar_long) ? sweep_bar_long : bar_index
@@ -682,14 +682,14 @@ if short_valid
     _swp_col  = _is_q1_s ? color.red      : color.orange
     _cisd_col = _is_q1_s ? color.blue     : #eab308
     cisd_bar = bar_index - cisd_short_off
-    f_reg_line(line.new(cisd_bar, cisd_short_lvl, r_end, cisd_short_lvl, color=_cisd_col, width=2, style=cisd_lstyle))
+    f_reg_line(line.new(cisd_bar, cisd_short_lvl, r_end, cisd_short_lvl, color=_cisd_col, width=2, style=line.style_solid))
     cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : cisd_bar
     f_reg_label(label.new(cisd_x, cisd_short_lvl, cisd_text + " " + cisd_tf_lbl + (_is_q1_s ? "" : " *"), color=color.new(_cisd_col, 100), textcolor=_cisd_col, style=cisd_lbl_style, size=size.small))
     if not na(sweep_line_short)
         line.delete(sweep_line_short)
     if not na(sweep_lbl_short)
         label.delete(sweep_lbl_short)
-    f_reg_line(line.new(anc_hi_bar, anc_hi, r_end, anc_hi, color=_swp_col, width=2, style=sweep_lstyle))
+    f_reg_line(line.new(anc_hi_bar, anc_hi, r_end, anc_hi, color=_swp_col, width=2, style=line.style_solid))
     sweep_x = sweep_lbl_pos == "Right" ? r_end : anc_hi_bar
     f_reg_label(label.new(sweep_x, anc_hi, sweep_text + " " + sweep_tf_lbl + (_is_q1_s ? "" : " *"), color=color.new(_swp_col, 100), textcolor=_swp_col, style=sweep_lbl_style, size=size.small))
     sl_anchor = not na(sweep_bar_short) ? sweep_bar_short : bar_index
