@@ -1598,9 +1598,20 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
     ce = round(_ev_r * _pf, 6) if _pf and _n_total > 0 else None
     risk_stats['ce'] = ce
 
-    # Rich MAE / MFE distribution studies (FPFVG-style)
+    # Rich MAE / MFE distribution studies — split by outcome for deeper analysis
+    # All trades (combined)
     rich_mae = _full_mae_stats(wl, ce=ce)
     rich_mfe = _full_mfe_stats(wl)
+    # Winners only — MAE shows optimal stop (how far winners dip before winning)
+    #              — MFE shows where winners peak (optimal TP / PTQ)
+    wins_only = wl[wl['win'] == 1].copy()
+    rich_mae_wins = _full_mae_stats(wins_only, ce=ce) if len(wins_only) > 10 else None
+    rich_mfe_wins = _full_mfe_stats(wins_only) if len(wins_only) > 10 else None
+    # Losers only — MAE shows stop confirmation (all hit SL, validates stop)
+    #             — MFE shows rescue opportunity (how far losers went in your favor before reversing)
+    losses_only = wl[wl['win'] == 0].copy()
+    rich_mae_losses = _full_mae_stats(losses_only, ce=ce) if len(losses_only) > 10 else None
+    rich_mfe_losses = _full_mfe_stats(losses_only) if len(losses_only) > 10 else None
 
     # Bell curve of actual MAE distribution
     mae_vals = wl_sorted['mae_pct'].dropna()
@@ -1697,6 +1708,10 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         'mfe_dist':         mfe_dist_legacy,
         'rich_mae':         rich_mae,
         'rich_mfe':         rich_mfe,
+        'rich_mae_wins':    rich_mae_wins,
+        'rich_mfe_wins':    rich_mfe_wins,
+        'rich_mae_losses':  rich_mae_losses,
+        'rich_mfe_losses':  rich_mfe_losses,
         'mae_wins_dist':    mae_wins_dist,
         'mfe_wins_dist':    mfe_wins_dist,
         'mae_loss_dist':    mae_loss_dist,
@@ -2083,9 +2098,11 @@ def main():
                 df_p, trading_days, mk, cfg, stop_val, target_val, pk, ptype)
             model_profiles[pk] = stats
             # Capture PTQ level (TP1) and p50 MFE (TP2) for the split profile
+            # Prefer winners-only data for more accurate TP placement
             if pk == 'structural_dynamic':
-                structural_ptq = (stats.get('rich_mfe') or {}).get('ptq_level')
-                _mfe_pcts = (stats.get('rich_mfe') or {}).get('percentiles', {})
+                _mfe_wins = stats.get('rich_mfe_wins') or stats.get('rich_mfe') or {}
+                structural_ptq = _mfe_wins.get('ptq_level')
+                _mfe_pcts = _mfe_wins.get('percentiles', {})
                 structural_p50_mfe = _mfe_pcts.get('p50')
             print(f"         profile {pk} done ✓", flush=True)
 
