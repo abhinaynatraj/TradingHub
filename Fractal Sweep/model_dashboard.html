@@ -1724,9 +1724,26 @@ function applyCustomRanges(){
     const filtered = allTrades.filter(t => t.date >= r.start && t.date <= r.end);
     return { label: r.start + ' to ' + r.end, color: RANGE_COLORS[i], stats: computeRangeStats(filtered), trades: filtered };
   }).filter(Boolean);
-  const allFiltered = rangeResults.flatMap(r => r.trades);
-  const combinedStats = computeRangeStats(allFiltered);
-  renderCustomViewV2(rangeResults, combinedStats);
+
+  if(rangeResults.length === 0) return;
+
+  // Single range — no walk-forward, just show as unpaired
+  if(rangeResults.length === 1){
+    const combinedStats = computeRangeStats(rangeResults[0].trades);
+    renderCustomViewV2([], rangeResults, combinedStats);
+    return;
+  }
+
+  // 2+ ranges — build walk-forward pairs
+  const { pairs, unpaired } = buildWalkForwardPairs(rangeResults);
+
+  // Combined stats from all TEST trades + unpaired trades
+  const combinedTrades = [
+    ...pairs.flatMap(p => p.test.trades),
+    ...unpaired.flatMap(u => u.trades)
+  ];
+  const combinedStats = computeRangeStats(combinedTrades);
+  renderCustomViewV2(pairs, unpaired, combinedStats);
 }
 
 function drawGroupedBars(canvas, groups, opts){
@@ -1908,20 +1925,19 @@ function drawScatterPlot(canvas, datasets, opts){
   ctx.fillText(opts && opts.yLabel || 'MFE%', 0, 0); ctx.restore();
 }
 
-function renderCustomViewV2(rangeResults, combinedStats){
+function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
   const cv = document.getElementById('custom-view');
   if(!cv) return;
-  const validRanges = rangeResults.filter(r => r.stats);
-  if(!combinedStats && validRanges.length === 0){
-    cv.innerHTML = '<div style="padding:40px 0;text-align:center;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">No trades found in selected ranges. Adjust dates and click Apply.</div>';
-    return;
-  }
+
+  const ACCT = 4500, RPT = 225;
 
   function statColor(val, threshGood, threshBad, invert){
     if(invert) return val <= threshGood ? 'var(--green)' : val >= threshBad ? 'var(--red)' : 'var(--amber)';
     return val >= threshGood ? 'var(--green)' : val <= threshBad ? 'var(--red)' : 'var(--amber)';
   }
   function pct(v){ return (v*100).toFixed(1)+'%'; }
+  function fmtPct(v){ return v.toFixed(2)+'%'; }
+  function fmtDol(v){ return '$'+Math.round(v).toLocaleString(); }
   function secHeader(title){ return `<div style="font-family:var(--font-data);font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:16px;margin-top:32px">${title}</div>`; }
   function heroTile(lbl, val, color, sub){
     return `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px 18px;box-shadow:var(--shadow);position:relative;overflow:hidden">
@@ -1931,29 +1947,44 @@ function renderCustomViewV2(rangeResults, combinedStats){
       ${sub ? `<div style="font-family:var(--font-data);font-size:11px;color:var(--text-muted)">${sub}</div>` : ''}
     </div>`;
   }
+  function deltaColor(trainVal, testVal){
+    if(trainVal === 0) return 'var(--text-muted)';
+    const pctChange = Math.abs((testVal - trainVal) / trainVal) * 100;
+    return pctChange < 20 ? 'var(--green)' : pctChange < 40 ? 'var(--amber)' : 'var(--red)';
+  }
+  function deltaStr(trainVal, testVal){
+    if(trainVal === 0) return '—';
+    const d = ((testVal - trainVal) / trainVal) * 100;
+    return (d >= 0 ? '+' : '') + d.toFixed(1) + '%';
+  }
 
-  // Build all groups for charts (ranges + combined)
-  const chartGroups = validRanges.map(r => ({label: r.label.split(' to ')[0], color: r.color, stats: r.stats}));
-  if(combinedStats) chartGroups.push({label: 'Combined', color: COMBINED_COLOR, stats: combinedStats});
+  if(!combinedStats && pairs.length === 0 && unpairedRanges.length === 0){
+    cv.innerHTML = '<div style="padding:40px 0;text-align:center;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">No trades found in selected ranges. Adjust dates and click Apply.</div>';
+    return;
+  }
 
   let html = '';
 
-  // ── SECTION A: Combined Hero Tiles ────────────────────────────────────────
+  // ── SECTION A: Combined Test Summary (hero tiles) ─────────────────────────
   if(combinedStats){
     const cs = combinedStats;
-    html += secHeader('Combined Stats (' + cs.n + ' trades)');
+    const heroLabel = pairs.length > 0 ? 'Out-of-Sample Combined' : 'Combined Stats';
+    html += secHeader(heroLabel + ' (' + cs.n + ' trades)');
+    // Row 1: WR, EV, PF, CE
     html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px">`;
     html += heroTile('Win Rate', pct(cs.wr), statColor(cs.wr, 0.55, 0.45, false), `${cs.nWins}W / ${cs.nLosses}L`);
     html += heroTile('EV (R)', cs.ev_r.toFixed(3), statColor(cs.ev_r, 0.05, -0.05, false), 'per trade');
     html += heroTile('Profit Factor', cs.pf.toFixed(3), statColor(cs.pf, 1.5, 1.0, false), 'gross win / gross loss');
-    html += heroTile('CE', cs.ce.toFixed(3), statColor(cs.ce, 0.1, 0, false), 'EV × PF');
+    html += heroTile('CE', cs.ce.toFixed(3), statColor(cs.ce, 0.1, 0, false), 'EV x PF');
     html += `</div>`;
+    // Row 2: P&L, Min Equity, Max DD, Sharpe
     html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px">`;
-    html += heroTile('P&L', '$'+cs.totalPnl.toLocaleString(), statColor(cs.totalPnl, 0, -1, false), '$4,500 account');
-    html += heroTile('Min Equity', '$'+cs.minEq.toLocaleString(), statColor(cs.minEq, 3600, 2250, false), cs.blown ? '⚠ ACCOUNT BLOWN' : '');
-    html += heroTile('Max DD', cs.maxDDPct.toFixed(2)+'%', statColor(cs.maxDDPct, 10, 25, true), '$'+Math.round(cs.maxDDPct/100*4500).toLocaleString()+' drawdown');
+    html += heroTile('P&L', fmtDol(cs.totalPnl), statColor(cs.totalPnl, 0, -1, false), '$4,500 account');
+    html += heroTile('Min Equity', fmtDol(cs.minEq), statColor(cs.minEq, 3600, 2250, false), cs.blown ? 'ACCOUNT BLOWN' : '');
+    html += heroTile('Max DD', cs.maxDDPct.toFixed(2)+'%', statColor(cs.maxDDPct, 10, 25, true), fmtDol(cs.maxDDPct/100*ACCT)+' drawdown');
     html += heroTile('Sharpe', cs.sharpe != null ? cs.sharpe.toFixed(2) : '\u2014', cs.sharpe != null ? statColor(cs.sharpe, 1.5, 0.5, false) : 'var(--text-muted)', 'annualised');
     html += `</div>`;
+    // Row 3: Avg Win R, Max W Run, Max L Run, Account badge
     html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">`;
     html += heroTile('Avg Win R', cs.avgWinR.toFixed(3)+'R', statColor(cs.avgWinR, 1.5, 0.5, false), 'mean winner size');
     html += heroTile('Max W Run', cs.mcw, statColor(cs.mcw, 5, 3, false), 'consecutive wins');
@@ -1965,184 +1996,194 @@ function renderCustomViewV2(rangeResults, combinedStats){
     html += `</div>`;
   }
 
-  // ── SECTION B: Range Result Cards ───────────────────────────────────────────
-  if(validRanges.length >= 1){
-    html += secHeader('Range Results');
-    const cols = Math.min(validRanges.length, 3);
+  // ── SECTION B: Walk-Forward Pairs ─────────────────────────────────────────
+  pairs.forEach((pair, pi) => {
+    const trainDates = pair.train.label.split(' to ');
+    const testDates = pair.test.label.split(' to ');
+    const of = pair.overfit;
+
+    // Pair header
+    html += `<div style="margin-top:36px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">`;
+    html += `<div style="font-family:var(--font-display);font-size:18px;font-weight:800;color:var(--text-primary);letter-spacing:-0.02em">Pair ${pi+1}: ${trainDates[0]} \u2192 ${testDates[1]}</div>`;
+    html += `<div style="font-family:var(--font-data);font-size:11px;color:var(--text-muted)">`;
+    html += `<span style="color:${pair.train.color}">Train</span> (${pair.train.trades.length}) \u2192 <span style="color:${pair.test.color}">Test</span> (${pair.test.trades.length})`;
+    html += `</div>`;
+    html += `<span style="font-family:var(--font-data);font-size:10px;font-weight:700;padding:3px 10px;border-radius:4px;color:${of.cls};background:color-mix(in srgb,${of.cls} 15%,transparent);border:1px solid color-mix(in srgb,${of.cls} 30%,transparent)">${of.label} (${of.score.toFixed(0)}%)</span>`;
+    html += `</div>`;
+
+    // Train Parameters block
+    if(pair.trainParams){
+      const tp = pair.trainParams;
+      const lowSample = tp.nWinners < 20;
+      html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:12px">`;
+      html += `<div style="font-family:var(--font-data);font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">Train Parameters (${tp.nWinners} winners)`;
+      if(lowSample) html += ` <span style="color:var(--amber);font-weight:600;text-transform:none;letter-spacing:0"> — low sample warning</span>`;
+      html += `</div>`;
+      html += `<div style="font-family:var(--font-data);font-size:12px;color:var(--text-primary);line-height:1.8">`;
+      html += `<div>MAE: Max=${fmtPct(tp.mae.max)} · P90=${fmtPct(tp.mae.p90)} · P85=${fmtPct(tp.mae.p85)} · P50=${fmtPct(tp.mae.p50)}</div>`;
+      html += `<div>MFE: PTQ=${tp.mfe.ptq != null ? fmtPct(tp.mfe.ptq) : '—'} (${tp.mfe.ptqReachRate != null ? tp.mfe.ptqReachRate+'%' : '—'} reach) · P50=${fmtPct(tp.mfe.p50)}</div>`;
+      html += `</div></div>`;
+    }
+
+    // Regime fingerprint table
+    const tfp = pair.trainFingerprint, tfpT = pair.testFingerprint;
+    html += `<div style="overflow-x:auto;margin-bottom:12px"><table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden">`;
+    html += `<thead><tr style="border-bottom:1px solid var(--border);color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:0.06em">`;
+    html += `<th style="padding:8px 12px;text-align:left">Regime</th><th style="padding:8px 12px;text-align:center;color:${pair.train.color}">Train</th><th style="padding:8px 12px;text-align:center;color:${pair.test.color}">Test</th><th style="padding:8px 12px;text-align:center">\u0394</th>`;
+    html += `</tr></thead><tbody>`;
+    [
+      {label:'Avg Risk (pts)', train: tfp.avgRisk, test: tfpT.avgRisk, fmt: v=>v.toFixed(1)},
+      {label:'Long %', train: tfp.longPct, test: tfpT.longPct, fmt: v=>v.toFixed(1)+'%'},
+      {label:'MFE/MAE Ratio', train: tfp.mfeMaeRatio, test: tfpT.mfeMaeRatio, fmt: v=>v.toFixed(2)},
+      {label:'Trades/Day', train: tfp.density, test: tfpT.density, fmt: v=>v.toFixed(2)},
+    ].forEach(row => {
+      const dCol = deltaColor(row.train, row.test);
+      html += `<tr style="border-bottom:1px solid color-mix(in srgb,var(--border) 50%,transparent)">`;
+      html += `<td style="padding:7px 12px;color:var(--text-muted)">${row.label}</td>`;
+      html += `<td style="padding:7px 12px;text-align:center;color:var(--text-primary)">${row.fmt(row.train)}</td>`;
+      html += `<td style="padding:7px 12px;text-align:center;color:var(--text-primary)">${row.fmt(row.test)}</td>`;
+      html += `<td style="padding:7px 12px;text-align:center;font-weight:600;color:${dCol}">${deltaStr(row.train, row.test)}</td>`;
+      html += `</tr>`;
+    });
+    html += `</tbody></table></div>`;
+
+    // Stop variant cards (4 in a row)
+    html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">`;
+    pair.variants.forEach((v, vi) => {
+      const isBest = vi === pair.bestVariantIdx;
+      const tr = v.train, te = v.test;
+      if(!tr || !te) return;
+      html += `<div style="background:var(--bg-card);border:1px solid ${isBest ? 'var(--green-border)' : 'var(--border)'};border-radius:10px;overflow:hidden;${isBest ? 'box-shadow:0 0 0 1px var(--green-border);' : ''}">`;
+      // Card header
+      html += `<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">`;
+      html += `<div><div style="font-family:var(--font-data);font-size:12px;font-weight:700;color:var(--text-primary)">${v.name}</div>`;
+      html += `<div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted)">SL cap: ${fmtPct(v.cap)}</div></div>`;
+      if(isBest) html += `<span style="font-family:var(--font-data);font-size:9px;font-weight:700;padding:2px 8px;border-radius:3px;background:var(--green-tint);border:1px solid var(--green-border);color:var(--green)">BEST</span>`;
+      html += `</div>`;
+      // Column headers
+      html += `<div style="display:flex;justify-content:flex-end;padding:6px 14px 2px;gap:8px;border-bottom:1px solid color-mix(in srgb,var(--border) 40%,transparent)">`;
+      html += `<span style="width:68px;text-align:right;font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;opacity:0.5">Train</span>`;
+      html += `<span style="width:68px;text-align:right;font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em">Test</span>`;
+      html += `</div>`;
+      // Metric rows
+      const mRow = (label, trainVal, testVal, testColor) => {
+        return `<div style="display:flex;align-items:center;padding:5px 14px;border-bottom:1px solid color-mix(in srgb,var(--border) 30%,transparent)">
+          <span style="flex:1;font-family:var(--font-data);font-size:11px;color:var(--text-muted)">${label}</span>
+          <span style="width:68px;text-align:right;font-family:var(--font-data);font-size:11px;color:var(--text-muted);opacity:0.5">${trainVal}</span>
+          <span style="width:68px;text-align:right;font-family:var(--font-data);font-size:12px;font-weight:700;color:${testColor}">${testVal}</span>
+        </div>`;
+      };
+      html += mRow('Win Rate %', (tr.wr*100).toFixed(1), (te.wr*100).toFixed(1), statColor(te.wr, 0.55, 0.45, false));
+      html += mRow('EV $/trade', fmtDol(tr.ev_r*RPT), fmtDol(te.ev_r*RPT), statColor(te.ev_r, 0.05, -0.05, false));
+      html += mRow('Sharpe', tr.sharpe != null ? tr.sharpe.toFixed(2) : '\u2014', te.sharpe != null ? te.sharpe.toFixed(2) : '\u2014', te.sharpe != null ? statColor(te.sharpe, 1.5, 0.5, false) : 'var(--text-muted)');
+      html += mRow('Profit Factor', tr.pf.toFixed(2), te.pf.toFixed(2), statColor(te.pf, 1.5, 1.0, false));
+      html += mRow('Max DD $', '-'+fmtDol(tr.maxDDPct/100*ACCT), '-'+fmtDol(te.maxDDPct/100*ACCT), statColor(te.maxDDPct, 10, 25, true));
+      html += mRow('Max Consec L', tr.mcl, te.mcl, statColor(te.mcl, 5, 10, true));
+      html += mRow('Total $', fmtDol(tr.totalPnl), fmtDol(te.totalPnl), statColor(te.totalPnl, 0, -1, false));
+      html += mRow('Final Bal $', fmtDol(ACCT + tr.totalPnl), fmtDol(ACCT + te.totalPnl), statColor(ACCT + te.totalPnl, ACCT, ACCT*0.5, false));
+      html += `</div>`;
+    });
+    html += `</div>`;
+
+    // Distribution overlay placeholders (2 canvases per pair)
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px">`;
+    html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px">
+      <div style="font-family:var(--font-data);font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">MAE Distribution · Train vs Test</div>
+      <canvas id="kde-mae-pair-${pi}" style="width:100%;height:180px"></canvas>
+    </div>`;
+    html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px">
+      <div style="font-family:var(--font-data);font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">MFE Distribution · Train vs Test</div>
+      <canvas id="kde-mfe-pair-${pi}" style="width:100%;height:180px"></canvas>
+    </div>`;
+    html += `</div>`;
+  });
+
+  // ── SECTION C: Drift Summary Table ────────────────────────────────────────
+  if(pairs.length > 0){
+    const bestVar = findBestVariant(pairs);
+    html += secHeader('Drift Summary — ' + bestVar.name + ' Stop');
+
+    html += `<div style="overflow-x:auto;margin-bottom:12px"><table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden">`;
+    html += `<thead><tr style="border-bottom:1px solid var(--border);color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:0.06em">`;
+    html += `<th style="padding:8px 12px;text-align:left">Metric</th>`;
+    pairs.forEach((p, pi) => {
+      html += `<th style="padding:8px 8px;text-align:center;color:${p.train.color}">P${pi+1} Train</th>`;
+      html += `<th style="padding:8px 8px;text-align:center;color:${p.test.color}">P${pi+1} Test</th>`;
+      html += `<th style="padding:8px 8px;text-align:center">\u0394${pi+1}</th>`;
+    });
+    html += `</tr></thead><tbody>`;
+
+    const vi = bestVar.index;
+    [
+      {label:'Win Rate %', get: s=>s.wr*100, fmt: v=>v.toFixed(1)+'%'},
+      {label:'EV $/trade', get: s=>s.ev_r*RPT, fmt: v=>fmtDol(v)},
+      {label:'Profit Factor', get: s=>s.pf, fmt: v=>v.toFixed(2)},
+      {label:'Sharpe', get: s=>s.sharpe||0, fmt: v=>v.toFixed(2)},
+      {label:'Max DD %', get: s=>s.maxDDPct, fmt: v=>v.toFixed(1)+'%'},
+      {label:'Max Consec L', get: s=>s.mcl, fmt: v=>String(v)},
+    ].forEach(metric => {
+      html += `<tr style="border-bottom:1px solid color-mix(in srgb,var(--border) 50%,transparent)">`;
+      html += `<td style="padding:7px 12px;color:var(--text-muted)">${metric.label}</td>`;
+      pairs.forEach(p => {
+        const trV = metric.get(p.variants[vi].train);
+        const teV = metric.get(p.variants[vi].test);
+        html += `<td style="padding:7px 8px;text-align:center;color:var(--text-primary)">${metric.fmt(trV)}</td>`;
+        html += `<td style="padding:7px 8px;text-align:center;color:var(--text-primary);font-weight:600">${metric.fmt(teV)}</td>`;
+        html += `<td style="padding:7px 8px;text-align:center;font-weight:600;color:${deltaColor(trV, teV)}">${deltaStr(trV, teV)}</td>`;
+      });
+      html += `</tr>`;
+    });
+    html += `</tbody></table></div>`;
+
+    // Best variant callout
+    html += `<div style="background:var(--bg-card);border:1px solid var(--green-border);border-radius:10px;padding:14px 18px;margin-bottom:24px;display:flex;align-items:center;gap:12px">`;
+    html += `<span style="font-family:var(--font-data);font-size:12px;color:var(--text-muted)">Most Regime-Stable:</span>`;
+    html += `<span style="font-family:var(--font-data);font-size:13px;font-weight:700;color:var(--green)">${bestVar.name} Stop</span>`;
+    html += `<span style="font-family:var(--font-data);font-size:11px;color:var(--text-muted)">CV = ${(bestVar.cv*100).toFixed(1)}%</span>`;
+    html += `</div>`;
+  }
+
+  // ── SECTION D: Unpaired Ranges ────────────────────────────────────────────
+  if(unpairedRanges.length > 0){
+    html += secHeader('Unpaired Ranges \u2014 no walk-forward analysis');
+    const cols = Math.min(unpairedRanges.length, 3);
     html += `<div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:16px;margin-bottom:20px">`;
-    validRanges.forEach(r => {
+    unpairedRanges.forEach(r => {
       const s = r.stats;
-      const acctSize = 4500, rpt = 225;
-      const finalBal = acctSize + s.totalPnl;
-      const blown = s.blown;
-      const statusBadge = blown
+      if(!s) return;
+      const finalBal = ACCT + s.totalPnl;
+      const statusBadge = s.blown
         ? '<span style="font-family:var(--font-data);font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:var(--red)">BLOWN</span>'
         : '<span style="font-family:var(--font-data);font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:var(--green)">SAFE</span>';
 
       html += `<div style="border-left:3px solid ${r.color};border-radius:10px;background:var(--bg-card);overflow:hidden">`;
-      // Header
       html += `<div style="padding:14px 16px;border-bottom:1px solid var(--border)">
         <div style="font-family:var(--font-data);font-size:13px;font-weight:800;color:${r.color};letter-spacing:-0.01em">${r.label}</div>
-        <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-top:3px">${s.n} trades · $${rpt}/trade ${statusBadge}</div>
+        <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-top:3px">${s.n} trades · $${RPT}/trade ${statusBadge}</div>
       </div>`;
-      // Metric rows
       const row = (label, val, color) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;border-bottom:1px solid color-mix(in srgb,var(--border) 50%,transparent)">
         <span style="font-family:var(--font-data);font-size:12px;color:var(--text-muted)">${label}</span>
         <span style="font-family:var(--font-data);font-size:13px;font-weight:700;color:${color}">${val}</span>
       </div>`;
       html += row('Win Rate %', (s.wr*100).toFixed(2), statColor(s.wr, 0.55, 0.45, false));
-      html += row('EV R/trade', s.ev_r.toFixed(3), statColor(s.ev_r, 0.05, -0.05, false));
-      html += row('EV $/trade', '$'+(s.ev_r * rpt).toFixed(2), statColor(s.ev_r, 0.05, -0.05, false));
-      html += row('Sharpe', s.sharpe != null ? s.sharpe.toFixed(2) : '\u2014', s.sharpe != null ? statColor(s.sharpe, 1.5, 0.5, false) : 'var(--text-muted)');
+      html += row('EV $/trade', fmtDol(s.ev_r * RPT), statColor(s.ev_r, 0.05, -0.05, false));
       html += row('Profit Factor', s.pf.toFixed(2), statColor(s.pf, 1.5, 1.0, false));
-      html += row('CE', s.ce.toFixed(3), statColor(s.ce, 0.1, 0, false));
-      html += row('Max DD $', '-$'+Math.round(s.maxDDPct/100*acctSize).toLocaleString(), statColor(s.maxDDPct, 10, 25, true));
-      html += row('Max DD %', s.maxDDPct.toFixed(2)+'%', statColor(s.maxDDPct, 10, 25, true));
-      html += row('Max Consec L', s.mcl, statColor(s.mcl, 5, 10, true));
-      html += row('Max Consec W', s.mcw, statColor(s.mcw, 5, 3, false));
-      html += row('Total $', '$'+s.totalPnl.toLocaleString(), statColor(s.totalPnl, 0, -1, false));
-      html += row('Final Bal $', '$'+Math.round(finalBal).toLocaleString(), statColor(finalBal, acctSize, acctSize*0.5, false));
+      html += row('Sharpe', s.sharpe != null ? s.sharpe.toFixed(2) : '\u2014', s.sharpe != null ? statColor(s.sharpe, 1.5, 0.5, false) : 'var(--text-muted)');
+      html += row('Total $', fmtDol(s.totalPnl), statColor(s.totalPnl, 0, -1, false));
+      html += row('Final Bal $', fmtDol(finalBal), statColor(finalBal, ACCT, ACCT*0.5, false));
       html += `</div>`;
     });
     html += `</div>`;
   }
 
-  // ── SECTION C: Stability Dashboard ────────────────────────────────────────
-  html += secHeader('Stability Dashboard');
-  const chartIds = ['stab-wr','stab-ev','stab-pf','stab-ce','stab-dd','stab-mcl','stab-sharpe','stab-avgwinr','stab-longwr-shortwr','stab-longev-shortev'];
-  html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px">`;
-  ['Win Rate %','EV (R)','Profit Factor','CE'].forEach((t,i) => {
-    html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px"><canvas id="${chartIds[i]}" style="width:100%;height:160px"></canvas></div>`;
-  });
-  html += `</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px">`;
-  ['Max DD%','Max Consec Losses','Sharpe','Avg Win R'].forEach((t,i) => {
-    html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px"><canvas id="${chartIds[i+4]}" style="width:100%;height:160px"></canvas></div>`;
-  });
-  html += `</div><div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:20px">`;
-  ['Long WR vs Short WR','Long EV vs Short EV'].forEach((t,i) => {
-    html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px"><canvas id="${chartIds[i+8]}" style="width:100%;height:160px"></canvas></div>`;
-  });
-  html += `</div>`;
+  // ── SECTION E: Trades Table ───────────────────────────────────────────────
+  const allTradesForTable = [
+    ...pairs.flatMap(p => p.test.trades),
+    ...unpairedRanges.flatMap(u => u.trades)
+  ].sort((a,b) => b.date.localeCompare(a.date));
 
-  // ── SECTION D: Hourly Edge Persistence ────────────────────────────────────
-  html += secHeader('Hourly Edge Persistence');
-  html += `<div style="overflow-x:auto;margin-bottom:20px"><table class="ct" style="width:100%"><thead><tr><th style="text-align:left">Hour</th>`;
-  chartGroups.forEach(g => { html += `<th style="color:${g.color}">${g.label}</th>`; });
-  html += `</tr></thead><tbody>`;
-  for(let h = 7; h <= 16; h++){
-    html += `<tr><td style="font-weight:600;font-family:var(--font-data);font-size:11px">${String(h).padStart(2,'0')}:00</td>`;
-    chartGroups.forEach(g => {
-      const b = g.stats.byHour[h];
-      if(b && b.n > 0){
-        const wrVal = b.wr * 100;
-        const bg = wrVal > 60 ? 'rgba(34,197,94,0.2)' : wrVal >= 50 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)';
-        const col = wrVal > 60 ? 'var(--green)' : wrVal >= 50 ? 'var(--amber)' : 'var(--red)';
-        html += `<td style="background:${bg};text-align:center"><span style="color:${col};font-weight:600;font-family:var(--font-data);font-size:11px">${wrVal.toFixed(1)}%</span> <span style="color:var(--text-muted);font-size:9px">(${b.n})</span></td>`;
-      } else {
-        html += `<td style="text-align:center;color:var(--text-muted);font-size:10px">\u2014</td>`;
-      }
-    });
-    html += `</tr>`;
-  }
-  html += `</tbody></table></div>`;
-
-  // ── SECTION E: MAE Deep Study ─────────────────────────────────────────────
-  html += secHeader('MAE Deep Study');
-  // E1: Percentile table
-  html += `<div style="overflow-x:auto;margin-bottom:16px"><table class="ct" style="width:100%"><thead><tr><th>Percentile</th>`;
-  chartGroups.forEach(g => { html += `<th style="color:${g.color}">${g.label}</th>`; });
-  html += `</tr></thead><tbody>`;
-  ['p5','p10','p25','p50','p75','p90','p95'].forEach(p => {
-    html += `<tr><td style="font-weight:600;font-family:var(--font-data);font-size:11px">${p.toUpperCase()}</td>`;
-    chartGroups.forEach(g => { html += `<td style="font-family:var(--font-data);font-size:11px;text-align:center">${g.stats.maePercentiles[p].toFixed(4)}</td>`; });
-    html += `</tr>`;
-  });
-  html += `</tbody></table></div>`;
-  // E2-E4: Mode, Median, Std bar charts + E5: KDE
-  html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">`;
-  html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px"><canvas id="mae-mode-chart" style="width:100%;height:160px"></canvas></div>`;
-  html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px"><canvas id="mae-median-chart" style="width:100%;height:160px"></canvas></div>`;
-  html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px"><canvas id="mae-std-chart" style="width:100%;height:160px"></canvas></div>`;
-  html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px"><canvas id="mae-kde-chart" style="width:100%;height:160px"></canvas></div>`;
-  html += `</div>`;
-
-  // ── SECTION F: MFE Deep Study ─────────────────────────────────────────────
-  html += secHeader('MFE Deep Study');
-  html += `<div style="overflow-x:auto;margin-bottom:16px"><table class="ct" style="width:100%"><thead><tr><th>Percentile</th>`;
-  chartGroups.forEach(g => { html += `<th style="color:${g.color}">${g.label}</th>`; });
-  html += `</tr></thead><tbody>`;
-  ['p5','p10','p25','p50','p75','p90','p95'].forEach(p => {
-    html += `<tr><td style="font-weight:600;font-family:var(--font-data);font-size:11px">${p.toUpperCase()}</td>`;
-    chartGroups.forEach(g => { html += `<td style="font-family:var(--font-data);font-size:11px;text-align:center">${g.stats.mfePercentiles[p].toFixed(4)}</td>`; });
-    html += `</tr>`;
-  });
-  html += `</tbody></table></div>`;
-  html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">`;
-  html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px"><canvas id="mfe-mode-chart" style="width:100%;height:160px"></canvas></div>`;
-  html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px"><canvas id="mfe-median-chart" style="width:100%;height:160px"></canvas></div>`;
-  html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px"><canvas id="mfe-std-chart" style="width:100%;height:160px"></canvas></div>`;
-  html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px"><canvas id="mfe-kde-chart" style="width:100%;height:160px"></canvas></div>`;
-  html += `</div>`;
-
-  // ── SECTION G: MFE/MAE Efficiency ─────────────────────────────────────────
-  html += secHeader('MFE/MAE Efficiency');
-  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">`;
-  html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px"><canvas id="efficiency-ratio-chart" style="width:100%;height:220px"></canvas></div>`;
-  html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px"><canvas id="efficiency-scatter-chart" style="width:100%;height:220px"></canvas></div>`;
-  html += `</div>`;
-
-  // ── SECTION H: R-Distribution ─────────────────────────────────────────────
-  html += secHeader('R-Distribution');
-  html += `<div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:20px">`;
-  html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px"><canvas id="rdist-hist-chart" style="width:100%;height:220px"></canvas></div>`;
-  html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px"><canvas id="rdist-avgwin-chart" style="width:100%;height:220px"></canvas></div>`;
-  html += `</div>`;
-
-  // ── SECTION I: Equity Curve Overlay ────────────────────────────────────────
-  html += secHeader('Equity Curve Overlay');
-  html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:20px"><canvas id="equity-overlay-chart" style="width:100%;height:280px"></canvas></div>`;
-
-  // ── SECTION J: Volatility Regime ──────────────────────────────────────────
-  html += secHeader('Volatility Regime (Risk Size)');
-  // J1: Quartile stats table
-  html += `<div style="overflow-x:auto;margin-bottom:16px"><table class="ct" style="width:100%"><thead><tr><th>Quartile</th>`;
-  chartGroups.forEach(g => { html += `<th colspan="3" style="color:${g.color};text-align:center">${g.label}</th>`; });
-  html += `</tr><tr><th></th>`;
-  chartGroups.forEach(() => { html += `<th style="font-size:9px;color:var(--text-muted)">n</th><th style="font-size:9px;color:var(--text-muted)">WR</th><th style="font-size:9px;color:var(--text-muted)">EV</th>`; });
-  html += `</tr></thead><tbody>`;
-  [{key:'low',label:'Low'},{key:'medLow',label:'Med-Low'},{key:'medHigh',label:'Med-High'},{key:'high',label:'High'}].forEach(q => {
-    html += `<tr><td style="font-weight:600;font-family:var(--font-data);font-size:11px">${q.label}</td>`;
-    chartGroups.forEach(g => {
-      const b = g.stats.riskPtsStats.quartiles[q.key];
-      html += `<td style="text-align:center;font-family:var(--font-data);font-size:11px">${b.n}</td>`;
-      html += `<td style="text-align:center;font-family:var(--font-data);font-size:11px;color:${statColor(b.wr, 0.55, 0.45, false)}">${pct(b.wr)}</td>`;
-      html += `<td style="text-align:center;font-family:var(--font-data);font-size:11px;color:${statColor(b.ev, 0.05, -0.05, false)}">${b.ev.toFixed(3)}</td>`;
-    });
-    html += `</tr>`;
-  });
-  html += `</tbody></table></div>`;
-  // J2: Avg risk_pts bar chart
-  html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:20px;max-width:400px"><canvas id="vol-avgrisk-chart" style="width:100%;height:180px"></canvas></div>`;
-
-  // ── SECTION K: Streak Analysis ────────────────────────────────────────────
-  html += secHeader('Streak Analysis');
-  html += `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">`;
-  html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px"><canvas id="streak-maxwin-chart" style="width:100%;height:180px"></canvas></div>`;
-  html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px"><canvas id="streak-maxloss-chart" style="width:100%;height:180px"></canvas></div>`;
-  html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px"><canvas id="streak-avg-chart" style="width:100%;height:180px"></canvas></div>`;
-  html += `</div>`;
-
-  // Legend
-  html += `<div style="display:flex;gap:16px;justify-content:center;margin-bottom:32px;flex-wrap:wrap">`;
-  chartGroups.forEach(g => {
-    html += `<span style="display:flex;align-items:center;gap:6px;font-family:var(--font-data);font-size:10px;color:var(--text-muted)"><span style="width:10px;height:10px;border-radius:3px;background:${g.color};display:inline-block"></span>${g.label}</span>`;
-  });
-  html += `</div>`;
-
-  // ── SECTION L: Trades Table ──────────────────────────────────────────────
-  const allFilteredSorted = validRanges.flatMap(r => r.trades).sort((a,b) => b.date.localeCompare(a.date));
-  if(allFilteredSorted.length > 0){
-    html += secHeader(`Trades (${allFilteredSorted.length})`);
+  if(allTradesForTable.length > 0){
+    html += secHeader(`Trades (${allTradesForTable.length})`);
     const DOW_NAMES = {0:'Sun',1:'Mon',2:'Tue',3:'Wed',4:'Thu',5:'Fri',6:'Sat'};
     html += `<div style="overflow-x:auto;max-height:600px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;margin-bottom:20px">
     <table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:12px;">
@@ -2157,30 +2198,25 @@ function renderCustomViewV2(rangeResults, combinedStats){
         <th style="padding:8px 6px;text-align:right;">MFE %</th>
         <th style="padding:8px 6px;text-align:right;">R</th>
         <th style="padding:8px 6px;text-align:center;">Result</th>
-        <th style="padding:8px 6px;text-align:center;">Range</th>
       </tr></thead><tbody>`;
-    allFilteredSorted.forEach((t, i) => {
+    allTradesForTable.forEach((t, i) => {
       const bg = i % 2 === 0 ? 'transparent' : 'color-mix(in srgb,var(--bg-raised) 60%,transparent)';
       const isWin = t.outcome === 'WIN';
       const resColor = isWin ? 'var(--green)' : 'var(--red)';
       const dirColor = t.direction === 'LONG' ? 'var(--green)' : 'var(--red)';
-      const dirArrow = t.direction === 'LONG' ? '▲' : '▼';
+      const dirArrow = t.direction === 'LONG' ? '\u25B2' : '\u25BC';
       const dowName = t.dow_name || DOW_NAMES[t.dow] || '?';
-      // Find which range this trade belongs to
-      const rIdx = rangeResults.findIndex(r => t.date >= r.label.split(' to ')[0] && t.date <= r.label.split(' to ')[1]);
-      const rangeColor = rIdx >= 0 ? rangeResults[rIdx].color : 'var(--text-muted)';
       html += `<tr style="background:${bg};border-bottom:1px solid color-mix(in srgb,var(--border-mid) 40%,transparent);">
         <td style="padding:7px 10px;color:var(--text-primary);">${String(t.date).slice(0,10)}</td>
         <td style="padding:7px 6px;color:var(--text-muted);">${dowName}</td>
         <td style="padding:7px 6px;text-align:center;color:var(--text-primary);">${String(t.hr).padStart(2,'0')}:${String(t.mn ?? 0).padStart(2,'0')}</td>
         <td style="padding:7px 6px;color:${dirColor};font-weight:700;">${dirArrow} ${t.direction}</td>
-        <td style="padding:7px 6px;text-align:right;color:var(--text-primary);">${t.entry_price != null ? t.entry_price.toFixed(2) : '—'}</td>
-        <td style="padding:7px 6px;text-align:right;color:var(--text-primary);">${t.risk_pts != null ? t.risk_pts.toFixed(1) : '—'}</td>
-        <td style="padding:7px 6px;text-align:right;color:var(--red);font-size:11px;">${t.mae_pct != null ? t.mae_pct.toFixed(4) + '%' : '—'}</td>
-        <td style="padding:7px 6px;text-align:right;color:var(--green);font-size:11px;">${t.mfe_pct != null ? t.mfe_pct.toFixed(4) + '%' : '—'}</td>
-        <td style="padding:7px 6px;text-align:right;color:${resColor};font-weight:600;">${t.r != null ? (t.r > 0 ? '+' : '') + t.r.toFixed(2) : '—'}</td>
-        <td style="padding:7px 6px;text-align:center;font-weight:700;color:${resColor};">${isWin ? '✓ WIN' : '✗ LOSS'}</td>
-        <td style="padding:7px 6px;text-align:center;"><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${rangeColor}"></span></td>
+        <td style="padding:7px 6px;text-align:right;color:var(--text-primary);">${t.entry_price != null ? t.entry_price.toFixed(2) : '\u2014'}</td>
+        <td style="padding:7px 6px;text-align:right;color:var(--text-primary);">${t.risk_pts != null ? t.risk_pts.toFixed(1) : '\u2014'}</td>
+        <td style="padding:7px 6px;text-align:right;color:var(--red);font-size:11px;">${t.mae_pct != null ? t.mae_pct.toFixed(4) + '%' : '\u2014'}</td>
+        <td style="padding:7px 6px;text-align:right;color:var(--green);font-size:11px;">${t.mfe_pct != null ? t.mfe_pct.toFixed(4) + '%' : '\u2014'}</td>
+        <td style="padding:7px 6px;text-align:right;color:${resColor};font-weight:600;">${t.r != null ? (t.r > 0 ? '+' : '') + t.r.toFixed(2) : '\u2014'}</td>
+        <td style="padding:7px 6px;text-align:center;font-weight:700;color:${resColor};">${isWin ? '\u2713 WIN' : '\u2717 LOSS'}</td>
       </tr>`;
     });
     html += '</tbody></table></div>';
@@ -2188,114 +2224,123 @@ function renderCustomViewV2(rangeResults, combinedStats){
 
   cv.innerHTML = html;
 
-  // ── DRAW ALL CHARTS ───────────────────────────────────────────────────────
+  // ── DRAW KDE OVERLAYS ─────────────────────────────────────────────────────
+  pairs.forEach((pair, pi) => {
+    ['mae','mfe'].forEach(type => {
+      const canvas = document.getElementById(`kde-${type}-pair-${pi}`);
+      if(!canvas) return;
 
-  // Section C: Stability charts
-  const stabMetrics = [
-    {id:'stab-wr', get: s=>s.wr*100, title:'Win Rate %', fmt: v=>v.toFixed(1)+'%'},
-    {id:'stab-ev', get: s=>s.ev_r, title:'EV (R)', fmt: v=>v.toFixed(3)},
-    {id:'stab-pf', get: s=>s.pf, title:'Profit Factor', fmt: v=>v.toFixed(2)},
-    {id:'stab-ce', get: s=>s.ce, title:'CE', fmt: v=>v.toFixed(3)},
-    {id:'stab-dd', get: s=>s.maxDDPct, title:'Max DD%', fmt: v=>v.toFixed(1)+'%'},
-    {id:'stab-mcl', get: s=>s.mcl, title:'Max Consec Losses', fmt: v=>String(v)},
-    {id:'stab-sharpe', get: s=>s.sharpe||0, title:'Sharpe', fmt: v=>v.toFixed(2)},
-    {id:'stab-avgwinr', get: s=>s.avgWinR, title:'Avg Win R', fmt: v=>v.toFixed(3)},
-  ];
-  stabMetrics.forEach(m => {
-    const c = document.getElementById(m.id);
-    if(!c) return;
-    const groups = chartGroups.map(g => ({label: g.label, values: [{value: m.get(g.stats), color: g.color, name: g.label}]}));
-    drawGroupedBars(c, groups, {title: m.title, formatVal: m.fmt, formatY: m.fmt});
+      // Get train density from precomputed params
+      const trainDensity = type === 'mae' ? pair.trainParams.maeDensity : pair.trainParams.mfeDensity;
+      // Compute test density
+      const testVals = pair.test.trades.map(t => t[type+'_pct']).filter(v => v != null && v > 0);
+      const testDensity = computeKDE(testVals);
+
+      if(trainDensity.length === 0 && testDensity.length === 0) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      canvas.width = w * dpr; canvas.height = h * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+
+      const pad = {l:50, r:16, t:10, b:40};
+      const plotW = w - pad.l - pad.r, plotH = h - pad.t - pad.b;
+      const gridColor = getComputedStyle(document.documentElement).getPropertyValue('--grid-line').trim() || 'rgba(255,255,255,0.04)';
+      const mutedColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#4a6480';
+
+      // Find global bounds
+      const allPts = [...trainDensity, ...testDensity];
+      let xMin = Infinity, xMax = -Infinity, yMax = 0;
+      allPts.forEach(p => { if(p.x < xMin) xMin = p.x; if(p.x > xMax) xMax = p.x; if(p.y > yMax) yMax = p.y; });
+      xMin = Math.max(0, xMin);
+      const xRange = xMax - xMin || 1;
+      yMax = yMax * 1.15 || 1;
+
+      function toX(v){ return pad.l + ((v - xMin) / xRange) * plotW; }
+      function toY(v){ return pad.t + plotH - (v / yMax) * plotH; }
+
+      // Grid lines
+      ctx.strokeStyle = gridColor; ctx.lineWidth = 1;
+      ctx.font = '9px IBM Plex Mono'; ctx.fillStyle = mutedColor;
+      for(let i = 0; i <= 3; i++){
+        const y = pad.t + (i/3) * plotH;
+        ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w-pad.r, y); ctx.stroke();
+        ctx.textAlign = 'right';
+        ctx.fillText((yMax * (3-i)/3).toFixed(3), pad.l - 4, y + 3);
+      }
+      // X-axis labels
+      ctx.textAlign = 'center';
+      for(let i = 0; i <= 4; i++){
+        const xVal = xMin + (i/4) * xRange;
+        ctx.fillText(xVal.toFixed(3)+'%', toX(xVal), h - pad.b + 14);
+      }
+
+      // Draw train curve (dashed, 40% opacity)
+      if(trainDensity.length > 0){
+        ctx.save();
+        ctx.setLineDash([5, 4]);
+        ctx.strokeStyle = pair.train.color;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.4;
+        ctx.beginPath();
+        trainDensity.forEach((p, i) => {
+          const x = toX(p.x), y = toY(p.y);
+          if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Draw test curve (solid, full opacity with fill)
+      if(testDensity.length > 0){
+        ctx.save();
+        ctx.strokeStyle = pair.test.color;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 1;
+        ctx.beginPath();
+        testDensity.forEach((p, i) => {
+          const x = toX(p.x), y = toY(p.y);
+          if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+
+        // Fill under test curve
+        ctx.globalAlpha = 0.08;
+        ctx.fillStyle = pair.test.color;
+        ctx.beginPath();
+        testDensity.forEach((p, i) => {
+          const x = toX(p.x), y = toY(p.y);
+          if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.lineTo(toX(testDensity[testDensity.length-1].x), pad.t + plotH);
+        ctx.lineTo(toX(testDensity[0].x), pad.t + plotH);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Legend
+      const legendY = h - 6;
+      ctx.font = '9px IBM Plex Mono';
+      ctx.textAlign = 'left';
+      // Train legend
+      ctx.save();
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = pair.train.color;
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath(); ctx.moveTo(pad.l, legendY); ctx.lineTo(pad.l+20, legendY); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = mutedColor;
+      ctx.fillText('Train', pad.l+24, legendY+3);
+      // Test legend
+      ctx.strokeStyle = pair.test.color;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(pad.l+60, legendY); ctx.lineTo(pad.l+80, legendY); ctx.stroke();
+      ctx.fillText('Test', pad.l+84, legendY+3);
+    });
   });
-  // Long WR vs Short WR
-  const lwsw = document.getElementById('stab-longwr-shortwr');
-  if(lwsw){
-    const groups = chartGroups.map(g => ({label: g.label, values: [
-      {value: g.stats.longWR*100, color: 'var(--green)', name: 'Long'},
-      {value: g.stats.shortWR*100, color: 'var(--red)', name: 'Short'}
-    ]}));
-    drawGroupedBars(lwsw, groups, {title: 'Long WR vs Short WR', formatVal: v=>v.toFixed(1)+'%', formatY: v=>v.toFixed(0)+'%'});
-  }
-  // Long EV vs Short EV
-  const lese = document.getElementById('stab-longev-shortev');
-  if(lese){
-    const groups = chartGroups.map(g => ({label: g.label, values: [
-      {value: g.stats.longEV, color: 'var(--green)', name: 'Long'},
-      {value: g.stats.shortEV, color: 'var(--red)', name: 'Short'}
-    ]}));
-    drawGroupedBars(lese, groups, {title: 'Long EV vs Short EV', formatVal: v=>v.toFixed(3), formatY: v=>v.toFixed(2)});
-  }
-
-  // Section E: MAE charts
-  ['mae','mfe'].forEach(type => {
-    const key = type+'Dist';
-    const pKey = type+'Percentiles';
-    const dKey = type+'Density';
-    // Mode
-    const modeC = document.getElementById(type+'-mode-chart');
-    if(modeC) drawGroupedBars(modeC, chartGroups.map(g => ({label: g.label, values: [{value: g.stats[key].mode, color: g.color}]})), {title: type.toUpperCase()+' Mode', formatVal: v=>v.toFixed(4)});
-    // Median
-    const medC = document.getElementById(type+'-median-chart');
-    if(medC) drawGroupedBars(medC, chartGroups.map(g => ({label: g.label, values: [{value: g.stats[key].median, color: g.color}]})), {title: type.toUpperCase()+' Median', formatVal: v=>v.toFixed(4)});
-    // Std
-    const stdC = document.getElementById(type+'-std-chart');
-    if(stdC) drawGroupedBars(stdC, chartGroups.map(g => ({label: g.label, values: [{value: g.stats[key].std, color: g.color}]})), {title: type.toUpperCase()+' Std Dev', formatVal: v=>v.toFixed(4)});
-    // KDE overlay
-    const kdeC = document.getElementById(type+'-kde-chart');
-    if(kdeC){
-      const series = chartGroups.filter(g => g.stats[dKey] && g.stats[dKey].length > 0).map(g => ({color: g.color, points: g.stats[dKey]}));
-      drawLineChart(kdeC, series, {title: type.toUpperCase()+' Density (KDE)', xLabel: type.toUpperCase()+' %', formatY: v=>v.toFixed(3)});
-    }
-  });
-
-  // Section G: Efficiency
-  const effRatio = document.getElementById('efficiency-ratio-chart');
-  if(effRatio) drawGroupedBars(effRatio, chartGroups.map(g => ({label: g.label, values: [{value: g.stats.mfeMaeRatio, color: g.color}]})), {title: 'MFE/MAE Ratio (Median)', formatVal: v=>v.toFixed(2)});
-  const effScatter = document.getElementById('efficiency-scatter-chart');
-  if(effScatter){
-    const datasets = chartGroups.filter(g => g.stats.scatterPoints && g.stats.scatterPoints.length > 0).map(g => ({color: g.color, points: g.stats.scatterPoints.map(p => ({x: p.mae, y: p.mfe}))}));
-    drawScatterPlot(effScatter, datasets, {xLabel: 'MAE%', yLabel: 'MFE%'});
-  }
-
-  // Section H: R-distribution
-  const rBuckets = ['-1','0-1','1-2','2-3','3-5','5+'];
-  const rdistHist = document.getElementById('rdist-hist-chart');
-  if(rdistHist){
-    const groups = rBuckets.map(b => ({label: b+'R', values: chartGroups.map(g => ({value: g.stats.rDistribution[b], color: g.color, name: g.label}))}));
-    drawGroupedBars(rdistHist, groups, {title: 'R-Distribution', formatVal: v=>String(Math.round(v)), formatY: v=>String(Math.round(v))});
-  }
-  const rdistAvgWin = document.getElementById('rdist-avgwin-chart');
-  if(rdistAvgWin) drawGroupedBars(rdistAvgWin, chartGroups.map(g => ({label: g.label, values: [{value: g.stats.avgWinR, color: g.color}]})), {title: 'Avg Win R', formatVal: v=>v.toFixed(3)});
-
-  // Section I: Equity curve overlay
-  const eqChart = document.getElementById('equity-overlay-chart');
-  if(eqChart){
-    const series = chartGroups.filter(g => g.stats.equityCurve && g.stats.equityCurve.length > 1).map(g => ({
-      color: g.color,
-      points: g.stats.equityCurve.map((v,i) => ({x:i, y:v}))
-    }));
-    let yMin = Infinity, yMax = -Infinity;
-    series.forEach(s => s.points.forEach(p => { if(p.y < yMin) yMin = p.y; if(p.y > yMax) yMax = p.y; }));
-    drawLineChart(eqChart, series, {xLabel: 'Trade #', yMin: Math.min(yMin, 0), yMax: yMax * 1.05, formatY: v=>'$'+Math.round(v).toLocaleString()});
-  }
-
-  // Section J: Avg risk_pts
-  const volAvg = document.getElementById('vol-avgrisk-chart');
-  if(volAvg) drawGroupedBars(volAvg, chartGroups.map(g => ({label: g.label, values: [{value: g.stats.riskPtsStats.mean, color: g.color}]})), {title: 'Avg Risk (pts)', formatVal: v=>v.toFixed(1)});
-
-  // Section K: Streak charts
-  const streakMaxW = document.getElementById('streak-maxwin-chart');
-  if(streakMaxW) drawGroupedBars(streakMaxW, chartGroups.map(g => ({label: g.label, values: [{value: g.stats.maxWinStreak, color: g.color}]})), {title: 'Max Win Streak', formatVal: v=>String(Math.round(v)), formatY: v=>String(Math.round(v))});
-  const streakMaxL = document.getElementById('streak-maxloss-chart');
-  if(streakMaxL) drawGroupedBars(streakMaxL, chartGroups.map(g => ({label: g.label, values: [{value: g.stats.maxLossStreak, color: g.color}]})), {title: 'Max Loss Streak', formatVal: v=>String(Math.round(v)), formatY: v=>String(Math.round(v))});
-  const streakAvg = document.getElementById('streak-avg-chart');
-  if(streakAvg){
-    const groups = chartGroups.map(g => ({label: g.label, values: [
-      {value: g.stats.avgWinStreak, color: 'var(--green)', name: 'Win'},
-      {value: g.stats.avgLossStreak, color: 'var(--red)', name: 'Loss'}
-    ]}));
-    drawGroupedBars(streakAvg, groups, {title: 'Avg Win / Loss Streak', formatVal: v=>v.toFixed(1), formatY: v=>v.toFixed(1)});
-  }
 }
 
 // ── MAIN RENDER ────────────────────────────────────────────────────────────
