@@ -200,11 +200,13 @@ f_reg_label(label l) => array.push(fired_labels, l)
 f_reg_box(box b)     => array.push(fired_boxes, b)
 
 // helper: trim oldest drawings to keep only max_setups worth
-// each setup creates ~15 lines, ~8 labels, ~3 boxes
+// Per setup (all features on): 5 base lines + 1 tspot + 4 proj = 10 lines
+//   5 base labels + 2 C-labels + 1 tspot-type + 4 proj = 12 labels
+//   2 base boxes + 1 tspot = 3 boxes
 f_trim_fired() =>
-    _per_setup_lines  = 8
+    _per_setup_lines  = 10
     _per_setup_labels = 12
-    _per_setup_boxes  = 2
+    _per_setup_boxes  = 3
     _max_lines  = max_setups * _per_setup_lines
     _max_labels = max_setups * _per_setup_labels
     _max_boxes  = max_setups * _per_setup_boxes
