@@ -3106,18 +3106,217 @@ function _drawDistHist(canvas, hist, which, label, color){
 }
 
 
+// ── CLIENT-SIDE EXCURSION STUDY COMPUTATION ─────────────────────────────────
+// Replicates Python's _full_mae_stats / _full_mfe_stats entirely in JS
+// so MAE/MFE studies always match the current Period/TF/Profile slice.
+function computeRichStudy(trades, field) {
+  const vals = trades.map(t => t[field]).filter(v => v != null && v > 0);
+  const n = vals.length;
+  if (n < 3) return null;
+
+  const sorted = vals.slice().sort((a,b) => a-b);
+
+  // Basic stats
+  const mean = sorted.reduce((s,v) => s+v, 0) / n;
+  const median = n % 2 === 0 ? (sorted[n/2-1] + sorted[n/2]) / 2 : sorted[Math.floor(n/2)];
+  const variance = sorted.reduce((s,v) => s + (v-mean)**2, 0) / (n-1);
+  const std = Math.sqrt(variance);
+
+  // Mode via binning
+  const binSize = std > 0 ? std / 5 : 0.01;
+  const bins = {};
+  sorted.forEach(v => { const b = Math.round(v / binSize) * binSize; bins[b] = (bins[b]||0)+1; });
+  let mode = 0, modeCount = 0;
+  Object.entries(bins).forEach(([b,c]) => { if(c > modeCount){ modeCount=c; mode=+b; }});
+
+  // Skewness and kurtosis
+  const m3 = std > 0 ? sorted.reduce((s,v) => s + ((v-mean)/std)**3, 0) / n : 0;
+  const m4 = std > 0 ? sorted.reduce((s,v) => s + ((v-mean)/std)**4, 0) / n : 3;
+  const skewness = Math.round(m3 * 10) / 10;
+  const kurtosis = Math.round((m4 - 3) * 10) / 10;
+
+  // Percentiles
+  function pct(p) {
+    const idx = (p/100) * (n-1);
+    const lo = Math.floor(idx), hi = Math.ceil(idx);
+    return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi]-sorted[lo]) * (idx-lo);
+  }
+  const percentiles = {};
+  [5,10,15,20,25,30,35,40,50,60,65,70,75,80,85,90,95,99].forEach(p => {
+    percentiles['p'+p] = Math.round(pct(p) * 10000) / 10000;
+  });
+
+  // Lognormal fit
+  const logVals = sorted.filter(v => v > 0).map(v => Math.log(v));
+  const logMu = logVals.reduce((s,v) => s+v, 0) / logVals.length;
+  const logSigma = Math.sqrt(logVals.reduce((s,v) => s + (v-logMu)**2, 0) / (logVals.length-1));
+  // Goodness of fit: correlation between sorted log values and theoretical normal quantiles
+  let goodness = 0.99;
+  if (logVals.length >= 5) {
+    const nL = logVals.length;
+    const sortedLog = logVals.slice().sort((a,b) => a-b);
+    // Theoretical quantiles (inverse normal approximation via Beasley-Springer-Moro)
+    const normInv = p => {
+      // Rational approx for inverse normal CDF (Abramowitz & Stegun)
+      if (p <= 0 || p >= 1) return 0;
+      const t = p < 0.5 ? Math.sqrt(-2 * Math.log(p)) : Math.sqrt(-2 * Math.log(1-p));
+      const c0=2.515517, c1=0.802853, c2=0.010328, d1=1.432788, d2=0.189269, d3=0.001308;
+      const r = t - (c0 + c1*t + c2*t*t) / (1 + d1*t + d2*t*t + d3*t*t*t);
+      return p < 0.5 ? -r : r;
+    };
+    const theoQ = [];
+    for (let i = 0; i < nL; i++) theoQ.push(normInv((i + 0.5) / nL));
+    // Pearson correlation between sortedLog and theoQ
+    const mX = sortedLog.reduce((s,v)=>s+v,0)/nL;
+    const mY = theoQ.reduce((s,v)=>s+v,0)/nL;
+    let sXY=0, sXX=0, sYY=0;
+    for (let i = 0; i < nL; i++) {
+      sXY += (sortedLog[i]-mX)*(theoQ[i]-mY);
+      sXX += (sortedLog[i]-mX)**2;
+      sYY += (theoQ[i]-mY)**2;
+    }
+    goodness = sXX > 0 && sYY > 0 ? Math.abs(sXY / Math.sqrt(sXX*sYY)) : 0;
+  }
+  const lognorm = {
+    mu: Math.round(logMu * 10000) / 10000,
+    sigma: Math.round(logSigma * 10000) / 10000,
+    implied_median: Math.round(Math.exp(logMu) * 10000) / 10000,
+    implied_mean: Math.round(Math.exp(logMu + logSigma**2/2) * 10000) / 10000,
+    implied_mode: Math.round(Math.exp(logMu - logSigma**2) * 10000) / 10000,
+    goodness: Math.round(goodness * 10000) / 10000
+  };
+
+  // Clusters (3-tier: 0->p33, p33->p75, p75+)
+  const p33 = pct(33), p75 = pct(75);
+  const tier1 = sorted.filter(v => v <= p33);
+  const tier2 = sorted.filter(v => v > p33 && v <= p75);
+  const tier3 = sorted.filter(v => v > p75);
+  const isMAE = field === 'mae_pct';
+  const clusterData = [
+    {label: isMAE ? 'Tight' : 'Small', range: '0 \u2013 ' + p33.toFixed(4) + '%',
+     n: tier1.length, pct_of_trades: Math.round(tier1.length/n*100),
+     mean: tier1.length ? Math.round(tier1.reduce((s,v)=>s+v,0)/tier1.length*10000)/10000 : 0,
+     median: tier1.length ? tier1[Math.floor(tier1.length/2)] : 0,
+     max: tier1.length ? tier1[tier1.length-1] : 0},
+    {label: 'Moderate', range: p33.toFixed(4) + '% \u2013 ' + p75.toFixed(4) + '%',
+     n: tier2.length, pct_of_trades: Math.round(tier2.length/n*100),
+     mean: tier2.length ? Math.round(tier2.reduce((s,v)=>s+v,0)/tier2.length*10000)/10000 : 0,
+     median: tier2.length ? tier2[Math.floor(tier2.length/2)] : 0,
+     max: tier2.length ? tier2[tier2.length-1] : 0},
+    {label: isMAE ? 'Wide' : 'Large', range: p75.toFixed(4) + '%+',
+     n: tier3.length, pct_of_trades: Math.round(tier3.length/n*100),
+     mean: tier3.length ? Math.round(tier3.reduce((s,v)=>s+v,0)/tier3.length*10000)/10000 : 0,
+     median: tier3.length ? tier3[Math.floor(tier3.length/2)] : 0,
+     max: tier3.length ? tier3[tier3.length-1] : 0}
+  ];
+
+  // Histogram (50 bins from 0 to p99)
+  const maxVal = pct(99);
+  const nBins = 50;
+  const binW = maxVal / nBins;
+  const histCounts = new Array(nBins).fill(0);
+  const histEdges = [];
+  for (let i = 0; i <= nBins; i++) histEdges.push(Math.round(i * binW * 10000) / 10000);
+  sorted.forEach(v => {
+    if (v > maxVal) { histCounts[nBins-1]++; return; }
+    const bi = Math.min(nBins-1, Math.floor(v / binW));
+    histCounts[bi]++;
+  });
+
+  // SL Sweep (MAE) or BE Triggers (MFE)
+  let sl_sweep = null, opt_sl = null, be_triggers = null, ptq_level = null, ptq_reach_rate = null;
+  const totalTrades = trades.length;
+
+  if (isMAE) {
+    sl_sweep = [];
+    let bestScore = -1;
+    [5,10,15,20,25,30,33,40,50,60,75,90].forEach(exceedPct => {
+      const thr = pct(exceedPct);
+      const touched = trades.filter(t => t[field] != null && t[field] >= thr);
+      const nt = touched.length;
+      if (nt === 0) return;
+      const nWin = touched.filter(t => t.outcome === 'WIN').length;
+      const nLoss = touched.filter(t => t.outcome === 'LOSS').length;
+      const pRec = Math.round(nWin / nt * 10000) / 10000;
+      const pKo = Math.round(nLoss / nt * 10000) / 10000;
+      const exc = Math.round(nt / totalTrades * 1000) / 10;
+      sl_sweep.push({exceed_pct: exceedPct, threshold: Math.round(thr*10000)/10000,
+                     n_exceeded: nt, p_recovered: pRec, p_ko: pKo, ev_cost: 0});
+      const score = pKo * exc;
+      if (score > bestScore) { bestScore = score; opt_sl = Math.round(thr*10000)/10000; }
+    });
+  } else {
+    be_triggers = [];
+    // Compute base EV from all trades
+    const rVals = trades.map(t => t.r).filter(v => v != null);
+    const baseEV = rVals.length > 0 ? rVals.reduce((s,v) => s+v, 0) / rVals.length : 0;
+
+    [5,10,15,20,25,30,33,40,50,60,75,90].forEach(reachRate => {
+      const thr = pct(100 - reachRate);
+      const reached = trades.filter(t => t[field] != null && t[field] >= thr);
+      const nr = reached.length;
+      if (nr === 0) return;
+      const nPos = reached.filter(t => t.outcome === 'WIN').length;
+      const pPos = Math.round(nPos / nr * 10000) / 10000;
+      const nRescued = reached.filter(t => t.outcome === 'LOSS').length;
+      // EV delta: rescued losses would become 0R instead of negative R
+      const rescuedLossR = reached.filter(t => t.outcome === 'LOSS').map(t => t.r).filter(v => v != null);
+      const savedR = rescuedLossR.length > 0 ? rescuedLossR.reduce((s,v) => s + Math.abs(v), 0) : 0;
+      const evDelta = totalTrades > 0 ? Math.round(savedR / totalTrades * 10000) / 10000 : 0;
+      const newEV = Math.round((baseEV + evDelta) * 10000) / 10000;
+      be_triggers.push({reach_rate: reachRate, trigger_pct: Math.round(thr*10000)/10000,
+                        n_reached: nr, p_pos_given: pPos, n_rescued: nRescued,
+                        ev_delta: evDelta, new_ev: newEV});
+      if (ptq_level === null && pPos >= 0.50) {
+        ptq_level = Math.round(thr*10000)/10000;
+        ptq_reach_rate = reachRate;
+      }
+    });
+  }
+
+  // CE score: concentration efficiency (median/mean ratio)
+  const ce = mean > 0 ? Math.round(median / mean * 100) / 100 : null;
+
+  // Bell curve stats
+  const bell = {
+    mean: Math.round(mean*10000)/10000, std: Math.round(std*10000)/10000,
+    plus_0_5s: Math.round((mean + 0.5*std)*10000)/10000,
+    plus_1s: Math.round((mean + std)*10000)/10000,
+    plus_1_5s: Math.round((mean + 1.5*std)*10000)/10000,
+    plus_2s: Math.round((mean + 2*std)*10000)/10000,
+  };
+
+  return {
+    n, mean: Math.round(mean*10000)/10000, median: Math.round(median*10000)/10000,
+    mode: Math.round(mode*10000)/10000, std: Math.round(std*10000)/10000,
+    skewness, kurtosis, ce,
+    percentiles, lognorm, clusters: clusterData,
+    histogram: { edges: histEdges, counts: histCounts },
+    ...(isMAE ? { sl_sweep, opt_sl } : { be_triggers, ptq_level, ptq_reach_rate }),
+    bell
+  };
+}
+
+
 // ── MAE STUDY (FPFVG-style) ───────────────────────────────────────────────────
 function renderMAEStudy(D) {
   const el = document.getElementById('mae-study-panel');
   if (!el) return;
 
-  // Pick data source based on segment
-  const dist = _maeSegment === 'wins' ? (D?.rich_mae_wins || D?.rich_mae)
-             : _maeSegment === 'losses' ? (D?.rich_mae_losses || D?.rich_mae)
-             : D?.rich_mae;
+  // Compute MAE stats client-side from recent_trades so data matches selected Period/TF/Profile
+  const allTrades = D?.recent_trades || [];
+  const winTrades = allTrades.filter(t => t.outcome === 'WIN');
+  const lossTrades = allTrades.filter(t => t.outcome === 'LOSS');
+  const maeAll = computeRichStudy(allTrades, 'mae_pct');
+  const maeWins = computeRichStudy(winTrades, 'mae_pct');
+  const maeLosses = computeRichStudy(lossTrades, 'mae_pct');
+
+  const dist = _maeSegment === 'wins' ? (maeWins || maeAll)
+             : _maeSegment === 'losses' ? (maeLosses || maeAll)
+             : maeAll;
   const ce   = dist?.ce ?? D?.risk_stats?.ce;
   if (!dist) {
-    el.innerHTML = `<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">No MAE study data — run <code>python3 model_stats.py</code> first.</div>`;
+    el.innerHTML = `<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">Not enough data for MAE study (need at least 3 trades with MAE &gt; 0).</div>`;
     return;
   }
 
@@ -3394,12 +3593,19 @@ function renderMFEStudy(D) {
   const el = document.getElementById('mfe-study-panel');
   if (!el) return;
 
-  // Pick data source based on segment
-  const dist = _mfeSegment === 'wins' ? (D?.rich_mfe_wins || D?.rich_mfe)
-             : _mfeSegment === 'losses' ? (D?.rich_mfe_losses || D?.rich_mfe)
-             : D?.rich_mfe;
+  // Compute MFE stats client-side from recent_trades so data matches selected Period/TF/Profile
+  const allTrades = D?.recent_trades || [];
+  const winTrades = allTrades.filter(t => t.outcome === 'WIN');
+  const lossTrades = allTrades.filter(t => t.outcome === 'LOSS');
+  const mfeAll = computeRichStudy(allTrades, 'mfe_pct');
+  const mfeWins = computeRichStudy(winTrades, 'mfe_pct');
+  const mfeLosses = computeRichStudy(lossTrades, 'mfe_pct');
+
+  const dist = _mfeSegment === 'wins' ? (mfeWins || mfeAll)
+             : _mfeSegment === 'losses' ? (mfeLosses || mfeAll)
+             : mfeAll;
   if (!dist) {
-    el.innerHTML = `<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">No MFE study data — run <code>python3 model_stats.py</code> first.</div>`;
+    el.innerHTML = `<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">Not enough data for MFE study (need at least 3 trades with MFE &gt; 0).</div>`;
     return;
   }
 
