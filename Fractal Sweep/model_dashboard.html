@@ -505,12 +505,6 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 
   <!-- ══ TAB: FILTERS ══════════════════════════════════════════════════════ -->
   <div class="page-pane" id="pane-filters">
-    <div class="sec-label">Filter Impact · EV Waterfall</div>
-    <div class="panel">
-      <div class="ph"><span class="ph-title">EV Improvement Through Each Filter</span><span class="ph-note">Baseline → Refined · hover for detail</span></div>
-      <div class="pb"><div id="filter-waterfall"></div></div>
-    </div>
-
     <div class="sec-label">Filter Variant Analysis</div>
     <div id="filter-variants-panel"></div>
   </div>
@@ -703,7 +697,6 @@ function switchPageTab(tab){
     barChart(document.getElementById('dow-chart'), (D.by_dow||[]).map(d=>({group:d.dow_name,key:d.direction,val:+(d.wr*100).toFixed(1),n:d.n,ev:d.ev,pf:d.pf,avg_mae:d.avg_mae,avg_mfe:d.avg_mfe,avg_mae_hr:d.avg_mae_hr,avg_mfe_hr:d.avg_mfe_hr})),200,35,70);
   }
   if(tab === 'filters'){
-    filterWaterfall(document.getElementById('filter-waterfall'),D.filter_impact||[]);
     renderFilterVariants(D);
   }
   if(tab === 'risk'){
@@ -3296,15 +3289,6 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
   const _profileD = getProfileData(fullKey, activeProfile);
   if(_profileD){
-    // Filter Impact Waterfall
-    const fi = _profileD.filter_impact;
-    if(fi && fi.length > 1){
-      html += secHeader('Filter Impact · EV Waterfall');
-      html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow)">
-        <div id="custom-filter-waterfall"></div>
-      </div>`;
-    }
-
     // Filter Variant Analysis — reuse renderFilterVariants by embedding a container
     const fv = _profileD.filter_variants;
     if(fv && fv.all_combinations){
@@ -3315,11 +3299,8 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
 
   cv.innerHTML = html;
 
-  // Render filter waterfall and variants after DOM is set
+  // Render filter variants after DOM is set
   if(_profileD){
-    if(_profileD.filter_impact && _profileD.filter_impact.length > 1){
-      filterWaterfall(document.getElementById('custom-filter-waterfall'), _profileD.filter_impact);
-    }
     if(_profileD.filter_variants && _profileD.filter_variants.all_combinations){
       const customPanel = document.getElementById('custom-filter-variants');
       if(customPanel) renderFilterVariants(_profileD, customPanel);
