@@ -47,7 +47,10 @@ Any other chart TF shows a watermark: "Use 1H / 15M / 5M / 3M chart".
 - Lookback default: 100 bars (effectively unlimited)
 
 ### Validity Filters
-- Risk (entry to SL) must be ≥ `min_risk` (3 pts) and ≤ `max_risk` (112.5 pts)
+- Risk (entry to SL) must be ≥ `min_risk` (3 pts)
+- `long_base`/`short_base` validity is checked independently of `max_risk` — enables over-risk detection
+- If risk > `max_risk` (112.5 pts): setup is **over-risk** — drawn with distinct styling, no alert fired
+- If risk ≤ `max_risk`: valid setup — alerts fire normally
 - New anchor period always resets everything
 
 ---
@@ -56,12 +59,14 @@ Any other chart TF shows a watermark: "Use 1H / 15M / 5M / 3M chart".
 
 | Element | Description | Anchor |
 |---------|-------------|--------|
-| **Sweep line** (red) | Prior TF high/low level | Bar that formed the prior TF high/low → r_end |
+| **Sweep line** (red) | Prior TF high/low level | Earliest bar that reached the prior high/low (within 1× HTF period, newest-to-oldest scan) → r_end |
 | **SL line** (red) | Swing extreme (wick tip) | Sweep extreme bar → r_end |
 | **CISD line** (blue) | Opposing run's open level | CISD candle bar → r_end |
 | **Entry line** (white) | Close at fire time | Fire bar → r_end |
-| **R:R box** | Risk (red fill) + reward (teal fill) | Fire bar → r_end |
+| **R:R box** | Risk (red fill) + reward (teal fill); **orange dashed** if over-risk | Fire bar → r_end |
 | **TP/Entry/SL labels** | Price + pts info | Right or left of box |
+| **SMT label** | Green "SMT" if ES diverges; gray "NO SMT" if ES confirms | Fire bar |
+| **OVER RISK badge** | Red/orange "OVER RISK X pts" — shown instead of alert when risk > max_risk | Fire bar |
 
 ### T-Spot Zone (TTFM concepts)
 | Element | Description |
@@ -117,6 +122,10 @@ Any other chart TF shows a watermark: "Use 1H / 15M / 5M / 3M chart".
 - Label position (Left/Right)
 - TP/SL/Entry label colors
 
+### SMT Divergence (G10)
+- `Show SMT` toggle — enables cross-instrument divergence check
+- `ES Symbol` — symbol to compare against (default: `ES1!`)
+
 ---
 
 ## Security Calls
@@ -126,6 +135,8 @@ All 4 higher-TF periods pre-declared with literal strings (Pine v5 requirement):
 - `"240"` — high[1], low[1], time
 - `"60"` — high[1], low[1], time
 - `"30"` — high[1], low[1], time
+
+Plus 10 ES security calls (one per HTF period × data field) for SMT divergence detection. All pre-declared with literal strings per Pine v5 requirement.
 
 Correct values selected via ternary on `timeframe.period`. Uses `lookahead=barmerge.lookahead_on` for prior candle data.
 
@@ -138,6 +149,8 @@ Fires `alert.freq_once_per_bar_close` with format:
 LONG NQ | Entry 24025.25 | SL 23974.50 | TP 24076.00 | Risk 50.8 pts | 1H/5M
 ```
 
+Over-risk setups do **not** fire alerts. They are drawn with dashed orange lines and red/teal R:R boxes with an "OVER RISK X pts" badge.
+
 ---
 
 ## Key Differences from Backtest (model_stats.py)
@@ -148,15 +161,20 @@ LONG NQ | Entry 24025.25 | SL 23974.50 | TP 24076.00 | Risk 50.8 pts | 1H/5M
 | CISD bar limit | None (unlimited) | 100 bars (effectively unlimited) — **matched** |
 | CISD scan origin | Return bar (backward) | Return bar (backward) — **matched** |
 | Min range filter | Per-model (8-30 pts) | Single input (12 pts default) |
-| Max risk filter | 112.5 pts | 112.5 pts — **matched** |
+| Max risk filter | 112.5 pts hard reject | 112.5 pts — over-risk drawn/labeled, no alert — **matched** |
+| Over-risk display | Not drawn | Dashed orange lines + OVER RISK badge — indicator only |
 | Non-Q1 sweeps | Not detected | Detected (orange color) — indicator is more permissive |
 | Entry | Next CISD-TF candle open | Current bar close |
 | Split exit / runner | 90/10 split with BE stop | Single exit (all-in/all-out) |
+| SMT divergence | `smt` bool per trade, `smt_summary` in JSON | "SMT" / "NO SMT" label on chart — **matched** |
 
 ---
 
 ## Changelog
 
+- **2026-04-04** — SMT divergence detection: 10 ES security calls; "SMT" (green) / "NO SMT" (gray) label on chart; new G10 input group with toggle + ES symbol
+- **2026-04-04** — Over-risk setups: risk > max_risk now draws with dashed orange lines, red/teal R:R boxes, "OVER RISK X pts" badge; no alert fired; `long_base`/`short_base` split from `max_risk` gate
+- **2026-04-04** — Sweep line anchor fix: scans newest-to-oldest within 1× HTF period to find earliest bar that reached the prior high/low
 - **2026-04-04** — Removed CISD bar limit (was 8→32 bars, now 100 = unlimited)
 - **2026-04-04** — Removed ret_window deadline — CISD can form anytime after sweep within HTF period
 - **2026-04-04** — Added max_risk input (112.5 pts MNQ default) to validity gate

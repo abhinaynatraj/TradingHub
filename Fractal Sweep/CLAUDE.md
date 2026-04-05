@@ -14,9 +14,9 @@ Statistical backtesting engine for NQ and ES futures. Detects sweep + CISD setup
 - Large data files (`.duckdb`, `.dbn`, `.parquet`, `.csv`) are gitignored
 
 ## Key Files
-- `model_stats.py` — sweep+CISD detection engine → `model_stats.json`
+- `model_stats.py` — sweep+CISD detection engine → `model_stats.json` (includes SMT divergence)
 - `daily_update.py` — cron entry point (weekdays 7am); fetches missing bars from Databento
-- `model_dashboard.html` — sweep model dashboard (loads `model_stats.json`)
+- `model_dashboard.html` — sweep model dashboard (loads `model_stats.json`; SMT filter)
 - `../Live Scanner/fractal_sweep_cisd.pine` — TradingView Pine v5 indicator (live alert equivalent of the backtest)
 
 ## Running
@@ -32,6 +32,25 @@ python3 -m http.server 8000         # serve dashboard at localhost:8000
 - Entry: next candle open | Stop: sweep extreme | Target: 1R (structural)
 - CISD: no bar limit — can form anytime after sweep returns within the HTF period
 - Filters: min range (8-30 pts per model), sweep max 50%, min risk 3 pts, max risk 112.5 pts
+- `long_base`/`short_base` validity is separated from `max_risk` check — enables over-risk detection
+
+## SMT Divergence
+
+SMT (Smart Money Technique) detects when NQ sweeps a HTF level but ES does **not** sweep its corresponding level — indicating divergence between the two instruments.
+
+### Backtest (`model_stats.py`)
+- Loads `es_1m` data alongside `nq_1m`
+- Builds ES sweep-TF candles and checks the ES Q1 window at NQ sweep detection time
+- Each trade row carries a `smt` boolean
+- JSON output includes `smt_summary` with WR/EV/PF split for SMT vs non-SMT trades
+
+### Dashboard (`model_dashboard.html`)
+- SMT checkbox filter (unchecked by default)
+- When checked, filters all data: hero tiles, breakdowns, trades table, MAE/MFE studies
+
+### Results (1H_5M model)
+- SMT divergence: 90.2% WR / 10.2 PF
+- Non-SMT: 84.4% WR / 6.1 PF
 
 ## Risk Profiles (RR_PROFILES in model_stats.py)
 

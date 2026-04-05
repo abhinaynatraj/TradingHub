@@ -32,6 +32,7 @@ python3 daily_update.py                         # fetch new bars from Databento
 - `CISD_FAST_BARS = None` — no bar limit, CISD can form anytime after sweep
 - `MIN_RISK_PTS = 3.0`, `MAX_RISK_PTS = 112.5` (MNQ $225 ÷ $2.00/pt)
 - `min_range` per model: 4H=30, 1H=12, 30M=8 pts
+- `long_base`/`short_base` separated from `max_risk` check — required for over-risk detection
 
 ## Refinement Filters (F1–F5)
 
@@ -64,6 +65,16 @@ Segment behavior:
 - Losers MFE: p_pos ≈ 0 → PTQ = None (correct)
 - Winners MAE: p_ko = 0 → opt_sl = None (use p90 percentile instead)
 - Losers MAE: p_ko = 1 → opt_sl = lowest threshold (validates stop)
+
+## SMT Divergence
+
+SMT = NQ sweeps its HTF level but ES does **not** sweep its corresponding level (or vice versa).
+
+- `model_stats.py` loads `es_1m`, builds ES sweep-TF candles, checks ES Q1 window at NQ sweep time
+- Each trade row carries `smt: bool`
+- `smt_summary` in JSON output: WR/EV/PF for SMT vs non-SMT subsets
+- Dashboard: SMT checkbox filter (unchecked = all trades; checked = SMT-only)
+- Sweep line anchor fix (2026-04-04): scans newest-to-oldest within 1× HTF period to find the earliest bar that reached the prior high/low
 
 ## Trade Row Fields
 
