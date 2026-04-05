@@ -341,6 +341,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
   <button class="page-tab" onclick="switchPageTab('risk')">Risk</button>
   <button class="page-tab" onclick="switchPageTab('mae')">MAE Study</button>
   <button class="page-tab" onclick="switchPageTab('mfe')">MFE Study</button>
+  <button class="page-tab" onclick="switchPageTab('filters')">Filters</button>
   <button class="page-tab" onclick="switchPageTab('trades')">Trades</button>
   <button class="page-tab" onclick="switchPageTab('profiles')">Profiles</button>
   <button class="page-tab" onclick="switchPageTab('live-scanner')">🔴 Live Scanner</button>
@@ -500,18 +501,22 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
       </div>
     </div>
 
-    <div class="sec-label">Filter Variant Analysis</div>
-    <div id="filter-variants-panel"></div>
   </div>
 
-  <!-- ══ TAB: RISK ══════════════════════════════════════════════════════════ -->
-  <div class="page-pane" id="pane-risk">
+  <!-- ══ TAB: FILTERS ══════════════════════════════════════════════════════ -->
+  <div class="page-pane" id="pane-filters">
     <div class="sec-label">Filter Impact · EV Waterfall</div>
     <div class="panel">
       <div class="ph"><span class="ph-title">EV Improvement Through Each Filter</span><span class="ph-note">Baseline → Refined · hover for detail</span></div>
       <div class="pb"><div id="filter-waterfall"></div></div>
     </div>
 
+    <div class="sec-label">Filter Variant Analysis</div>
+    <div id="filter-variants-panel"></div>
+  </div>
+
+  <!-- ══ TAB: RISK ══════════════════════════════════════════════════════════ -->
+  <div class="page-pane" id="pane-risk">
     <div class="sec-label">Outcome Distribution & History</div>
     <div class="grid2">
       <div class="panel">
@@ -696,10 +701,12 @@ function switchPageTab(tab){
     barChart(document.getElementById('hour-chart'),(D.by_hour||[]).map(d=>({group:d.hr_label||`${d.hr}:00`,key:d.direction,val:+(d.wr*100).toFixed(1),n:d.n,ev:d.ev,pf:d.pf,avg_mae:d.avg_mae,avg_mfe:d.avg_mfe,avg_mae_hr:d.avg_mae_hr,avg_mfe_hr:d.avg_mfe_hr})),260,25,75);
     barChart(document.getElementById('sess-chart'),(D.by_session||[]).map(d=>({group:d.session,key:d.direction,val:+(d.wr*100).toFixed(1),n:d.n,ev:d.ev,pf:d.pf,avg_mae:d.avg_mae,avg_mfe:d.avg_mfe,avg_mae_hr:d.avg_mae_hr,avg_mfe_hr:d.avg_mfe_hr})),200,30,70);
     barChart(document.getElementById('dow-chart'), (D.by_dow||[]).map(d=>({group:d.dow_name,key:d.direction,val:+(d.wr*100).toFixed(1),n:d.n,ev:d.ev,pf:d.pf,avg_mae:d.avg_mae,avg_mfe:d.avg_mfe,avg_mae_hr:d.avg_mae_hr,avg_mfe_hr:d.avg_mfe_hr})),200,35,70);
+  }
+  if(tab === 'filters'){
+    filterWaterfall(document.getElementById('filter-waterfall'),D.filter_impact||[]);
     renderFilterVariants(D);
   }
   if(tab === 'risk'){
-    filterWaterfall(document.getElementById('filter-waterfall'),D.filter_impact||[]);
     rDistChart(document.getElementById('rdist-chart'),D.r_hist||[]);
     lineChart(document.getElementById('year-chart'),D.by_year||[],200,40,75,'wr','yr');
     renderEquityCurveFS(D);
@@ -3650,8 +3657,11 @@ function renderModel(D){
   renderHeatmap(document.getElementById('heatmap'),D.heatmap||[]);
   comboTable(document.getElementById('top-combos'),(D.top_combos||[]).slice(0,12));
   comboTable(document.getElementById('worst-combos'),D.worst_combos||[]);
-  filterWaterfall(document.getElementById('filter-waterfall'),D.filter_impact||[]);
-  renderFilterVariants(D);
+  // Filter waterfall + variants rendered in Filters tab via switchPageTab
+  if(activePageTab === 'filters'){
+    filterWaterfall(document.getElementById('filter-waterfall'),D.filter_impact||[]);
+    renderFilterVariants(D);
+  }
   rDistChart(document.getElementById('rdist-chart'),D.r_hist||[]);
   lineChart(document.getElementById('year-chart'),D.by_year||[],200,40,75,'wr','yr');
 
