@@ -954,7 +954,8 @@ def _full_mfe_stats(wl, n_bins=50):
 
 # ── SETUP DETECTOR  (profile-agnostic — no stop/target computed here) ─────────
 def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
-                       cisd_fast_bars=CISD_FAST_BARS):
+                       cisd_fast_bars=CISD_FAST_BARS, es_s_arrs=None,
+                       es_m1_arrs=None):
     """
     Detect all sweep+CISD setups.  Returns (base_rows, base_pending).
 
@@ -977,6 +978,16 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
     s_high  = s_arrs['high']
     s_low   = s_arrs['low']
     s_n     = len(s_ts)
+
+    # ES data for SMT divergence
+    has_smt = es_s_arrs is not None and es_m1_arrs is not None
+    if has_smt:
+        es_ts     = es_s_arrs['ts_ns']
+        es_high   = es_s_arrs['high']
+        es_low    = es_s_arrs['low']
+        es_m1_ts  = es_m1_arrs['ts_ns']
+        es_m1_h   = es_m1_arrs['high']
+        es_m1_l   = es_m1_arrs['low']
 
     m1_ts   = m1_arrs['ts_ns']
     m1_high = m1_arrs['high']
@@ -1040,6 +1051,19 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
             if not np.any((hrf >= sess_hrs[0]) & (hrf < sess_hrs[1])):
                 continue
 
+        # ── SMT: find corresponding ES prior candle high/low ────────────────
+        # ES and NQ use the same session times, so their HTF candle timestamps
+        # should align. Find the ES candle matching the current NQ period start,
+        # then use its [i-1] high/low as the ES reference level.
+        es_ref_high = None
+        es_ref_low  = None
+        if has_smt:
+            es_idx = int(np.searchsorted(es_ts, curr_ts_ns, side='left'))
+            # Verify timestamp match (same period start)
+            if es_idx < len(es_ts) and abs(es_ts[es_idx] - curr_ts_ns) < NS_PER_MIN and es_idx > 0:
+                es_ref_high = float(es_high[es_idx - 1])
+                es_ref_low  = float(es_low[es_idx - 1])
+
         for direction in ('SHORT', 'LONG'):
             ref_level, ref_range, ref_lookback = refs[direction]
 
@@ -1059,6 +1083,24 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                 sweep_extreme = float(q1_l[swept_mask].min())
 
             sweep_ext = abs(sweep_extreme - ref_level)
+
+            # SMT divergence: did ES also sweep its corresponding level?
+            # Check ES 1m bars in the same Q1 window as NQ.
+            # Divergence = ES did NOT sweep → stronger signal for NQ trade direction
+            smt_divergence = False
+            if has_smt and es_ref_high is not None and es_ref_low is not None:
+                # Get ES 1m bars for the same Q1 window
+                es_q1_s = int(np.searchsorted(es_m1_ts, q1_start_ns, side='left'))
+                es_q1_e = int(np.searchsorted(es_m1_ts, q1_end_ns,   side='right'))
+                if es_q1_e > es_q1_s:
+                    if direction == 'SHORT':
+                        # NQ swept above prior high. Did ES also sweep above its prior high?
+                        es_also_swept = float(es_m1_h[es_q1_s:es_q1_e].max()) > es_ref_high
+                        smt_divergence = not es_also_swept  # Divergence if ES did NOT sweep
+                    else:
+                        # NQ swept below prior low. Did ES also sweep below its prior low?
+                        es_also_swept = float(es_m1_l[es_q1_s:es_q1_e].min()) < es_ref_low
+                        smt_divergence = not es_also_swept  # Divergence if ES did NOT sweep
 
             rejected_by = ''
             if ref_range < min_range:
@@ -1105,6 +1147,7 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                 sweep_mode    = 'PREV',
                 cisd_mode     = 'CISD',
                 ref_lookback  = ref_lookback,
+                smt           = smt_divergence,
             )
 
             if cisd_ts_ns is None:
@@ -1418,6 +1461,13 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         s = agg(g); s.update(direction=direction)
         dir_summary.append(s)
 
+    # SMT divergence breakdown
+    smt_summary = []
+    if 'smt' in wl.columns:
+        for smt_val, g in wl.groupby('smt'):
+            s = agg(g); s.update(smt=bool(smt_val))
+            smt_summary.append(s)
+
     mae = wl['mae_pct'].dropna()
     mfe = wl['mfe_pct'].dropna()
     wins_wl2 = wl[wl['win'] == 1]
@@ -1508,7 +1558,7 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
     # All resolved trades (capped at 500 for JSON size; sub-TF slices are uncapped)
     recent_cols = ['date','direction','hr','mn','session','dow','entry_price',
                    'sweep_extreme','target_price','risk_pts','r','outcome',
-                   'mae_pct','mfe_pct']
+                   'mae_pct','mfe_pct','smt']
     recent_rows = (wl[recent_cols]
                    .sort_values('date', ascending=False)
                    .copy())
@@ -1730,6 +1780,7 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         'by_year':       by_year,
         'r_hist':        r_hist,
         'dir_summary':   dir_summary,
+        'smt_summary':   smt_summary,
         'risk_dist':     risk_dist,
         'filter_impact': filter_impact,
         'lookback_dist':    [],
@@ -1921,7 +1972,7 @@ def _build_slice_stats(wl_sub, stop_mult, target_mult, agg_fn, hr_labels,
     # recent trades
     recent_cols = ['date','direction','hr','mn','session','dow','entry_price',
                    'sweep_extreme','target_price','risk_pts','r','outcome',
-                   'mae_pct','mfe_pct']
+                   'mae_pct','mfe_pct','smt']
     available = [c for c in recent_cols if c in wl_sub.columns]
     rt = wl_sub[available].sort_values('date', ascending=False).copy()
     rt['dow_name'] = rt['dow'].map(lambda d: dow_names.get(int(d), '?'))
@@ -2070,6 +2121,16 @@ def main():
     df_1m_full, df_1m_rth = load_1m(con, args.table)
     trading_days = df_1m_rth['trade_date'].nunique()
 
+    # ── Load ES data for SMT divergence (NQ sweep vs ES sweep) ──────────────
+    smt_table = 'es_1m' if args.table == 'nq_1m' else 'nq_1m'
+    print(f"\n[1b] Loading {smt_table} for SMT divergence ...")
+    try:
+        es_1m_full, es_1m_rth = load_1m(con, smt_table)
+        has_smt = True
+    except Exception as e:
+        print(f"   ⚠  SMT data not available ({e}), skipping SMT divergence")
+        has_smt = False
+
     print("\n[2] Pre-building timeframes ...")
     needed_sweep_tfs = {MODELS[mk]['sweep_tf_min'] for mk in args.models}
     needed_cisd_tfs  = {MODELS[mk]['cisd_tf_min']  for mk in args.models}
@@ -2082,10 +2143,19 @@ def main():
         tf: resample(df_1m_rth, tf, f"{tf}min")
         for tf in sorted(needed_cisd_tfs)
     }
+    # ES sweep-TF candles for SMT comparison (same timeframes as NQ)
+    es_sweep_dfs = {}
+    if has_smt:
+        for tf in sorted(needed_sweep_tfs):
+            es_sweep_dfs[tf] = resample(es_1m_full if tf >= 1440 else es_1m_rth, tf,
+                                        f"ES_{'1D' if tf >= 1440 else f'{tf}min'}")
 
     print("\n[3] Converting to numpy arrays (built once, reused across all runs) ...")
     sweep_arrs   = {tf: df_to_arrays(df)    for tf, df in sweep_dfs.items()}
     cisd_arrs    = {tf: df_to_arrays(df)    for tf, df in cisd_dfs.items()}
+    es_sweep_arrs  = {tf: df_to_arrays(df)   for tf, df in es_sweep_dfs.items()} if has_smt else {}
+    es_m1_full_arrs = df_1m_to_arrays(es_1m_full) if has_smt else None
+    es_m1_rth_arrs  = df_1m_to_arrays(es_1m_rth)  if has_smt else None
     m1_full_arrs = df_1m_to_arrays(df_1m_full)
     m1_rth_arrs  = df_1m_to_arrays(df_1m_rth)
     print("   Done.")
@@ -2104,8 +2174,11 @@ def main():
         print(f"  {full_key}  —  {cfg['label']}")
         print(f"{'─'*65}")
 
+        es_s  = es_sweep_arrs.get(cfg['sweep_tf_min']) if has_smt else None
+        es_m1 = (es_m1_full_arrs if cfg['sweep_tf_min'] >= 1440 else es_m1_rth_arrs) if has_smt else None
         base_rows, base_pending = detect_setups_base(
-            m1, s_arrs, c_arrs, mk, cfg, cisd_fast_bars=CISD_FAST_BARS)
+            m1, s_arrs, c_arrs, mk, cfg, cisd_fast_bars=CISD_FAST_BARS,
+            es_s_arrs=es_s, es_m1_arrs=es_m1)
         if not base_rows:
             print(f"   ⚠  No setups found")
             continue
