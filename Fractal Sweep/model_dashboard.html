@@ -2141,32 +2141,31 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
     });
     html += `</tbody></table></div>`;
 
-    // Stop variant cards (4 in a row)
+    // Metric row helper for variant cards (shared between MAE and MFE variants)
+    const mRow = (label, trainVal, testVal, testColor) => {
+        return `<div style="display:flex;align-items:center;padding:5px 14px;border-bottom:1px solid color-mix(in srgb,var(--border) 30%,transparent)">
+          <span style="flex:1;font-family:var(--font-data);font-size:11px;color:var(--text-muted)">${label}</span>
+          <span style="width:68px;text-align:right;font-family:var(--font-data);font-size:11px;color:var(--text-muted);opacity:0.5">${trainVal}</span>
+          <span style="width:68px;text-align:right;font-family:var(--font-data);font-size:12px;font-weight:700;color:${testColor}">${testVal}</span>
+        </div>`;
+    };
+
+    // Stop variant cards (5 in a row)
     html += `<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px">`;
     pair.variants.forEach((v, vi) => {
       const isBest = vi === pair.bestVariantIdx;
       const tr = v.train, te = v.test;
       if(!tr || !te) return;
       html += `<div style="background:var(--bg-card);border:1px solid ${isBest ? 'var(--green-border)' : 'var(--border)'};border-radius:10px;overflow:hidden;${isBest ? 'box-shadow:0 0 0 1px var(--green-border);' : ''}">`;
-      // Card header
       html += `<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">`;
       html += `<div><div style="font-family:var(--font-data);font-size:12px;font-weight:700;color:var(--text-primary)">${v.name}</div>`;
       html += `<div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted)">SL: ${v.cap === Infinity ? 'sweep extreme' : fmtPct(v.cap)}</div></div>`;
       if(isBest) html += `<span style="font-family:var(--font-data);font-size:9px;font-weight:700;padding:2px 8px;border-radius:3px;background:var(--green-tint);border:1px solid var(--green-border);color:var(--green)">BEST</span>`;
       html += `</div>`;
-      // Column headers
       html += `<div style="display:flex;justify-content:flex-end;padding:6px 14px 2px;gap:8px;border-bottom:1px solid color-mix(in srgb,var(--border) 40%,transparent)">`;
       html += `<span style="width:68px;text-align:right;font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;opacity:0.5">Train</span>`;
       html += `<span style="width:68px;text-align:right;font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em">Test</span>`;
       html += `</div>`;
-      // Metric rows
-      const mRow = (label, trainVal, testVal, testColor) => {
-        return `<div style="display:flex;align-items:center;padding:5px 14px;border-bottom:1px solid color-mix(in srgb,var(--border) 30%,transparent)">
-          <span style="flex:1;font-family:var(--font-data);font-size:11px;color:var(--text-muted)">${label}</span>
-          <span style="width:68px;text-align:right;font-family:var(--font-data);font-size:11px;color:var(--text-muted);opacity:0.5">${trainVal}</span>
-          <span style="width:68px;text-align:right;font-family:var(--font-data);font-size:12px;font-weight:700;color:${testColor}">${testVal}</span>
-        </div>`;
-      };
       html += mRow('Win Rate %', (tr.wr*100).toFixed(1), (te.wr*100).toFixed(1), statColor(te.wr, 0.55, 0.45, false));
       html += mRow('EV $/trade', fmtDol(tr.ev_r*RPT), fmtDol(te.ev_r*RPT), statColor(te.ev_r, 0.05, -0.05, false));
       html += mRow('Sharpe', tr.sharpe != null ? tr.sharpe.toFixed(2) : '\u2014', te.sharpe != null ? te.sharpe.toFixed(2) : '\u2014', te.sharpe != null ? statColor(te.sharpe, 1.5, 0.5, false) : 'var(--text-muted)');
