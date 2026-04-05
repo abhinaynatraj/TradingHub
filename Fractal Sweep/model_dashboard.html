@@ -4836,6 +4836,46 @@ function renderFilterVariants(D) {
     </div>`;
   }
 
+  // Filter legend
+  const modelKey = activeModel || '1H_5M';
+  const modelCfg = {
+    '4H_15M': {min_range: 30, sweep_tf: '4H'},
+    '1H_5M':  {min_range: 12, sweep_tf: '1H'},
+    '1H_3M':  {min_range: 12, sweep_tf: '1H'},
+    '30M_3M': {min_range: 8,  sweep_tf: '30M'},
+  }[modelKey] || {min_range: 12, sweep_tf: '1H'};
+
+  html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow)">
+    <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">Filter Definitions</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;font-family:var(--font-data)">
+      <thead><tr style="border-bottom:2px solid var(--border)">
+        <th style="padding:8px 10px;text-align:left;color:var(--text-muted);width:140px">Filter</th>
+        <th style="padding:8px 10px;text-align:left;color:var(--text-muted)">What it does</th>
+        <th style="padding:8px 10px;text-align:left;color:var(--text-muted);width:200px">Parameter</th>
+      </tr></thead><tbody>
+      <tr style="border-bottom:1px solid color-mix(in srgb,var(--border) 40%,transparent)">
+        <td style="padding:6px 10px;font-weight:700;color:var(--text-primary)">F1: Prior Range Floor</td>
+        <td style="padding:6px 10px;color:var(--text-primary)">Rejects setups where the prior HTF candle's range (high − low) is too small — tiny candles produce unreliable levels</td>
+        <td style="padding:6px 10px;color:var(--text-muted);font-family:var(--font-data)">min_range = <span style="color:var(--text-primary);font-weight:600">${modelCfg.min_range} pts</span> (${modelCfg.sweep_tf})</td>
+      </tr>
+      <tr style="background:color-mix(in srgb,var(--bg-raised) 60%,transparent);border-bottom:1px solid color-mix(in srgb,var(--border) 40%,transparent)">
+        <td style="padding:6px 10px;font-weight:700;color:var(--text-primary)">F3: Sweep Max Cap</td>
+        <td style="padding:6px 10px;color:var(--text-primary)">Rejects sweeps that penetrate too far beyond the prior candle's range — deep sweeps indicate momentum, not manipulation</td>
+        <td style="padding:6px 10px;color:var(--text-muted);font-family:var(--font-data)">SWEEP_MAX_PCT = <span style="color:var(--text-primary);font-weight:600">50%</span> of prior range</td>
+      </tr>
+      <tr style="border-bottom:1px solid color-mix(in srgb,var(--border) 40%,transparent)">
+        <td style="padding:6px 10px;font-weight:700;color:var(--text-primary)">F4: Close-Back Required</td>
+        <td style="padding:6px 10px;color:var(--text-primary)">Requires price to close back inside the prior candle's range after sweeping — confirms the sweep was a liquidity grab, not a breakout</td>
+        <td style="padding:6px 10px;color:var(--text-muted);font-family:var(--font-data)">Close must be <span style="color:var(--text-primary);font-weight:600">inside range</span></td>
+      </tr>
+      <tr style="background:color-mix(in srgb,var(--bg-raised) 60%,transparent)">
+        <td style="padding:6px 10px;font-weight:700;color:#ff6600">SMT: Divergence</td>
+        <td style="padding:6px 10px;color:var(--text-primary)">Only take setups where ES does <em>not</em> confirm the NQ sweep — divergence between correlated instruments signals manipulation, not genuine market direction</td>
+        <td style="padding:6px 10px;color:var(--text-muted);font-family:var(--font-data)">ES holds <span style="color:var(--text-primary);font-weight:600">above/below</span> its prior HTF level</td>
+      </tr>
+    </tbody></table>
+  </div>`;
+
   // Individual removal table
   html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow)">
     <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">Individual Filter Removal — What happens when you remove one filter?</div>
