@@ -2686,11 +2686,516 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
     };
   }
 
+  // Helper: compute WR and EV for a group of trades (used by multiple sections)
+  function grpStats(trades){
+    const n = trades.length; if(n === 0) return {n:0, wr:0, ev:0, pf:0};
+    const w = trades.filter(t => t.outcome === 'WIN').length;
+    const sumW = trades.filter(t => t.r > 0).reduce((s,t) => s+t.r, 0);
+    const sumL = trades.filter(t => t.r <= 0).reduce((s,t) => s+Math.abs(t.r), 0);
+    return {n, wr: w/n, ev: (sumW - sumL)/n, pf: sumL > 0 ? sumW/sumL : sumW > 0 ? 99 : 0};
+  }
+
+  // ── SECTION: FEATURE ATTRIBUTION ───────────────────────────────────────────
+  if(combinedStats && combinedStats.n >= 20){
+    const allTr = (combinedStats._trades || []);
+    const wlTr = allTr.filter(t => t.outcome === 'WIN' || t.outcome === 'LOSS');
+    if(wlTr.length >= 20){
+
+      html += secHeader('Feature Attribution (' + wlTr.length + ' trades)');
+
+      // Helper: quartile buckets
+      function quartileBuckets(arr){
+        const s = arr.slice().sort((a,b) => a - b);
+        return [s[Math.floor(s.length*0.25)], s[Math.floor(s.length*0.5)], s[Math.floor(s.length*0.75)]];
+      }
+
+      // 1. Feature importance bars — WR by category
+      const features = [];
+      // By session
+      const sessions = {};
+      wlTr.forEach(t => { const s = t.session || 'OTHER'; if(!sessions[s]) sessions[s] = []; sessions[s].push(t); });
+      Object.entries(sessions).forEach(([k,v]) => { const g = grpStats(v); if(g.n >= 5) features.push({feature:'Session', bucket:k, ...g}); });
+      // By direction
+      ['LONG','SHORT'].forEach(d => { const g = grpStats(wlTr.filter(t => t.direction === d)); if(g.n >= 5) features.push({feature:'Direction', bucket:d, ...g}); });
+      // By DOW
+      const dowNames = {0:'Sun',1:'Mon',2:'Tue',3:'Wed',4:'Thu',5:'Fri',6:'Sat'};
+      const dows = {};
+      wlTr.forEach(t => { const d = t.dow_name || dowNames[t.dow] || '?'; if(!dows[d]) dows[d] = []; dows[d].push(t); });
+      Object.entries(dows).forEach(([k,v]) => { const g = grpStats(v); if(g.n >= 5) features.push({feature:'DOW', bucket:k, ...g}); });
+      // By SMT
+      if(wlTr.some(t => t.smt != null)){
+        const smtY = grpStats(wlTr.filter(t => t.smt === true));
+        const smtN = grpStats(wlTr.filter(t => !t.smt));
+        if(smtY.n >= 3) features.push({feature:'SMT', bucket:'Yes', ...smtY});
+        if(smtN.n >= 3) features.push({feature:'SMT', bucket:'No', ...smtN});
+      }
+      // By classification
+      const classes = {};
+      wlTr.forEach(t => { const c = t.classification || 'Unclassified'; if(!classes[c]) classes[c] = []; classes[c].push(t); });
+      Object.entries(classes).forEach(([k,v]) => { const g = grpStats(v); if(g.n >= 5) features.push({feature:'Classification', bucket:k, ...g}); });
+      // By sweep_pct quartile
+      const spVals = wlTr.map(t => t.sweep_pct).filter(v => v != null);
+      if(spVals.length >= 20){
+        const sq = quartileBuckets(spVals);
+        const spBuckets = [
+          {label:'Q1 (small)', filter: t => t.sweep_pct != null && t.sweep_pct <= sq[0]},
+          {label:'Q2', filter: t => t.sweep_pct != null && t.sweep_pct > sq[0] && t.sweep_pct <= sq[1]},
+          {label:'Q3', filter: t => t.sweep_pct != null && t.sweep_pct > sq[1] && t.sweep_pct <= sq[2]},
+          {label:'Q4 (large)', filter: t => t.sweep_pct != null && t.sweep_pct > sq[2]},
+        ];
+        spBuckets.forEach(b => { const g = grpStats(wlTr.filter(b.filter)); if(g.n >= 3) features.push({feature:'Sweep %', bucket:b.label, ...g}); });
+      }
+      // By risk_pts quartile
+      const rpVals = wlTr.map(t => t.risk_pts).filter(v => v != null);
+      if(rpVals.length >= 20){
+        const rq = quartileBuckets(rpVals);
+        const rpBuckets = [
+          {label:'Low ≤'+rq[0].toFixed(0), filter: t => t.risk_pts != null && t.risk_pts <= rq[0]},
+          {label:'Med-Lo', filter: t => t.risk_pts != null && t.risk_pts > rq[0] && t.risk_pts <= rq[1]},
+          {label:'Med-Hi', filter: t => t.risk_pts != null && t.risk_pts > rq[1] && t.risk_pts <= rq[2]},
+          {label:'High >'+rq[2].toFixed(0), filter: t => t.risk_pts != null && t.risk_pts > rq[2]},
+        ];
+        rpBuckets.forEach(b => { const g = grpStats(wlTr.filter(b.filter)); if(g.n >= 3) features.push({feature:'Risk (pts)', bucket:b.label, ...g}); });
+      }
+
+      // Sort by EV descending
+      features.sort((a,b) => b.ev - a.ev);
+      const baseWR = combinedStats.wr;
+      const baseEV = combinedStats.ev_r;
+
+      // Render feature table
+      html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow);overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:12px">
+          <thead><tr style="border-bottom:2px solid var(--border)">
+            <th style="padding:8px 10px;text-align:left;color:var(--text-muted)">Feature</th>
+            <th style="padding:8px 6px;text-align:left;color:var(--text-muted)">Bucket</th>
+            <th style="padding:8px 6px;text-align:right;color:var(--text-muted)">N</th>
+            <th style="padding:8px 6px;text-align:right;color:var(--text-muted)">WR</th>
+            <th style="padding:8px 6px;text-align:right;color:var(--text-muted)">WR vs Base</th>
+            <th style="padding:8px 6px;text-align:right;color:var(--text-muted)">EV (R)</th>
+            <th style="padding:8px 6px;text-align:right;color:var(--text-muted)">EV vs Base</th>
+            <th style="padding:8px 6px;text-align:right;color:var(--text-muted)">PF</th>
+            <th style="padding:8px 6px;text-align:left;color:var(--text-muted)">Edge Bar</th>
+          </tr></thead><tbody>`;
+      features.forEach((f,i) => {
+        const bg = i % 2 === 0 ? 'transparent' : 'color-mix(in srgb,var(--bg-raised) 60%,transparent)';
+        const wrDelta = ((f.wr - baseWR) * 100);
+        const evDelta = f.ev - baseEV;
+        const wrDeltaColor = wrDelta >= 0 ? 'var(--green)' : 'var(--red)';
+        const evDeltaColor = evDelta >= 0 ? 'var(--green)' : 'var(--red)';
+        const barWidth = Math.min(Math.abs(f.ev / (Math.max(...features.map(x=>Math.abs(x.ev))) || 1)) * 100, 100);
+        const barColor = f.ev >= 0 ? 'var(--green)' : 'var(--red)';
+        html += `<tr style="background:${bg}">
+          <td style="padding:6px 10px;font-weight:600;color:var(--text-primary)">${f.feature}</td>
+          <td style="padding:6px;color:var(--text-primary)">${f.bucket}</td>
+          <td style="padding:6px;text-align:right;color:var(--text-muted)">${f.n}</td>
+          <td style="padding:6px;text-align:right;font-weight:600;color:${f.wr >= baseWR ? 'var(--green)' : 'var(--text-primary)'}">${(f.wr*100).toFixed(1)}%</td>
+          <td style="padding:6px;text-align:right;color:${wrDeltaColor}">${wrDelta >= 0 ? '+' : ''}${wrDelta.toFixed(1)}%</td>
+          <td style="padding:6px;text-align:right;font-weight:600;color:${f.ev >= baseEV ? 'var(--green)' : 'var(--text-primary)'}">${f.ev.toFixed(3)}</td>
+          <td style="padding:6px;text-align:right;color:${evDeltaColor}">${evDelta >= 0 ? '+' : ''}${evDelta.toFixed(3)}</td>
+          <td style="padding:6px;text-align:right;color:var(--text-primary)">${f.pf.toFixed(2)}</td>
+          <td style="padding:6px"><div style="height:12px;width:${barWidth}%;background:${barColor};border-radius:2px;opacity:0.7"></div></td>
+        </tr>`;
+      });
+      html += `</tbody></table></div>`;
+
+      // 2. Hour x Direction heatmap
+      html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow)">
+        <div style="font-family:var(--font-data);font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:10px">CONDITIONAL EV HEATMAP — Hour × Direction</div>
+        <div style="display:grid;grid-template-columns:60px repeat(10,1fr);gap:2px;font-family:var(--font-data);font-size:11px">`;
+      // Header row
+      html += `<div style="padding:4px;color:var(--text-muted)"></div>`;
+      for(let h = 7; h <= 16; h++) html += `<div style="padding:4px;text-align:center;color:var(--text-muted)">${h}:00</div>`;
+      // LONG row
+      html += `<div style="padding:4px;color:var(--green);font-weight:600">LONG</div>`;
+      for(let h = 7; h <= 16; h++){
+        const g = grpStats(wlTr.filter(t => t.hr === h && t.direction === 'LONG'));
+        const intensity = g.n >= 3 ? Math.min(Math.abs(g.ev) / 1.5, 1) : 0;
+        const bg = g.n < 3 ? 'var(--bg-raised)' : g.ev >= 0 ? `rgba(16,185,129,${0.15 + intensity * 0.5})` : `rgba(239,68,68,${0.15 + intensity * 0.5})`;
+        html += `<div style="padding:6px 2px;text-align:center;background:${bg};border-radius:4px;color:var(--text-primary)" title="N=${g.n} WR=${(g.wr*100).toFixed(0)}% EV=${g.ev.toFixed(2)}R">${g.n >= 3 ? g.ev.toFixed(2) : '—'}</div>`;
+      }
+      // SHORT row
+      html += `<div style="padding:4px;color:var(--red);font-weight:600">SHORT</div>`;
+      for(let h = 7; h <= 16; h++){
+        const g = grpStats(wlTr.filter(t => t.hr === h && t.direction === 'SHORT'));
+        const intensity = g.n >= 3 ? Math.min(Math.abs(g.ev) / 1.5, 1) : 0;
+        const bg = g.n < 3 ? 'var(--bg-raised)' : g.ev >= 0 ? `rgba(16,185,129,${0.15 + intensity * 0.5})` : `rgba(239,68,68,${0.15 + intensity * 0.5})`;
+        html += `<div style="padding:6px 2px;text-align:center;background:${bg};border-radius:4px;color:var(--text-primary)" title="N=${g.n} WR=${(g.wr*100).toFixed(0)}% EV=${g.ev.toFixed(2)}R">${g.n >= 3 ? g.ev.toFixed(2) : '—'}</div>`;
+      }
+      html += `</div></div>`;
+    }
+  }
+
+  // ── SECTION: DISTRIBUTION SHIFT TESTS ──────────────────────────────────────
+  if(pairs.length > 0){
+    // Wasserstein distance (earth mover's distance) approximation
+    function wasserstein(a, b){
+      if(a.length === 0 || b.length === 0) return 0;
+      const sa = a.slice().sort((x,y) => x - y);
+      const sb = b.slice().sort((x,y) => x - y);
+      const n = Math.max(sa.length, sb.length);
+      let sum = 0;
+      for(let i = 0; i < n; i++){
+        const ai = sa[Math.min(Math.floor(i / n * sa.length), sa.length - 1)];
+        const bi = sb[Math.min(Math.floor(i / n * sb.length), sb.length - 1)];
+        sum += Math.abs(ai - bi);
+      }
+      return sum / n;
+    }
+    // KS statistic
+    function ksTest(a, b){
+      if(a.length === 0 || b.length === 0) return {stat: 0, significant: false};
+      const all = [...a.map(v => ({v, g:0})), ...b.map(v => ({v, g:1}))].sort((x,y) => x.v - y.v);
+      let cdfA = 0, cdfB = 0, maxD = 0;
+      all.forEach(p => {
+        if(p.g === 0) cdfA += 1/a.length; else cdfB += 1/b.length;
+        const d = Math.abs(cdfA - cdfB);
+        if(d > maxD) maxD = d;
+      });
+      // Critical value at alpha=0.05
+      const crit = 1.36 * Math.sqrt((a.length + b.length) / (a.length * b.length));
+      return {stat: maxD, significant: maxD > crit, critical: crit};
+    }
+
+    html += secHeader('Distribution Shift Tests (Train vs Test)');
+
+    html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow);overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:12px">
+        <thead><tr style="border-bottom:2px solid var(--border)">
+          <th style="padding:8px 10px;text-align:left;color:var(--text-muted)">Pair</th>
+          <th style="padding:8px 6px;text-align:right;color:var(--text-muted)">MAE Wasserstein</th>
+          <th style="padding:8px 6px;text-align:center;color:var(--text-muted)">MAE KS Test</th>
+          <th style="padding:8px 6px;text-align:right;color:var(--text-muted)">MFE Wasserstein</th>
+          <th style="padding:8px 6px;text-align:center;color:var(--text-muted)">MFE KS Test</th>
+          <th style="padding:8px 6px;text-align:right;color:var(--text-muted)">R Wasserstein</th>
+          <th style="padding:8px 6px;text-align:center;color:var(--text-muted)">R KS Test</th>
+          <th style="padding:8px 6px;text-align:center;color:var(--text-muted)">Verdict</th>
+        </tr></thead><tbody>`;
+
+    pairs.forEach((pair, pi) => {
+      const trMae = pair.train.trades.map(t => t.mae_pct).filter(v => v != null);
+      const teMae = pair.test.trades.map(t => t.mae_pct).filter(v => v != null);
+      const trMfe = pair.train.trades.map(t => t.mfe_pct).filter(v => v != null);
+      const teMfe = pair.test.trades.map(t => t.mfe_pct).filter(v => v != null);
+      const trR = pair.train.trades.map(t => t.r);
+      const teR = pair.test.trades.map(t => t.r);
+
+      const maeW = wasserstein(trMae, teMae);
+      const mfeW = wasserstein(trMfe, teMfe);
+      const rW = wasserstein(trR, teR);
+      const maeKS = ksTest(trMae, teMae);
+      const mfeKS = ksTest(trMfe, teMfe);
+      const rKS = ksTest(trR, teR);
+
+      const nSig = [maeKS, mfeKS, rKS].filter(k => k.significant).length;
+      const verdict = nSig === 0 ? 'STABLE' : nSig <= 1 ? 'MILD SHIFT' : 'REGIME CHANGE';
+      const verdictColor = nSig === 0 ? 'var(--green)' : nSig <= 1 ? 'var(--amber)' : 'var(--red)';
+
+      const bg = pi % 2 === 0 ? 'transparent' : 'color-mix(in srgb,var(--bg-raised) 60%,transparent)';
+      html += `<tr style="background:${bg}">
+        <td style="padding:6px 10px;font-weight:600;color:var(--text-primary)">P${pi+1}: ${pair.train.label} → ${pair.test.label}</td>
+        <td style="padding:6px;text-align:right;color:var(--text-primary)">${maeW.toFixed(4)}</td>
+        <td style="padding:6px;text-align:center;font-weight:600;color:${maeKS.significant ? 'var(--red)' : 'var(--green)'}">${maeKS.significant ? 'REJECT' : 'PASS'} <span style="font-weight:400;color:var(--text-muted);font-size:10px">(D=${maeKS.stat.toFixed(3)})</span></td>
+        <td style="padding:6px;text-align:right;color:var(--text-primary)">${mfeW.toFixed(4)}</td>
+        <td style="padding:6px;text-align:center;font-weight:600;color:${mfeKS.significant ? 'var(--red)' : 'var(--green)'}">${mfeKS.significant ? 'REJECT' : 'PASS'} <span style="font-weight:400;color:var(--text-muted);font-size:10px">(D=${mfeKS.stat.toFixed(3)})</span></td>
+        <td style="padding:6px;text-align:right;color:var(--text-primary)">${rW.toFixed(4)}</td>
+        <td style="padding:6px;text-align:center;font-weight:600;color:${rKS.significant ? 'var(--red)' : 'var(--green)'}">${rKS.significant ? 'REJECT' : 'PASS'} <span style="font-weight:400;color:var(--text-muted);font-size:10px">(D=${rKS.stat.toFixed(3)})</span></td>
+        <td style="padding:6px;text-align:center;font-weight:700;color:${verdictColor}">${verdict}</td>
+      </tr>`;
+    });
+    html += `</tbody></table>
+      <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-top:8px">Wasserstein = earth mover distance (lower = more similar). KS Test: PASS = same distribution at 95% confidence. REJECT = distributions differ significantly.</div>
+    </div>`;
+  }
+
+  // ── SECTION: REGIME CLASSIFICATION & TRANSITIONS ───────────────────────────
+  if(combinedStats && combinedStats.n >= 30){
+    const allTr = (combinedStats._trades || []).slice().sort((a,b) => a.date.localeCompare(b.date));
+    if(allTr.length >= 30){
+      html += secHeader('Regime Analysis');
+
+      // Classify each trade into a regime based on risk_pts and direction bias
+      // Use rolling 20-trade window to determine local regime
+      const REG_WIN = Math.min(20, Math.floor(allTr.length / 3));
+      const regimeLabels = [];
+      const regimeColors = {'Low Vol':'#3b82f6', 'High Vol':'#ef4444', 'Trending':'#10b981', 'Choppy':'#f59e0b'};
+
+      for(let i = REG_WIN; i <= allTr.length; i++){
+        const win = allTr.slice(i - REG_WIN, i);
+        const avgRisk = win.reduce((s,t) => s + (t.risk_pts || 0), 0) / REG_WIN;
+        const longPct = win.filter(t => t.direction === 'LONG').length / REG_WIN;
+        const wr = win.filter(t => t.outcome === 'WIN').length / REG_WIN;
+
+        // Classify: median risk as vol proxy, direction bias as trend proxy
+        const allRisks = allTr.map(t => t.risk_pts || 0).sort((a,b) => a - b);
+        const medRisk = allRisks[Math.floor(allRisks.length / 2)];
+        const highVol = avgRisk > medRisk * 1.2;
+        const biased = Math.abs(longPct - 0.5) > 0.25;
+
+        let regime;
+        if(highVol && biased) regime = 'Trending';
+        else if(highVol && !biased) regime = 'High Vol';
+        else if(!highVol && biased) regime = 'Trending';
+        else regime = longPct > 0.5 ? 'Low Vol' : 'Choppy';
+
+        // Override: low WR in window suggests choppy
+        if(wr < 0.6) regime = 'Choppy';
+        else if(wr > 0.9 && biased) regime = 'Trending';
+
+        regimeLabels.push(regime);
+      }
+
+      // Build regime performance table
+      const regimeStats = {};
+      for(let i = 0; i < regimeLabels.length; i++){
+        const r = regimeLabels[i];
+        const t = allTr[i + REG_WIN - 1]; // trade at the end of the window
+        if(!regimeStats[r]) regimeStats[r] = [];
+        regimeStats[r].push(t);
+      }
+
+      html += `<div style="display:grid;grid-template-columns:repeat(${Object.keys(regimeStats).length},1fr);gap:10px;margin-bottom:16px">`;
+      Object.entries(regimeStats).forEach(([regime, trades]) => {
+        const g = grpStats(trades);
+        const col = regimeColors[regime] || 'var(--text-muted)';
+        html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;box-shadow:var(--shadow);position:relative;overflow:hidden">
+          <div style="position:absolute;top:0;left:0;width:100%;height:3px;background:${col}"></div>
+          <div style="font-family:var(--font-data);font-size:13px;font-weight:700;color:${col};margin-bottom:8px">${regime}</div>
+          <div style="font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--text-primary)">${(g.wr*100).toFixed(1)}%</div>
+          <div style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);margin-top:4px">${g.n} trades · EV ${g.ev.toFixed(3)}R · PF ${g.pf.toFixed(2)}</div>
+        </div>`;
+      });
+      html += `</div>`;
+
+      // Transition matrix
+      if(regimeLabels.length >= 10){
+        const regimes = [...new Set(regimeLabels)];
+        const trans = {};
+        regimes.forEach(r => { trans[r] = {}; regimes.forEach(c => trans[r][c] = 0); });
+        for(let i = 1; i < regimeLabels.length; i++){
+          trans[regimeLabels[i-1]][regimeLabels[i]]++;
+        }
+        // Normalize rows to probabilities
+        regimes.forEach(r => {
+          const rowSum = regimes.reduce((s,c) => s + trans[r][c], 0);
+          if(rowSum > 0) regimes.forEach(c => trans[r][c] = trans[r][c] / rowSum);
+        });
+
+        html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow)">
+          <div style="font-family:var(--font-data);font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:10px">REGIME TRANSITION MATRIX — P(next regime | current regime)</div>
+          <div style="display:grid;grid-template-columns:80px repeat(${regimes.length},1fr);gap:2px;font-family:var(--font-data);font-size:11px">`;
+        // Header
+        html += `<div></div>`;
+        regimes.forEach(c => html += `<div style="padding:6px;text-align:center;font-weight:600;color:${regimeColors[c] || 'var(--text-muted)'}">${c}</div>`);
+        // Rows
+        regimes.forEach(r => {
+          html += `<div style="padding:6px;font-weight:600;color:${regimeColors[r] || 'var(--text-muted)'}">${r}</div>`;
+          regimes.forEach(c => {
+            const p = trans[r][c];
+            const intensity = Math.min(p * 1.5, 1);
+            const bg = p > 0.5 ? `rgba(59,130,246,${0.1 + intensity * 0.4})` : p > 0.2 ? `rgba(148,163,184,${0.1 + intensity * 0.2})` : 'transparent';
+            html += `<div style="padding:6px;text-align:center;background:${bg};border-radius:4px;color:var(--text-primary)">${(p*100).toFixed(0)}%</div>`;
+          });
+        });
+        html += `</div></div>`;
+      }
+
+      // Regime timeline canvas
+      html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:16px;box-shadow:var(--shadow)">
+        <div style="font-family:var(--font-data);font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:8px">REGIME TIMELINE — color = regime, y = trade R outcome</div>
+        <canvas id="regime-timeline" style="width:100%"></canvas>
+      </div>`;
+
+      // Store regime timeline render
+      combinedStats._regimeRender = function(){
+        setTimeout(() => {
+          const canvas = document.getElementById('regime-timeline');
+          if(!canvas) return;
+          const ctx = canvas.getContext('2d');
+          const W = canvas.width = canvas.parentElement.clientWidth;
+          const H = canvas.height = 160;
+          const pad = {t:15, r:20, b:20, l:50};
+          const plotW = W - pad.l - pad.r;
+          const plotH = H - pad.t - pad.b;
+
+          ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-card').trim() || '#1a1a2e';
+          ctx.fillRect(0, 0, W, H);
+
+          const rVals = [];
+          for(let i = 0; i < regimeLabels.length; i++) rVals.push(allTr[i + REG_WIN - 1].r);
+          const yMin = Math.min(...rVals) - 0.2;
+          const yMax = Math.max(...rVals) + 0.2;
+          const yR = yMax - yMin;
+
+          // Zero line
+          const zeroY = pad.t + plotH * (1 - (0 - yMin) / yR);
+          ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4,4]);
+          ctx.beginPath(); ctx.moveTo(pad.l, zeroY); ctx.lineTo(pad.l + plotW, zeroY); ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Draw bars
+          const barW = Math.max(plotW / regimeLabels.length - 1, 2);
+          regimeLabels.forEach((regime, i) => {
+            const x = pad.l + (i / regimeLabels.length) * plotW;
+            const r = rVals[i];
+            const y = pad.t + plotH * (1 - (r - yMin) / yR);
+            const h = Math.abs(zeroY - y);
+            ctx.fillStyle = regimeColors[regime] || '#666';
+            ctx.globalAlpha = 0.7;
+            ctx.fillRect(x, Math.min(y, zeroY), barW, h || 1);
+          });
+          ctx.globalAlpha = 1;
+
+          // Y axis labels
+          ctx.fillStyle = 'rgba(180,180,180,0.6)';
+          ctx.font = '10px monospace';
+          ctx.textAlign = 'right';
+          for(let i = 0; i <= 4; i++){
+            const val = yMin + yR * i / 4;
+            const y = pad.t + plotH * (1 - i / 4);
+            ctx.fillText(val.toFixed(1) + 'R', pad.l - 4, y + 3);
+          }
+        }, 80);
+      };
+    }
+  }
+
+  // ── SECTION: STRESS TESTING ────────────────────────────────────────────────
+  if(combinedStats && combinedStats.n >= 20){
+    const rValues = (combinedStats._trades || []).map(t => t.r);
+    if(rValues.length >= 20){
+      html += secHeader('Stress Testing');
+
+      const ACCT_ST = 4500, RPT_ST = 225;
+      const actualWR = combinedStats.wr;
+      const actualEV = combinedStats.ev_r;
+
+      // 1. WR Degradation curves — what if true WR is lower?
+      const wrSteps = [];
+      for(let wr = actualWR; wr >= Math.max(actualWR - 0.30, 0.40); wr -= 0.05){
+        // Simulate: flip some wins to losses to achieve target WR
+        const wins = rValues.filter(r => r > 0);
+        const losses = rValues.filter(r => r <= 0);
+        const targetWins = Math.round(wr * rValues.length);
+        const currentWins = wins.length;
+        const flips = currentWins - targetWins;
+
+        let simR;
+        if(flips <= 0){
+          simR = rValues.slice();
+        } else {
+          // Flip the smallest wins to -1R losses
+          const sortedWins = wins.slice().sort((a,b) => a - b);
+          const flipped = new Set(sortedWins.slice(0, flips));
+          let flipCount = 0;
+          simR = rValues.map(r => {
+            if(r > 0 && flipCount < flips && flipped.has(r)){
+              flipCount++;
+              flipped.delete(r);
+              return -1.0;
+            }
+            return r;
+          });
+        }
+
+        const simEV = simR.reduce((s,v) => s+v, 0) / simR.length;
+        const simSumW = simR.filter(r => r > 0).reduce((s,v) => s+v, 0);
+        const simSumL = simR.filter(r => r <= 0).reduce((s,v) => s+Math.abs(v), 0);
+        const simPF = simSumL > 0 ? simSumW / simSumL : 99;
+
+        // Monte Carlo ruin at this WR (100 sims)
+        let ruinCount = 0;
+        for(let s = 0; s < 100; s++){
+          const shuffled = simR.slice().sort(() => Math.random() - 0.5);
+          let eq = ACCT_ST;
+          for(let i = 0; i < shuffled.length; i++){
+            eq += shuffled[i] * RPT_ST;
+            if(eq <= 0){ ruinCount++; break; }
+          }
+        }
+
+        // Max DD (single pass)
+        let eq = ACCT_ST, peak = ACCT_ST, maxDD = 0;
+        simR.forEach(r => {
+          eq += r * RPT_ST;
+          if(eq > peak) peak = eq;
+          const dd = peak > 0 ? (peak - eq) / peak : 0;
+          if(dd > maxDD) maxDD = dd;
+        });
+
+        wrSteps.push({
+          wr: wr, ev: simEV, pf: simPF,
+          ruinPct: ruinCount,
+          maxDD: (maxDD * 100).toFixed(1),
+          pnl: simR.reduce((s,v) => s + v * RPT_ST, 0)
+        });
+      }
+
+      html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow)">
+        <div style="font-family:var(--font-data);font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:10px">WIN RATE DEGRADATION — What if your true WR is lower?</div>
+        <table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:12px">
+          <thead><tr style="border-bottom:2px solid var(--border)">
+            <th style="padding:8px 10px;text-align:left;color:var(--text-muted)">Win Rate</th>
+            <th style="padding:8px 6px;text-align:right;color:var(--text-muted)">EV (R)</th>
+            <th style="padding:8px 6px;text-align:right;color:var(--text-muted)">PF</th>
+            <th style="padding:8px 6px;text-align:right;color:var(--text-muted)">Max DD</th>
+            <th style="padding:8px 6px;text-align:right;color:var(--text-muted)">Ruin %</th>
+            <th style="padding:8px 6px;text-align:right;color:var(--text-muted)">P&L</th>
+            <th style="padding:8px 6px;text-align:left;color:var(--text-muted)">Viability</th>
+          </tr></thead><tbody>`;
+
+      wrSteps.forEach((s, i) => {
+        const isActual = i === 0;
+        const bg = isActual ? 'rgba(59,130,246,0.1)' : i % 2 === 0 ? 'transparent' : 'color-mix(in srgb,var(--bg-raised) 60%,transparent)';
+        const viable = s.ev > 0 && s.ruinPct <= 5;
+        const marginal = s.ev > 0 && s.ruinPct <= 20;
+        const badge = viable ? '<span style="color:var(--green);font-weight:700">VIABLE</span>' : marginal ? '<span style="color:var(--amber);font-weight:700">MARGINAL</span>' : '<span style="color:var(--red);font-weight:700">DANGEROUS</span>';
+        html += `<tr style="background:${bg}">
+          <td style="padding:6px 10px;font-weight:${isActual ? '700' : '400'};color:var(--text-primary)">${(s.wr*100).toFixed(1)}%${isActual ? ' (actual)' : ''}</td>
+          <td style="padding:6px;text-align:right;color:${s.ev >= 0 ? 'var(--green)' : 'var(--red)'}">${s.ev.toFixed(3)}</td>
+          <td style="padding:6px;text-align:right;color:var(--text-primary)">${s.pf.toFixed(2)}</td>
+          <td style="padding:6px;text-align:right;color:var(--text-primary)">${s.maxDD}%</td>
+          <td style="padding:6px;text-align:right;color:${s.ruinPct <= 1 ? 'var(--green)' : s.ruinPct <= 5 ? 'var(--amber)' : 'var(--red)'}">${s.ruinPct}%</td>
+          <td style="padding:6px;text-align:right;color:${s.pnl >= 0 ? 'var(--green)' : 'var(--red)'}">$${Math.round(s.pnl).toLocaleString()}</td>
+          <td style="padding:6px">${badge}</td>
+        </tr>`;
+      });
+      html += `</tbody></table>
+        <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-top:8px">Simulates progressive WR decline by converting smallest wins to -1R losses. Ruin = P(account ≤ $0) over 100 random orderings.</div>
+      </div>`;
+
+      // 2. Adverse streak probability table
+      const nTrades = rValues.length;
+      const observedWR = actualWR;
+      html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow)">
+        <div style="font-family:var(--font-data);font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:10px">ADVERSE STREAK PROBABILITY — at WR = ${(observedWR*100).toFixed(1)}%</div>
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px">`;
+      [3,4,5,6,8,10].forEach(streak => {
+        const p = Math.pow(1 - observedWR, streak);
+        const expectedOccurrences = Math.max(0, (nTrades - streak + 1) * p);
+        const acctLoss = streak * RPT_ST;
+        const survives = (ACCT_ST - acctLoss) > 0;
+        html += `<div style="background:var(--bg-raised);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-family:var(--font-display);font-size:22px;font-weight:700;color:${p > 0.05 ? 'var(--red)' : p > 0.001 ? 'var(--amber)' : 'var(--green)'}">${streak}L</div>
+          <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-top:4px">P = ${(p * 100).toFixed(p < 0.01 ? 3 : 1)}%</div>
+          <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted)">~${expectedOccurrences.toFixed(1)}x in ${nTrades} trades</div>
+          <div style="font-family:var(--font-data);font-size:10px;color:${survives ? 'var(--green)' : 'var(--red)'}; margin-top:4px">${survives ? 'Survives' : 'BLOWN'} (−$${acctLoss.toLocaleString()})</div>
+        </div>`;
+      });
+      html += `</div></div>`;
+    }
+  }
+
   cv.innerHTML = html;
 
-  // Render MC canvases after DOM is ready
+  // Render canvases after DOM is ready
   if(combinedStats && combinedStats._mcRender){
     combinedStats._mcRender();
+  }
+  if(combinedStats && combinedStats._regimeRender){
+    combinedStats._regimeRender();
   }
 
   // ── DRAW KDE OVERLAYS ─────────────────────────────────────────────────────
