@@ -439,6 +439,9 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 
     <div class="meta-row" id="meta-row"></div>
 
+    <div class="sec-label" id="smt-section-label" style="display:none">SMT Divergence · No SMT vs SMT</div>
+    <div id="smt-comparison" style="display:none"></div>
+
     <div class="sec-label">Classification Breakdown</div>
     <div id="classification-breakdown"></div>
 
@@ -556,7 +559,17 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
   <div class="page-pane" id="pane-trades">
     <div class="sec-label">Most Recent Trades</div>
     <div class="panel">
-      <div class="ph"><span class="ph-title" id="trades-panel-title">Resolved Trades</span><span class="ph-note">WIN / LOSS only · newest first · active profile</span><button onclick="downloadFSTrades()" style="margin-left:auto;font-family:var(--font-data);font-size:11px;font-weight:600;letter-spacing:.04em;padding:5px 14px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-primary);cursor:pointer;" onmouseover="this.style.background='var(--accent)';this.style.color='#fff'" onmouseout="this.style.background='var(--bg-raised)';this.style.color='var(--text-primary)'">↓ Download CSV</button></div>
+      <div class="ph" style="flex-wrap:wrap;gap:8px;">
+        <span class="ph-title" id="trades-panel-title">Resolved Trades</span>
+        <span class="ph-note">WIN / LOSS only · newest first · active profile</span>
+        <div style="display:flex;gap:6px;margin-left:8px;align-items:center;">
+          <span style="font-family:var(--font-data);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--text-muted);text-transform:uppercase;">SMT</span>
+          <button class="seg-btn smt-btn active" data-smt="all" data-accent="blue" onclick="switchSMT('all')">All</button>
+          <button class="seg-btn smt-btn" data-smt="smt" data-accent="amber" onclick="switchSMT('smt')">SMT Only</button>
+          <button class="seg-btn smt-btn" data-smt="no_smt" data-accent="blue" onclick="switchSMT('no_smt')">No SMT</button>
+        </div>
+        <button onclick="downloadFSTrades()" style="margin-left:auto;font-family:var(--font-data);font-size:11px;font-weight:600;letter-spacing:.04em;padding:5px 14px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-primary);cursor:pointer;" onmouseover="this.style.background='var(--accent)';this.style.color='#fff'" onmouseout="this.style.background='var(--bg-raised)';this.style.color='var(--text-primary)'">↓ Download CSV</button>
+      </div>
       <div class="pb"><div id="recent-trades-table"></div><div id="recent-trades-pagination" style="display:none;align-items:center;gap:8px;padding:10px 0 2px;font-family:var(--font-data);font-size:11px;"></div></div>
     </div>
   </div>
@@ -645,6 +658,29 @@ function switchMFESeg(seg) {
   if (btn) btn.classList.add('active');
   const D = _getActiveD();
   if (D) renderMFEStudy(D);
+}
+
+// ── SMT FILTER ────────────────────────────────────────────────────────────
+function getSmtFilteredTrades(trades) {
+  if (!trades) return trades;
+  if (activeSmt === 'smt')    return trades.filter(t => t.smt === true);
+  if (activeSmt === 'no_smt') return trades.filter(t => t.smt === false || t.smt == null);
+  return trades;
+}
+
+function switchSMT(val) {
+  activeSmt = val;
+  _tradesPage = 0;
+  document.querySelectorAll('.smt-btn').forEach(b => b.classList.remove('active'));
+  const btn = [...document.querySelectorAll('.smt-btn')].find(b => b.dataset.smt === val);
+  if (btn) btn.classList.add('active');
+  const D = _getActiveD();
+  if (!D) return;
+  renderRecentTrades();
+  if (activePageTab === 'mae') renderMAEStudy(D);
+  if (activePageTab === 'mfe') { renderMFEStudy(D); renderStructuralPanel(D); }
+  // SMT summary always lives on Overview — update regardless of active tab
+  renderSMTSummary(D);
 }
 
 // ── PAGE TAB NAVIGATION ────────────────────────────────────────────────────
@@ -940,6 +976,7 @@ let activeMode    = 'PREV';
 let activeCisd    = 'CISD';
 let activeProfile = 'structural_dynamic';
 let activeTF      = 'all';  // 'all' | '2y' | '1y' | '6m' | '3m' | '1m'
+let activeSmt     = 'all';  // 'all' | 'smt' | 'no_smt'
 
 const RR_PROFILES = [
   'structural_dynamic',
@@ -2459,8 +2496,115 @@ function renderModel(D){
   // Risk tab
   if(activePageTab === 'risk') renderEquityCurveFS(D);
 
+  renderSMTSummary(D);
   renderClassificationBreakdown();
   renderRecentTrades();
+}
+
+// ── SMT COMPARISON ────────────────────────────────────────────────────────────
+function renderSMTSummary(D) {
+  const container = document.getElementById('smt-comparison');
+  const labelEl = document.getElementById('smt-section-label');
+  if (!container) return;
+
+  // Prefer smt_summary from JSON; fall back to computing from recent_trades
+  let smtData = D?.smt_summary;
+  if (!smtData || !smtData.length) {
+    const trades = D?.recent_trades;
+    if (!trades || !trades.length) {
+      container.style.display = 'none';
+      if (labelEl) labelEl.style.display = 'none';
+      return;
+    }
+    const hasSmt = trades.some(t => t.smt != null);
+    if (!hasSmt) {
+      container.style.display = 'none';
+      if (labelEl) labelEl.style.display = 'none';
+      return;
+    }
+    function smtStats(arr) {
+      if (!arr.length) return null;
+      const wins = arr.filter(t => t.outcome === 'WIN');
+      const losses = arr.filter(t => t.outcome === 'LOSS');
+      const n = arr.length, nw = wins.length;
+      const wr = n > 0 ? nw / n : 0;
+      const sumW = wins.reduce((s,t) => s + t.r, 0);
+      const sumL = losses.reduce((s,t) => s + Math.abs(t.r), 0);
+      const ev = n > 0 ? (sumW - sumL) / n : 0;
+      const pf = sumL > 0 ? sumW / sumL : 0;
+      return { n, wr: +wr.toFixed(3), ev: +ev.toFixed(3), pf: +pf.toFixed(3) };
+    }
+    const smtTrades   = trades.filter(t => t.smt === true);
+    const noSmtTrades = trades.filter(t => t.smt === false || t.smt == null);
+    const smtRow   = smtStats(smtTrades);
+    const noSmtRow = smtStats(noSmtTrades);
+    smtData = [
+      ...(noSmtRow ? [{ smt: false, ...noSmtRow }] : []),
+      ...(smtRow   ? [{ smt: true,  ...smtRow   }] : []),
+    ];
+  }
+
+  if (!smtData.length) {
+    container.style.display = 'none';
+    if (labelEl) labelEl.style.display = 'none';
+    return;
+  }
+
+  container.style.display = '';
+  if (labelEl) labelEl.style.display = '';
+
+  const noSmtRow = smtData.find(r => r.smt === false);
+  const smtRow   = smtData.find(r => r.smt === true);
+
+  function statCell(val, fmt, color) {
+    return `<span style="font-family:var(--font-data);font-size:16px;font-weight:700;color:${color}">${fmt(val)}</span>`;
+  }
+  function wrColor(wr) { return wr >= 0.75 ? 'var(--green)' : wr >= 0.55 ? 'var(--amber)' : 'var(--red)'; }
+  function evColor(ev) { return ev > 0 ? 'var(--green)' : 'var(--red)'; }
+  function pfColor(pf) { return pf >= 1.5 ? 'var(--green)' : pf >= 1.0 ? 'var(--amber)' : 'var(--red)'; }
+
+  function buildCard(row, label, accent, accentBg) {
+    if (!row) return '';
+    const wr = row.wr ?? 0, ev = row.ev ?? 0, pfv = row.pf ?? 0;
+    const liftWR = noSmtRow && label === 'SMT' ? +(wr - noSmtRow.wr).toFixed(3) : null;
+    const liftEV = noSmtRow && label === 'SMT' ? +(ev - noSmtRow.ev).toFixed(3) : null;
+    const liftStr = (liftWR != null && liftEV != null)
+      ? `<span style="font-family:var(--font-data);font-size:10px;color:${liftWR >= 0 ? 'var(--green)' : 'var(--red)'}">${liftWR >= 0 ? '+' : ''}${(liftWR*100).toFixed(1)}% WR · ${liftEV >= 0 ? '+' : ''}${liftEV.toFixed(3)}R EV vs No-SMT</span>`
+      : '';
+    return `
+    <div style="background:var(--bg-card);border:1px solid ${accent};border-radius:10px;padding:16px 20px;flex:1;min-width:200px;">
+      <div style="font-family:var(--font-data);font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:${accent};margin-bottom:8px;">${label} · ${row.n?.toLocaleString() ?? '—'} trades</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px">
+        <div>
+          <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Win Rate</div>
+          ${statCell(wr, v => (v*100).toFixed(1)+'%', wrColor(wr))}
+        </div>
+        <div>
+          <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">EV (R)</div>
+          ${statCell(ev, v => (v>=0?'+':'')+v.toFixed(3)+'R', evColor(ev))}
+        </div>
+        <div>
+          <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Prof Factor</div>
+          ${statCell(pfv, v => v.toFixed(3), pfColor(pfv))}
+        </div>
+      </div>
+      ${liftStr}
+    </div>`;
+  }
+
+  container.innerHTML = `
+  <div class="panel">
+    <div class="ph">
+      <span class="ph-title">SMT Divergence Filter · Impact on Edge</span>
+      <span class="ph-note">SMT = price makes a divergent high/low vs correlated asset · No SMT = standard sweep only</span>
+    </div>
+    <div class="pb">
+      <div style="display:flex;gap:14px;flex-wrap:wrap;">
+        ${buildCard(noSmtRow, 'No SMT', 'var(--border-hi)', 'var(--bg-raised)')}
+        ${buildCard(smtRow, 'SMT', 'var(--amber)', 'var(--amber-tint)')}
+      </div>
+    </div>
+  </div>`;
 }
 
 // ── EQUITY CURVE ─────────────────────────────────────────────────────────────
@@ -2761,15 +2905,16 @@ function renderRecentTrades(page) {
   if (!el) return;
   const baseD2 = getProfileData(`${activeModel}_${activeMode}_${activeCisd}`, activeProfile);
   const D = getActiveTFData(baseD2);
-  const trades = D?.recent_trades;
-  console.log('[trades] activeTF=', activeTF, 'trades.length=', trades?.length, 'slice_has_trades=', !!baseD2?.by_tf?.[activeTF]?.recent_trades);
+  const rawTrades = D?.recent_trades;
+  console.log('[trades] activeTF=', activeTF, 'trades.length=', rawTrades?.length, 'slice_has_trades=', !!baseD2?.by_tf?.[activeTF]?.recent_trades);
   const titleEl = document.getElementById('trades-panel-title');
-  if (!trades || !trades.length) {
+  if (!rawTrades || !rawTrades.length) {
     el.innerHTML = '<p style="color:var(--text-muted);font-size:13px;padding:8px 0;">No trades data. Run <code>python3 model_stats.py</code> to generate.</p>';
     if (titleEl) titleEl.textContent = 'Resolved Trades';
     if (pgEl) pgEl.style.display = 'none';
     return;
   }
+  const trades = getSmtFilteredTrades(rawTrades);
   const totalCount = trades.length;
   const totalPages = Math.ceil(totalCount / TRADES_PER_PAGE);
   if (page !== undefined) _tradesPage = page;
@@ -3596,7 +3741,7 @@ function renderMAEStudy(D) {
   if (!el) return;
 
   // Compute MAE stats client-side from recent_trades so data matches selected Period/TF/Profile
-  const allTrades = D?.recent_trades || [];
+  const allTrades = getSmtFilteredTrades(D?.recent_trades || []);
   const winTrades = allTrades.filter(t => t.outcome === 'WIN');
   const lossTrades = allTrades.filter(t => t.outcome === 'LOSS');
   const maeAll = computeRichStudy(allTrades, 'mae_pct');
@@ -3894,7 +4039,7 @@ function renderMFEStudy(D) {
   if (!el) return;
 
   // Compute MFE stats client-side from recent_trades so data matches selected Period/TF/Profile
-  const allTrades = D?.recent_trades || [];
+  const allTrades = getSmtFilteredTrades(D?.recent_trades || []);
   const winTrades = allTrades.filter(t => t.outcome === 'WIN');
   const lossTrades = allTrades.filter(t => t.outcome === 'LOSS');
   const mfeAll = computeRichStudy(allTrades, 'mfe_pct');
