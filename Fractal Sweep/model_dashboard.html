@@ -4903,16 +4903,30 @@ function renderFilterVariants(D) {
         <th style="padding:8px 6px;text-align:left;color:var(--text-muted)">EV Bar</th>
       </tr></thead><tbody>`;
 
+  // Determine currently active filter set based on SMT checkbox
+  const activeFilters = ['F1_SMALL_RANGE', 'F3_SWEEP_TOO_LARGE', 'F4_NO_CLOSE_BACK'];
+  if (activeSmt) activeFilters.push('SMT');
+  const activeLabel = activeFilters.map(f => ({
+    'F1_SMALL_RANGE': 'F1: Prior Range Floor',
+    'F3_SWEEP_TOO_LARGE': 'F3: Sweep Max Cap',
+    'F4_NO_CLOSE_BACK': 'F4: Close-Back Required',
+    'SMT': 'SMT Divergence',
+  }[f])).join(' + ');
+
   const maxEV = Math.max(...combos.map(c => Math.abs(c.ev)));
   combos.forEach((c, i) => {
     const isBest = best && c.label === best.label;
+    const isActive = c.label === activeLabel;
     const isCurrent = c.label === baseline.label;
-    const bg = isBest ? 'rgba(16,185,129,0.06)' : isCurrent ? 'rgba(59,130,246,0.06)' : i % 2 === 0 ? 'transparent' : 'color-mix(in srgb,var(--bg-raised) 60%,transparent)';
-    const badge = isBest ? ' <span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);color:#10b981">BEST</span>' : isCurrent ? ' <span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.4);color:#3b82f6">CURRENT</span>' : '';
+    const bg = isActive ? 'rgba(139,92,246,0.08)' : isBest ? 'rgba(16,185,129,0.06)' : isCurrent ? 'rgba(59,130,246,0.06)' : i % 2 === 0 ? 'transparent' : 'color-mix(in srgb,var(--bg-raised) 60%,transparent)';
+    let badge = '';
+    if (isActive) badge += ' <span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.4);color:#8b5cf6">ACTIVE</span>';
+    if (isBest) badge += ' <span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);color:#10b981">BEST</span>';
+    if (isCurrent && !isActive) badge += ' <span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.4);color:#3b82f6">DEFAULT</span>';
     const barW = maxEV > 0 ? Math.abs(c.ev) / maxEV * 100 : 0;
     const barColor = c.ev >= 0 ? 'var(--green)' : 'var(--red)';
     html += `<tr style="background:${bg}">
-      <td style="padding:6px 10px;color:var(--text-primary);font-weight:${isBest || isCurrent ? '700' : '400'}">${c.label || 'No Filters'}${badge}</td>
+      <td style="padding:6px 10px;color:var(--text-primary);font-weight:${isBest || isActive || isCurrent ? '700' : '400'}">${c.label || 'No Filters'}${badge}</td>
       <td style="padding:6px;text-align:right;color:var(--text-primary)">${c.n}</td>
       <td style="padding:6px;text-align:right;color:${sc(c.wr, 0.80, 0.60, false)}">${(c.wr*100).toFixed(1)}%</td>
       <td style="padding:6px;text-align:right;font-weight:600;color:${sc(c.ev, 0.5, 0, false)}">${c.ev.toFixed(3)}</td>
