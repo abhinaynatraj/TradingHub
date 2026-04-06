@@ -805,6 +805,18 @@ const PROJECTS = [
     type:     'ny1',
     stats:    null,
   },
+  {
+    id:       '555',
+    title:    '555 Model',
+    subtitle: '5M SMT · IFVG · CISD',
+    desc:     'Detects 5-minute SMT divergence between NQ and ES swing fractals, followed by an inverse FVG (3m or 5m) and CISD confirmation. Entry at next 5m candle open. Stop at IFVG invalidation (close-based). TP1 at 1R (90%), runner (10%) with BE stop.',
+    json:     '555/model_stats.json',
+    link:     '555/model_dashboard.html',
+    color:    '#8b5cf6',
+    icon:     '🔮',
+    type:     '555',
+    stats:    null,
+  },
 ];
 
 // ── Load JSON and extract key stats ──────────────────────────────────────────
@@ -892,6 +904,20 @@ async function loadStats(project) {
         label3: 'Trades',   val3: num(m1.n || 2721),    cls3: 'neutral',
         dateRange: m1.date_range || '2014–2026',
         combos10: NY1_COMBOS.slice(0, 4),
+      };
+    }
+
+    if (project.type === '555') {
+      const modelData = d['5M_SMT_IFVG_CISD'];
+      if (!modelData) return null;
+      const stats = modelData.profiles?.structural_dynamic;
+      if (!stats) return null;
+      const m = stats.meta || {};
+      return {
+        label1: 'Win Rate', val1: pct(m.win_rate),       cls1: wrColor(m.win_rate),
+        label2: 'EV (R)',   val2: sgn(m.ev_per_trade),   cls2: m.ev_per_trade > 0 ? 'pos' : 'neg',
+        label3: 'Trades',   val3: num(m.total_wl),       cls3: 'neutral',
+        dateRange: m.date_range || '—',
       };
     }
   } catch(e) {
