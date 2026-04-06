@@ -973,10 +973,12 @@ let activeTF      = 'all';  // 'all' | '2y' | '1y' | '6m' | '3m' | '1m'
 let activeSmt     = false;  // false = show all, true = filter to smt===true only
 
 const RR_PROFILES = [
+  'simple_1r',
   'structural_dynamic',
   'split_80_20',
 ];
 const PROFILE_LABELS = {
+  'simple_1r':          'Simple 1R — TP @ 1R · 100% exit · SL = sweep extreme',
   'structural_dynamic': 'Structural Dynamic — TP1 @ 1R · 90% exit · Runner Free (10%)',
   'split_80_20':        'Split Exit — TP1 @ PTQ (90%) · TP2 @ p50 MFE (10%) · SL min(struct, MAE p90)',
 };

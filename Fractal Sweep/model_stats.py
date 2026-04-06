@@ -143,7 +143,9 @@ UNSWEPT_LOOKBACK = 10
 # profile_type='pct'   → stop/target distances = entry_price × val / 100
 #                         (fixed % of entry price, independent of sweep size)
 RR_PROFILES = [
-    # --- Structural Dynamic: SL = sweep extreme (1×base_risk), TP1 = 1R, 50% exit; runner with BE stop ---
+    # --- Simple 1R: SL = sweep extreme, TP = 1R, 100% exit (all-in/all-out) ---
+    (1.0, 1.0, 'simple_1r', 'mult'),
+    # --- Structural Dynamic: SL = sweep extreme (1×base_risk), TP1 = 1R, 90% exit; runner (10%) with BE stop ---
     (1.0, 1.0, 'structural_dynamic', 'structural'),
     # --- Split-exit: TP1 @ structural PTQ level (90% off), 10% runner free with BE stop ---
     # target_val is a placeholder; overridden per-model with structural ptq_level at runtime
