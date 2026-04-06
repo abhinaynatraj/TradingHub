@@ -783,7 +783,7 @@ function wrColor(wr) {
 const PROJECTS = [
   {
     id:       'sweep',
-    title:    'Sweep Fractal Model',
+    title:    'Fractal Sweep',
     subtitle: 'Sweep + CISD · 4 Models',
     desc:     'Detects prior candle sweep → close-back → CISD confirmation across four timeframe pairs (4H/15M, 1H/5M, 1H/3M, 30M/3M). Entry at next CISD-TF candle open. Stop at sweep extreme. Multiple risk profiles tested from 1:0.35 to 1:2.',
     json:     'Fractal Sweep/model_stats.json',
@@ -803,18 +803,6 @@ const PROJECTS = [
     color:    '#10b981',
     icon:     '🎯',
     type:     'ny1',
-    stats:    null,
-  },
-  {
-    id:       '555',
-    title:    '555 Model',
-    subtitle: '5M SMT · IFVG · CISD',
-    desc:     'Detects 5-minute SMT divergence between NQ and ES swing fractals, followed by an inverse FVG (3m or 5m) and CISD confirmation. Entry at next 5m candle open. Stop at IFVG invalidation (close-based). TP1 at 1R (90%), runner (10%) with BE stop.',
-    json:     '555/model_stats.json',
-    link:     '555/model_dashboard.html',
-    color:    '#8b5cf6',
-    icon:     '🔮',
-    type:     '555',
     stats:    null,
   },
 ];
@@ -883,43 +871,39 @@ async function loadStats(project) {
     }
 
     if (project.type === 'ny1') {
-      // Top-10 fixed-% combos (from master backtester, ranked by CE)
-      const NY1_COMBOS = [
-        { rank:1,  label:'SL 0.04% / TP 0.08%', rr:2.00, wr:0.419, ev_r:0.257, pf:1.442, ce:0.370, pl:157275, sharpe:9.05,  blown:false, anyBlown:true  },
-        { rank:2,  label:'SL 0.10% / TP 0.05%', rr:0.50, wr:0.793, ev_r:0.190, pf:1.921, ce:0.365, pl:116438, sharpe:16.33, blown:false, anyBlown:false },
-        { rank:3,  label:'SL 0.03% / TP 0.06%', rr:2.00, wr:0.417, ev_r:0.252, pf:1.433, ce:0.362, pl:154575, sharpe:8.90,  blown:false, anyBlown:true  },
-        { rank:4,  label:'SL 0.05% / TP 0.09%', rr:1.80, wr:0.445, ev_r:0.247, pf:1.446, ce:0.357, pl:151335, sharpe:9.26,  blown:false, anyBlown:true  },
-        { rank:5,  label:'SL 0.04% / TP 0.07%', rr:1.75, wr:0.452, ev_r:0.243, pf:1.444, ce:0.351, pl:148838, sharpe:9.26,  blown:false, anyBlown:true  },
-        { rank:6,  label:'SL 0.05% / TP 0.08%', rr:1.60, wr:0.477, ev_r:0.240, pf:1.459, ce:0.351, pl:147105, sharpe:9.65,  blown:false, anyBlown:true  },
-        { rank:7,  label:'SL 0.04% / TP 0.06%', rr:1.50, wr:0.494, ev_r:0.234, pf:1.462, ce:0.342, pl:143212, sharpe:9.76,  blown:false, anyBlown:true  },
-        { rank:8,  label:'SL 0.05% / TP 0.07%', rr:1.40, wr:0.513, ev_r:0.231, pf:1.475, ce:0.341, pl:141615, sharpe:10.06, blown:false, anyBlown:true  },
-        { rank:9,  label:'SL 0.05% / TP 0.06%', rr:1.20, wr:0.557, ev_r:0.225, pf:1.507, ce:0.339, pl:137700, sharpe:10.73, blown:false, anyBlown:true  },
-        { rank:10, label:'SL 0.10% / TP 0.06%', rr:0.60, wr:0.745, ev_r:0.193, pf:1.756, ce:0.338, pl:117855, sharpe:14.40, blown:false, anyBlown:false },
-      ];
+      // Load real scan results dynamically
+      let NY1_COMBOS = [];
+      try {
+        const scanRes = await fetch('NY1 FPFVG/fixed_scan_results.json');
+        if (scanRes.ok) {
+          const scanData = await scanRes.json();
+          NY1_COMBOS = (scanData.fpfvg_combos_on_ny1 || []).map((c, i) => ({
+            rank:    c.rank || i + 1,
+            label:   `SL ${(c.sl_pct).toFixed(2)}% / TP ${(c.tp_pct).toFixed(2)}%`,
+            rr:      c.rr,
+            wr:      c.win_rate,
+            ev_r:    c.ev_r,
+            pf:      c.pf,
+            ce:      c.ce,
+            pl:      Math.round(c.final_equity - 4500),
+            sharpe:  c.sharpe,
+            blown:   c.blown,
+          }));
+        }
+      } catch(e) { /* use empty */ }
       const top = NY1_COMBOS[0];
-      const m1 = d['pct_004_008']?.meta || {};
+      const m1 = d?.all?.profiles?.open_run?.meta || {};
+      if (!top) return null;
+      const bestWR = Math.max(...NY1_COMBOS.map(c => c.wr));
       return {
         label1: 'Best CE',  val1: top.ce.toFixed(3),   cls1: 'pos',
-        label2: 'Best WR',  val2: pct(0.793),           cls2: 'pos',
-        label3: 'Trades',   val3: num(m1.n || 2721),    cls3: 'neutral',
-        dateRange: m1.date_range || '2014–2026',
+        label2: 'Best WR',  val2: pct(bestWR),          cls2: 'pos',
+        label3: 'Trades',   val3: num(m1.n || top.trades), cls3: 'neutral',
+        dateRange: m1.date_range || '—',
         combos10: NY1_COMBOS.slice(0, 4),
       };
     }
 
-    if (project.type === '555') {
-      const modelData = d['5M_SMT_IFVG_CISD'];
-      if (!modelData) return null;
-      const stats = modelData.profiles?.structural_dynamic;
-      if (!stats) return null;
-      const m = stats.meta || {};
-      return {
-        label1: 'Win Rate', val1: pct(m.win_rate),       cls1: wrColor(m.win_rate),
-        label2: 'EV (R)',   val2: sgn(m.ev_per_trade),   cls2: m.ev_per_trade > 0 ? 'pos' : 'neg',
-        label3: 'Trades',   val3: num(m.total_wl),       cls3: 'neutral',
-        dateRange: m.date_range || '—',
-      };
-    }
   } catch(e) {
     return null;
   }
@@ -1008,11 +992,11 @@ function buildNy1RankingsTable(combos) {
   const fmtPL = v => (v >= 0 ? '+$' : '-$') + Math.abs(v).toLocaleString('en-US', {maximumFractionDigits:0});
   const vcls  = v => v > 0 ? 'pos' : v < 0 ? 'neg' : '';
   const rows = combos.map(c => {
-    const blownVal = c.blown ? 'Yes' : c.anyBlown ? 'Part' : 'No';
-    const blownCls = c.blown ? 'neg' : c.anyBlown ? '' : 'pos';
+    const blownVal = c.blown ? 'Yes' : 'No';
+    const blownCls = c.blown ? 'neg' : 'pos';
     return `<tr>
       <td style="font-weight:700;color:var(--text-sub);">${c.rank}</td>
-      <td style="color:var(--text-main);font-size:11px;">${c.label}</td>
+      <td style="color:var(--text-sub);font-size:11px;">${c.label}</td>
       <td style="text-align:right;">${c.rr.toFixed(2)}</td>
       <td class="stat-val ${vcls(c.wr - 0.5)}" style="font-size:11px;text-align:right;">${pct(c.wr)}</td>
       <td class="stat-val ${vcls(c.ev_r)}" style="font-size:11px;text-align:right;">${c.ev_r >= 0 ? '+' : ''}${c.ev_r.toFixed(3)}</td>
@@ -1026,7 +1010,7 @@ function buildNy1RankingsTable(combos) {
   return `
     <div style="margin-bottom:18px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
       <div style="padding:8px 10px;border-bottom:1px solid var(--border);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);">
-        All 10 Combos · Ranked by CE · $4,500 acct · $225/trade
+        Top ${combos.length} Combos · Ranked by CE · $4,500 acct · $225/trade
       </div>
       <div style="overflow-x:auto;">
         <table class="sweep-sub-table" style="min-width:560px;">

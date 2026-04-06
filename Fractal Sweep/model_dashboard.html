@@ -470,7 +470,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
         <div class="legend">
           <div class="leg-item"><div class="leg-dot" style="background:var(--green)"></div>Long</div>
           <div class="leg-item"><div class="leg-dot" style="background:var(--red)"></div>Short</div>
-          <div class="leg-item"><div class="leg-dot" style="background:var(--amber)"></div>Breakeven 33.3%</div>
+          <div class="leg-item"><div class="leg-dot" style="background:var(--amber)"></div><span id="be-wr-legend">Breakeven</span></div>
         </div>
       </div>
       <div class="pb"><div id="hour-chart"></div></div>
@@ -1263,7 +1263,7 @@ function renderClassificationBreakdown(){
 
   el.innerHTML = `
     <div style="font-family:var(--font-data);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px">
-      DDLI Classification Breakdown · FractalSweep2 Full Dataset
+      DDLI Classification Breakdown · Fractal Sweep Full Dataset
     </div>
     <div class="cls-grid">${cards.join('')}</div>`;
 }
@@ -1706,7 +1706,7 @@ function findBestVariant(pairs) {
   let bestIdx = 0, bestCV = Infinity;
 
   for (let vi = 0; vi < 5; vi++) {
-    const testEVs = pairs.map(p => p.variants[vi].test.ev_r).filter(v => v != null);
+    const testEVs = pairs.map(p => p.variants[vi].test?.ev_r).filter(v => v != null);
     if (testEVs.length < 2) continue;
     const mean = testEVs.reduce((s, v) => s + v, 0) / testEVs.length;
     if (mean === 0) continue;
@@ -1847,6 +1847,7 @@ function applyCustomRanges(){
     ...unpaired.flatMap(u => u.trades)
   ];
   const combinedStats = computeRangeStats(combinedTrades);
+  if (!combinedStats) { renderCustomViewV2(pairs, unpaired, null); return; }
   combinedStats._trades = combinedTrades;
   combinedStats._rangeResults = rangeResults;
   renderCustomViewV2(pairs, unpaired, combinedStats);
@@ -2159,7 +2160,7 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
     html += `<div style="font-family:var(--font-data);font-size:11px;color:var(--text-muted)">`;
     html += `<span style="color:${pair.train.color}">Train</span> (${pair.train.trades.length}) \u2192 <span style="color:${pair.test.color}">Test</span> (${pair.test.trades.length})`;
     html += `</div>`;
-    html += `<span style="font-family:var(--font-data);font-size:10px;font-weight:700;padding:3px 10px;border-radius:4px;color:${of.cls};background:color-mix(in srgb,${of.cls} 15%,transparent);border:1px solid color-mix(in srgb,${of.cls} 30%,transparent)">${of.label} (${of.score.toFixed(0)}%)</span>`;
+    html += `<span style="font-family:var(--font-data);font-size:10px;font-weight:700;padding:3px 10px;border-radius:4px;color:${of.cls};background:color-mix(in srgb,${of.cls} 15%,transparent);border:1px solid color-mix(in srgb,${of.cls} 30%,transparent)">${of.label} (${of.score != null ? of.score.toFixed(0) + '%' : '—'})</span>`;
     html += `</div>`;
 
     // Train Parameters block
@@ -3465,8 +3466,8 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
     }
 
     html += secHeader('MAE / MFE Percentile Comparison Across Ranges');
-    html += buildPctTable('MAE Distribution', 'var(--red)', 'maePercentiles', 'maeDistribution', true);
-    html += buildPctTable('MFE Distribution', 'var(--green)', 'mfePercentiles', 'mfeDistribution', false);
+    html += buildPctTable('MAE Distribution', 'var(--red)', 'maePercentiles', 'maeDist', true);
+    html += buildPctTable('MFE Distribution', 'var(--green)', 'mfePercentiles', 'mfeDist', false);
   }
 
   html += `</div>`; // end cv-edge
@@ -3805,6 +3806,8 @@ function renderActive(){
 
 function renderModel(D){
   const m=D.meta||{}, be=m.risk_breakeven_wr||0.333;
+  const beLeg=document.getElementById('be-wr-legend');
+  if(beLeg) beLeg.textContent=`Breakeven ${(be*100).toFixed(1)}%`;
   const rs=D.risk_stats||{};
 
   const fmt$=v=>v!=null?'$'+Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}):'—';
@@ -4178,7 +4181,7 @@ function downloadFSTrades() {
   const trades = D?.recent_trades;
   if (!trades || !trades.length) return;
   const headers = ['date','direction','session','hr','mn','dow_name','entry_price','sweep_extreme','target_price','risk_pts','r','outcome'];
-  const tf = _activeTF || 'all';
+  const tf = activeTF || 'all';
   const filename = `fractal_sweep_${activeModel}_${activeProfile}_${tf}_${new Date().toISOString().slice(0,10)}.csv`;
   triggerCSVDownload(trades, headers, filename);
 }
@@ -5544,9 +5547,9 @@ function renderMAEStudy(D) {
   const ce   = dist?.ce ?? D?.risk_stats?.ce;
   // Segment selector (always visible)
   const _segBtns = `<div style="display:flex;gap:6px;margin-bottom:14px;">
-    <button class="seg-btn${_maeSegment==='wins'?' seg-active-green':''}" onclick="switchMAESeg('wins')">Winners</button>
-    <button class="seg-btn${_maeSegment==='losses'?' seg-active-red':''}" onclick="switchMAESeg('losses')">Losers</button>
-    <button class="seg-btn${_maeSegment==='all'?' seg-active-blue':''}" onclick="switchMAESeg('all')">All Trades</button>
+    <button class="seg-btn${_maeSegment==='wins'?' active':''}" data-accent="green" onclick="switchMAESeg('wins')">Winners</button>
+    <button class="seg-btn${_maeSegment==='losses'?' active':''}" data-accent="red" onclick="switchMAESeg('losses')">Losers</button>
+    <button class="seg-btn${_maeSegment==='all'?' active':''}" data-accent="blue" onclick="switchMAESeg('all')">All Trades</button>
   </div>`;
   if (!dist) {
     const _segName = _maeSegment === 'wins' ? 'winning' : _maeSegment === 'losses' ? 'losing' : '';
@@ -5807,12 +5810,12 @@ function renderMAEStudy(D) {
   // ── Probability Curve + MAE Heatmap ──────────────────────────────────────
   el.insertAdjacentHTML('beforeend',`
     <div class="panel" style="margin-bottom:14px">
-      <div class="panel-hd"><span class="panel-title">MAE Probability Curve</span><span class="panel-note">CDF · P(false stop | MAE≥X) · P(genuine loss | MAE≥X) vs SL level</span></div>
-      <div class="panel-body" style="padding:12px 12px 6px"><canvas id="mae-prob-canvas" height="140" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas></div>
+      <div class="ph"><span class="ph-title">MAE Probability Curve</span><span class="ph-note">CDF · P(false stop | MAE≥X) · P(genuine loss | MAE≥X) vs SL level</span></div>
+      <div class="pb" style="padding:12px 12px 6px"><canvas id="mae-prob-canvas" height="140" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas></div>
     </div>
     <div class="panel" style="margin-bottom:14px">
-      <div class="panel-hd"><span class="panel-title">MAE Heatmap by Day of Week</span><span class="panel-note">trade density by MAE bucket per weekday · median line shown</span></div>
-      <div class="panel-body" style="padding:12px 12px 6px"><canvas id="mae-dow-heatmap" height="160" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas></div>
+      <div class="ph"><span class="ph-title">MAE Heatmap by Day of Week</span><span class="ph-note">trade density by MAE bucket per weekday · median line shown</span></div>
+      <div class="pb" style="padding:12px 12px 6px"><canvas id="mae-dow-heatmap" height="160" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas></div>
     </div>
   `);
   requestAnimationFrame(()=>{
@@ -5909,9 +5912,9 @@ function renderMFEStudy(D) {
   const _segCount = _mfeSegment === 'wins' ? winTrades.length : _mfeSegment === 'losses' ? lossTrades.length : allTrades.length;
   // Segment selector (always visible)
   const _segBtns = `<div style="display:flex;gap:6px;margin-bottom:14px;">
-    <button class="seg-btn${_mfeSegment==='wins'?' seg-active-green':''}" onclick="switchMFESeg('wins')">Winners</button>
-    <button class="seg-btn${_mfeSegment==='losses'?' seg-active-amber':''}" onclick="switchMFESeg('losses')">Losers</button>
-    <button class="seg-btn${_mfeSegment==='all'?' seg-active-blue':''}" onclick="switchMFESeg('all')">All Trades</button>
+    <button class="seg-btn${_mfeSegment==='wins'?' active':''}" data-accent="green" onclick="switchMFESeg('wins')">Winners</button>
+    <button class="seg-btn${_mfeSegment==='losses'?' active':''}" data-accent="amber" onclick="switchMFESeg('losses')">Losers</button>
+    <button class="seg-btn${_mfeSegment==='all'?' active':''}" data-accent="blue" onclick="switchMFESeg('all')">All Trades</button>
   </div>`;
   if (!dist) {
     const _segName = _mfeSegment === 'wins' ? 'winning' : _mfeSegment === 'losses' ? 'losing' : '';
@@ -6194,12 +6197,12 @@ function renderMFEStudy(D) {
   // ── Probability Curve + MFE Heatmap ──────────────────────────────────────
   el.insertAdjacentHTML('beforeend',`
     <div class="panel" style="margin-bottom:14px">
-      <div class="panel-hd"><span class="panel-title">MFE Probability Curve</span><span class="panel-note">P(MFE≥X) reach rate · P(+exit | MFE≥X) · PTQ recommendation</span></div>
-      <div class="panel-body" style="padding:12px 12px 6px"><canvas id="mfe-prob-canvas" height="140" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas></div>
+      <div class="ph"><span class="ph-title">MFE Probability Curve</span><span class="ph-note">P(MFE≥X) reach rate · P(+exit | MFE≥X) · PTQ recommendation</span></div>
+      <div class="pb" style="padding:12px 12px 6px"><canvas id="mfe-prob-canvas" height="140" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas></div>
     </div>
     <div class="panel" style="margin-bottom:14px">
-      <div class="panel-hd"><span class="panel-title">MFE Heatmap by Day of Week</span><span class="panel-note">trade density by MFE bucket per weekday · median line shown</span></div>
-      <div class="panel-body" style="padding:12px 12px 6px"><canvas id="mfe-dow-heatmap" height="160" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas></div>
+      <div class="ph"><span class="ph-title">MFE Heatmap by Day of Week</span><span class="ph-note">trade density by MFE bucket per weekday · median line shown</span></div>
+      <div class="pb" style="padding:12px 12px 6px"><canvas id="mfe-dow-heatmap" height="160" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas></div>
     </div>
   `);
   requestAnimationFrame(()=>{
@@ -6549,8 +6552,8 @@ function renderStructuralPanel(D){
 function drawSetupViz(){
   // Parse sl/tp from active profile key: 'sl_026_tp_018' → sl=0.26%, tp=0.18%
   let slPct=0.26, tpPct=0.18;
-  if(activeProfile === STRUCTURAL_PROFILE){
-    slPct=0.20; tpPct=0.20; // Show 1:1 for structural dynamic
+  if(activeProfile === STRUCTURAL_PROFILE || SPLIT_PROFILES.has(activeProfile)){
+    slPct=0.20; tpPct=0.20; // Show 1:1 for structural/split profiles
   } else {
     const m=activeProfile.match(/sl_(\d+)_tp_(\d+)/);
     if(m){ slPct=parseInt(m[1],10)/100; tpPct=parseInt(m[2],10)/100; }

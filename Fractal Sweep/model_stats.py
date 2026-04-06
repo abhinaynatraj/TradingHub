@@ -368,7 +368,18 @@ def find_cisd(c_arrs, return_ts_ns, direction, max_bars, cisd_mode):
     if start_idx >= len(c_arrs['ts_ns']):
         return None, None
     if max_bars is None:
-        n_forward = len(c_arrs['ts_ns']) - start_idx
+        # Cap at 16:00 ET same day to prevent cross-session CISD
+        # Use hr array: session ends when hour >= 16 on the same trade_date
+        start_date = c_arrs['trade_date'][start_idx]
+        day_end = start_idx
+        while day_end < len(c_arrs['ts_ns']):
+            if c_arrs['trade_date'][day_end] != start_date:
+                break
+            if c_arrs['hr'][day_end] >= 16:
+                day_end += 1  # include 16:00 bar itself
+                break
+            day_end += 1
+        n_forward = day_end - start_idx
     else:
         n_forward = min(max_bars * 2, 40)
     return _find_cisd(
@@ -520,25 +531,34 @@ def resolve_outcomes_structural(m1_arrs, pending):
         tp1_idx = int(np.argmax(tp1_hit_arr)) if tp1_any else len(h)
         sl_idx  = int(np.argmax(sl_hit_arr))  if sl_any  else len(h)
 
-        # ── Compute MAE/MFE over full trade window ────────────────────────────
-        if direction == 'LONG':
-            mae_pct = round(float(max(0.0, entry_price - l.min()) / entry_price * 100), 4)
-            mfe_pct = round(float(max(0.0, h.max() - entry_price) / entry_price * 100), 4)
-        else:
-            mae_pct = round(float(max(0.0, h.max() - entry_price) / entry_price * 100), 4)
-            mfe_pct = round(float(max(0.0, entry_price - l.min()) / entry_price * 100), 4)
-
         # ── Outcome determination ─────────────────────────────────────────────
         if not tp1_any and not sl_any:
             # Expired — neither TP1 nor SL hit
+            trade_end = len(h)
             last_r = ((closes[end - 1] - entry_price) / risk
                       if direction == 'LONG'
                       else (entry_price - closes[end - 1]) / risk)
+            # MAE/MFE over actual trade window
+            h_w, l_w = h[:trade_end], l[:trade_end]
+            if direction == 'LONG':
+                mae_pct = round(float(max(0.0, entry_price - l_w.min()) / entry_price * 100), 4)
+                mfe_pct = round(float(max(0.0, h_w.max() - entry_price) / entry_price * 100), 4)
+            else:
+                mae_pct = round(float(max(0.0, h_w.max() - entry_price) / entry_price * 100), 4)
+                mfe_pct = round(float(max(0.0, entry_price - l_w.min()) / entry_price * 100), 4)
             results.append(('EXPIRED', round(float(last_r), 2), mae_pct, mfe_pct, False, 0.0))
             continue
 
         if sl_any and (not tp1_any or sl_idx < tp1_idx):
             # SL hit before TP1 → full LOSS
+            trade_end = sl_idx + 1
+            h_w, l_w = h[:trade_end], l[:trade_end]
+            if direction == 'LONG':
+                mae_pct = round(float(max(0.0, entry_price - l_w.min()) / entry_price * 100), 4)
+                mfe_pct = round(float(max(0.0, h_w.max() - entry_price) / entry_price * 100), 4)
+            else:
+                mae_pct = round(float(max(0.0, h_w.max() - entry_price) / entry_price * 100), 4)
+                mfe_pct = round(float(max(0.0, entry_price - l_w.min()) / entry_price * 100), 4)
             results.append(('LOSS', -1.0, mae_pct, mfe_pct, False, 0.0))
             continue
 
@@ -563,7 +583,19 @@ def resolve_outcomes_structural(m1_arrs, pending):
                 else:
                     runner_exit_r = (entry_price - last_close) / risk
                 runner_exit_r = max(0.0, round(float(runner_exit_r), 3))
-            # else: runner stopped at BE → runner_exit_r stays 0.0
+            else:
+                # Runner stopped at BE — trade ends at BE hit
+                runner_end = runner_start + int(np.argmax(be_hit)) + 1
+
+        # MAE/MFE over actual trade window (entry to final exit)
+        trade_end = runner_end
+        h_w, l_w = h[:trade_end], l[:trade_end]
+        if direction == 'LONG':
+            mae_pct = round(float(max(0.0, entry_price - l_w.min()) / entry_price * 100), 4)
+            mfe_pct = round(float(max(0.0, h_w.max() - entry_price) / entry_price * 100), 4)
+        else:
+            mae_pct = round(float(max(0.0, h_w.max() - entry_price) / entry_price * 100), 4)
+            mfe_pct = round(float(max(0.0, entry_price - l_w.min()) / entry_price * 100), 4)
 
         net_r = round(0.90 * 1.0 + 0.10 * runner_exit_r, 3)
         results.append(('WIN', net_r, mae_pct, mfe_pct, True, runner_exit_r))
@@ -627,23 +659,31 @@ def resolve_outcomes_split_tp(m1_arrs, pending,
         tp1_idx = int(np.argmax(tp1_hit_arr)) if tp1_any else len(h)
         sl_idx  = int(np.argmax(sl_hit_arr))  if sl_any  else len(h)
 
-        # ── Compute MAE/MFE ────────────────────────────────────────────────────
-        if direction == 'LONG':
-            mae_pct = round(float(max(0.0, entry_price - l.min()) / entry_price * 100), 4)
-            mfe_pct = round(float(max(0.0, h.max() - entry_price) / entry_price * 100), 4)
-        else:
-            mae_pct = round(float(max(0.0, h.max() - entry_price) / entry_price * 100), 4)
-            mfe_pct = round(float(max(0.0, entry_price - l.min()) / entry_price * 100), 4)
-
         # ── Outcome determination ─────────────────────────────────────────────
         if not tp1_any and not sl_any:
+            trade_end = len(h)
             last_r = ((closes[end - 1] - entry_price) / base_risk
                       if direction == 'LONG'
                       else (entry_price - closes[end - 1]) / base_risk)
+            h_w, l_w = h[:trade_end], l[:trade_end]
+            if direction == 'LONG':
+                mae_pct = round(float(max(0.0, entry_price - l_w.min()) / entry_price * 100), 4)
+                mfe_pct = round(float(max(0.0, h_w.max() - entry_price) / entry_price * 100), 4)
+            else:
+                mae_pct = round(float(max(0.0, h_w.max() - entry_price) / entry_price * 100), 4)
+                mfe_pct = round(float(max(0.0, entry_price - l_w.min()) / entry_price * 100), 4)
             results.append(('EXPIRED', round(float(last_r), 2), mae_pct, mfe_pct, False, 0.0))
             continue
 
         if sl_any and (not tp1_any or sl_idx < tp1_idx):
+            trade_end = sl_idx + 1
+            h_w, l_w = h[:trade_end], l[:trade_end]
+            if direction == 'LONG':
+                mae_pct = round(float(max(0.0, entry_price - l_w.min()) / entry_price * 100), 4)
+                mfe_pct = round(float(max(0.0, h_w.max() - entry_price) / entry_price * 100), 4)
+            else:
+                mae_pct = round(float(max(0.0, h_w.max() - entry_price) / entry_price * 100), 4)
+                mfe_pct = round(float(max(0.0, entry_price - l_w.min()) / entry_price * 100), 4)
             results.append(('LOSS', -1.0, mae_pct, mfe_pct, False, 0.0))
             continue
 
@@ -686,9 +726,11 @@ def resolve_outcomes_split_tp(m1_arrs, pending,
                 if tp2_any and (not be_any or tp2_idx <= be_idx):
                     # TP2 hit before BE → runner exits at TP2
                     runner_exit_r = round(float(tp2_dist / base_risk), 3)
+                    runner_end = runner_start + tp2_idx + 1
                 elif be_any:
                     # BE hit before TP2 → runner exits at breakeven
                     runner_exit_r = 0.0
+                    runner_end = runner_start + be_idx + 1
                 else:
                     # Neither hit → mark to market at EOD
                     last_close = closes[start + runner_end - 1]
@@ -713,7 +755,19 @@ def resolve_outcomes_split_tp(m1_arrs, pending,
                     else:
                         runner_exit_r = (entry_price - last_close) / base_risk
                     runner_exit_r = max(0.0, round(float(runner_exit_r), 3))
-                # else: BE stop hit → runner_exit_r stays 0.0
+                else:
+                    # BE stop hit
+                    runner_end = runner_start + int(np.argmax(be_hit_arr)) + 1
+
+        # MAE/MFE over actual trade window (entry to final exit)
+        trade_end = runner_end
+        h_w, l_w = h[:trade_end], l[:trade_end]
+        if direction == 'LONG':
+            mae_pct = round(float(max(0.0, entry_price - l_w.min()) / entry_price * 100), 4)
+            mfe_pct = round(float(max(0.0, h_w.max() - entry_price) / entry_price * 100), 4)
+        else:
+            mae_pct = round(float(max(0.0, h_w.max() - entry_price) / entry_price * 100), 4)
+            mfe_pct = round(float(max(0.0, entry_price - l_w.min()) / entry_price * 100), 4)
 
         net_r = round(tp1_size * tp1_r + tp2_size * runner_exit_r, 3)
         results.append(('WIN', net_r, mae_pct, mfe_pct, True, runner_exit_r))
@@ -1596,7 +1650,7 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
     # All resolved trades (capped at 500 for JSON size; sub-TF slices are uncapped)
     recent_cols = ['date','direction','hr','mn','session','dow','entry_price',
                    'sweep_extreme','target_price','risk_pts','r','outcome',
-                   'mae_pct','mfe_pct','smt']
+                   'mae_pct','mfe_pct','mae_pct_hr','mfe_pct_hr','hour_range_pts','smt']
     recent_rows = (wl[recent_cols]
                    .sort_values('date', ascending=False)
                    .copy())
@@ -1612,7 +1666,7 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         for k in ('entry_price','sweep_extreme','target_price','risk_pts','r'):
             if t[k] is not None:
                 t[k] = round(float(t[k]), 2)
-        for k in ('mae_pct','mfe_pct'):
+        for k in ('mae_pct','mfe_pct','mae_pct_hr','mfe_pct_hr','hour_range_pts'):
             if k in t and t[k] is not None:
                 t[k] = round(float(t[k]), 4)
 
@@ -1650,6 +1704,7 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
     peak_eq = eq
     min_eq = eq
     max_dd_abs = 0.0
+    max_dd_usd = 0.0
     # Daily P&L for Sharpe: accumulate by date
     daily_pnl: dict = {}
     for _, row in wl_sorted.iterrows():
@@ -1664,6 +1719,7 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
             dd = (peak_eq - eq) / peak_eq if peak_eq > 0 else 0.0
             if dd > max_dd_abs:
                 max_dd_abs = dd
+                max_dd_usd = peak_eq - eq
             # date bucket for Sharpe
             try:
                 trade_date = str(row['date'])[:10]
@@ -1700,6 +1756,7 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         'sl_pct':           sl_pct_val,
         'tp_pct':           tp_pct_val,
         'max_dd_pct':       max_dd_pct,
+        'max_dd_usd':       round(max_dd_usd, 2),
         'total_pnl_usd':    total_pnl_usd,
         'sharpe':           sharpe_val,
     }
@@ -1755,10 +1812,11 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
 
     full_key = f"{model_key}_PREV_CISD"
     # Breakeven WR:
-    #   structural:  wr × 0.5R = (1-wr) × 1R  →  wr = 2/3
+    #   structural:  wr × 0.9R = (1-wr) × 1R  →  wr = 1/1.9 ≈ 0.5263
+    #     (min win = 0.90×1R + 0.10×0R = 0.9R when runner exits at BE)
     #   split_tp:    wr × 0.9R = (1-wr) × 1R  →  wr = 1/1.9 ≈ 0.5263
     if profile_type == 'structural':
-        be_wr = round(2.0 / 3.0, 4)
+        be_wr = round(1.0 / 1.9, 4)
     elif profile_type == 'split_tp':
         be_wr = round(1.0 / 1.9, 4)
     else:
@@ -2011,7 +2069,7 @@ def _build_slice_stats(wl_sub, stop_mult, target_mult, agg_fn, hr_labels,
     # recent trades
     recent_cols = ['date','direction','hr','mn','session','dow','entry_price',
                    'sweep_extreme','target_price','risk_pts','r','outcome',
-                   'mae_pct','mfe_pct','smt']
+                   'mae_pct','mfe_pct','mae_pct_hr','mfe_pct_hr','hour_range_pts','smt']
     available = [c for c in recent_cols if c in wl_sub.columns]
     rt = wl_sub[available].sort_values('date', ascending=False).copy()
     rt['dow_name'] = rt['dow'].map(lambda d: dow_names.get(int(d), '?'))
@@ -2026,6 +2084,9 @@ def _build_slice_stats(wl_sub, stop_mult, target_mult, agg_fn, hr_labels,
         for k in ['entry_price','sweep_extreme','target_price','risk_pts','r']:
             if k in t and t[k] is not None:
                 t[k] = round(float(t[k]), 2)
+        for k in ['mae_pct','mfe_pct','mae_pct_hr','mfe_pct_hr','hour_range_pts']:
+            if k in t and t[k] is not None:
+                t[k] = round(float(t[k]), 4)
 
     return {
         'meta': {
@@ -2445,6 +2506,13 @@ def main():
                 stats['meta']['tp2_pct'] = _all_p50
                 stats['meta']['sl_mae_p90_pct'] = _all_mae
 
+                # Build set of main trade keys for consistency filtering
+                _main_wl = df_p[(df_p['rejected_by'] == '') &
+                                df_p['outcome'].isin(['WIN','LOSS'])]
+                _main_keys = set(zip(
+                    _main_wl['date'].astype(str).str[:10],
+                    _main_wl['entry_price'].round(2)))
+
                 # Re-resolve each sub-TF with period-specific targets and replace by_tf
                 for _tfk, _cutoff in _tf_cutoffs.items():
                     if _tfk == 'all':
@@ -2464,10 +2532,21 @@ def main():
                         tp2_pct=_tf_p50, sl_mae_pct=_tf_mae)
                     if _tf_df.empty:
                         continue
-                    # Filter to only trades in this TF period
+                    # Filter to only trades in this TF period that also exist in main trades
                     _tf_wl = _tf_df[(_tf_df['date'].astype(str).str[:10] >= _cutoff) &
                                     (_tf_df['rejected_by'] == '') &
                                     _tf_df['outcome'].isin(['WIN','LOSS'])]
+                    _tf_trade_keys = set(zip(
+                        _tf_wl['date'].astype(str).str[:10],
+                        _tf_wl['entry_price'].round(2)))
+                    _extra = _tf_trade_keys - _main_keys
+                    if _extra:
+                        _mask = pd.Series(
+                            list(zip(_tf_wl['date'].astype(str).str[:10],
+                                     _tf_wl['entry_price'].round(2))),
+                            index=_tf_wl.index
+                        ).isin(_extra)
+                        _tf_wl = _tf_wl[~_mask]
                     if len(_tf_wl) < 3:
                         continue
                     _slice = _build_slice_stats(

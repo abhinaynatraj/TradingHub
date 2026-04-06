@@ -651,7 +651,7 @@ function toggleTheme() {
 // Re-render charts when theme changes
 let _data = null;
 const themeObserver = new MutationObserver(() => {
-  if (_data) renderCharts(_data[_activeTF]['profiles'][_activeProfile]);
+  if (_data) renderCharts(_data[_activeTF]?.['profiles']?.[_activeProfile]);
 });
 themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
@@ -1166,7 +1166,8 @@ function renderDirection(byDir) {
   ];
   const container = document.getElementById('dirGrid');
   container.innerHTML = dirs.map(({ key, color, label }) => {
-    const d = byDir[key];
+    const d = byDir?.[key];
+    if (!d) return '';
     const wr = d.tp1_wr;
     const wrC = wr >= 0.5 ? cssVar('--green') : cssVar('--red');
     const mfeMiddle = `<div>
@@ -1579,7 +1580,7 @@ function renderTradesTable(allTrades, page) {
     { key: 'time',         label: 'Entry' },
     { key: 'entry',        label: 'Entry $' },
     { key: 'direction',    label: 'Dir' },
-    { key: '_stop',        label: 'Stop $' },
+    { key: 'stop',         label: 'Stop $' },
     { key: 'mae_pct',      label: 'MAE (%)' },
     { key: 'mfe_pct',      label: 'MFE (%)' },
     { key: 'tp1_price',    label: 'TP1 $' },
@@ -1602,6 +1603,8 @@ function renderTradesTable(allTrades, page) {
         ${c.label}${c.key === _sortCol ? (_sortDir === -1 ? ' ▼' : ' ▲') : ''}
       </th>`).join('')}</tr></thead>`;
 
+    const _tpMatch = _activeProfile.match(/tp(\d+)/);
+    const _tpTarget = _tpMatch ? parseInt(_tpMatch[1], 10) / 100 : 0.10;
     const rows = trades.map(t => {
       const dirBadge = t.direction === 'LONG'
         ? '<span class="badge badge-long">L</span>'
@@ -1620,7 +1623,7 @@ function renderTradesTable(allTrades, page) {
       const tp1Px  = fmtPx(t.tp1_price);
       const tp1Hit = t.exit_type === 'TP1+EOD' || t.exit_type === 'TP1+STOP';
       const mfePct = t.mfe_pct != null ? t.mfe_pct : 0;
-      const progPct = Math.min(100, Math.round(mfePct / 0.10 * 100));
+      const progPct = Math.min(100, Math.round(mfePct / _tpTarget * 100));
       const progColor = tp1Hit ? 'var(--green)' : (progPct >= 70 ? '#f5a623' : 'var(--faint)');
       const tp1Cell = tp1Hit
         ? `<span style="font-family:var(--font-data);color:var(--green)">${tp1Px}</span>`
