@@ -2040,6 +2040,14 @@ function switchCustomTab(tabId){
     b.style.borderBottomColor = isActive ? 'var(--green)' : 'transparent';
     b.style.color = isActive ? 'var(--text-primary)' : 'var(--text-muted)';
   });
+  // Trigger deferred canvas renders (canvases can't size when hidden)
+  if(window._cvDeferredRenders && window._cvDeferredRenders[tabId] && !window._cvRendered?.[tabId]){
+    setTimeout(() => {
+      window._cvDeferredRenders[tabId]();
+      window._cvRendered = window._cvRendered || {};
+      window._cvRendered[tabId] = true;
+    }, 50);
+  }
 }
 
 function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
@@ -3481,14 +3489,25 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
     }
   }
 
-  // Render canvases after DOM is ready
-  if(combinedStats && combinedStats._mcRender){
-    combinedStats._mcRender();
-  }
-  if(combinedStats && combinedStats._regimeRender){
-    combinedStats._regimeRender();
-  }
+  // Defer canvas rendering until their tabs are visible.
+  // Canvases can't measure size when parent is display:none.
+  const _deferredRenders = {
+    'cv-risk': () => {
+      if(combinedStats && combinedStats._mcRender) combinedStats._mcRender();
+    },
+    'cv-edge': () => {
+      if(combinedStats && combinedStats._regimeRender) combinedStats._regimeRender();
+    },
+    'cv-walkforward': () => {
+      // KDE overlays for walk-forward pairs
+      _renderKDE();
+    },
+  };
+  // Store on window so switchCustomTab can trigger them
+  window._cvDeferredRenders = _deferredRenders;
+  window._cvRendered = {};
 
+  function _renderKDE(){
   // ── DRAW KDE OVERLAYS ─────────────────────────────────────────────────────
   pairs.forEach((pair, pi) => {
     ['mae','mfe'].forEach(type => {
@@ -3606,6 +3625,7 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
       ctx.fillText('Test', pad.l+84, legendY+3);
     });
   });
+  } // end _renderKDE
 }
 
 // ── SMT DATA OVERRIDE ────────────────────────────────────────────────────────
