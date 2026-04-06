@@ -3298,26 +3298,15 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
     html += secHeader('Risk Profile Comparison');
     html += `<div id="custom-profile-comparison"></div>`;
 
-    // Filter Variant Analysis — reuse renderFilterVariants by embedding a container
-    const fv = _profileD.filter_variants;
-    if(fv && fv.all_combinations){
-      html += secHeader('Filter Variant Analysis');
-      html += `<div id="custom-filter-variants"></div>`;
-    }
   }
 
   cv.innerHTML = html;
 
-  // Render profile comparison and filter variants after DOM is set
+  // Render profile comparison after DOM is set
   if(_profileD){
     const compPanel = document.getElementById('custom-profile-comparison');
     const activeRanges = customRanges.filter(r => r.start && r.end);
     if(compPanel) renderProfileComparison(compPanel, activeRanges);
-
-    if(_profileD.filter_variants && _profileD.filter_variants.all_combinations){
-      const customPanel = document.getElementById('custom-filter-variants');
-      if(customPanel) renderFilterVariants(_profileD, customPanel);
-    }
   }
 
   // Render canvases after DOM is ready
