@@ -344,6 +344,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
     <span style="font-family:var(--font-data);font-size:10px;font-weight:600;letter-spacing:0.06em;color:var(--text-muted);text-transform:uppercase;">Date Ranges</span>
     <button id="add-range-btn" onclick="addCustomRange()" style="font-family:var(--font-data);font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-secondary);cursor:pointer;">+ Add Range</button>
     <button onclick="loadDefaultRanges()" style="font-family:var(--font-data);font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--amber);background:rgba(245,158,11,0.1);color:var(--amber);cursor:pointer;">Load Defaults</button>
+    <button onclick="resetCustomRanges()" style="font-family:var(--font-data);font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--text-muted);background:transparent;color:var(--text-muted);cursor:pointer;">Reset</button>
     <button onclick="applyCustomRanges()" style="font-family:var(--font-data);font-size:11px;font-weight:600;padding:4px 14px;border-radius:6px;border:1px solid var(--green);background:rgba(52,211,153,0.1);color:var(--green);cursor:pointer;">Apply</button>
   </div>
   <div id="range-slots" style="display:flex;flex-wrap:wrap;gap:10px;"></div>
@@ -1423,6 +1424,12 @@ function addCustomRange(){
   saveAndRenderRanges();
 }
 
+function resetCustomRanges(){
+  customRanges = [];
+  saveAndRenderRanges();
+  applyCustomRanges();
+}
+
 function removeRange(i){
   customRanges.splice(i, 1);
   saveAndRenderRanges();
@@ -1869,7 +1876,15 @@ function applyCustomRanges(){
     return { label: r.start + ' to ' + r.end, color: RANGE_COLORS[i], stats: computeRangeStats(filtered), trades: filtered };
   }).filter(Boolean);
 
-  if(rangeResults.length === 0) return;
+  if(rangeResults.length === 0){
+    const cv = document.getElementById('custom-view');
+    if(cv) cv.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px;gap:16px;color:var(--text-muted);font-family:var(--font-data);">
+      <div style="font-size:36px;opacity:0.3;">📅</div>
+      <div style="font-size:14px;font-weight:600;">No date ranges selected</div>
+      <div style="font-size:12px;max-width:360px;text-align:center;line-height:1.5;">Add custom date ranges above or click <strong style="color:var(--amber)">Load Defaults</strong> to compare Spring 2022, Oct–Dec 2025, and the current 3 months.</div>
+    </div>`;
+    return;
+  }
 
   // Single range — no walk-forward, just show as unpaired
   if(rangeResults.length === 1){
