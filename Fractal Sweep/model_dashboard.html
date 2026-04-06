@@ -3311,7 +3311,8 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
   // Render profile comparison and filter variants after DOM is set
   if(_profileD){
     const compPanel = document.getElementById('custom-profile-comparison');
-    if(compPanel) renderProfileComparison(compPanel);
+    const activeRanges = customRanges.filter(r => r.start && r.end);
+    if(compPanel) renderProfileComparison(compPanel, activeRanges);
 
     if(_profileD.filter_variants && _profileD.filter_variants.all_combinations){
       const customPanel = document.getElementById('custom-filter-variants');
@@ -4841,7 +4842,7 @@ function computeRichStudy(trades, field) {
 
 
 // ── MAE STUDY (FPFVG-style) ───────────────────────────────────────────────────
-function renderProfileComparison(targetEl) {
+function renderProfileComparison(targetEl, dateRanges) {
   const el = targetEl || document.getElementById('profile-comparison-panel');
   if (!el) return;
 
@@ -4910,10 +4911,19 @@ function renderProfileComparison(targetEl) {
 
     let wr, ev, pf, n, sharpe, maxDD, totalPnl, minEq, blown, mcw, mcl;
 
-    if (activeSmt && d.recent_trades) {
-      // SMT active: recompute from filtered trades
-      const smtTrades = d.recent_trades.filter(t => t.smt === true);
-      const s = statsFromTrades(smtTrades);
+    // Determine if we need to recompute from trades (SMT filter or date ranges)
+    const needsRecompute = activeSmt || dateRanges;
+    if (needsRecompute && d.recent_trades) {
+      let trades = d.recent_trades;
+      // Apply date range filter
+      if (dateRanges && dateRanges.length > 0) {
+        trades = trades.filter(t => dateRanges.some(r => t.date >= r.start && t.date <= r.end));
+      }
+      // Apply SMT filter
+      if (activeSmt) {
+        trades = trades.filter(t => t.smt === true);
+      }
+      const s = statsFromTrades(trades);
       ({wr, ev, pf, n, sharpe, maxDD, totalPnl, minEq, blown, mcw, mcl} = s);
     } else {
       const m = d.meta || {};
