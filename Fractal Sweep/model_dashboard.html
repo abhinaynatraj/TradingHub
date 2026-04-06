@@ -454,6 +454,9 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
       <div class="ph"><span class="ph-title">Direction Summary · Long vs Short</span></div>
       <div class="pb"><div class="dir-cards" id="dir-cards"></div></div>
     </div>
+
+    <div class="sec-label">Risk Profile Comparison</div>
+    <div id="profile-comparison-panel"></div>
   </div>
 
   <!-- ══ TAB: EDGE ══════════════════════════════════════════════════════════ -->
@@ -3291,6 +3294,10 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
   const _profileD = getProfileData(fullKey, activeProfile);
   if(_profileD){
+    // Profile Comparison
+    html += secHeader('Risk Profile Comparison');
+    html += `<div id="custom-profile-comparison"></div>`;
+
     // Filter Variant Analysis — reuse renderFilterVariants by embedding a container
     const fv = _profileD.filter_variants;
     if(fv && fv.all_combinations){
@@ -3301,8 +3308,11 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
 
   cv.innerHTML = html;
 
-  // Render filter variants after DOM is set
+  // Render profile comparison and filter variants after DOM is set
   if(_profileD){
+    const compPanel = document.getElementById('custom-profile-comparison');
+    if(compPanel) renderProfileComparison(compPanel);
+
     if(_profileD.filter_variants && _profileD.filter_variants.all_combinations){
       const customPanel = document.getElementById('custom-filter-variants');
       if(customPanel) renderFilterVariants(_profileD, customPanel);
@@ -3698,6 +3708,7 @@ function renderModel(D){
   if(activePageTab === 'risk') renderEquityCurveFS(D);
 
   renderClassificationBreakdown();
+  renderProfileComparison();
   renderRecentTrades();
 }
 
@@ -4830,6 +4841,117 @@ function computeRichStudy(trades, field) {
 
 
 // ── MAE STUDY (FPFVG-style) ───────────────────────────────────────────────────
+function renderProfileComparison(targetEl) {
+  const el = targetEl || document.getElementById('profile-comparison-panel');
+  if (!el) return;
+
+  const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
+  const base = DATA[fullKey];
+  if (!base || !base.profiles) {
+    el.innerHTML = '<div style="padding:16px;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">Run model_stats.py to see profile comparison.</div>';
+    return;
+  }
+
+  const ACCT = 4500, RPT = 225;
+  const profileKeys = Object.keys(base.profiles);
+  if (profileKeys.length < 2) {
+    el.innerHTML = '';
+    return;
+  }
+
+  // Get TF-appropriate data for each profile
+  const profiles = profileKeys.map(pk => {
+    const fullD = base.profiles[pk];
+    if (!fullD) return null;
+    // Apply active TF period
+    let d = fullD;
+    if (activeTF !== 'all' && fullD.by_tf && fullD.by_tf[activeTF]) {
+      d = Object.assign({}, fullD, fullD.by_tf[activeTF]);
+    }
+    const m = d.meta || {};
+    const rs = d.risk_stats || {};
+    return {
+      key: pk,
+      label: (PROFILE_LABELS[pk] || pk).split('—')[0].trim(),
+      wr: m.win_rate || 0,
+      ev: m.ev_per_trade || 0,
+      pf: m.profit_factor || 0,
+      n: m.total_wl || 0,
+      sharpe: rs.sharpe,
+      maxDD: rs.max_dd_pct || 0,
+      totalPnl: rs.total_pnl_usd || 0,
+      minEq: rs.min_equity_usd || ACCT,
+      blown: rs.blown || false,
+      ce: rs.ce || 0,
+      mcw: rs.max_consec_wins || 0,
+      mcl: rs.max_consec_losses || 0,
+    };
+  }).filter(Boolean);
+
+  if (profiles.length < 2) { el.innerHTML = ''; return; }
+
+  // Find best by EV
+  const bestIdx = profiles.reduce((bi, p, i) => p.ev > profiles[bi].ev ? i : bi, 0);
+
+  function sc(val, good, bad, inv) {
+    if (inv) return val <= good ? 'var(--green)' : val >= bad ? 'var(--red)' : 'var(--amber)';
+    return val >= good ? 'var(--green)' : val <= bad ? 'var(--red)' : 'var(--amber)';
+  }
+  const fmtDol = v => '$' + Math.round(v).toLocaleString();
+
+  let html = `<div style="display:grid;grid-template-columns:repeat(${profiles.length},1fr);gap:12px;margin-bottom:16px">`;
+
+  profiles.forEach((p, i) => {
+    const isBest = i === bestIdx;
+    const isActive = p.key === activeProfile;
+    const borderColor = isActive ? 'rgba(139,92,246,0.5)' : isBest ? 'rgba(16,185,129,0.4)' : 'var(--border)';
+    const headerBg = isActive ? 'rgba(139,92,246,0.06)' : isBest ? 'rgba(16,185,129,0.06)' : 'transparent';
+
+    html += `<div style="background:var(--bg-card);border:1px solid ${borderColor};border-radius:10px;overflow:hidden;box-shadow:var(--shadow)">`;
+
+    // Header
+    html += `<div style="padding:12px 16px;border-bottom:1px solid var(--border);background:${headerBg};display:flex;justify-content:space-between;align-items:center">`;
+    html += `<div style="font-family:var(--font-data);font-size:13px;font-weight:700;color:var(--text-primary)">${p.label}</div>`;
+    let badges = '';
+    if (isActive) badges += '<span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.4);color:#8b5cf6;margin-left:4px">ACTIVE</span>';
+    if (isBest) badges += '<span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);color:#10b981;margin-left:4px">BEST EV</span>';
+    html += badges;
+    html += `</div>`;
+
+    // Stats
+    const rows = [
+      ['Win Rate', (p.wr * 100).toFixed(1) + '%', sc(p.wr, 0.80, 0.60, false)],
+      ['EV / Trade', (p.ev >= 0 ? '+' : '') + p.ev.toFixed(3) + 'R', sc(p.ev, 0.5, 0, false)],
+      ['EV $ / Trade', fmtDol(p.ev * RPT), sc(p.ev, 0.5, 0, false)],
+      ['Profit Factor', p.pf.toFixed(2), sc(p.pf, 3, 1.5, false)],
+      ['Sharpe', p.sharpe != null ? p.sharpe.toFixed(2) : '\u2014', p.sharpe != null ? sc(p.sharpe, 2, 0.5, false) : 'var(--text-muted)'],
+      ['Max DD', p.maxDD.toFixed(1) + '%', sc(p.maxDD, 10, 25, true)],
+      ['Max Consec L', String(p.mcl), sc(p.mcl, 3, 6, true)],
+      ['Total P&L', fmtDol(p.totalPnl), sc(p.totalPnl, 0, -1, false)],
+      ['Final Balance', fmtDol(ACCT + p.totalPnl), sc(ACCT + p.totalPnl, ACCT, ACCT * 0.5, false)],
+      ['Trades', String(p.n), 'var(--text-primary)'],
+    ];
+
+    rows.forEach(([label, val, color]) => {
+      html += `<div style="display:flex;justify-content:space-between;padding:6px 16px;border-bottom:1px solid color-mix(in srgb,var(--border) 30%,transparent)">
+        <span style="font-family:var(--font-data);font-size:11px;color:var(--text-muted)">${label}</span>
+        <span style="font-family:var(--font-data);font-size:12px;font-weight:600;color:${color}">${val}</span>
+      </div>`;
+    });
+
+    // Account badge
+    html += `<div style="padding:8px 16px;text-align:center">
+      <span style="font-family:var(--font-data);font-size:10px;font-weight:700;padding:3px 10px;border-radius:4px;${p.blown ? 'background:var(--red-tint);border:1px solid var(--red-border);color:var(--red)' : 'background:var(--green-tint);border:1px solid var(--green-border);color:var(--green)'}">${p.blown ? 'BLOWN' : 'SAFE'}</span>
+    </div>`;
+
+    html += `</div>`;
+  });
+
+  html += `</div>`;
+  el.innerHTML = html;
+}
+
+
 function renderFilterVariants(D, targetEl) {
   const el = targetEl || document.getElementById('filter-variants-panel');
   if (!el) return;
