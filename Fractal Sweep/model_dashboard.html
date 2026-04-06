@@ -2031,6 +2031,17 @@ function drawScatterPlot(canvas, datasets, opts){
   ctx.fillText(opts && opts.yLabel || 'MFE%', 0, 0); ctx.restore();
 }
 
+function switchCustomTab(tabId){
+  document.querySelectorAll('.cv-pane').forEach(p => p.style.display = 'none');
+  const pane = document.getElementById(tabId);
+  if(pane) pane.style.display = '';
+  document.querySelectorAll('.cv-tab').forEach(b => {
+    const isActive = b.id === 'cv-tab-' + tabId;
+    b.style.borderBottomColor = isActive ? 'var(--green)' : 'transparent';
+    b.style.color = isActive ? 'var(--text-primary)' : 'var(--text-muted)';
+  });
+}
+
 function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
   const cv = document.getElementById('custom-view');
   if(!cv) return;
@@ -2071,6 +2082,24 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
 
   let html = '';
 
+  // ── Custom View Tab Bar ────────────────────────────────────────────────────
+  const cvTabs = [
+    {id:'cv-summary', label:'Summary'},
+    {id:'cv-walkforward', label:'Walk-Forward'},
+    {id:'cv-risk', label:'Risk'},
+    {id:'cv-edge', label:'Edge Analysis'},
+    {id:'cv-trades', label:'Trades'},
+  ];
+  html += `<div style="display:flex;gap:2px;margin-bottom:20px;border-bottom:2px solid var(--border);padding-bottom:0">`;
+  cvTabs.forEach((tab, i) => {
+    const active = i === 0;
+    html += `<button onclick="switchCustomTab('${tab.id}')" class="cv-tab" id="cv-tab-${tab.id}" style="font-family:var(--font-data);font-size:11px;font-weight:600;padding:8px 16px;border:none;cursor:pointer;border-bottom:2px solid ${active ? 'var(--green)' : 'transparent'};margin-bottom:-2px;color:${active ? 'var(--text-primary)' : 'var(--text-muted)'};background:transparent;transition:all .15s">${tab.label}</button>`;
+  });
+  html += `</div>`;
+
+  // ── TAB: SUMMARY ──────────────────────────────────────────────────────────
+  html += `<div class="cv-pane" id="cv-summary">`;
+
   // ── SECTION A: Combined Test Summary (hero tiles) ─────────────────────────
   if(combinedStats){
     const cs = combinedStats;
@@ -2101,6 +2130,14 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
     html += heroTile('Account', _blownBadge, 'var(--text-secondary)', '$4,500 @ $225/trade');
     html += `</div>`;
   }
+
+  // Close Summary pane (unpaired ranges, profile comparison, verdict are added post-render)
+  html += `<div id="cv-summary-profile"></div>`;
+  html += `<div id="cv-summary-verdict" style="margin-top:8px"></div>`;
+  html += `</div>`; // end cv-summary
+
+  // ── TAB: WALK-FORWARD ─────────────────────────────────────────────────────
+  html += `<div class="cv-pane" id="cv-walkforward" style="display:none">`;
 
   // ── SECTION B: Walk-Forward Pairs ─────────────────────────────────────────
   pairs.forEach((pair, pi) => {
@@ -2314,6 +2351,11 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
     html += `</div>`;
   }
 
+  html += `</div>`; // end cv-walkforward
+
+  // ── TAB: TRADES ───────────────────────────────────────────────────────────
+  html += `<div class="cv-pane" id="cv-trades" style="display:none">`;
+
   // ── SECTION E: Trades Table ───────────────────────────────────────────────
   const allTradesForTable = [
     ...pairs.flatMap(p => p.test.trades),
@@ -2359,6 +2401,11 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
     });
     html += '</tbody></table></div>';
   }
+
+  html += `</div>`; // end cv-trades
+
+  // ── TAB: RISK ─────────────────────────────────────────────────────────────
+  html += `<div class="cv-pane" id="cv-risk" style="display:none">`;
 
   // ── SECTION: MONTE CARLO & ROLLING STABILITY ANALYSIS ──────────────────────
   if(combinedStats && combinedStats.n >= 20){
@@ -2790,6 +2837,11 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
         title: 'Slope up = edge active · Slope down = degrading'});
     };
   }
+
+  html += `</div>`; // end cv-risk
+
+  // ── TAB: EDGE ANALYSIS ────────────────────────────────────────────────────
+  html += `<div class="cv-pane" id="cv-edge" style="display:none">`;
 
   // Helper: compute WR and EV for a group of trades (used by multiple sections)
   function grpStats(trades){
@@ -3297,12 +3349,6 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
   // Fetch the full profile data to get filter_impact and filter_variants
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
   const _profileD = getProfileData(fullKey, activeProfile);
-  if(_profileD){
-    // Profile Comparison
-    html += secHeader('Risk Profile Comparison');
-    html += `<div id="custom-profile-comparison"></div>`;
-  }
-
   // ── MAE/MFE Percentile Comparison Across Ranges ─────────────────────────────
   if(combinedStats && combinedStats._rangeResults && combinedStats._rangeResults.length > 0){
     const ranges = combinedStats._rangeResults;
@@ -3415,24 +3461,21 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
     html += buildPctTable('MFE Distribution', 'var(--green)', 'mfePercentiles', 'mfeDistribution', false);
   }
 
-  // ── VERDICT ────────────────────────────────────────────────────────────────
-  if(combinedStats && combinedStats.n >= 10 && _profileD){
-    html += `<div id="custom-verdict-panel" style="margin-top:24px"></div>`;
-  }
+  html += `</div>`; // end cv-edge
 
   cv.innerHTML = html;
 
-  // Render profile comparison and verdict — match exact trade dates from combinedStats
+  // Render profile comparison and verdict into Summary tab
   if(_profileD){
-    const compPanel = document.getElementById('custom-profile-comparison');
-    const verdictPanel = document.getElementById('custom-verdict-panel');
     const tradeDateSet = (combinedStats && combinedStats._trades && combinedStats._trades.length > 0)
       ? new Set(combinedStats._trades.map(t => t.date)) : null;
 
+    const compPanel = document.getElementById('cv-summary-profile');
     if(compPanel){
       if(tradeDateSet) renderProfileComparison(compPanel, null, tradeDateSet);
       else renderProfileComparison(compPanel, customRanges.filter(r => r.start && r.end));
     }
+    const verdictPanel = document.getElementById('cv-summary-verdict');
     if(verdictPanel){
       renderVerdict(verdictPanel, {tradeDateSet, walkForwardPairs: pairs});
     }
