@@ -4859,7 +4859,46 @@ function renderProfileComparison(targetEl) {
     return;
   }
 
-  // Get TF-appropriate data for each profile
+  // Helper: compute stats from a trades array
+  function statsFromTrades(trades) {
+    const wl = trades.filter(t => t.outcome === 'WIN' || t.outcome === 'LOSS');
+    const n = wl.length;
+    if (n === 0) return {wr:0, ev:0, pf:0, n:0, sharpe:null, maxDD:0, totalPnl:0, minEq:ACCT, blown:false, mcw:0, mcl:0};
+    const wins = wl.filter(t => t.outcome === 'WIN');
+    const losses = wl.filter(t => t.outcome === 'LOSS');
+    const wr = wins.length / n;
+    const sumW = wins.reduce((s,t) => s + t.r, 0);
+    const sumL = losses.reduce((s,t) => s + Math.abs(t.r), 0);
+    const ev = (sumW - sumL) / n;
+    const pf = sumL > 0 ? sumW / sumL : sumW > 0 ? 99 : 0;
+    // Equity curve
+    let eq = ACCT, peak = ACCT, minEq = ACCT, maxDD = 0;
+    const dailyPnl = {};
+    const sorted = wl.slice().sort((a,b) => a.date.localeCompare(b.date));
+    let mcw = 0, mcl = 0, wRun = 0, lRun = 0;
+    sorted.forEach(t => {
+      const pnl = t.r * RPT;
+      eq += pnl;
+      if (eq < minEq) minEq = eq;
+      if (eq > peak) peak = eq;
+      const dd = peak > 0 ? (peak - eq) / peak : 0;
+      if (dd > maxDD) maxDD = dd;
+      dailyPnl[t.date] = (dailyPnl[t.date]||0) + pnl;
+      if (t.outcome === 'WIN') { wRun++; mcw = Math.max(mcw, wRun); lRun = 0; }
+      else { lRun++; mcl = Math.max(mcl, lRun); wRun = 0; }
+    });
+    const dp = Object.values(dailyPnl);
+    let sharpe = null;
+    if (dp.length > 1) {
+      const mu = dp.reduce((s,v)=>s+v,0)/dp.length;
+      const sd = Math.sqrt(dp.reduce((s,v)=>s+(v-mu)**2,0)/(dp.length-1));
+      if (sd > 0) sharpe = Math.round(mu/sd*Math.sqrt(252)*100)/100;
+    }
+    return {wr, ev, pf, n, sharpe, maxDD: Math.round(maxDD*10000)/100,
+            totalPnl: eq - ACCT, minEq, blown: minEq <= 0, mcw, mcl};
+  }
+
+  // Get TF-appropriate data for each profile (with SMT filter support)
   const profiles = profileKeys.map(pk => {
     const fullD = base.profiles[pk];
     if (!fullD) return null;
@@ -4868,23 +4907,34 @@ function renderProfileComparison(targetEl) {
     if (activeTF !== 'all' && fullD.by_tf && fullD.by_tf[activeTF]) {
       d = Object.assign({}, fullD, fullD.by_tf[activeTF]);
     }
-    const m = d.meta || {};
-    const rs = d.risk_stats || {};
+
+    let wr, ev, pf, n, sharpe, maxDD, totalPnl, minEq, blown, mcw, mcl;
+
+    if (activeSmt && d.recent_trades) {
+      // SMT active: recompute from filtered trades
+      const smtTrades = d.recent_trades.filter(t => t.smt === true);
+      const s = statsFromTrades(smtTrades);
+      ({wr, ev, pf, n, sharpe, maxDD, totalPnl, minEq, blown, mcw, mcl} = s);
+    } else {
+      const m = d.meta || {};
+      const rs = d.risk_stats || {};
+      wr = m.win_rate || 0;
+      ev = m.ev_per_trade || 0;
+      pf = m.profit_factor || 0;
+      n = m.total_wl || 0;
+      sharpe = rs.sharpe;
+      maxDD = rs.max_dd_pct || 0;
+      totalPnl = rs.total_pnl_usd || 0;
+      minEq = rs.min_equity_usd || ACCT;
+      blown = rs.blown || false;
+      mcw = rs.max_consec_wins || 0;
+      mcl = rs.max_consec_losses || 0;
+    }
+
     return {
       key: pk,
       label: (PROFILE_LABELS[pk] || pk).split('—')[0].trim(),
-      wr: m.win_rate || 0,
-      ev: m.ev_per_trade || 0,
-      pf: m.profit_factor || 0,
-      n: m.total_wl || 0,
-      sharpe: rs.sharpe,
-      maxDD: rs.max_dd_pct || 0,
-      totalPnl: rs.total_pnl_usd || 0,
-      minEq: rs.min_equity_usd || ACCT,
-      blown: rs.blown || false,
-      ce: rs.ce || 0,
-      mcw: rs.max_consec_wins || 0,
-      mcl: rs.max_consec_losses || 0,
+      wr, ev, pf, n, sharpe, maxDD, totalPnl, minEq, blown, mcw, mcl,
     };
   }).filter(Boolean);
 
