@@ -1831,6 +1831,7 @@ function applyCustomRanges(){
   if(rangeResults.length === 1){
     const combinedStats = computeRangeStats(rangeResults[0].trades);
     combinedStats._trades = rangeResults[0].trades;
+    combinedStats._rangeResults = rangeResults;
     renderCustomViewV2([], rangeResults, combinedStats);
     return;
   }
@@ -1845,6 +1846,7 @@ function applyCustomRanges(){
   ];
   const combinedStats = computeRangeStats(combinedTrades);
   combinedStats._trades = combinedTrades;
+  combinedStats._rangeResults = rangeResults;
   renderCustomViewV2(pairs, unpaired, combinedStats);
 }
 
@@ -3299,57 +3301,74 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
     html += `<div id="custom-profile-comparison"></div>`;
   }
 
-  // ── MAE/MFE Percentile Tables ─────────────────────────────────────────────
-  if(combinedStats && combinedStats.maePercentiles && combinedStats.mfePercentiles){
-    const mp = combinedStats.maePercentiles;
-    const fp = combinedStats.mfePercentiles;
-    const md = combinedStats.maeDistribution || {};
-    const fd = combinedStats.mfeDistribution || {};
+  // ── MAE/MFE Percentile Comparison Across Ranges ─────────────────────────────
+  if(combinedStats && combinedStats._rangeResults && combinedStats._rangeResults.length > 0){
+    const ranges = combinedStats._rangeResults;
     const pctLevels = ['p5','p10','p25','p50','p75','p90','p95'];
     const pctLabels = {p5:'P5',p10:'P10',p25:'P25',p50:'P50 (Median)',p75:'P75',p90:'P90',p95:'P95'};
+    const RANGE_COLS = ['#3b82f6','#f59e0b','#8b5cf6','#14b8a6','#ef4444','#6366f1','#ec4899','#84cc16','#f97316','#06b6d4'];
 
-    function pctRow(lbl, val, accentColor, isMedP50){
-      const bold = isMedP50 ? 'font-weight:700;' : '';
-      return `<tr style="border-bottom:1px solid color-mix(in srgb,var(--border) 40%,transparent)">
-        <td style="font-family:var(--font-data);font-size:11px;padding:5px 14px;color:${accentColor};${bold}">${lbl}</td>
-        <td style="font-family:var(--font-data);font-size:12px;padding:5px 14px;text-align:right;color:var(--text-primary);${bold}">${val != null ? (+val).toFixed(4) + '%' : '—'}</td>
-      </tr>`;
+    function buildPctTable(title, titleColor, field, distField){
+      let h = `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:var(--shadow);margin-bottom:16px">
+        <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:var(--bg-raised)">
+          <span style="font-family:var(--font-data);font-size:11px;font-weight:700;color:${titleColor}">${title}</span>
+          <span style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-left:8px">${field === 'maePercentiles' ? '(worst drawdown per trade)' : '(best favorable excursion per trade)'}</span>
+        </div>
+        <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:12px">
+          <thead><tr style="border-bottom:2px solid var(--border)">
+            <th style="font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 14px;text-align:left;font-weight:400">Percentile</th>`;
+      ranges.forEach((r, i) => {
+        const col = RANGE_COLS[i % RANGE_COLS.length];
+        const shortLabel = r.label.split(' to ')[0];
+        h += `<th style="font-size:9px;color:${col};text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:600">${shortLabel}</th>`;
+      });
+      if(ranges.length > 1){
+        h += `<th style="font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">Combined</th>`;
+      }
+      h += `</tr></thead><tbody>`;
+
+      // Mean row
+      h += `<tr style="border-bottom:1px solid color-mix(in srgb,var(--border) 30%,transparent)">
+        <td style="padding:5px 14px;color:var(--text-muted);font-size:11px">Mean</td>`;
+      ranges.forEach((r, i) => {
+        const d = r.stats?.[distField] || {};
+        h += `<td style="padding:5px 10px;text-align:right;color:var(--text-primary)">${d.mean != null ? (+d.mean).toFixed(4) + '%' : '—'}</td>`;
+      });
+      if(ranges.length > 1){
+        const cd = combinedStats[distField] || {};
+        h += `<td style="padding:5px 10px;text-align:right;color:var(--text-muted)">${cd.mean != null ? (+cd.mean).toFixed(4) + '%' : '—'}</td>`;
+      }
+      h += `</tr>`;
+
+      // Percentile rows
+      pctLevels.forEach(pk => {
+        const isP50 = pk === 'p50';
+        const bold = isP50 ? 'font-weight:700;' : '';
+        h += `<tr style="border-bottom:1px solid color-mix(in srgb,var(--border) 30%,transparent);${isP50 ? 'background:color-mix(in srgb,var(--bg-raised) 60%,transparent)' : ''}">
+          <td style="padding:5px 14px;color:${isP50 ? titleColor : 'var(--text-primary)'};font-size:11px;${bold}">${pctLabels[pk]}</td>`;
+        // Find min/max across ranges for delta coloring
+        const vals = ranges.map(r => r.stats?.[field]?.[pk]).filter(v => v != null);
+        const minV = Math.min(...vals);
+        const maxV = Math.max(...vals);
+        ranges.forEach((r, i) => {
+          const v = r.stats?.[field]?.[pk];
+          const col = RANGE_COLS[i % RANGE_COLS.length];
+          h += `<td style="padding:5px 10px;text-align:right;color:var(--text-primary);${bold}">${v != null ? (+v).toFixed(4) + '%' : '—'}</td>`;
+        });
+        if(ranges.length > 1){
+          const cv = combinedStats[field]?.[pk];
+          h += `<td style="padding:5px 10px;text-align:right;color:var(--text-muted);${bold}">${cv != null ? (+cv).toFixed(4) + '%' : '—'}</td>`;
+        }
+        h += `</tr>`;
+      });
+
+      h += `</tbody></table></div></div>`;
+      return h;
     }
 
-    html += secHeader('MAE / MFE Percentile Distribution');
-    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">`;
-
-    // MAE table
-    html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:var(--shadow)">
-      <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:var(--bg-raised)">
-        <span style="font-family:var(--font-data);font-size:11px;font-weight:700;color:var(--red)">MAE Distribution</span>
-        <span style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-left:8px">(worst drawdown per trade)</span>
-      </div>
-      <table style="width:100%;border-collapse:collapse">
-        <thead><tr style="border-bottom:1px solid var(--border)">
-          <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:6px 14px;text-align:left">Percentile</th>
-          <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:6px 14px;text-align:right">MAE %</th>
-        </tr></thead><tbody>`;
-    html += pctRow('Mean', md.mean, 'var(--text-muted)', false);
-    pctLevels.forEach(k => html += pctRow(pctLabels[k], mp[k], k === 'p50' ? 'var(--red)' : 'var(--text-primary)', k === 'p50'));
-    html += `</tbody></table></div>`;
-
-    // MFE table
-    html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:var(--shadow)">
-      <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:var(--bg-raised)">
-        <span style="font-family:var(--font-data);font-size:11px;font-weight:700;color:var(--green)">MFE Distribution</span>
-        <span style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-left:8px">(best favorable excursion per trade)</span>
-      </div>
-      <table style="width:100%;border-collapse:collapse">
-        <thead><tr style="border-bottom:1px solid var(--border)">
-          <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:6px 14px;text-align:left">Percentile</th>
-          <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:6px 14px;text-align:right">MFE %</th>
-        </tr></thead><tbody>`;
-    html += pctRow('Mean', fd.mean, 'var(--text-muted)', false);
-    pctLevels.forEach(k => html += pctRow(pctLabels[k], fp[k], k === 'p50' ? 'var(--green)' : 'var(--text-primary)', k === 'p50'));
-    html += `</tbody></table></div>`;
-
-    html += `</div>`;
+    html += secHeader('MAE / MFE Percentile Comparison Across Ranges');
+    html += buildPctTable('MAE Distribution', 'var(--red)', 'maePercentiles', 'maeDistribution');
+    html += buildPctTable('MFE Distribution', 'var(--green)', 'mfePercentiles', 'mfeDistribution');
   }
 
   cv.innerHTML = html;
