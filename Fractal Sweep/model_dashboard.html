@@ -3308,11 +3308,50 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
     const pctLabels = {p5:'P5',p10:'P10',p25:'P25',p50:'P50 (Median)',p75:'P75',p90:'P90',p95:'P95'};
     const RANGE_COLS = ['#3b82f6','#f59e0b','#8b5cf6','#14b8a6','#ef4444','#6366f1','#ec4899','#84cc16','#f97316','#06b6d4'];
 
-    function buildPctTable(title, titleColor, field, distField){
+    // higherIsBad: true for MAE (deeper drawdown = worse), false for MFE (higher reach = better)
+    function buildPctTable(title, titleColor, field, distField, higherIsBad){
+      const showDrift = ranges.length >= 2;
+
+      // Helper: compute drift and stability for a set of values across ranges
+      function driftInfo(vals){
+        const valid = vals.filter(v => v != null && v > 0);
+        if(valid.length < 2) return {delta: null, deltaPct: null, cv: null};
+        const first = vals.find(v => v != null && v > 0);
+        const last = [...vals].reverse().find(v => v != null && v > 0);
+        const delta = last - first;
+        const deltaPct = first > 0 ? (delta / first) * 100 : 0;
+        const mean = valid.reduce((s,v) => s+v, 0) / valid.length;
+        const std = Math.sqrt(valid.reduce((s,v) => s + (v - mean)**2, 0) / valid.length);
+        const cv = mean > 0 ? (std / mean) * 100 : 0;
+        return {delta, deltaPct: Math.round(deltaPct * 10) / 10, cv: Math.round(cv * 10) / 10};
+      }
+
+      function driftColor(deltaPct, higherBad){
+        if(deltaPct == null) return 'var(--text-muted)';
+        const bad = higherBad ? deltaPct > 0 : deltaPct < 0;
+        const mag = Math.abs(deltaPct);
+        if(mag < 10) return 'var(--text-muted)';
+        return bad ? 'var(--red)' : 'var(--green)';
+      }
+
+      function stabilityDot(cv){
+        if(cv == null) return '';
+        const color = cv < 15 ? '#10b981' : cv < 30 ? '#f59e0b' : '#ef4444';
+        const label = cv < 15 ? 'Stable' : cv < 30 ? 'Moderate' : 'Unstable';
+        return `<span title="CV=${cv}% — ${label}" style="color:${color}">●</span>`;
+      }
+
       let h = `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:var(--shadow);margin-bottom:16px">
-        <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:var(--bg-raised)">
-          <span style="font-family:var(--font-data);font-size:11px;font-weight:700;color:${titleColor}">${title}</span>
-          <span style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-left:8px">${field === 'maePercentiles' ? '(worst drawdown per trade)' : '(best favorable excursion per trade)'}</span>
+        <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:var(--bg-raised);display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <span style="font-family:var(--font-data);font-size:11px;font-weight:700;color:${titleColor}">${title}</span>
+            <span style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-left:8px">${higherIsBad ? '(worst drawdown — lower is better)' : '(best excursion — higher is better)'}</span>
+          </div>
+          ${showDrift ? `<div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted)">
+            <span style="color:#10b981">●</span> CV&lt;15% &nbsp;
+            <span style="color:#f59e0b">●</span> 15-30% &nbsp;
+            <span style="color:#ef4444">●</span> &gt;30%
+          </div>` : ''}
         </div>
         <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:12px">
           <thead><tr style="border-bottom:2px solid var(--border)">
@@ -3322,43 +3361,46 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
         const shortLabel = r.label.split(' to ')[0];
         h += `<th style="font-size:9px;color:${col};text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:600">${shortLabel}</th>`;
       });
-      if(ranges.length > 1){
-        h += `<th style="font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">Combined</th>`;
+      if(showDrift){
+        h += `<th style="font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">\u0394 Drift</th>`;
+        h += `<th style="font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 6px;text-align:center;font-weight:400" title="Coefficient of Variation across ranges">Stab</th>`;
       }
       h += `</tr></thead><tbody>`;
 
-      // Mean row
-      h += `<tr style="border-bottom:1px solid color-mix(in srgb,var(--border) 30%,transparent)">
-        <td style="padding:5px 14px;color:var(--text-muted);font-size:11px">Mean</td>`;
-      ranges.forEach((r, i) => {
-        const d = r.stats?.[distField] || {};
-        h += `<td style="padding:5px 10px;text-align:right;color:var(--text-primary)">${d.mean != null ? (+d.mean).toFixed(4) + '%' : '—'}</td>`;
-      });
-      if(ranges.length > 1){
-        const cd = combinedStats[distField] || {};
-        h += `<td style="padding:5px 10px;text-align:right;color:var(--text-muted)">${cd.mean != null ? (+cd.mean).toFixed(4) + '%' : '—'}</td>`;
-      }
-      h += `</tr>`;
+      // Build rows for Mean + percentiles
+      const allRows = [
+        {key: 'mean', label: 'Mean', isMean: true},
+        ...pctLevels.map(pk => ({key: pk, label: pctLabels[pk], isMean: false})),
+      ];
 
-      // Percentile rows
-      pctLevels.forEach(pk => {
-        const isP50 = pk === 'p50';
+      allRows.forEach(row => {
+        const isP50 = row.key === 'p50';
         const bold = isP50 ? 'font-weight:700;' : '';
-        h += `<tr style="border-bottom:1px solid color-mix(in srgb,var(--border) 30%,transparent);${isP50 ? 'background:color-mix(in srgb,var(--bg-raised) 60%,transparent)' : ''}">
-          <td style="padding:5px 14px;color:${isP50 ? titleColor : 'var(--text-primary)'};font-size:11px;${bold}">${pctLabels[pk]}</td>`;
-        // Find min/max across ranges for delta coloring
-        const vals = ranges.map(r => r.stats?.[field]?.[pk]).filter(v => v != null);
-        const minV = Math.min(...vals);
-        const maxV = Math.max(...vals);
-        ranges.forEach((r, i) => {
-          const v = r.stats?.[field]?.[pk];
-          const col = RANGE_COLS[i % RANGE_COLS.length];
+        const rowBg = isP50 ? 'background:color-mix(in srgb,var(--bg-raised) 60%,transparent)' : '';
+
+        // Collect values across ranges
+        const rowVals = ranges.map(r => {
+          if(row.isMean) return r.stats?.[distField]?.mean;
+          return r.stats?.[field]?.[row.key];
+        });
+
+        const drift = showDrift ? driftInfo(rowVals) : null;
+
+        h += `<tr style="border-bottom:1px solid color-mix(in srgb,var(--border) 30%,transparent);${rowBg}">
+          <td style="padding:5px 14px;color:${isP50 ? titleColor : row.isMean ? 'var(--text-muted)' : 'var(--text-primary)'};font-size:11px;${bold}">${row.label}</td>`;
+
+        ranges.forEach(r => {
+          const v = row.isMean ? r.stats?.[distField]?.mean : r.stats?.[field]?.[row.key];
           h += `<td style="padding:5px 10px;text-align:right;color:var(--text-primary);${bold}">${v != null ? (+v).toFixed(4) + '%' : '—'}</td>`;
         });
-        if(ranges.length > 1){
-          const cv = combinedStats[field]?.[pk];
-          h += `<td style="padding:5px 10px;text-align:right;color:var(--text-muted);${bold}">${cv != null ? (+cv).toFixed(4) + '%' : '—'}</td>`;
+
+        if(showDrift && drift){
+          const dColor = driftColor(drift.deltaPct, higherIsBad);
+          const arrow = drift.deltaPct > 0 ? '▲' : drift.deltaPct < 0 ? '▼' : '';
+          h += `<td style="padding:5px 10px;text-align:right;color:${dColor};font-size:11px;${bold}">${drift.deltaPct != null ? arrow + ' ' + (drift.deltaPct >= 0 ? '+' : '') + drift.deltaPct + '%' : '—'}</td>`;
+          h += `<td style="padding:5px 6px;text-align:center;font-size:14px">${stabilityDot(drift.cv)}</td>`;
         }
+
         h += `</tr>`;
       });
 
@@ -3367,8 +3409,8 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
     }
 
     html += secHeader('MAE / MFE Percentile Comparison Across Ranges');
-    html += buildPctTable('MAE Distribution', 'var(--red)', 'maePercentiles', 'maeDistribution');
-    html += buildPctTable('MFE Distribution', 'var(--green)', 'mfePercentiles', 'mfeDistribution');
+    html += buildPctTable('MAE Distribution', 'var(--red)', 'maePercentiles', 'maeDistribution', true);
+    html += buildPctTable('MFE Distribution', 'var(--green)', 'mfePercentiles', 'mfeDistribution', false);
   }
 
   cv.innerHTML = html;
