@@ -85,9 +85,14 @@ def resample(df_1m, tf_min, label):
 
 
 # ── NUMPY ARRAY BUILDERS ──────────────────────────────────────────────────────
+def _index_to_ns(idx):
+    """Convert a pandas DatetimeIndex to int64 nanoseconds regardless of unit (us/ns)."""
+    return idx.astype('datetime64[ns]').view('int64').copy()
+
+
 def df_to_arrays(df):
     return dict(
-        ts_ns      = df.index.view('int64').copy(),
+        ts_ns      = _index_to_ns(df.index),
         open       = df['open_tf'].values.astype('float64'),
         high       = df['high_tf'].values.astype('float64'),
         low        = df['low_tf'].values.astype('float64'),
@@ -102,7 +107,7 @@ def df_to_arrays(df):
 
 def df_1m_to_arrays(df):
     return dict(
-        ts_ns      = df.index.view('int64').copy(),
+        ts_ns      = _index_to_ns(df.index),
         open       = df['open'].values.astype('float64'),
         high       = df['high'].values.astype('float64'),
         low        = df['low'].values.astype('float64'),
