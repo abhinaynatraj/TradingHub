@@ -345,7 +345,6 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
   <button class="page-tab" onclick="switchPageTab('filters')">Filters</button>
   <button class="page-tab" onclick="switchPageTab('trades')">Trades</button>
   <button class="page-tab" onclick="switchPageTab('profiles')">Profiles</button>
-  <button class="page-tab" onclick="switchPageTab('live-scanner')">🔴 Live Scanner</button>
 </div>
 
 <main class="main">
@@ -589,35 +588,6 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
     </div>
   </div>
 
-  <!-- ══ TAB: LIVE SCANNER ══════════════════════════════════════════════════ -->
-  <div class="page-pane" id="pane-live-scanner">
-    <div class="sec-label">Live Scanner</div>
-
-    <!-- Status bar -->
-    <div class="panel" style="margin-bottom:14px">
-      <div class="ph">
-        <span class="ph-title">Scanner Status</span>
-        <span class="ph-note" id="ls-last-updated">—</span>
-        <button onclick="loadScannerStatus()" style="margin-left:auto;font-family:var(--font-data);font-size:11px;font-weight:600;letter-spacing:.04em;padding:5px 14px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-primary);cursor:pointer;" onmouseover="this.style.background='var(--accent)';this.style.color='#fff'" onmouseout="this.style.background='var(--bg-raised)';this.style.color='var(--text-primary)'">↻ Refresh</button>
-      </div>
-      <div class="pb">
-        <div id="ls-status-tiles" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:0"></div>
-      </div>
-    </div>
-
-    <!-- Today's alerts -->
-    <div class="panel" style="margin-bottom:14px">
-      <div class="ph"><span class="ph-title">Today's Alerts</span><span class="ph-note" id="ls-alerts-note">—</span></div>
-      <div class="pb"><div id="ls-alerts-table"></div></div>
-    </div>
-
-    <!-- Recent bars -->
-    <div class="panel">
-      <div class="ph"><span class="ph-title">Recent Bars</span><span class="ph-note">last 10 received · NQ &amp; ES</span></div>
-      <div class="pb"><div id="ls-recent-bars"></div></div>
-    </div>
-  </div>
-
   <div id="custom-view" style="display:none;padding:0 28px 40px;"></div>
 
 </main>
@@ -719,130 +689,7 @@ function switchPageTab(tab){
   }
   if(tab === 'trades') renderRecentTrades(0);
   if(tab === 'overview') drawSetupViz();
-  if(tab === 'live-scanner') loadScannerStatus();
 }
-
-// ── LIVE SCANNER STATUS ────────────────────────────────────────────────────
-const LS_STATUS_URL = 'Fractal%20Sweep/scanner_status.json';
-
-async function loadScannerStatus() {
-  const tilesEl  = document.getElementById('ls-status-tiles');
-  const alertsEl = document.getElementById('ls-alerts-table');
-  const barsEl   = document.getElementById('ls-recent-bars');
-  const noteEl   = document.getElementById('ls-last-updated');
-  const updEl    = document.getElementById('ls-last-updated');
-
-  let s;
-  try {
-    const r = await fetch('scanner_status.json?_=' + Date.now());
-    if (!r.ok) throw new Error('not found');
-    s = await r.json();
-  } catch {
-    tilesEl.innerHTML = `<div style="grid-column:1/-1;font-family:var(--font-data);font-size:12px;color:var(--text-muted);padding:8px 0">
-      Scanner status file not found — make sure <code>live_scanner.py</code> is running from the repo root.<br>
-      Run: <code>python3 "Live Scanner/live_scanner.py"</code>
-    </div>`;
-    alertsEl.innerHTML = '';
-    barsEl.innerHTML = '';
-    return;
-  }
-
-  // ── Status tiles ──────────────────────────────────────────────────────────
-  const connected = s.connected === true;
-  const uptimeSec = s.uptime_seconds || 0;
-  const uptimeStr = uptimeSec < 60 ? `${uptimeSec}s`
-    : uptimeSec < 3600 ? `${Math.floor(uptimeSec/60)}m ${uptimeSec%60}s`
-    : `${Math.floor(uptimeSec/3600)}h ${Math.floor((uptimeSec%3600)/60)}m`;
-  const dot = connected
-    ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 6px #10b981;margin-right:6px"></span>`
-    : `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;margin-right:6px"></span>`;
-
-  const tiles = [
-    { lbl: 'Status',      val: dot + (connected ? 'Connected' : 'Offline'),      c: connected ? 'var(--green)' : 'var(--red)', raw: true },
-    { lbl: 'Uptime',      val: uptimeStr,                                          c: 'var(--text-primary)' },
-    { lbl: 'Instruments', val: (s.instruments || []).join(' · ') || '—',          c: 'var(--text-primary)' },
-    { lbl: 'Alerts Today',val: String((s.alerts_today || []).length),             c: (s.alerts_today||[]).length > 0 ? 'var(--amber)' : 'var(--text-muted)' },
-  ];
-  tilesEl.innerHTML = tiles.map(t => `
-    <div style="background:var(--bg-raised);border:1px solid var(--border-mid);border-radius:8px;padding:14px 12px">
-      <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">${t.lbl}</div>
-      <div style="font-family:var(--font-display);font-size:16px;font-weight:700;color:${t.c};display:flex;align-items:center">${t.raw ? t.val : `<span>${t.val}</span>`}</div>
-    </div>`).join('');
-
-  const lastBar = s.last_bar_et || '—';
-  updEl.textContent = `last bar: ${lastBar}  ·  updated ${new Date(s.updated_at||0).toLocaleTimeString()}`;
-
-  // ── Alerts table ──────────────────────────────────────────────────────────
-  const alerts = s.alerts_today || [];
-  document.getElementById('ls-alerts-note').textContent = alerts.length
-    ? `${alerts.length} setup${alerts.length > 1 ? 's' : ''} fired today`
-    : 'no setups fired today';
-
-  if (!alerts.length) {
-    alertsEl.innerHTML = `<div style="font-family:var(--font-data);font-size:12px;color:var(--text-muted);padding:8px 0">No alerts yet today.</div>`;
-  } else {
-    const rows = [...alerts].reverse().map((a, i) => {
-      const isLong = a.direction === 'LONG';
-      const dc = isLong ? 'var(--green)' : 'var(--red)';
-      const arrow = isLong ? '▲' : '▼';
-      const bg = i % 2 === 0 ? 'transparent' : 'color-mix(in srgb,var(--bg-raised) 60%,transparent)';
-      return `<tr style="background:${bg};border-bottom:1px solid color-mix(in srgb,var(--border-mid) 40%,transparent)">
-        <td style="padding:7px 10px;font-family:var(--font-data);font-size:11px;color:var(--text-muted)">${a.ts_et||'—'}</td>
-        <td style="padding:7px 8px;font-family:var(--font-data);font-size:12px;font-weight:700;color:var(--text-primary)">${a.symbol||'—'}</td>
-        <td style="padding:7px 8px;font-family:var(--font-data);font-size:11px;color:var(--text-muted)">${a.model_label||'—'}</td>
-        <td style="padding:7px 8px;font-weight:700;color:${dc}">${arrow} ${a.direction}</td>
-        <td style="padding:7px 8px;font-family:var(--font-data);text-align:right;color:var(--text-primary)">${a.entry_price?.toFixed(2)||'—'}</td>
-        <td style="padding:7px 8px;font-family:var(--font-data);text-align:right;color:var(--red)">${a.stop_price?.toFixed(2)||'—'}</td>
-        <td style="padding:7px 8px;font-family:var(--font-data);text-align:right;color:var(--green)">${a.tp1_price?.toFixed(2)||'—'}</td>
-        <td style="padding:7px 8px;font-family:var(--font-data);text-align:right;color:var(--text-muted)">${a.base_risk?.toFixed(1)||'—'} pts</td>
-        <td style="padding:7px 8px;font-family:var(--font-data);font-size:11px;color:var(--text-muted)">${a.session||'—'}</td>
-      </tr>`;
-    }).join('');
-    alertsEl.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:12px">
-      <thead><tr style="border-bottom:1px solid var(--border-mid);color:var(--text-muted);font-size:10px;letter-spacing:.06em;text-transform:uppercase">
-        <th style="padding:6px 10px;text-align:left">Time (ET)</th>
-        <th style="padding:6px 8px;text-align:left">Symbol</th>
-        <th style="padding:6px 8px;text-align:left">Model</th>
-        <th style="padding:6px 8px;text-align:left">Dir</th>
-        <th style="padding:6px 8px;text-align:right">Entry</th>
-        <th style="padding:6px 8px;text-align:right">Stop</th>
-        <th style="padding:6px 8px;text-align:right">TP1</th>
-        <th style="padding:6px 8px;text-align:right">Risk</th>
-        <th style="padding:6px 8px;text-align:left">Session</th>
-      </tr></thead><tbody>${rows}</tbody></table></div>`;
-  }
-
-  // ── Recent bars ───────────────────────────────────────────────────────────
-  const bars = s.recent_bars || [];
-  if (!bars.length) {
-    barsEl.innerHTML = `<div style="font-family:var(--font-data);font-size:12px;color:var(--text-muted);padding:8px 0">No bars received yet.</div>`;
-  } else {
-    const brows = bars.map((b, i) => {
-      const bg = i % 2 === 0 ? 'transparent' : 'color-mix(in srgb,var(--bg-raised) 60%,transparent)';
-      const up = b.close >= b.open;
-      return `<tr style="background:${bg};border-bottom:1px solid color-mix(in srgb,var(--border-mid) 30%,transparent)">
-        <td style="padding:6px 10px;font-family:var(--font-data);font-size:11px;color:var(--text-muted)">${b.ts||'—'}</td>
-        <td style="padding:6px 8px;font-family:var(--font-data);font-size:12px;font-weight:700;color:var(--text-primary)">${b.symbol||'—'}</td>
-        <td style="padding:6px 8px;font-family:var(--font-data);text-align:right;color:var(--text-muted)">${b.open?.toFixed(2)||'—'}</td>
-        <td style="padding:6px 8px;font-family:var(--font-data);text-align:right;color:var(--green)">${b.high?.toFixed(2)||'—'}</td>
-        <td style="padding:6px 8px;font-family:var(--font-data);text-align:right;color:var(--red)">${b.low?.toFixed(2)||'—'}</td>
-        <td style="padding:6px 8px;font-family:var(--font-data);text-align:right;color:${up?'var(--green)':'var(--red)'};font-weight:600">${b.close?.toFixed(2)||'—'}</td>
-      </tr>`;
-    }).join('');
-    barsEl.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:12px">
-      <thead><tr style="border-bottom:1px solid var(--border-mid);color:var(--text-muted);font-size:10px;letter-spacing:.06em;text-transform:uppercase">
-        <th style="padding:5px 10px;text-align:left">Time (ET)</th>
-        <th style="padding:5px 8px;text-align:left">Symbol</th>
-        <th style="padding:5px 8px;text-align:right">Open</th>
-        <th style="padding:5px 8px;text-align:right">High</th>
-        <th style="padding:5px 8px;text-align:right">Low</th>
-        <th style="padding:5px 8px;text-align:right">Close</th>
-      </tr></thead><tbody>${brows}</tbody></table></div>`;
-  }
-}
-
-// Auto-refresh every 60s while the tab is active
-setInterval(() => { if(activePageTab === 'live-scanner') loadScannerStatus(); }, 60_000);
 
 // ── CHART COLOR HELPERS ────────────────────────────────────────────────────
 const C = () => ({
