@@ -357,11 +357,14 @@ def scan_ttfm_model(htf_arrs, chart_arrs, m1_arrs, model_key, cfg):
                 else:
                     session = 'OVERNIGHT'
 
+                # Attribute the trade to the HTF block where the entry actually fires (i),
+                # not the T-Spot candle's block (i-1). Matters for overnight 4H blocks that
+                # span midnight — otherwise by_dow and by_year break on those trades.
                 trade = {
-                    'date': str(htf_arrs['trade_date'][i-1]),
-                    'yr': int(htf_arrs['yr'][i-1]),
-                    'dow': int(htf_arrs['dow'][i-1]),
-                    'dow_name': DOW_NAMES.get(int(htf_arrs['dow'][i-1]), '?'),
+                    'date': str(htf_arrs['trade_date'][i]),
+                    'yr': int(htf_arrs['yr'][i]),
+                    'dow': int(htf_arrs['dow'][i]),
+                    'dow_name': DOW_NAMES.get(int(htf_arrs['dow'][i]), '?'),
                     'hr': hr,
                     'mn': mn,
                     'entry_time': f'{hr:02d}:{mn:02d}',

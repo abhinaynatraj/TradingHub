@@ -605,8 +605,29 @@ function filterByPeriod(D) {
   const mfe = df.map(t => t.mfe_pct).filter(v => v != null);
   const avg = arr => arr.length ? arr.reduce((s,v) => s+v, 0) / arr.length : null;
   const med = arr => { if (!arr.length) return null; const s = [...arr].sort((a,b)=>a-b); const m = Math.floor(s.length/2); return s.length%2 ? s[m] : (s[m-1]+s[m])/2; };
-  const p90 = arr => { if (arr.length < 5) return null; const s = [...arr].sort((a,b)=>a-b); return s[Math.floor(s.length*0.9)]; };
+  // Linear interpolation percentile, matches pandas.Series.quantile(p/100) default
+  const qAt = (sorted, p) => {
+    if (!sorted.length) return null;
+    const idx = (p / 100) * (sorted.length - 1);
+    const lo = Math.floor(idx), hi = Math.ceil(idx);
+    return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+  };
+  const p90 = arr => { if (arr.length < 5) return null; const s = [...arr].sort((a,b)=>a-b); return qAt(s, 90); };
   const rnd = (v,d=4) => v != null ? Math.round(v * 10**d) / 10**d : null;
+
+  // Helper: full distribution stats for mae_dist/mfe_dist
+  function distOf(arr) {
+    if (arr.length < 2) return {};
+    const s = [...arr].sort((a,b)=>a-b);
+    const mn = arr.reduce((a,v)=>a+v,0)/arr.length;
+    const variance = arr.reduce((a,v)=>a+(v-mn)**2,0)/(arr.length-1);
+    return {
+      mean: rnd(mn), median: rnd(qAt(s, 50)), std: rnd(Math.sqrt(variance)),
+      p10: rnd(qAt(s, 10)), p25: rnd(qAt(s, 25)), p50: rnd(qAt(s, 50)),
+      p75: rnd(qAt(s, 75)), p90: rnd(qAt(s, 90)), p95: rnd(qAt(s, 95)), p99: rnd(qAt(s, 99)),
+      min: rnd(s[0]), max: rnd(s[s.length - 1]),
+    };
+  }
 
   function aggTrades(ts) {
     const n = ts.length;
@@ -673,7 +694,12 @@ function filterByPeriod(D) {
     med_mae: rnd(med(mae)), med_mfe: rnd(med(mfe)),
   };
 
-  return { ...D, meta, by_hour, by_dow, by_session, by_tspot_type, by_year, dir_summary, recent_trades: trades };
+  return {
+    ...D, meta, by_hour, by_dow, by_session, by_tspot_type, by_year, dir_summary,
+    recent_trades: trades,
+    mae_dist: distOf(mae),
+    mfe_dist: distOf(mfe),
+  };
 }
 
 // ── MODEL DROPDOWN ─────────────────────────────────────────────────────────
@@ -913,7 +939,9 @@ function renderRecentTrades(page) {
   const el = document.getElementById('recent-trades-table');
   const pgEl = document.getElementById('recent-trades-pagination');
   if (!el) return;
-  const D = getModelData(activeModel);
+  // Apply period filter so the trades table respects the Period dropdown
+  const rawD = getModelData(activeModel);
+  const D = filterByPeriod(rawD);
   const rawTrades = D?.recent_trades;
   const titleEl = document.getElementById('trades-panel-title');
 
