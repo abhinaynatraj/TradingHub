@@ -232,6 +232,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
   <button class="page-tab" onclick="switchPageTab('edge')">Edge</button>
   <button class="page-tab" onclick="switchPageTab('trades')">Trades</button>
   <button class="page-tab" onclick="switchPageTab('study')">Study</button>
+  <button class="page-tab" onclick="switchPageTab('regimes')">Regimes</button>
 </div>
 
 <main class="main">
@@ -347,6 +348,28 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
     </div>
     <div class="sec-label">MFE:MAE Ratio Distribution</div>
     <div class="panel"><div class="ph"><span class="ph-title">MFE:MAE Ratio per Trade</span><span class="ph-note">How much favorable excursion per unit of adverse excursion</span></div><div class="pb"><div id="study-ratio-dist"></div></div></div>
+  </div>
+
+  <!-- TAB: REGIMES -->
+  <div class="page-pane" id="pane-regimes">
+    <div class="sec-label">Regime Comparison</div>
+    <div class="panel" style="margin-bottom:14px">
+      <div class="ph">
+        <span class="ph-title">Date Ranges</span>
+        <span class="ph-note">Compare model behavior across market periods &middot; Period filter is ignored here</span>
+      </div>
+      <div class="pb">
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+          <button onclick="addRegimeRange()" style="font-family:var(--font-data);font-size:11px;font-weight:600;letter-spacing:.04em;padding:7px 14px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-primary);cursor:pointer" onmouseover="this.style.borderColor='var(--green)';this.style.color='var(--green)'" onmouseout="this.style.borderColor='var(--border-mid)';this.style.color='var(--text-primary)'">+ Add Range</button>
+          <button onclick="loadDefaultRegimes()" style="font-family:var(--font-data);font-size:11px;font-weight:600;letter-spacing:.04em;padding:7px 14px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-primary);cursor:pointer" onmouseover="this.style.borderColor='var(--blue)';this.style.color='var(--blue)'" onmouseout="this.style.borderColor='var(--border-mid)';this.style.color='var(--text-primary)'">Load Defaults</button>
+          <button onclick="resetRegimes()" style="font-family:var(--font-data);font-size:11px;font-weight:600;letter-spacing:.04em;padding:7px 14px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-primary);cursor:pointer" onmouseover="this.style.borderColor='var(--red)';this.style.color='var(--red)'" onmouseout="this.style.borderColor='var(--border-mid)';this.style.color='var(--text-primary)'">Reset</button>
+        </div>
+        <div id="regime-slots" style="display:flex;flex-wrap:wrap;gap:10px"></div>
+      </div>
+    </div>
+    <div id="regime-summary"></div>
+    <div id="regime-overlay-charts"></div>
+    <div id="regime-deep-stats"></div>
   </div>
 
 </main>
@@ -924,7 +947,7 @@ function renderRecentTrades(page) {
   <table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:12px;">
     <thead><tr style="border-bottom:1px solid var(--border-mid);color:var(--text-muted);text-transform:uppercase;font-size:10px;letter-spacing:.06em;">
       <th style="padding:8px 10px;text-align:left;">Date</th>
-      <th style="padding:8px 6px;text-align:center;">Hour</th>
+      <th style="padding:8px 6px;text-align:center;">Time</th>
       <th style="padding:8px 6px;text-align:left;">Dir</th>
       <th style="padding:8px 6px;text-align:left;">T-Spot</th>
       <th style="padding:8px 6px;text-align:left;">Session</th>
@@ -945,7 +968,7 @@ function renderRecentTrades(page) {
 
     html += `<tr style="background:${bg};border-bottom:1px solid color-mix(in srgb,var(--border-mid) 40%,transparent);">
       <td style="padding:7px 10px;color:var(--text-primary);">${String(t.date).slice(0, 10)}</td>
-      <td style="padding:7px 6px;text-align:center;color:var(--text-primary);">${String(t.hr).padStart(2, '0')}:00</td>
+      <td style="padding:7px 6px;text-align:center;color:var(--text-primary);">${t.entry_time || (String(t.hr).padStart(2,'0') + ':' + String(t.mn||0).padStart(2,'0'))}</td>
       <td style="padding:7px 6px;color:${dirColor};font-weight:700;">${dirArrow} ${t.direction}</td>
       <td style="padding:7px 6px;color:${tColor};font-weight:600;font-size:11px;text-transform:capitalize;">${t.tspot_type || '\u2014'}</td>
       <td style="padding:7px 6px;color:var(--text-primary);font-size:11px;">${t.session || '\u2014'}</td>
@@ -1555,6 +1578,447 @@ function renderStudyTab(D) {
   renderStudyRatioDistribution('study-ratio-dist', trades);
 }
 
+// ── REGIMES TAB ────────────────────────────────────────────────────────────
+const REGIME_PALETTE = ['#3b82f6','#f59e0b','#8b5cf6','#14b8a6','#ec4899','#84cc16','#f97316','#ef4444'];
+let regimeRanges = [];
+try { regimeRanges = JSON.parse(localStorage.getItem('ttfm-regime-ranges') || '[]') || []; } catch(e) { regimeRanges = []; }
+
+function saveRegimes() {
+  try { localStorage.setItem('ttfm-regime-ranges', JSON.stringify(regimeRanges)); } catch(e) {}
+}
+
+function loadDefaultRegimes() {
+  regimeRanges = [
+    { start: '2022-03-01', end: '2022-05-31', label: 'Spring 2022' },
+    { start: '2025-10-01', end: '2025-12-31', label: 'Oct-Dec 2025' }
+  ];
+  saveRegimes();
+  renderRegimes();
+}
+
+function addRegimeRange() {
+  regimeRanges.push({ start: '', end: '', label: 'Range ' + (regimeRanges.length + 1) });
+  saveRegimes();
+  renderRegimes();
+}
+
+function removeRegimeRange(i) {
+  regimeRanges.splice(i, 1);
+  saveRegimes();
+  renderRegimes();
+}
+
+function updateRegimeRange(i, field, val) {
+  if (!regimeRanges[i]) return;
+  regimeRanges[i][field] = val;
+  saveRegimes();
+  renderRegimes();
+}
+
+function filterTradesByRange(trades, range) {
+  return trades.filter(t => {
+    const d = String(t.date).slice(0, 10);
+    return d >= range.start && d <= range.end;
+  });
+}
+
+function computeRangeStats(trades) {
+  const mae = trades.map(t => t.mae_pct).filter(v => v != null).sort((a,b) => a-b);
+  const mfe = trades.map(t => t.mfe_pct).filter(v => v != null).sort((a,b) => a-b);
+  const dates = [...new Set(trades.map(t => String(t.date).slice(0,10)))];
+  const days = dates.length;
+
+  if (mae.length < 3 || mfe.length < 3) return null;
+
+  const mean = arr => arr.reduce((s,v) => s+v, 0) / arr.length;
+  const std = arr => {
+    if (arr.length < 2) return 0;
+    const m = mean(arr);
+    return Math.sqrt(arr.reduce((s,v) => s + (v-m)**2, 0) / (arr.length - 1));
+  };
+  const skew = arr => {
+    const m = mean(arr), s = std(arr);
+    if (!s) return 0;
+    return arr.reduce((sum,v) => sum + ((v-m)/s)**3, 0) / arr.length;
+  };
+  const kurt = arr => {
+    const m = mean(arr), s = std(arr);
+    if (!s) return 0;
+    return arr.reduce((sum,v) => sum + ((v-m)/s)**4, 0) / arr.length - 3;
+  };
+
+  const mMae = mean(mae), mMfe = mean(mfe);
+  const sMae = std(mae), sMfe = std(mfe);
+
+  return {
+    n: trades.length,
+    days,
+    setups_per_day: trades.length / Math.max(days, 1),
+    avg_mae: mMae, med_mae: computePercentile(mae, 50), p90_mae: computePercentile(mae, 90),
+    p10_mae: computePercentile(mae, 10), p25_mae: computePercentile(mae, 25), p75_mae: computePercentile(mae, 75),
+    avg_mfe: mMfe, med_mfe: computePercentile(mfe, 50), p90_mfe: computePercentile(mfe, 90),
+    p10_mfe: computePercentile(mfe, 10), p25_mfe: computePercentile(mfe, 25), p75_mfe: computePercentile(mfe, 75),
+    mfe_mae_ratio: mMae > 0 ? mMfe / mMae : null,
+    std_mae: sMae, std_mfe: sMfe,
+    skew_mae: skew(mae), skew_mfe: skew(mfe),
+    kurt_mae: kurt(mae), kurt_mfe: kurt(mfe),
+    cv_mae: mMae > 0 ? sMae / mMae : null,
+    cv_mfe: mMfe > 0 ? sMfe / mMfe : null,
+    iqr_mae: computePercentile(mae, 75) - computePercentile(mae, 25),
+    iqr_mfe: computePercentile(mfe, 75) - computePercentile(mfe, 25),
+    mae_arr: mae,
+    mfe_arr: mfe,
+  };
+}
+
+function regimeStabilityBadge(variancePct) {
+  if (variancePct == null || !isFinite(variancePct)) return '<span style="color:var(--text-muted)">&mdash;</span>';
+  const a = Math.abs(variancePct);
+  if (a < 15) return '<span style="color:var(--green);font-weight:600">High</span>';
+  if (a < 40) return '<span style="color:var(--amber);font-weight:600">Medium</span>';
+  return '<span style="color:var(--red);font-weight:600">Low</span>';
+}
+
+function fmtVariance(variancePct) {
+  if (variancePct == null || !isFinite(variancePct)) return '<span style="color:var(--text-muted)">&mdash;</span>';
+  const sign = variancePct >= 0 ? '+' : '';
+  const color = Math.abs(variancePct) < 15 ? 'var(--green)' : Math.abs(variancePct) < 40 ? 'var(--amber)' : 'var(--red)';
+  return `<span style="color:${color};font-weight:600">${sign}${variancePct.toFixed(1)}%</span>`;
+}
+
+function renderRegimeSlots() {
+  const el = document.getElementById('regime-slots');
+  if (!el) return;
+  if (!regimeRanges.length) {
+    el.innerHTML = '<div style="color:var(--text-muted);font-family:var(--font-data);font-size:11px;padding:6px 0">No ranges defined. Click <b>Load Defaults</b> to compare Spring 2022 vs Oct-Dec 2025, or <b>+ Add Range</b> to start.</div>';
+    return;
+  }
+  el.innerHTML = regimeRanges.map((r, i) => {
+    const color = REGIME_PALETTE[i % REGIME_PALETTE.length];
+    const label = (r.label || ('Range ' + (i+1))).replace(/"/g, '&quot;');
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;font-family:var(--font-data);font-size:11px">
+      <div style="width:12px;height:12px;border-radius:3px;background:${color};flex-shrink:0"></div>
+      <input type="text" value="${label}" onchange="updateRegimeRange(${i}, 'label', this.value)" style="width:110px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-primary);padding:4px 6px;border-radius:4px;font-family:var(--font-data);font-size:11px"/>
+      <input type="date" value="${r.start || ''}" onchange="updateRegimeRange(${i}, 'start', this.value)" style="background:var(--bg-card);border:1px solid var(--border);color:var(--text-primary);padding:4px 6px;border-radius:4px;font-family:var(--font-data);font-size:11px"/>
+      <span style="color:var(--text-muted)">&rarr;</span>
+      <input type="date" value="${r.end || ''}" onchange="updateRegimeRange(${i}, 'end', this.value)" style="background:var(--bg-card);border:1px solid var(--border);color:var(--text-primary);padding:4px 6px;border-radius:4px;font-family:var(--font-data);font-size:11px"/>
+      <button onclick="removeRegimeRange(${i})" title="Remove range" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:0 4px;line-height:1" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text-muted)'">&times;</button>
+    </div>`;
+  }).join('');
+}
+
+function renderRegimeSummaryTable(results) {
+  const el = document.getElementById('regime-summary');
+  if (!el) return;
+  const valid = results.filter(r => r.stats);
+  if (valid.length < 1) { el.innerHTML = ''; return; }
+
+  const c = C();
+  const METRICS = [
+    { key: 'n', label: 'Trades', fmt: v => v.toFixed(0), variance: false },
+    { key: 'days', label: 'Trading Days', fmt: v => v.toFixed(0), variance: false },
+    { key: 'setups_per_day', label: 'Setups / Day', fmt: v => v.toFixed(2), variance: true },
+    { key: 'avg_mae', label: 'Avg MAE %', fmt: v => v.toFixed(4) + '%', variance: true },
+    { key: 'med_mae', label: 'Med MAE %', fmt: v => v.toFixed(4) + '%', variance: true },
+    { key: 'p90_mae', label: 'P90 MAE %', fmt: v => v.toFixed(4) + '%', variance: true },
+    { key: 'avg_mfe', label: 'Avg MFE %', fmt: v => v.toFixed(4) + '%', variance: true },
+    { key: 'med_mfe', label: 'Med MFE %', fmt: v => v.toFixed(4) + '%', variance: true },
+    { key: 'p90_mfe', label: 'P90 MFE %', fmt: v => v.toFixed(4) + '%', variance: true },
+    { key: 'mfe_mae_ratio', label: 'MFE:MAE Ratio', fmt: v => v == null ? '\u2014' : v.toFixed(2) + 'x', variance: true },
+    { key: 'cv_mfe', label: 'CV (MFE)', fmt: v => v == null ? '\u2014' : v.toFixed(2), variance: true },
+    { key: 'skew_mfe', label: 'Skew (MFE)', fmt: v => v.toFixed(2), variance: false },
+    { key: 'kurt_mfe', label: 'Kurtosis (MFE)', fmt: v => v.toFixed(2), variance: false },
+  ];
+
+  let thead = '<tr style="border-bottom:1px solid var(--border-mid);color:var(--text-muted);font-size:10px;letter-spacing:.05em;text-transform:uppercase"><th style="text-align:left;padding:8px 10px">Metric</th>';
+  valid.forEach((r, i) => {
+    const color = REGIME_PALETTE[r.idx % REGIME_PALETTE.length];
+    thead += `<th style="text-align:right;padding:8px 10px"><div style="display:inline-flex;align-items:center;gap:6px;justify-content:flex-end"><div style="width:10px;height:10px;border-radius:2px;background:${color}"></div><span style="color:var(--text-primary)">${r.label}</span></div><div style="font-weight:400;color:var(--text-muted);font-size:9px;margin-top:2px">${r.range.start} &rarr; ${r.range.end}</div></th>`;
+  });
+  if (valid.length >= 2) {
+    thead += '<th style="text-align:right;padding:8px 10px">Variance</th>';
+    thead += '<th style="text-align:right;padding:8px 10px">Stability</th>';
+  }
+  thead += '</tr>';
+
+  let tbody = '';
+  METRICS.forEach(m => {
+    tbody += `<tr style="border-bottom:1px solid var(--border)"><td style="padding:8px 10px;color:var(--text-secondary)">${m.label}</td>`;
+    valid.forEach(r => {
+      const v = r.stats[m.key];
+      tbody += `<td style="padding:8px 10px;text-align:right;color:var(--text-primary);font-weight:500">${v == null ? '\u2014' : m.fmt(v)}</td>`;
+    });
+    if (valid.length >= 2) {
+      if (m.variance) {
+        const first = valid[0].stats[m.key];
+        const last = valid[valid.length - 1].stats[m.key];
+        let variance = null;
+        if (first != null && last != null && first !== 0) {
+          variance = ((last - first) / Math.abs(first)) * 100;
+        }
+        tbody += `<td style="padding:8px 10px;text-align:right">${fmtVariance(variance)}</td>`;
+        tbody += `<td style="padding:8px 10px;text-align:right">${regimeStabilityBadge(variance)}</td>`;
+      } else {
+        tbody += '<td style="padding:8px 10px;text-align:right;color:var(--text-muted)">&mdash;</td>';
+        tbody += '<td style="padding:8px 10px;text-align:right;color:var(--text-muted)">&mdash;</td>';
+      }
+    }
+    tbody += '</tr>';
+  });
+
+  el.innerHTML = `<div class="panel" style="margin-bottom:14px"><div class="ph"><span class="ph-title">Summary Comparison</span><span class="ph-note">Variance = (last &minus; first) / |first| &middot; Stability: High&lt;15% &middot; Med 15-40% &middot; Low&gt;40%</span></div><div class="pb" style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:12px"><thead>${thead}</thead><tbody>${tbody}</tbody></table></div></div>`;
+}
+
+function renderRegimeKdeOverlay(containerId, field, accentColorKey, title, results) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+
+  const valid = results.filter(r => r.stats && r.stats[field + '_arr'] && r.stats[field + '_arr'].length >= 3);
+  if (valid.length < 1) { el.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px">Insufficient data for overlay.</div>'; return; }
+
+  const c = C();
+  const W = el.clientWidth || 500, H = 240;
+  const ml = 50, mr = 20, mt = 24, mb = 40, cw = W - ml - mr, ch = H - mt - mb;
+
+  // Compute KDE for each range
+  const kdes = valid.map(r => ({
+    kde: computeKDE(r.stats[field + '_arr'], 180),
+    color: REGIME_PALETTE[r.idx % REGIME_PALETTE.length],
+    label: r.label,
+    stats: r.stats,
+  })).filter(k => k.kde.length > 1);
+
+  if (!kdes.length) { el.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px">Insufficient data for KDE overlay.</div>'; return; }
+
+  // Shared x range across all KDEs
+  let xMin = Infinity, xMax = -Infinity, yMax = 0;
+  kdes.forEach(k => {
+    k.kde.forEach(p => {
+      if (p.x < xMin) xMin = p.x;
+      if (p.x > xMax) xMax = p.x;
+      if (p.y > yMax) yMax = p.y;
+    });
+  });
+  const xRange = xMax - xMin || 1;
+  const xS = v => ((v - xMin) / xRange) * cw;
+  const yS = v => ch - (v / (yMax * 1.1)) * ch;
+
+  // Grid
+  let grid = '';
+  const nGrid = 5;
+  for (let i = 0; i <= nGrid; i++) {
+    const y = (i / nGrid) * ch;
+    grid += `<line x1="0" y1="${y}" x2="${cw}" y2="${y}" stroke="${c.gridLine}" stroke-width="1"/>`;
+  }
+
+  // X axis labels
+  let xLabels = '';
+  const nXLabels = 6;
+  for (let i = 0; i <= nXLabels; i++) {
+    const v = xMin + (xRange * i / nXLabels);
+    const x = xS(v);
+    xLabels += `<text x="${x}" y="${ch + 16}" text-anchor="middle" font-size="9" fill="${c.axisText}" font-family="${SVG_FONT}">${v.toFixed(3)}%</text>`;
+  }
+
+  // KDE curves
+  let curves = '';
+  kdes.forEach(k => {
+    const pts = k.kde.map(p => `${xS(p.x)},${yS(p.y)}`);
+    curves += `<path d="M${pts.join('L')}" fill="none" stroke="${k.color}" stroke-width="2.2" opacity="0.92"/>`;
+    curves += `<path d="M${xS(k.kde[0].x)},${ch} L${pts.join('L')} L${xS(k.kde[k.kde.length-1].x)},${ch} Z" fill="${k.color}" opacity="0.08"/>`;
+  });
+
+  // Median markers per range
+  let markers = '';
+  kdes.forEach(k => {
+    const medKey = field === 'mae' ? 'med_mae' : 'med_mfe';
+    const med = k.stats[medKey];
+    if (med == null) return;
+    const x = xS(med);
+    if (x < 0 || x > cw) return;
+    markers += `<line x1="${x}" y1="0" x2="${x}" y2="${ch}" stroke="${k.color}" stroke-width="1" stroke-dasharray="3,3" opacity="0.55"/>`;
+  });
+
+  // Legend
+  const legendItems = kdes.map((k, i) =>
+    `<g transform="translate(${i * 120}, 0)"><rect x="0" y="-6" width="10" height="3" fill="${k.color}"/><text x="14" y="-2" font-size="9" fill="${c.axisText}" font-family="${SVG_FONT}">${k.label}</text></g>`
+  ).join('');
+
+  const svg = `<svg width="${W}" height="${H}" style="overflow:visible;display:block"><g transform="translate(${ml},${mt})">${grid}${curves}${markers}${xLabels}<g transform="translate(0,-10)">${legendItems}</g></g></svg>`;
+  el.innerHTML = `<div class="panel"><div class="ph"><span class="ph-title">${title}</span><span class="ph-note">KDE overlay &middot; dashed lines = medians</span></div><div class="pb">${svg}</div></div>`;
+}
+
+function renderRegimeOverlayCharts(results) {
+  const el = document.getElementById('regime-overlay-charts');
+  if (!el) return;
+  const valid = results.filter(r => r.stats);
+  if (valid.length < 1) { el.innerHTML = ''; return; }
+
+  el.innerHTML = `<div class="sec-label">Distribution Overlay</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px"><div id="regime-kde-mae"></div><div id="regime-kde-mfe"></div></div>`;
+  renderRegimeKdeOverlay('regime-kde-mae', 'mae', 'red', 'MAE Distribution', results);
+  renderRegimeKdeOverlay('regime-kde-mfe', 'mfe', 'green', 'MFE Distribution', results);
+}
+
+function renderRegimeDeepPanel(r) {
+  const color = REGIME_PALETTE[r.idx % REGIME_PALETTE.length];
+  if (!r.stats) {
+    return `<div class="panel"><div class="ph"><span class="ph-title"><span style="display:inline-block;width:10px;height:10px;background:${color};border-radius:2px;margin-right:6px;vertical-align:middle"></span>${r.label}</span><span class="ph-note">${r.range.start} &rarr; ${r.range.end}</span></div><div class="pb"><div style="color:var(--text-muted);font-size:12px;padding:8px">Insufficient data for this range.</div></div></div>`;
+  }
+  const s = r.stats;
+  const row = (label, val) => `<tr style="border-bottom:1px solid var(--border)"><td style="padding:5px 8px;color:var(--text-secondary)">${label}</td><td style="padding:5px 8px;text-align:right;color:var(--text-primary);font-weight:600">${val}</td></tr>`;
+  const fmt4 = v => v == null ? '\u2014' : v.toFixed(4) + '%';
+  const fmt2 = v => v == null ? '\u2014' : v.toFixed(2);
+
+  const pctileRow = (p, mae, mfe) => `<tr style="border-bottom:1px solid var(--border)"><td style="padding:5px 8px;color:var(--text-muted);font-size:10px">P${p}</td><td style="padding:5px 8px;text-align:right;color:var(--red)">${fmt4(mae)}</td><td style="padding:5px 8px;text-align:right;color:var(--green)">${fmt4(mfe)}</td></tr>`;
+
+  const pctileTable = `<table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:11px">
+    <thead><tr style="border-bottom:1px solid var(--border-mid);color:var(--text-muted);font-size:9px;letter-spacing:.05em;text-transform:uppercase"><th style="text-align:left;padding:5px 8px">Pctile</th><th style="text-align:right;padding:5px 8px">MAE</th><th style="text-align:right;padding:5px 8px">MFE</th></tr></thead>
+    <tbody>
+      ${pctileRow(10, s.p10_mae, s.p10_mfe)}
+      ${pctileRow(25, s.p25_mae, s.p25_mfe)}
+      ${pctileRow(50, s.med_mae, s.med_mfe)}
+      ${pctileRow(75, s.p75_mae, s.p75_mfe)}
+      ${pctileRow(90, s.p90_mae, s.p90_mfe)}
+    </tbody>
+  </table>`;
+
+  const shapeTable = `<table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:11px">
+    <thead><tr style="border-bottom:1px solid var(--border-mid);color:var(--text-muted);font-size:9px;letter-spacing:.05em;text-transform:uppercase"><th style="text-align:left;padding:5px 8px">Stat</th><th style="text-align:right;padding:5px 8px">MAE</th><th style="text-align:right;padding:5px 8px">MFE</th></tr></thead>
+    <tbody>
+      <tr style="border-bottom:1px solid var(--border)"><td style="padding:5px 8px;color:var(--text-muted);font-size:10px">Skewness</td><td style="padding:5px 8px;text-align:right;color:var(--red)">${fmt2(s.skew_mae)}</td><td style="padding:5px 8px;text-align:right;color:var(--green)">${fmt2(s.skew_mfe)}</td></tr>
+      <tr style="border-bottom:1px solid var(--border)"><td style="padding:5px 8px;color:var(--text-muted);font-size:10px">Kurtosis</td><td style="padding:5px 8px;text-align:right;color:var(--red)">${fmt2(s.kurt_mae)}</td><td style="padding:5px 8px;text-align:right;color:var(--green)">${fmt2(s.kurt_mfe)}</td></tr>
+      <tr style="border-bottom:1px solid var(--border)"><td style="padding:5px 8px;color:var(--text-muted);font-size:10px">CV</td><td style="padding:5px 8px;text-align:right;color:var(--red)">${fmt2(s.cv_mae)}</td><td style="padding:5px 8px;text-align:right;color:var(--green)">${fmt2(s.cv_mfe)}</td></tr>
+      <tr style="border-bottom:1px solid var(--border)"><td style="padding:5px 8px;color:var(--text-muted);font-size:10px">IQR</td><td style="padding:5px 8px;text-align:right;color:var(--red)">${fmt4(s.iqr_mae)}</td><td style="padding:5px 8px;text-align:right;color:var(--green)">${fmt4(s.iqr_mfe)}</td></tr>
+      <tr style="border-bottom:1px solid var(--border)"><td style="padding:5px 8px;color:var(--text-muted);font-size:10px">IQR / Med</td><td style="padding:5px 8px;text-align:right;color:var(--red)">${s.med_mae > 0 ? (s.iqr_mae/s.med_mae).toFixed(2) : '\u2014'}</td><td style="padding:5px 8px;text-align:right;color:var(--green)">${s.med_mfe > 0 ? (s.iqr_mfe/s.med_mfe).toFixed(2) : '\u2014'}</td></tr>
+    </tbody>
+  </table>`;
+
+  return `<div class="panel" style="min-width:340px">
+    <div class="ph"><span class="ph-title"><span style="display:inline-block;width:10px;height:10px;background:${color};border-radius:2px;margin-right:6px;vertical-align:middle"></span>${r.label}</span><span class="ph-note">${r.range.start} &rarr; ${r.range.end} &middot; ${s.n} trades &middot; ${s.days} days</span></div>
+    <div class="pb">
+      <div style="display:flex;gap:10px;margin-bottom:10px;font-family:var(--font-data);font-size:11px;flex-wrap:wrap">
+        <div style="flex:1;min-width:100px;padding:8px;background:var(--bg-raised);border-radius:4px;border:1px solid var(--border)"><div style="color:var(--text-muted);font-size:9px;letter-spacing:.05em;text-transform:uppercase">Setups/Day</div><div style="font-size:16px;font-weight:700;color:${color};margin-top:2px">${s.setups_per_day.toFixed(2)}</div></div>
+        <div style="flex:1;min-width:100px;padding:8px;background:var(--bg-raised);border-radius:4px;border:1px solid var(--border)"><div style="color:var(--text-muted);font-size:9px;letter-spacing:.05em;text-transform:uppercase">MFE:MAE</div><div style="font-size:16px;font-weight:700;color:${color};margin-top:2px">${s.mfe_mae_ratio == null ? '\u2014' : s.mfe_mae_ratio.toFixed(2) + 'x'}</div></div>
+      </div>
+      <div id="regime-panel-mae-${r.idx}" style="margin-bottom:10px"></div>
+      <div id="regime-panel-mfe-${r.idx}" style="margin-bottom:10px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:4px">Percentiles</div>${pctileTable}</div>
+        <div><div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:4px">Shape</div>${shapeTable}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderRegimeMiniHist(containerId, data, label, color) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (!data || data.length < 3) { el.innerHTML = '<div style="color:var(--text-muted);font-size:11px;padding:4px">Insufficient data.</div>'; return; }
+
+  const c = C();
+  const W = el.clientWidth || 320, H = 140;
+  const ml = 36, mr = 10, mt = 14, mb = 26, cw = W - ml - mr, ch = H - mt - mb;
+
+  const bins = computeHistogram(data, 12, 30);
+  if (!bins.length) { el.innerHTML = ''; return; }
+  const maxCount = Math.max.apply(null, bins.map(b => b.count));
+  const xMin = bins[0].lo, xMax = bins[bins.length-1].hi;
+  const xRange = xMax - xMin || 1;
+  const xS = v => ((v - xMin) / xRange) * cw;
+  const yS = v => ch - (v / (maxCount * 1.1)) * ch;
+
+  let grid = '';
+  for (let i = 0; i <= 4; i++) {
+    const y = (i / 4) * ch;
+    grid += `<line x1="0" y1="${y}" x2="${cw}" y2="${y}" stroke="${c.gridLine}" stroke-width="1"/>`;
+  }
+
+  let bars = '';
+  bins.forEach(b => {
+    const x = xS(b.lo), w = Math.max(xS(b.hi) - xS(b.lo) - 1, 1), y = yS(b.count), bh = ch - y;
+    if (bh > 0) bars += `<rect x="${x}" y="${y}" width="${w}" height="${bh}" fill="${color}" opacity="0.55" rx="1"/>`;
+  });
+
+  // KDE overlay
+  const kde = computeKDE(data, 120);
+  let kdePath = '';
+  if (kde.length > 1) {
+    const binW = bins.length > 1 ? bins[1].lo - bins[0].lo : 1;
+    const kdeScale = data.length * binW;
+    const pts = kde.filter(p => p.x >= xMin && p.x <= xMax).map(p => `${xS(p.x)},${yS(p.y * kdeScale)}`);
+    if (pts.length > 1) kdePath = `<path d="M${pts.join('L')}" fill="none" stroke="${color}" stroke-width="1.5" opacity="0.95"/>`;
+  }
+
+  // X labels
+  let xl = '';
+  [0, 0.5, 1].forEach(f => {
+    const v = xMin + xRange * f;
+    xl += `<text x="${xS(v)}" y="${ch + 14}" text-anchor="middle" font-size="8" fill="${c.axisText}" font-family="${SVG_FONT}">${v.toFixed(3)}%</text>`;
+  });
+
+  // Title
+  const title = `<text x="0" y="-4" font-size="10" font-weight="600" fill="${color}" font-family="${SVG_FONT}">${label}</text>`;
+
+  el.innerHTML = `<svg width="${W}" height="${H}" style="overflow:visible;display:block"><g transform="translate(${ml},${mt})">${grid}${bars}${kdePath}${xl}${title}</g></svg>`;
+}
+
+function renderRegimeDeepStats(results) {
+  const el = document.getElementById('regime-deep-stats');
+  if (!el) return;
+  if (!results.length) { el.innerHTML = ''; return; }
+
+  const panels = results.map(r => renderRegimeDeepPanel(r)).join('');
+  const gridStyle = results.length <= 2
+    ? 'display:grid;grid-template-columns:repeat(' + results.length + ',1fr);gap:14px'
+    : 'display:flex;gap:14px;overflow-x:auto;padding-bottom:6px';
+
+  el.innerHTML = `<div class="sec-label">Deep Stats by Range</div><div style="${gridStyle}">${panels}</div>`;
+
+  // Render mini histograms after DOM insertion
+  results.forEach(r => {
+    if (!r.stats) return;
+    renderRegimeMiniHist('regime-panel-mae-' + r.idx, r.stats.mae_arr, 'MAE Distribution', C().red);
+    renderRegimeMiniHist('regime-panel-mfe-' + r.idx, r.stats.mfe_arr, 'MFE Distribution', C().green);
+  });
+}
+
+function renderRegimes() {
+  renderRegimeSlots();
+
+  const summaryEl = document.getElementById('regime-summary');
+  const overlayEl = document.getElementById('regime-overlay-charts');
+  const deepEl = document.getElementById('regime-deep-stats');
+
+  if (!regimeRanges.length) {
+    if (summaryEl) summaryEl.innerHTML = '<div class="panel" style="margin-bottom:14px"><div class="pb" style="color:var(--text-muted);font-family:var(--font-data);font-size:12px;text-align:center;padding:24px">Click <b style="color:var(--text-primary)">Load Defaults</b> to compare Spring 2022 vs Oct-Dec 2025.</div></div>';
+    if (overlayEl) overlayEl.innerHTML = '';
+    if (deepEl) deepEl.innerHTML = '';
+    return;
+  }
+
+  const rawD = getModelData(activeModel);
+  if (!rawD) {
+    if (summaryEl) summaryEl.innerHTML = '<div class="panel"><div class="pb" style="color:var(--text-muted);font-size:12px;padding:12px">No model data loaded.</div></div>';
+    return;
+  }
+
+  // Source trades from the raw (unfiltered-by-period) model data, then apply direction filter only.
+  let trades = rawD.recent_trades || [];
+  if (activeDirFilter !== 'all') trades = trades.filter(t => t.direction === activeDirFilter);
+
+  const results = regimeRanges.map((range, idx) => {
+    const hasRange = range.start && range.end && range.start <= range.end;
+    if (!hasRange) return { idx, range, label: range.label || ('Range ' + (idx+1)), stats: null };
+    const filtered = filterTradesByRange(trades, range);
+    const stats = computeRangeStats(filtered);
+    return { idx, range, label: range.label || ('Range ' + (idx+1)), stats };
+  });
+
+  renderRegimeSummaryTable(results);
+  renderRegimeOverlayCharts(results);
+  renderRegimeDeepStats(results);
+}
+
 // ── MAIN RENDER ────────────────────────────────────────────────────────────
 function renderActive() {
   const rawD = getModelData(activeModel);
@@ -1579,6 +2043,7 @@ function renderActive() {
   }
   if (activePageTab === 'trades') renderRecentTrades();
   if (activePageTab === 'study') renderStudyTab(D);
+  if (activePageTab === 'regimes') renderRegimes();
 }
 
 // ── FULL RENDER ────────────────────────────────────────────────────────────
