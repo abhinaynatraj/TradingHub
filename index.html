@@ -784,12 +784,12 @@ const PROJECTS = [
   {
     id:       'sweep',
     title:    'Fractal Sweep',
-    subtitle: 'Sweep + CISD · 4 Models',
-    desc:     'Detects prior candle sweep → close-back → CISD confirmation across four timeframe pairs (4H/15M, 1H/5M, 1H/3M, 30M/3M). Entry at next CISD-TF candle open. Stop at sweep extreme. Multiple risk profiles tested from 1:0.35 to 1:2.',
-    json:     'Fractal Sweep/model_stats.json',
-    link:     'Fractal Sweep/model_dashboard.html',
-    color:    '#3b82f6',
-    icon:     '🌊',
+    subtitle: 'Fixed Constant · 3 Models',
+    desc:     'Doctrine-compliant Wolf Tank model. Locks anchor at close of first chart-TF bar of each new HTF block (30M/3M, 1H/5M, 4H/15M). Aggregated MAE/MFE distribution with P99 structural stop anchor and four doctrine TP levels (Cover the Queen, Cash Flow, Extended, Runner).',
+    json:     'Fractal Sweep/model_stats_fixed_constant.json',
+    link:     'Fractal Sweep/model_dashboard_fixed_constant.html',
+    color:    '#8b5cf6',
+    icon:     '🎯',
     type:     'sweep',
     stats:    null,
   },
@@ -815,40 +815,37 @@ async function loadStats(project) {
     const d = await res.json();
 
     if (project.type === 'sweep') {
-      // Flatten all model × profile combinations for the leaderboard
-      const combos = [];
+      // Fixed Constant model: locked anchor per HTF block with MAE/MFE distribution
+      // JSON structure: { model_key: { meta, by_hour, by_dow, up_dist, down_dist, recent_reps } }
+      const models = [];
+      let totalReps = 0;
+      let latestDate = null;
       for (const [modelKey, modelData] of Object.entries(d)) {
-        const profiles = modelData.profiles || {};
-        for (const [profileKey, stats] of Object.entries(profiles)) {
-          const m = stats.meta || {};
-          if ((m.total_wl || 0) < 50) continue;
-          combos.push({
-            modelKey,
-            profileKey,
-            n:    m.total_wl,
-            wr:   m.win_rate,
-            ev:   m.ev_per_trade,
-            pf:   m.profit_factor,
-            be:   m.risk_breakeven_wr,
-            spd:  m.setups_per_day_ny,
-          });
-        }
+        const m = modelData.meta || {};
+        const dd = modelData.down_dist || {};
+        const ud = modelData.up_dist || {};
+        if ((m.total_reps || 0) < 100) continue;
+        models.push({
+          modelKey,
+          reps: m.total_reps,
+          down_p99: dd.p99,
+          up_p50: ud.p50,
+          up_p25: ud.p25,
+          ratio: (ud.p50 && dd.p99) ? ud.p50 / dd.p99 : null,
+        });
+        totalReps += (m.total_reps || 0);
+        if (m.date_range) latestDate = m.date_range;
       }
-      combos.sort((a, b) => b.ev - a.ev);
-      // Store for leaderboard (accessible after init)
-      project._combos = combos;
-
-      // Card stats: best combo overall
-      const best = combos[0];
-      const allN = combos.reduce((s, c) => s + c.n, 0);
-      if (!best) return null;
+      if (!models.length) return null;
+      // Best = highest MFE/MAE ratio
+      models.sort((a, b) => (b.ratio || 0) - (a.ratio || 0));
+      const best = models[0];
       return {
-        label1: 'Best WR', val1: pct(best.wr),  cls1: wrColor(best.wr),
-        label2: 'Best EV', val2: sgn(best.ev),  cls2: best.ev > 0 ? 'pos' : 'neg',
-        label3: 'Combos',  val3: num(combos.length), cls3: 'neutral',
-        dateRange: d[best.modelKey]?.profiles?.[best.profileKey]?.meta?.date_range || '—',
-        subtitle2: `Best: ${best.modelKey.replace('_PREV_CISD','').replace(/_/g,' · ')} · ${best.profileKey}`,
-        top5combos: combos.slice(0, 5),
+        label1: 'Best Ratio', val1: best.ratio ? best.ratio.toFixed(2) + 'x' : '—', cls1: 'pos',
+        label2: 'Stop Anchor', val2: best.down_p99 != null ? best.down_p99.toFixed(3) + '%' : '—', cls2: 'neg',
+        label3: 'Reps',        val3: num(totalReps), cls3: 'neutral',
+        dateRange: latestDate || '—',
+        subtitle2: `Best: ${best.modelKey.replace(/_/g,' · ')} · ${best.reps.toLocaleString()} reps`,
       };
     }
 
