@@ -133,6 +133,197 @@ def get_session(hr, mn):
         return 'OVERNIGHT'
 
 
+# ── BLOCK RANGE HELPER ───────────────────────────────────────────────────────
+def compute_block_range_pts(m1_arrs, m1_start_block, m1_end_block):
+    """
+    Return the high-low range (in points) of all 1m bars in [m1_start_block, m1_end_block).
+    Returns 0.0 if the slice is empty.
+    """
+    if m1_end_block <= m1_start_block:
+        return 0.0
+    highs = m1_arrs['high'][m1_start_block:m1_end_block]
+    lows = m1_arrs['low'][m1_start_block:m1_end_block]
+    return float(highs.max() - lows.min())
+
+
+# ── HOUR OPEN HELPER ─────────────────────────────────────────────────────────
+_HOUR_NS = 60 * 60 * 10**9
+
+def compute_hour_open(m1_arrs, entry_ts_ns):
+    """
+    Return the open of the first 1m bar inside the clock-hour containing
+    entry_ts_ns. Uses floor-hour boundary on the naive-ET ts_ns values.
+
+    For a rep at 10:14:00, the clock hour is [10:00:00, 11:00:00) and this
+    returns the open of the 1m bar at (or first after) 10:00:00 if that
+    bar's timestamp is still inside the hour. Returns None if the entire
+    hour has no 1m bars (data gap — rare, since the rep itself implies
+    some bar exists inside the block).
+    """
+    hour_start_ns = (int(entry_ts_ns) // _HOUR_NS) * _HOUR_NS
+    hour_end_ns = hour_start_ns + _HOUR_NS
+    ts = m1_arrs['ts_ns']
+    idx = int(np.searchsorted(ts, hour_start_ns, side='left'))
+    if idx >= len(ts):
+        return None
+    if int(ts[idx]) >= hour_end_ns:
+        return None
+    return float(m1_arrs['open'][idx])
+
+
+# ── FADE ENGINE ──────────────────────────────────────────────────────────────
+def compute_fade_metrics(reps, m1_arrs,
+                         mae99_up_pct, mae99_down_pct,
+                         p50_up_pct, p50_down_pct):
+    """
+    Second pass: for each rep, determine if MAE99 was breached and walk forward
+    from the breach bar to block end to measure fade outcome. Mutates reps in place.
+
+    Thresholds (mae99/p50) are in percent. Breach bar is the first m1 bar in
+    [m1_start, m1_end) whose high (up breach) or low (down breach) crosses the
+    threshold price. Walk-forward starts at breach_bar + 1.
+
+    Sets per rep:
+      fade_triggered         bool
+      fade_breach_side       'up' | 'down' | None
+      fade_reached_anchor    bool | None
+      fade_reached_mfe50_opp bool | None
+      fade_reached_mae99_opp bool | None
+      fade_mfe_opp_pct       float | None  (always >= 0, % of lock_close)
+
+    None (not 0) on non-triggered reps.
+    """
+    highs = m1_arrs['high']
+    lows = m1_arrs['low']
+
+    for rep in reps:
+        up = rep['excursion_up_pct']
+        dn = rep['excursion_down_pct']
+        up_breached = up >= mae99_up_pct
+        dn_breached = dn >= mae99_down_pct
+
+        if not up_breached and not dn_breached:
+            rep['fade_triggered'] = False
+            rep['fade_breach_side'] = None
+            rep['fade_reached_anchor'] = None
+            rep['fade_reached_mfe50_opp'] = None
+            rep['fade_reached_mae99_opp'] = None
+            rep['fade_mfe_opp_pct'] = None
+            continue
+
+        m1_start = rep['_m1_start']
+        m1_end = rep['_m1_end']
+        lock_close = rep['_lock_close']
+
+        up_trigger_price = lock_close * (1.0 + mae99_up_pct / 100.0)
+        dn_trigger_price = lock_close * (1.0 - mae99_down_pct / 100.0)
+
+        # Find breach bar for each side (first m1 bar whose extreme crosses)
+        up_breach_idx = -1
+        dn_breach_idx = -1
+        if up_breached:
+            for k in range(m1_start, m1_end):
+                if highs[k] >= up_trigger_price:
+                    up_breach_idx = k
+                    break
+        if dn_breached:
+            for k in range(m1_start, m1_end):
+                if lows[k] <= dn_trigger_price:
+                    dn_breach_idx = k
+                    break
+
+        # Tiebreaker: whichever side's breach bar is earliest
+        if up_breach_idx >= 0 and (dn_breach_idx < 0 or up_breach_idx <= dn_breach_idx):
+            breach_side = 'up'
+            breach_idx = up_breach_idx
+        else:
+            breach_side = 'down'
+            breach_idx = dn_breach_idx
+
+        rep['fade_triggered'] = True
+        rep['fade_breach_side'] = breach_side
+
+        # Walk forward from breach_bar + 1 to m1_end
+        # For up-breach: measure max down excursion (low) from anchor
+        # For down-breach: measure max up excursion (high) from anchor
+        max_opp_pct = 0.0
+        if breach_side == 'up':
+            for k in range(breach_idx + 1, m1_end):
+                low_k = lows[k]
+                opp_pct = (lock_close - low_k) / lock_close * 100.0
+                if opp_pct > max_opp_pct:
+                    max_opp_pct = opp_pct
+        else:  # 'down'
+            for k in range(breach_idx + 1, m1_end):
+                high_k = highs[k]
+                opp_pct = (high_k - lock_close) / lock_close * 100.0
+                if opp_pct > max_opp_pct:
+                    max_opp_pct = opp_pct
+
+        # Confirmation thresholds (opposite-side percentiles from anchor)
+        opp_p50 = p50_down_pct if breach_side == 'up' else p50_up_pct
+        opp_mae99 = mae99_down_pct if breach_side == 'up' else mae99_up_pct
+
+        rep['fade_reached_anchor'] = bool(max_opp_pct > 0.0)
+        rep['fade_reached_mfe50_opp'] = bool(max_opp_pct >= opp_p50)
+        rep['fade_reached_mae99_opp'] = bool(max_opp_pct >= opp_mae99)
+        rep['fade_mfe_opp_pct'] = round(max_opp_pct, 4)
+
+
+def build_fade_summary(reps, mae99_up_pct, mae99_down_pct,
+                       p50_mfe_up_pct, p50_mfe_down_pct):
+    """
+    Aggregate fade metrics across reps. Returns dict suitable for the
+    'fade_summary' key in the per-model output.
+    """
+    n_total = len(reps)
+    triggered = [r for r in reps if r.get('fade_triggered')]
+    n_triggered = len(triggered)
+
+    up_triggered = sum(1 for r in triggered if r['fade_breach_side'] == 'up')
+    dn_triggered = sum(1 for r in triggered if r['fade_breach_side'] == 'down')
+
+    if n_total == 0:
+        return {
+            'n_total': 0, 'n_triggered': 0,
+            'trigger_rate': 0.0, 'trigger_rate_up': 0.0, 'trigger_rate_down': 0.0,
+            'mae99_up_pct': mae99_up_pct, 'mae99_down_pct': mae99_down_pct,
+            'p50_mfe_up_pct': p50_mfe_up_pct, 'p50_mfe_down_pct': p50_mfe_down_pct,
+            'confirm_anchor_rate': 0.0,
+            'confirm_mfe50_opp_rate': 0.0,
+            'confirm_mae99_opp_rate': 0.0,
+            'fade_mfe_opp_dist': {},
+        }
+
+    if n_triggered == 0:
+        confirm_anchor = 0.0
+        confirm_mfe50 = 0.0
+        confirm_mae99 = 0.0
+        opp_dist = {}
+    else:
+        confirm_anchor = sum(1 for r in triggered if r['fade_reached_anchor']) / n_triggered
+        confirm_mfe50 = sum(1 for r in triggered if r['fade_reached_mfe50_opp']) / n_triggered
+        confirm_mae99 = sum(1 for r in triggered if r['fade_reached_mae99_opp']) / n_triggered
+        opp_vals = pd.Series([r['fade_mfe_opp_pct'] for r in triggered if r['fade_mfe_opp_pct'] is not None])
+        opp_dist = dist_stats(opp_vals) if len(opp_vals) >= 2 else {}
+
+    return {
+        'n_total': n_total,
+        'n_triggered': n_triggered,
+        'trigger_rate': round(n_triggered / n_total, 6),
+        'trigger_rate_up': round(up_triggered / n_total, 6),
+        'trigger_rate_down': round(dn_triggered / n_total, 6),
+        'mae99_up_pct': mae99_up_pct,
+        'mae99_down_pct': mae99_down_pct,
+        'p50_mfe_up_pct': p50_mfe_up_pct,
+        'p50_mfe_down_pct': p50_mfe_down_pct,
+        'confirm_anchor_rate': round(confirm_anchor, 6),
+        'confirm_mfe50_opp_rate': round(confirm_mfe50, 6),
+        'confirm_mae99_opp_rate': round(confirm_mae99, 6),
+        'fade_mfe_opp_dist': opp_dist,
+    }
+
+
 # ── MAIN SCAN: One Rep Per HTF Block ─────────────────────────────────────────
 def scan_fixed_constant_model(htf_arrs, chart_arrs, m1_arrs, model_key, cfg):
     """
@@ -221,6 +412,16 @@ def scan_fixed_constant_model(htf_arrs, chart_arrs, m1_arrs, model_key, cfg):
         htf_start_pd = pd.Timestamp(htf_start_ns)
         block_end_pd = pd.Timestamp(htf_end_ns - 60 * 10**9)  # last minute of block
 
+        # Block range: full HTF block window (for regime classification)
+        m1_start_block = int(np.searchsorted(m1_arrs['ts_ns'], htf_start_ns, side='left'))
+        m1_end_block = int(np.searchsorted(m1_arrs['ts_ns'], htf_end_ns, side='left'))
+        block_range_pts = compute_block_range_pts(m1_arrs, m1_start_block, m1_end_block)
+
+        # Hour open: open of the 1m bar at the start of the clock hour
+        # containing the lock — used by the Hour-Open Bias filter (lock_close
+        # > hour_open = bullish setup, < = bearish, == = neutral/excluded).
+        hour_open = compute_hour_open(m1_arrs, lock_ts_ns)
+
         rep = {
             'date': str(htf_arrs['trade_date'][i]),
             'dow': int(htf_arrs['dow'][i]),
@@ -240,6 +441,13 @@ def scan_fixed_constant_model(htf_arrs, chart_arrs, m1_arrs, model_key, cfg):
             'time_to_max_up_min': time_to_max_up_min,
             'time_to_max_down_min': time_to_max_down_min,
             'session': session,
+            'block_range_pts': round(block_range_pts, 2),
+            'hour_open': round(hour_open, 2) if hour_open is not None else None,
+            # Internal fields consumed by compute_fade_metrics; stripped before JSON serialization
+            '_m1_start': m1_start,
+            '_m1_end': m1_end,
+            '_lock_ts_end_ns': lock_ts_end_ns,
+            '_lock_close': htf_close,
         }
         reps.append(rep)
 
@@ -294,7 +502,7 @@ def dist_stats(arr):
     }
 
 
-def build_model_stats(df, model_key, cfg, instrument):
+def build_model_stats(df, model_key, cfg, instrument, fade_summary=None):
     if df.empty:
         return {'meta': {'model_key': model_key, 'total_reps': 0}, 'recent_reps': []}
 
@@ -362,7 +570,23 @@ def build_model_stats(df, model_key, cfg, instrument):
         by_year.append(row)
     by_year.sort(key=lambda r: r['yr'])
 
-    return {
+    # Strip internal underscore-prefixed fields before serialization.
+    # Also restore None for fade fields that pandas turned into NaN during the
+    # dict→DataFrame→dict round trip (None + float/str columns get upgraded).
+    import math as _math
+    _NAN_FADE_FIELDS = ('fade_mfe_opp_pct', 'fade_breach_side',
+                        'fade_reached_anchor', 'fade_reached_mfe50_opp',
+                        'fade_reached_mae99_opp')
+    records = df.to_dict('records')
+    for r in records:
+        for k in ('_m1_start', '_m1_end', '_lock_ts_end_ns', '_lock_close'):
+            r.pop(k, None)
+        for k in _NAN_FADE_FIELDS:
+            v = r.get(k)
+            if isinstance(v, float) and _math.isnan(v):
+                r[k] = None
+
+    result = {
         'meta': meta,
         'by_hour': by_hour,
         'by_dow': by_dow,
@@ -370,8 +594,11 @@ def build_model_stats(df, model_key, cfg, instrument):
         'by_year': by_year,
         'up_dist': dist_stats(up_all),
         'down_dist': dist_stats(down_all),
-        'recent_reps': df.to_dict('records'),
+        'recent_reps': records,
     }
+    if fade_summary is not None:
+        result['fade_summary'] = fade_summary
+    return result
 
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
@@ -423,8 +650,24 @@ def main():
         reps = scan_fixed_constant_model(htf_arrs, chart_arrs, m1_arrs, model_key, cfg)
         print(f'    {len(reps)} reps emitted', flush=True)
 
+        if reps:
+            # Compute aggregated thresholds from excursion fields
+            up_series = pd.Series([r['excursion_up_pct'] for r in reps])
+            dn_series = pd.Series([r['excursion_down_pct'] for r in reps])
+            mae99_up = round(float(up_series.quantile(0.99)), 4)
+            mae99_dn = round(float(dn_series.quantile(0.99)), 4)
+            p50_up = round(float(up_series.quantile(0.50)), 4)
+            p50_dn = round(float(dn_series.quantile(0.50)), 4)
+
+            print(f'    [{model_key}] fade pass: mae99_up={mae99_up}% mae99_dn={mae99_dn}%', flush=True)
+            compute_fade_metrics(reps, m1_arrs, mae99_up, mae99_dn, p50_up, p50_dn)
+            fade_summary = build_fade_summary(reps, mae99_up, mae99_dn, p50_up, p50_dn)
+            print(f'    [{model_key}] fade triggered: {fade_summary["n_triggered"]}/{fade_summary["n_total"]} ({fade_summary["trigger_rate"]*100:.2f}%)', flush=True)
+        else:
+            fade_summary = None
+
         df = pd.DataFrame(reps) if reps else pd.DataFrame()
-        stats = build_model_stats(df, model_key, cfg, instrument)
+        stats = build_model_stats(df, model_key, cfg, instrument, fade_summary=fade_summary)
         results[model_key] = stats
 
     with open(OUT_PATH, 'w') as f:

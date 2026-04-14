@@ -595,8 +595,12 @@ function getPeriodCutoff() {
 
 function filterByPeriod(D) {
   const cutoff = getPeriodCutoff();
-  if (!cutoff) return D;
-  const trades = (D.recent_trades || []).filter(t => String(t.date).slice(0,10) >= cutoff);
+  const dirActive = activeDirFilter && activeDirFilter !== 'all';
+  // Fast path: no active filters → return raw D
+  if (!cutoff && !dirActive) return D;
+  let trades = D.recent_trades || [];
+  if (cutoff)    trades = trades.filter(t => String(t.date).slice(0,10) >= cutoff);
+  if (dirActive) trades = trades.filter(t => t.direction === activeDirFilter);
   if (!trades.length) return { ...D, recent_trades: [], by_hour: [], by_dow: [], by_session: [], by_tspot_type: [], by_year: [], dir_summary: [], meta: { ...D.meta, total_trades: 0 } };
 
   // Recompute all breakdowns from filtered trades
@@ -1039,10 +1043,11 @@ function renderRecentTrades(page) {
 // ── CSV DOWNLOAD ───────────────────────────────────────────────────────────
 function csvEscape(v) { const s = v == null ? '' : String(v); return s.includes(',') ? `"${s}"` : s; }
 function downloadTrades() {
-  const D = getModelData(activeModel);
-  let trades = D?.recent_trades;
+  // Route through filterByPeriod so the CSV respects period + direction
+  // filters consistently with the rendered table.
+  const D = filterByPeriod(getModelData(activeModel) || {});
+  const trades = D?.recent_trades;
   if (!trades || !trades.length) return;
-  if (activeDirFilter !== 'all') trades = trades.filter(t => t.direction === activeDirFilter);
   const headers = ['date', 'hr', 'direction', 'tspot_type', 'session', 'entry_price', 'pivot_level', 'stop_price', 'risk_pts', 'mae_pct', 'mfe_pct'];
   const lines = [headers.join(','), ...trades.map(r => headers.map(h => csvEscape(r[h])).join(','))];
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });

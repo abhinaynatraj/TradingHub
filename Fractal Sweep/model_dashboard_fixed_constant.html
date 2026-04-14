@@ -222,8 +222,46 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
   </div>
 </div>
 
+<div class="filter-bar" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:8px 20px;border-bottom:1px solid var(--border);background:var(--bg-raised);row-gap:8px">
+  <label style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:6px">
+    From
+    <input type="date" id="filter-start" style="background:var(--bg);border:1px solid var(--border-mid);color:var(--text-primary);border-radius:4px;padding:3px 6px;font-family:var(--font-data);font-size:11px">
+  </label>
+  <label style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:6px">
+    To
+    <input type="date" id="filter-end" style="background:var(--bg);border:1px solid var(--border-mid);color:var(--text-primary);border-radius:4px;padding:3px 6px;font-family:var(--font-data);font-size:11px">
+  </label>
+  <button id="filter-apply" style="font-family:var(--font-data);font-size:11px;padding:4px 12px;border-radius:4px;border:1px solid var(--purple);background:var(--purple);color:#fff;cursor:pointer">Apply</button>
+  <button id="filter-reset" style="font-family:var(--font-data);font-size:11px;padding:4px 12px;border-radius:4px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-primary);cursor:pointer">Reset</button>
+
+  <span style="width:1px;height:20px;background:var(--border)"></span>
+
+  <span style="font-family:var(--font-data);font-size:11px;color:var(--text-dim)">Regime:</span>
+  <div id="regime-pills" style="display:flex;gap:2px">
+    <button class="regime-pill active" data-regime="all" style="font-family:var(--font-data);font-size:10px;padding:3px 10px;border-radius:4px;border:1px solid var(--border-mid);background:var(--purple);color:#fff;cursor:pointer">All</button>
+    <button class="regime-pill" data-regime="expanding" style="font-family:var(--font-data);font-size:10px;padding:3px 10px;border-radius:4px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-primary);cursor:pointer">Expanding</button>
+    <button class="regime-pill" data-regime="neutral" style="font-family:var(--font-data);font-size:10px;padding:3px 10px;border-radius:4px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-primary);cursor:pointer">Neutral</button>
+    <button class="regime-pill" data-regime="contracting" style="font-family:var(--font-data);font-size:10px;padding:3px 10px;border-radius:4px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-primary);cursor:pointer">Contracting</button>
+  </div>
+
+  <span style="width:1px;height:20px;background:var(--border)"></span>
+
+  <label style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:6px">
+    Rolling
+    <select id="rolling-window" style="background:var(--bg);border:1px solid var(--border-mid);color:var(--text-primary);border-radius:4px;padding:3px 6px;font-family:var(--font-data);font-size:11px">
+      <option value="30">30d</option>
+      <option value="70" selected>70d</option>
+      <option value="180">180d</option>
+      <option value="365">365d</option>
+    </select>
+  </label>
+
+  <span id="filter-status" style="margin-left:auto;font-family:var(--font-data);font-size:11px;color:var(--text-dim)"></span>
+</div>
+
 <div class="page-nav">
   <button class="page-tab active" onclick="switchPageTab('overview')">Overview</button>
+  <button class="page-tab" onclick="switchPageTab('validation')">Validation</button>
   <button class="page-tab" onclick="switchPageTab('reps')">Reps</button>
 </div>
 
@@ -270,6 +308,31 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
     <div class="panel">
       <div class="ph"><span class="ph-title">Up Excursion Median (P50) by Year</span><span class="ph-note">Regime consistency check</span></div>
       <div class="pb"><div id="year-chart"></div></div>
+    </div>
+  </div>
+
+  <!-- TAB: VALIDATION -->
+  <div class="page-pane" id="pane-validation">
+    <div class="sec-label">Doctrine Validation</div>
+    <div class="panel">
+      <div class="ph"><span class="ph-title">Rolling Live Parameters</span><span class="ph-note">Last N days of reps in filtered view</span></div>
+      <div class="pb"><div id="validation-panel-1"></div></div>
+    </div>
+    <div class="panel">
+      <div class="ph"><span class="ph-title">Variance Across Lookbacks</span><span class="ph-note">Edge stability vs regime drift</span></div>
+      <div class="pb"><div id="validation-panel-2"></div></div>
+    </div>
+    <div class="panel">
+      <div class="ph"><span class="ph-title">Fade Engine</span><span class="ph-note">Post-MAE99 breach walk-forward</span></div>
+      <div class="pb"><div id="validation-panel-3"></div></div>
+    </div>
+    <div class="panel">
+      <div class="ph"><span class="ph-title">Regime Cheat Sheet</span><span class="ph-note">Expanding / neutral / contracting MAE & MFE profiles</span></div>
+      <div class="pb"><div id="validation-panel-4"></div></div>
+    </div>
+    <div class="panel">
+      <div class="ph"><span class="ph-title">Consecutive-Loss Streak Analysis</span><span class="ph-note">Doctrine priority #2 — risk-of-ruin sizing</span></div>
+      <div class="pb"><div id="validation-panel-5"></div></div>
     </div>
   </div>
 
@@ -320,6 +383,20 @@ let activePeriod = 'all';
 let _repsPage = 0;
 const _repsPerPage = 100;
 let _repsSort = {col: 'lock_time', dir: -1};
+
+// ── IS/OOS filter state ──────────────────────────────────────────────────
+let _filterStart = null;       // ISO date string 'YYYY-MM-DD' or null
+let _filterEnd = null;         // ISO date string 'YYYY-MM-DD' or null
+let _filterRegime = 'all';     // 'all' | 'expanding' | 'neutral' | 'contracting'
+let _rollingWindowDays = 70;
+
+// Streak panel state
+let _streakThresholdPct = 'p25';  // percentile key ('p10'|'p25'|'p50'|'p75') or null when absolute is used
+let _streakThresholdAbs = null;   // absolute % override (e.g. 0.15)
+let _streakRiskUsd = 250;         // risk per trade ($) for exposure calc
+
+// Current filtered view — recomputed on every filter change
+let _filtered = null;  // { reps: [...], dist: {...} }
 
 // ── TOOLTIP ────────────────────────────────────────────────────────────────
 const tip = document.getElementById('tooltip');
@@ -373,10 +450,17 @@ function getPeriodCutoff() {
 }
 
 // Recompute all aggregations from filtered reps
-function filterByPeriod(D) {
+function filterByPeriod(D, opts) {
+  opts = opts || {};
   const cutoff = getPeriodCutoff();
-  if (!cutoff) return D;
-  const reps = (D.recent_reps || []).filter(r => String(r.date).slice(0,10) >= cutoff);
+  const regimeActive = !opts.bypassRegime && _filterRegime && _filterRegime !== 'all';
+  const hasFilter = cutoff || _filterStart || _filterEnd || regimeActive;
+  if (!hasFilter) return D;
+  let reps = (D.recent_reps || []);
+  if (cutoff)       reps = reps.filter(r => String(r.date).slice(0,10) >= cutoff);
+  if (_filterStart) reps = reps.filter(r => String(r.date).slice(0,10) >= _filterStart);
+  if (_filterEnd)   reps = reps.filter(r => String(r.date).slice(0,10) <= _filterEnd);
+  if (regimeActive) reps = reps.filter(r => r._regime === _filterRegime);
   if (!reps.length) {
     return { ...D, recent_reps: [], by_hour: [], by_dow: [], by_session: [], by_year: [],
              up_dist: {}, down_dist: {}, meta: { ...D.meta, total_reps: 0 } };
@@ -964,14 +1048,32 @@ function downloadReps() {
 }
 
 // ── MAIN RENDER ────────────────────────────────────────────────────────────
+function _updateFilterStatus(D, rawD) {
+  // Single source of truth for the header filter-status bar text. Called from
+  // renderActive on every render, so every code path (applyFilter, switchPeriod,
+  // regime pill, reset button, model switch) gets a consistent update.
+  const bar = document.getElementById('filter-status');
+  if (!bar) return;
+  const anyFilter = _filterStart || _filterEnd || (_filterRegime && _filterRegime !== 'all') || activePeriod !== 'all';
+  if (!anyFilter) { bar.textContent = ''; return; }
+  const count = (D && D.recent_reps) ? D.recent_reps.length : 0;
+  if (count < 30) {
+    bar.textContent = `Sample too small: ${count} reps (need \u226530)`;
+  } else {
+    bar.textContent = `${count.toLocaleString()} reps in view`;
+  }
+}
+
 function renderActive() {
   const rawD = getModelData(activeModel);
   if (!rawD) {
     const mr = document.getElementById('meta-row');
     if (mr) mr.innerHTML = `<div style="grid-column:1/-1;font-family:var(--font-data);font-size:11px;color:var(--text-muted);padding:8px">No data for ${activeModel}. Run <code>python3 model_stats_fixed_constant.py</code> to generate.</div>`;
+    _updateFilterStatus(null, null);
     return;
   }
   const D = filterByPeriod(rawD);
+  _updateFilterStatus(D, rawD);
 
   renderDoctrine(D);
   renderHeroTiles(D);
@@ -992,6 +1094,744 @@ function renderActive() {
   lineChart('year-chart', D.by_year || []);
 
   if (activePageTab === 'reps') renderReps(D);
+  if (activePageTab === 'validation') renderValidationTab(D, rawD);
+}
+
+// ── VALIDATION TAB ──────────────────────────────────────────────────────────
+function renderValidationTab(D, rawD) {
+  const reps = (D && D.recent_reps) || [];
+  const fadeSummary = (DATA[activeModel] && DATA[activeModel].fade_summary) || null;
+  renderRollingCard(reps, D);
+  renderVarianceChart(reps);
+  renderFadeView(reps, fadeSummary);
+  // Panel 4 needs ALL three regimes visible regardless of the regime pill —
+  // compute a rep set with the regime filter bypassed (date + period still apply).
+  const regimeBaseD = rawD ? filterByPeriod(rawD, { bypassRegime: true }) : D;
+  const regimeReps = (regimeBaseD && regimeBaseD.recent_reps) || [];
+  renderRegimeCheatsheet(regimeReps);
+  renderStreakPanel(reps, D);
+}
+
+// Stubs — filled in by Tasks 14-17
+function renderRollingCard(reps, D) {
+  const el = document.getElementById('validation-panel-1');
+  if (!el) return;
+  if (!reps || reps.length === 0) {
+    el.innerHTML = '<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted);text-align:center">No reps in current view.</div>';
+    return;
+  }
+
+  // Rolling window anchored to most recent rep in the filtered set
+  const sorted = [...reps].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  const latestStr = String(sorted[sorted.length - 1].date || '').slice(0, 10);
+  const latestDate = new Date(latestStr).getTime();
+  if (isNaN(latestDate)) {
+    el.innerHTML = '<div style="padding:12px;font-family:var(--font-data);font-size:11px;color:var(--text-muted)">Unable to parse date from reps.</div>';
+    return;
+  }
+  const msPerDay = 86400000;
+  const cutoff = latestDate - _rollingWindowDays * msPerDay;
+
+  const window = sorted.filter(r => {
+    const d = new Date(String(r.date || '').slice(0, 10)).getTime();
+    return !isNaN(d) && d >= cutoff;
+  });
+
+  if (window.length < 30) {
+    el.innerHTML = `<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted);text-align:center">Rolling window too short: ${window.length} reps in last ${_rollingWindowDays}d (need &ge;30)</div>`;
+    return;
+  }
+
+  const upDist = buildDist(window.map(r => r.excursion_up_pct));
+  const dnDist = buildDist(window.map(r => r.excursion_down_pct));
+  const ratioUp = upDist.p99 ? (upDist.p50 / upDist.p99).toFixed(3) : '\u2014';
+  const ratioDn = dnDist.p99 ? (dnDist.p50 / dnDist.p99).toFixed(3) : '\u2014';
+
+  // Drift callout vs static engine thresholds from fade_summary.
+  // Require > 0 (not just != null) on both thresholds to avoid div-by-zero
+  // when engine emits degenerate data.
+  const fs = (DATA[activeModel] && DATA[activeModel].fade_summary) || null;
+  let driftHtml = '';
+  if (fs && fs.mae99_up_pct > 0 && fs.mae99_down_pct > 0 && upDist.p99 && dnDist.p99) {
+    const dUp = ((upDist.p99 - fs.mae99_up_pct) / fs.mae99_up_pct * 100);
+    const dDn = ((dnDist.p99 - fs.mae99_down_pct) / fs.mae99_down_pct * 100);
+    const sgnUp = dUp >= 0 ? '+' : '';
+    const sgnDn = dDn >= 0 ? '+' : '';
+    driftHtml = `
+      <div style="margin:12px;padding:10px 12px;background:var(--bg);border-radius:6px;font-family:var(--font-data);font-size:11px;color:var(--text-muted);line-height:1.7">
+        Engine MAE99 (full sample): up ${fs.mae99_up_pct}%, dn ${fs.mae99_down_pct}%<br>
+        Rolling ${_rollingWindowDays}d (current): up ${upDist.p99}%, dn ${dnDist.p99}%<br>
+        Drift: <span style="color:var(--text-primary)">${sgnUp}${dUp.toFixed(0)}% up, ${sgnDn}${dDn.toFixed(0)}% dn</span>
+      </div>`;
+  }
+
+  el.innerHTML = `
+    <div style="display:flex;gap:12px;padding:12px">
+      <div style="flex:1;padding:16px;border:1px solid var(--border);border-radius:8px;background:var(--bg-raised);min-width:0">
+        <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);letter-spacing:.1em;text-transform:uppercase">UP SIDE (rolling ${_rollingWindowDays}d)</div>
+        <table style="width:100%;font-family:var(--font-data);font-size:11px;margin-top:8px;border-collapse:collapse">
+          <tr><td style="color:var(--text-muted);padding:3px 0">MAE99</td><td style="text-align:right;color:var(--text-primary);font-weight:700">${upDist.p99}%</td></tr>
+          <tr><td style="color:var(--text-muted);padding:3px 0">P90</td><td style="text-align:right;color:var(--text-primary)">${upDist.p90}%</td></tr>
+          <tr><td style="color:var(--text-muted);padding:3px 0">P50</td><td style="text-align:right;color:var(--text-primary)">${upDist.p50}%</td></tr>
+        </table>
+      </div>
+      <div style="flex:1;padding:16px;border:1px solid var(--border);border-radius:8px;background:var(--bg-raised);min-width:0">
+        <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);letter-spacing:.1em;text-transform:uppercase">DOWN SIDE (rolling ${_rollingWindowDays}d)</div>
+        <table style="width:100%;font-family:var(--font-data);font-size:11px;margin-top:8px;border-collapse:collapse">
+          <tr><td style="color:var(--text-muted);padding:3px 0">MAE99</td><td style="text-align:right;color:var(--text-primary);font-weight:700">${dnDist.p99}%</td></tr>
+          <tr><td style="color:var(--text-muted);padding:3px 0">P90</td><td style="text-align:right;color:var(--text-primary)">${dnDist.p90}%</td></tr>
+          <tr><td style="color:var(--text-muted);padding:3px 0">P50</td><td style="text-align:right;color:var(--text-primary)">${dnDist.p50}%</td></tr>
+        </table>
+      </div>
+      <div style="flex:1;padding:16px;border:1px solid var(--border);border-radius:8px;background:var(--bg-raised);min-width:0">
+        <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);letter-spacing:.1em;text-transform:uppercase">MFE / MAE99 Ratio</div>
+        <table style="width:100%;font-family:var(--font-data);font-size:11px;margin-top:8px;border-collapse:collapse">
+          <tr><td style="color:var(--text-muted);padding:3px 0">Up: P50/MAE99</td><td style="text-align:right;color:var(--text-primary);font-weight:700">${ratioUp}</td></tr>
+          <tr><td style="color:var(--text-muted);padding:3px 0">Dn: P50/MAE99</td><td style="text-align:right;color:var(--text-primary);font-weight:700">${ratioDn}</td></tr>
+        </table>
+        <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-top:8px">n = ${window.length.toLocaleString()} reps &middot; anchor: ${latestStr}</div>
+      </div>
+    </div>
+    ${driftHtml}
+  `;
+}
+function renderVarianceChart(reps) {
+  const el = document.getElementById('validation-panel-2');
+  if (!el) return;
+  if (!reps || reps.length < 30) {
+    el.innerHTML = '<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted);text-align:center">Not enough reps for variance analysis.</div>';
+    return;
+  }
+
+  const sorted = [...reps].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  const latestStr = String(sorted[sorted.length - 1].date || '').slice(0, 10);
+  const latestDate = new Date(latestStr).getTime();
+  const msPerDay = 86400000;
+
+  const WINDOWS = [
+    { label: '30d',  days: 30 },
+    { label: '70d',  days: 70 },
+    { label: '180d', days: 180 },
+    { label: '365d', days: 365 },
+    { label: 'full', days: null },
+  ];
+
+  const rows = WINDOWS.map(w => {
+    const subset = w.days == null
+      ? sorted
+      : sorted.filter(r => {
+          const d = new Date(String(r.date || '').slice(0, 10)).getTime();
+          return !isNaN(d) && d >= latestDate - w.days * msPerDay;
+        });
+    if (subset.length < 30) return { label: w.label, n: subset.length, insufficient: true };
+    const dUp = buildDist(subset.map(r => r.excursion_up_pct));
+    const ratio = dUp.p99 ? dUp.p50 / dUp.p99 : 0;
+    return {
+      label: w.label,
+      n: subset.length,
+      mae99: dUp.p99 || 0,
+      p50: dUp.p50 || 0,
+      ratio: +ratio.toFixed(4),
+    };
+  });
+
+  const valid = rows.filter(r => !r.insufficient);
+  const maxMae = Math.max(...valid.map(r => r.mae99), 0.001);
+  const maxP50 = Math.max(...valid.map(r => r.p50), 0.001);
+  const maxRatio = Math.max(...valid.map(r => r.ratio), 0.001);
+
+  const bar = (val, max, color) => {
+    const pct = Math.min(100, (val / max) * 100);
+    return `
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="height:8px;width:${pct}%;min-width:2px;background:${color};border-radius:2px"></div>
+        <span style="font-family:var(--font-data);font-size:10px;color:var(--text-primary);white-space:nowrap">${val.toFixed(4)}</span>
+      </div>`;
+  };
+
+  const rowHtml = rows.map(r => {
+    if (r.insufficient) {
+      return `
+        <tr>
+          <td style="color:var(--text-muted);font-family:var(--font-data);font-size:11px;padding:6px 8px">${r.label}</td>
+          <td colspan="4" style="color:var(--text-muted);font-family:var(--font-data);font-size:10px;padding:6px 8px">n=${r.n} (insufficient)</td>
+        </tr>`;
+    }
+    return `
+      <tr>
+        <td style="color:var(--text-primary);font-family:var(--font-data);font-size:11px;padding:8px 8px;font-weight:700">${r.label}</td>
+        <td style="padding:8px 8px;min-width:180px">${bar(r.mae99, maxMae, '#ef4444')}</td>
+        <td style="padding:8px 8px;min-width:180px">${bar(r.p50, maxP50, '#10b981')}</td>
+        <td style="padding:8px 8px;min-width:180px">${bar(r.ratio, maxRatio, 'var(--purple)')}</td>
+        <td style="color:var(--text-muted);font-family:var(--font-data);font-size:10px;padding:8px 8px">n=${r.n.toLocaleString()}</td>
+      </tr>`;
+  }).join('');
+
+  // Variance (std) across the 5 windows for each metric
+  const std = (arr) => {
+    if (arr.length < 2) return 0;
+    const m = arr.reduce((a, b) => a + b, 0) / arr.length;
+    return Math.sqrt(arr.map(v => (v - m) ** 2).reduce((a, b) => a + b, 0) / arr.length);
+  };
+  const varMae = std(valid.map(r => r.mae99)).toFixed(4);
+  const varP50 = std(valid.map(r => r.p50)).toFixed(4);
+  const varRatio = std(valid.map(r => r.ratio)).toFixed(4);
+
+  el.innerHTML = `
+    <div style="padding:12px">
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr>
+            <th style="text-align:left;color:var(--text-muted);font-family:var(--font-data);font-size:10px;padding:4px 8px;font-weight:400;text-transform:uppercase;letter-spacing:.1em">Window</th>
+            <th style="text-align:left;color:#ef4444;font-family:var(--font-data);font-size:10px;padding:4px 8px;font-weight:400;text-transform:uppercase;letter-spacing:.1em">MAE99 up</th>
+            <th style="text-align:left;color:#10b981;font-family:var(--font-data);font-size:10px;padding:4px 8px;font-weight:400;text-transform:uppercase;letter-spacing:.1em">P50 up</th>
+            <th style="text-align:left;color:var(--purple);font-family:var(--font-data);font-size:10px;padding:4px 8px;font-weight:400;text-transform:uppercase;letter-spacing:.1em">P50/MAE99</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>${rowHtml}</tbody>
+      </table>
+      <div style="margin-top:12px;padding:10px 12px;background:var(--bg);border-radius:6px;font-family:var(--font-data);font-size:11px;color:var(--text-muted);line-height:1.8">
+        &sigma;(MAE99 up across windows)&nbsp;&nbsp;= <span style="color:var(--text-primary)">${varMae}</span><br>
+        &sigma;(P50 up across windows)&nbsp;&nbsp;&nbsp;&nbsp;= <span style="color:var(--text-primary)">${varP50}</span><br>
+        &sigma;(P50/MAE99 across windows)&nbsp;= <span style="color:var(--text-primary)">${varRatio}</span>
+      </div>
+    </div>
+  `;
+}
+function renderFadeView(reps, fadeSummary) {
+  const el = document.getElementById('validation-panel-3');
+  if (!el) return;
+  if (!fadeSummary) {
+    el.innerHTML = '<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted);text-align:center">Run <code style="background:var(--bg-raised);padding:2px 6px;border-radius:3px">python3 model_stats_fixed_constant.py</code> to compute fade data, then reload.</div>';
+    return;
+  }
+
+  // Recompute filtered fade rates from per-rep fields (re-scope to current filter)
+  const triggered = reps.filter(r => r.fade_triggered === true);
+  const nTotal = reps.length;
+  const nTriggered = triggered.length;
+  const triggerRate = nTotal ? (nTriggered / nTotal) : 0;
+  const anchorRate = nTriggered ? triggered.filter(r => r.fade_reached_anchor).length / nTriggered : 0;
+  const mfe50Rate  = nTriggered ? triggered.filter(r => r.fade_reached_mfe50_opp).length / nTriggered : 0;
+  const mae99Rate  = nTriggered ? triggered.filter(r => r.fade_reached_mae99_opp).length / nTriggered : 0;
+
+  const tile = (label, value, sub, color) => `
+    <div style="flex:1;padding:16px;border:1px solid var(--border);border-radius:8px;background:var(--bg-raised);text-align:center;min-width:0">
+      <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);letter-spacing:.1em;text-transform:uppercase">${label}</div>
+      <div style="font-family:var(--font-display,var(--font-body));font-size:28px;color:${color};margin-top:6px;font-weight:700">${value}</div>
+      <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-top:4px">${sub}</div>
+    </div>`;
+
+  const tilesHtml = `
+    <div style="display:flex;gap:12px;padding:12px">
+      ${tile('Trigger rate',   (triggerRate * 100).toFixed(2) + '%', 'of ' + nTotal.toLocaleString() + ' blocks', 'var(--purple)')}
+      ${tile('Reached anchor', (anchorRate * 100).toFixed(0) + '%',  'of ' + nTriggered.toLocaleString() + ' triggered', '#10b981')}
+      ${tile('Reached MFE50',  (mfe50Rate * 100).toFixed(0) + '%',   'of ' + nTriggered.toLocaleString() + ' triggered', '#3b82f6')}
+      ${tile('Reached MAE99',  (mae99Rate * 100).toFixed(0) + '%',   'of ' + nTriggered.toLocaleString() + ' triggered', '#ef4444')}
+    </div>`;
+
+  // Histogram of fade_mfe_opp_pct over triggered reps
+  const opp = triggered.map(r => r.fade_mfe_opp_pct).filter(v => v != null).sort((a, b) => a - b);
+  let histHtml = '<div style="padding:12px;font-family:var(--font-data);font-size:11px;color:var(--text-muted)">No triggered reps in current filter.</div>';
+  if (opp.length >= 5) {
+    const minV = opp[0];
+    const maxV = opp[opp.length - 1];
+    const nBuckets = 20;
+    const bucketSize = (maxV - minV) / nBuckets || 1;
+    const counts = new Array(nBuckets).fill(0);
+    for (const v of opp) {
+      const idx = Math.min(nBuckets - 1, Math.floor((v - minV) / bucketSize));
+      counts[idx]++;
+    }
+    const maxCount = Math.max(...counts, 1);
+    const bars = counts.map((c, i) => {
+      const h = (c / maxCount) * 80;
+      const x0 = minV + i * bucketSize;
+      return `<div title="${x0.toFixed(3)}% - ${(x0 + bucketSize).toFixed(3)}%: n=${c}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:4px">
+        <div style="width:90%;height:${h}px;background:var(--purple);border-radius:2px 2px 0 0"></div>
+      </div>`;
+    }).join('');
+    histHtml = `
+      <div style="padding:0 12px 12px">
+        <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-bottom:6px">fade_mfe_opp_pct distribution (${opp.length} triggered reps)</div>
+        <div style="display:flex;align-items:flex-end;height:90px;gap:1px;background:var(--bg);padding:4px;border-radius:4px">${bars}</div>
+        <div style="display:flex;justify-content:space-between;font-family:var(--font-data);font-size:9px;color:var(--text-muted);margin-top:4px">
+          <span>${minV.toFixed(3)}%</span><span>${maxV.toFixed(3)}%</span>
+        </div>
+      </div>`;
+  }
+
+  // Threshold drift callout (recompute rolling MAE99 from current filtered reps)
+  let driftHtml = '';
+  const sortedReps = [...reps].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  if (sortedReps.length >= 30) {
+    const latestDate = new Date(String(sortedReps[sortedReps.length - 1].date || '').slice(0, 10)).getTime();
+    const msPerDay = 86400000;
+    const cutoff = latestDate - _rollingWindowDays * msPerDay;
+    const window = sortedReps.filter(r => {
+      const d = new Date(String(r.date || '').slice(0, 10)).getTime();
+      return !isNaN(d) && d >= cutoff;
+    });
+    if (window.length >= 30) {
+      const rollUp = buildDist(window.map(r => r.excursion_up_pct));
+      const rollDn = buildDist(window.map(r => r.excursion_down_pct));
+      const engUp = fadeSummary.mae99_up_pct;
+      const engDn = fadeSummary.mae99_down_pct;
+      if (engUp > 0 && engDn > 0 && rollUp.p99 && rollDn.p99) {
+        const dUp = ((rollUp.p99 - engUp) / engUp * 100);
+        const dDn = ((rollDn.p99 - engDn) / engDn * 100);
+        const sgnUp = dUp >= 0 ? '+' : '';
+        const sgnDn = dDn >= 0 ? '+' : '';
+        driftHtml = `
+          <div style="margin:12px;padding:12px;background:var(--bg);border-left:3px solid #f59e0b;border-radius:4px;font-family:var(--font-data);font-size:11px;color:var(--text-muted);line-height:1.7">
+            <div style="color:#f59e0b;font-weight:700;margin-bottom:4px;letter-spacing:.05em">THRESHOLD DRIFT</div>
+            Engine trigger threshold: MAE99 up ${engUp}%, dn ${engDn}% (full sample, static)<br>
+            Rolling ${_rollingWindowDays}d threshold: MAE99 up ${rollUp.p99}%, dn ${rollDn.p99}% (live)<br>
+            Drift: <span style="color:var(--text-primary)">${sgnUp}${dUp.toFixed(0)}% up, ${sgnDn}${dDn.toFixed(0)}% dn</span>
+            <div style="margin-top:6px;font-style:italic">Fade booleans in this view are re-scoped by the date filter, but the MAE99 breach threshold was fixed at engine-run time.</div>
+          </div>`;
+      }
+    }
+  }
+
+  el.innerHTML = tilesHtml + histHtml + driftHtml;
+}
+function renderRegimeCheatsheet(reps) {
+  const el = document.getElementById('validation-panel-4');
+  if (!el) return;
+  const classified = reps.filter(r => r._regime && r._regime !== 'unknown');
+  if (classified.length === 0) {
+    el.innerHTML = '<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted);text-align:center">No regime-classified reps. Engine may need <code style="background:var(--bg-raised);padding:2px 6px;border-radius:3px">block_range_pts</code> — run <code style="background:var(--bg-raised);padding:2px 6px;border-radius:3px">python3 model_stats_fixed_constant.py</code> and reload.</div>';
+    return;
+  }
+
+  const LABELS = { expanding: 'EXPANDING', neutral: 'NEUTRAL', contracting: 'CONTRACTING' };
+  const SUBS = {
+    expanding: 'top tercile block range',
+    neutral: 'mid tercile block range',
+    contracting: 'bottom tercile block range',
+  };
+  const order = ['expanding', 'neutral', 'contracting'];
+
+  const cols = order.map(regime => {
+    const rs = classified.filter(r => r._regime === regime);
+    if (rs.length < 30) {
+      return { regime, n: rs.length, insufficient: true };
+    }
+    const dUp = buildDist(rs.map(r => r.excursion_up_pct));
+    const dDn = buildDist(rs.map(r => r.excursion_down_pct));
+    const ratio = dUp.p99 ? (dUp.p50 / dUp.p99) : null;
+    return {
+      regime,
+      n: rs.length,
+      mae99_up: dUp.p99,
+      mae99_dn: dDn.p99,
+      p50_up: dUp.p50,
+      p50_dn: dDn.p50,
+      ratio: ratio != null ? ratio.toFixed(3) : '\u2014',
+    };
+  });
+
+  const unknownCount = reps.filter(r => r._regime === 'unknown').length;
+
+  const colHtml = cols.map(c => {
+    const highlighted = (_filterRegime === c.regime);
+    const borderCss = highlighted
+      ? 'border:2px solid var(--purple);box-shadow:0 0 0 2px rgba(168,85,247,0.2)'
+      : 'border:1px solid var(--border)';
+    if (c.insufficient) {
+      return `
+        <div style="flex:1;padding:16px;${borderCss};border-radius:8px;background:var(--bg-raised);min-width:0">
+          <div style="font-family:var(--font-display,var(--font-body));font-size:13px;color:var(--text-primary);font-weight:700">${LABELS[c.regime]}</div>
+          <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-bottom:12px">${SUBS[c.regime]}</div>
+          <div style="font-family:var(--font-data);font-size:11px;color:var(--text-muted)">n = ${c.n} (&lt; 30, insufficient)</div>
+        </div>`;
+    }
+    return `
+      <div style="flex:1;padding:16px;${borderCss};border-radius:8px;background:var(--bg-raised);min-width:0">
+        <div style="font-family:var(--font-display,var(--font-body));font-size:13px;color:var(--text-primary);font-weight:700">${LABELS[c.regime]}</div>
+        <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-bottom:12px">${SUBS[c.regime]}</div>
+        <table style="width:100%;font-family:var(--font-data);font-size:11px;border-collapse:collapse">
+          <tr><td style="color:var(--text-muted);padding:2px 0">n</td><td style="text-align:right;color:var(--text-primary)">${c.n.toLocaleString()}</td></tr>
+          <tr><td style="color:var(--text-muted);padding:2px 0">MAE99 up</td><td style="text-align:right;color:var(--text-primary)">${c.mae99_up}%</td></tr>
+          <tr><td style="color:var(--text-muted);padding:2px 0">MAE99 dn</td><td style="text-align:right;color:var(--text-primary)">${c.mae99_dn}%</td></tr>
+          <tr><td style="color:var(--text-muted);padding:2px 0">MFE50 up</td><td style="text-align:right;color:var(--text-primary)">${c.p50_up}%</td></tr>
+          <tr><td style="color:var(--text-muted);padding:2px 0">MFE50 dn</td><td style="text-align:right;color:var(--text-primary)">${c.p50_dn}%</td></tr>
+          <tr><td style="color:var(--text-muted);padding:2px 0;border-top:1px solid var(--border)">P50/MAE99 up</td><td style="text-align:right;color:var(--text-primary);border-top:1px solid var(--border);font-weight:700">${c.ratio}</td></tr>
+        </table>
+      </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="display:flex;gap:12px;padding:12px">${colHtml}</div>
+    <div style="padding:0 12px 12px;font-family:var(--font-data);font-size:10px;color:var(--text-muted)">
+      Classified: ${classified.length.toLocaleString()} reps &middot; Unknown (first 70d + insufficient trailing): ${unknownCount.toLocaleString()} reps
+    </div>
+  `;
+}
+
+// Walk reps in chronological order; emit the length of every run of
+// consecutive "misses" (rep where the chosen excursion falls below the
+// threshold). Hits break a run. Returns [] if no misses.
+function computeStreaks(reps, field, threshold) {
+  const sorted = [...reps].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  const streaks = [];
+  let run = 0;
+  let missCount = 0;
+  for (const r of sorted) {
+    const v = r[field];
+    if (v == null || isNaN(v)) continue;
+    if (v < threshold) {
+      run++;
+      missCount++;
+    } else {
+      if (run > 0) streaks.push(run);
+      run = 0;
+    }
+  }
+  if (run > 0) streaks.push(run);
+  return { streaks, missCount, total: sorted.length };
+}
+
+function _streakStats(streaks) {
+  if (!streaks.length) {
+    return { n: 0, max: 0, mean: 0, p50: 0, p75: 0, p90: 0 };
+  }
+  const sorted = [...streaks].sort((a, b) => a - b);
+  const idx = (p) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))];
+  return {
+    n: sorted.length,
+    max: sorted[sorted.length - 1],
+    mean: sorted.reduce((a, b) => a + b, 0) / sorted.length,
+    p50: idx(0.50),
+    p75: idx(0.75),
+    p90: idx(0.90),
+  };
+}
+
+function _streakHistogram(streaks) {
+  if (!streaks.length) return '<div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);padding:8px">no streaks</div>';
+  const maxLen = Math.max(...streaks);
+  const counts = new Array(maxLen + 1).fill(0);  // counts[i] = number of streaks of length i
+  for (const s of streaks) counts[s]++;
+  const maxCount = Math.max(...counts.slice(1));
+  const bars = [];
+  for (let i = 1; i <= maxLen; i++) {
+    const c = counts[i];
+    const h = maxCount > 0 ? (c / maxCount) * 60 : 0;
+    bars.push(`
+      <div title="length ${i}: ${c} streak${c === 1 ? '' : 's'}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:6px;gap:2px">
+        <div style="width:80%;height:${h}px;background:var(--purple);border-radius:2px 2px 0 0;min-height:${c > 0 ? 1 : 0}px"></div>
+        <div style="font-family:var(--font-data);font-size:8px;color:var(--text-muted)">${i}</div>
+      </div>`);
+  }
+  return `
+    <div style="display:flex;align-items:flex-end;height:80px;gap:2px;background:var(--bg);padding:6px 6px 2px;border-radius:4px">${bars.join('')}</div>
+    <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);margin-top:4px;text-align:center">streak length &rarr;</div>`;
+}
+
+function renderStreakPanel(reps, D) {
+  const el = document.getElementById('validation-panel-5');
+  if (!el) return;
+  if (!reps || reps.length < 30) {
+    el.innerHTML = '<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted);text-align:center">Not enough reps for streak analysis (need &ge;30).</div>';
+    return;
+  }
+
+  // Compute thresholds from the filtered rep set's MFE distributions
+  const upDist = buildDist(reps.map(r => r.excursion_up_pct));
+  const dnDist = buildDist(reps.map(r => r.excursion_down_pct));
+
+  // Active threshold — absolute overrides percentile if set
+  let upThresh, dnThresh, thresholdLabel;
+  if (_streakThresholdAbs != null && !isNaN(_streakThresholdAbs)) {
+    upThresh = _streakThresholdAbs;
+    dnThresh = _streakThresholdAbs;
+    thresholdLabel = `absolute ${_streakThresholdAbs}%`;
+  } else {
+    const pkey = _streakThresholdPct || 'p25';
+    upThresh = upDist[pkey] || 0;
+    dnThresh = dnDist[pkey] || 0;
+    thresholdLabel = `MFE ${pkey.toUpperCase()} (up=${upThresh}%, dn=${dnThresh}%)`;
+  }
+
+  const upRun = computeStreaks(reps, 'excursion_up_pct', upThresh);
+  const dnRun = computeStreaks(reps, 'excursion_down_pct', dnThresh);
+  const upStats = _streakStats(upRun.streaks);
+  const dnStats = _streakStats(dnRun.streaks);
+  const upMissRate = upRun.total ? (upRun.missCount / upRun.total) : 0;
+  const dnMissRate = dnRun.total ? (dnRun.missCount / dnRun.total) : 0;
+
+  const risk = _streakRiskUsd || 0;
+  const fmtUsd = (v) => '$' + Math.round(v).toLocaleString();
+
+  const upHist = _streakHistogram(upRun.streaks);
+  const dnHist = _streakHistogram(dnRun.streaks);
+
+  // Threshold selector
+  const pOpts = ['p10', 'p25', 'p50', 'p75'];
+  const selHtml = pOpts.map(k => `<option value="${k}"${k === _streakThresholdPct ? ' selected' : ''}>MFE ${k.toUpperCase()}</option>`).join('');
+
+  el.innerHTML = `
+    <div style="padding:12px">
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+        <label style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px">
+          Threshold
+          <select id="streak-pct-sel" onchange="_onStreakPctChange(this.value)" style="background:var(--bg);border:1px solid var(--border-mid);color:var(--text-primary);border-radius:4px;padding:3px 6px;font-family:var(--font-data);font-size:11px">
+            ${selHtml}
+          </select>
+        </label>
+        <label style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px">
+          or absolute %
+          <input type="number" step="0.01" id="streak-abs-input" value="${_streakThresholdAbs != null ? _streakThresholdAbs : ''}" placeholder="e.g. 0.15" onchange="_onStreakAbsChange(this.value)" style="background:var(--bg);border:1px solid var(--border-mid);color:var(--text-primary);border-radius:4px;padding:3px 6px;font-family:var(--font-data);font-size:11px;width:80px">
+        </label>
+        <label style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px">
+          Risk/trade ($)
+          <input type="number" step="25" id="streak-risk-input" value="${_streakRiskUsd}" onchange="_onStreakRiskChange(this.value)" style="background:var(--bg);border:1px solid var(--border-mid);color:var(--text-primary);border-radius:4px;padding:3px 6px;font-family:var(--font-data);font-size:11px;width:100px">
+        </label>
+        <span style="margin-left:auto;font-family:var(--font-data);font-size:10px;color:var(--text-muted)">active: ${thresholdLabel}</span>
+      </div>
+      <div style="display:flex;gap:12px">
+        <div style="flex:1;padding:16px;border:1px solid var(--border);border-radius:8px;background:var(--bg-raised);min-width:0">
+          <div style="font-family:var(--font-display,var(--font-body));font-size:13px;color:var(--text-primary);font-weight:700">UP MFE FAILURES</div>
+          <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-bottom:12px">threshold: excursion_up &lt; ${upThresh}%</div>
+          <table style="width:100%;font-family:var(--font-data);font-size:11px;border-collapse:collapse">
+            <tr><td style="color:var(--text-muted);padding:2px 0">Miss rate</td><td style="text-align:right;color:var(--text-primary)">${(upMissRate * 100).toFixed(1)}%</td></tr>
+            <tr><td style="color:var(--text-muted);padding:2px 0">Streaks observed</td><td style="text-align:right;color:var(--text-primary)">${upStats.n.toLocaleString()}</td></tr>
+            <tr><td style="color:var(--text-muted);padding:2px 0">Mean length</td><td style="text-align:right;color:var(--text-primary)">${upStats.mean.toFixed(2)}</td></tr>
+            <tr><td style="color:var(--text-muted);padding:2px 0">P50</td><td style="text-align:right;color:var(--text-primary)">${upStats.p50}</td></tr>
+            <tr><td style="color:var(--text-muted);padding:2px 0;border-top:1px solid var(--border)">P75 (plan for)</td><td style="text-align:right;color:var(--text-primary);border-top:1px solid var(--border);font-weight:700">${upStats.p75}</td></tr>
+            <tr><td style="color:var(--text-muted);padding:2px 0">P90</td><td style="text-align:right;color:var(--text-primary)">${upStats.p90}</td></tr>
+            <tr><td style="padding:2px 0;color:#ef4444">MAX (worst)</td><td style="text-align:right;color:#ef4444;font-weight:700">${upStats.max}</td></tr>
+          </table>
+          <div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:6px;font-family:var(--font-data);font-size:10px;color:var(--text-muted);line-height:1.6">
+            <div>P75 exposure: <span style="color:var(--text-primary)">${fmtUsd(risk * upStats.p75)}</span> <span>(${risk}&nbsp;&times;&nbsp;${upStats.p75})</span></div>
+            <div>Worst exposure: <span style="color:#ef4444;font-weight:700">${fmtUsd(risk * upStats.max)}</span> <span>(${risk}&nbsp;&times;&nbsp;${upStats.max})</span></div>
+          </div>
+          <div style="margin-top:12px">${upHist}</div>
+        </div>
+        <div style="flex:1;padding:16px;border:1px solid var(--border);border-radius:8px;background:var(--bg-raised);min-width:0">
+          <div style="font-family:var(--font-display,var(--font-body));font-size:13px;color:var(--text-primary);font-weight:700">DOWN MFE FAILURES</div>
+          <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-bottom:12px">threshold: excursion_down &lt; ${dnThresh}%</div>
+          <table style="width:100%;font-family:var(--font-data);font-size:11px;border-collapse:collapse">
+            <tr><td style="color:var(--text-muted);padding:2px 0">Miss rate</td><td style="text-align:right;color:var(--text-primary)">${(dnMissRate * 100).toFixed(1)}%</td></tr>
+            <tr><td style="color:var(--text-muted);padding:2px 0">Streaks observed</td><td style="text-align:right;color:var(--text-primary)">${dnStats.n.toLocaleString()}</td></tr>
+            <tr><td style="color:var(--text-muted);padding:2px 0">Mean length</td><td style="text-align:right;color:var(--text-primary)">${dnStats.mean.toFixed(2)}</td></tr>
+            <tr><td style="color:var(--text-muted);padding:2px 0">P50</td><td style="text-align:right;color:var(--text-primary)">${dnStats.p50}</td></tr>
+            <tr><td style="color:var(--text-muted);padding:2px 0;border-top:1px solid var(--border)">P75 (plan for)</td><td style="text-align:right;color:var(--text-primary);border-top:1px solid var(--border);font-weight:700">${dnStats.p75}</td></tr>
+            <tr><td style="color:var(--text-muted);padding:2px 0">P90</td><td style="text-align:right;color:var(--text-primary)">${dnStats.p90}</td></tr>
+            <tr><td style="padding:2px 0;color:#ef4444">MAX (worst)</td><td style="text-align:right;color:#ef4444;font-weight:700">${dnStats.max}</td></tr>
+          </table>
+          <div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:6px;font-family:var(--font-data);font-size:10px;color:var(--text-muted);line-height:1.6">
+            <div>P75 exposure: <span style="color:var(--text-primary)">${fmtUsd(risk * dnStats.p75)}</span> <span>(${risk}&nbsp;&times;&nbsp;${dnStats.p75})</span></div>
+            <div>Worst exposure: <span style="color:#ef4444;font-weight:700">${fmtUsd(risk * dnStats.max)}</span> <span>(${risk}&nbsp;&times;&nbsp;${dnStats.max})</span></div>
+          </div>
+          <div style="margin-top:12px">${dnHist}</div>
+        </div>
+      </div>
+      <div style="margin-top:12px;padding:10px 12px;background:var(--bg);border-left:3px solid var(--purple);border-radius:4px;font-family:var(--font-data);font-size:11px;color:var(--text-muted);line-height:1.6">
+        <strong style="color:var(--text-primary)">How to read:</strong> a streak is a run of consecutive blocks where the chosen side's MFE fell below the threshold. P75 is the "plan for this" streak length — risk-per-trade &times; P75 is the drawdown exposure you should size to survive. MAX is the worst observed — your risk-of-ruin ceiling. Both are re-scoped by the global filter (date range &amp; regime pill).
+      </div>
+    </div>
+  `;
+}
+
+function _onStreakPctChange(val) {
+  _streakThresholdPct = val;
+  _streakThresholdAbs = null;
+  const abs = document.getElementById('streak-abs-input');
+  if (abs) abs.value = '';
+  renderActive();
+}
+
+function _onStreakAbsChange(val) {
+  const n = parseFloat(val);
+  _streakThresholdAbs = (val === '' || isNaN(n)) ? null : n;
+  renderActive();
+}
+
+function _onStreakRiskChange(val) {
+  const n = parseFloat(val);
+  _streakRiskUsd = isNaN(n) ? 0 : n;
+  renderActive();
+}
+
+// ── FILTER PRIMITIVES ───────────────────────────────────────────────────────
+
+function filterReps(reps) {
+  if (!reps) return [];
+  return reps.filter(r => {
+    const d = (r.date || '').slice(0, 10);  // 'YYYY-MM-DD'
+    if (_filterStart && d < _filterStart) return false;
+    if (_filterEnd   && d > _filterEnd)   return false;
+    if (_filterRegime !== 'all' && r._regime !== _filterRegime) return false;
+    return true;
+  });
+}
+
+function _pct(sorted, p) {
+  if (!sorted.length) return null;
+  const idx = Math.max(0, Math.min(sorted.length - 1, Math.floor(sorted.length * p)));
+  return sorted[idx];
+}
+
+function buildDist(values) {
+  const arr = values.filter(v => v != null && !isNaN(v)).map(Number).sort((a, b) => a - b);
+  if (arr.length < 2) return {};
+  const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+  const sqDiff = arr.map(v => (v - mean) ** 2).reduce((a, b) => a + b, 0) / arr.length;
+  return {
+    n: arr.length,
+    mean: +mean.toFixed(4),
+    median: +_pct(arr, 0.50).toFixed(4),
+    std: +Math.sqrt(sqDiff).toFixed(4),
+    p10: +_pct(arr, 0.10).toFixed(4),
+    p25: +_pct(arr, 0.25).toFixed(4),
+    p50: +_pct(arr, 0.50).toFixed(4),
+    p75: +_pct(arr, 0.75).toFixed(4),
+    p90: +_pct(arr, 0.90).toFixed(4),
+    p95: +_pct(arr, 0.95).toFixed(4),
+    p99: +_pct(arr, 0.99).toFixed(4),
+    min: +arr[0].toFixed(4),
+    max: +arr[arr.length - 1].toFixed(4),
+  };
+}
+
+function groupAndAggregate(reps, keyFn, extraFn) {
+  const groups = new Map();
+  for (const r of reps) {
+    const k = keyFn(r);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  }
+  const out = [];
+  for (const [k, g] of groups) {
+    if (g.length < 3) continue;
+    const up = g.map(r => r.excursion_up_pct).filter(v => v != null).sort((a, b) => a - b);
+    const dn = g.map(r => r.excursion_down_pct).filter(v => v != null).sort((a, b) => a - b);
+    const row = {
+      n: g.length,
+      up_mean: up.length ? +(up.reduce((a, b) => a + b, 0) / up.length).toFixed(4) : null,
+      up_med: +(_pct(up, 0.50) ?? 0).toFixed(4),
+      up_p25: +(_pct(up, 0.25) ?? 0).toFixed(4),
+      up_p50: +(_pct(up, 0.50) ?? 0).toFixed(4),
+      up_p75: +(_pct(up, 0.75) ?? 0).toFixed(4),
+      up_p90: +(_pct(up, 0.90) ?? 0).toFixed(4),
+      up_p95: +(_pct(up, 0.95) ?? 0).toFixed(4),
+      up_p99: +(_pct(up, 0.99) ?? 0).toFixed(4),
+      down_mean: dn.length ? +(dn.reduce((a, b) => a + b, 0) / dn.length).toFixed(4) : null,
+      down_med: +(_pct(dn, 0.50) ?? 0).toFixed(4),
+      down_p25: +(_pct(dn, 0.25) ?? 0).toFixed(4),
+      down_p50: +(_pct(dn, 0.50) ?? 0).toFixed(4),
+      down_p75: +(_pct(dn, 0.75) ?? 0).toFixed(4),
+      down_p90: +(_pct(dn, 0.90) ?? 0).toFixed(4),
+      down_p95: +(_pct(dn, 0.95) ?? 0).toFixed(4),
+      down_p99: +(_pct(dn, 0.99) ?? 0).toFixed(4),
+    };
+    if (extraFn) Object.assign(row, extraFn(k, g));
+    out.push(row);
+  }
+  return out;
+}
+
+function computeDistributions(reps) {
+  const up = reps.map(r => r.excursion_up_pct).filter(v => v != null);
+  const dn = reps.map(r => r.excursion_down_pct).filter(v => v != null);
+  return {
+    up: buildDist(up),
+    down: buildDist(dn),
+    by_hour: groupAndAggregate(reps, r => r.hr, (k) => ({ hr: k, hr_label: `${String(k).padStart(2, '0')}:00` })).sort((a, b) => a.hr - b.hr),
+    by_dow: groupAndAggregate(reps, r => r.dow, (k) => ({ dow: k, dow_name: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][k] || '?' })).sort((a, b) => a.dow - b.dow),
+    by_session: groupAndAggregate(reps, r => r.session, (k) => ({ session: k })),
+    by_year: groupAndAggregate(reps, r => r.yr, (k) => ({ yr: k })).sort((a, b) => a.yr - b.yr),
+  };
+}
+
+// Refresh the dashboard after a filter state change. Delegates to renderActive
+// which builds D via filterByPeriod and updates the header status bar through
+// _updateFilterStatus (single source of truth for bar text). Previously did
+// its own preview narrowing which missed the period dropdown cutoff and
+// diverged from filterByPeriod's actual filter set.
+function applyFilter() {
+  renderActive();
+}
+
+function _initFilterControls() {
+  const startEl = document.getElementById('filter-start');
+  const endEl = document.getElementById('filter-end');
+  const applyBtn = document.getElementById('filter-apply');
+  const resetBtn = document.getElementById('filter-reset');
+  const rollingSel = document.getElementById('rolling-window');
+  if (!startEl || !applyBtn) return;
+
+  applyBtn.addEventListener('click', () => {
+    _filterStart = startEl.value || null;
+    _filterEnd = endEl.value || null;
+    applyFilter();
+  });
+
+  resetBtn.addEventListener('click', () => {
+    _filterStart = null;
+    _filterEnd = null;
+    _filterRegime = 'all';
+    startEl.value = '';
+    endEl.value = '';
+    document.querySelectorAll('.regime-pill').forEach(b => {
+      const active = b.dataset.regime === 'all';
+      b.classList.toggle('active', active);
+      b.style.background = active ? 'var(--purple)' : 'var(--bg-raised)';
+      b.style.color = active ? '#fff' : 'var(--text-primary)';
+    });
+    renderActive();  // _updateFilterStatus will clear the bar (no filters active)
+  });
+
+  document.querySelectorAll('.regime-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _filterRegime = btn.dataset.regime;
+      document.querySelectorAll('.regime-pill').forEach(b => {
+        const active = b.dataset.regime === _filterRegime;
+        b.classList.toggle('active', active);
+        b.style.background = active ? 'var(--purple)' : 'var(--bg-raised)';
+        b.style.color = active ? '#fff' : 'var(--text-primary)';
+      });
+      applyFilter();
+    });
+  });
+
+  if (rollingSel) {
+    rollingSel.addEventListener('change', () => {
+      _rollingWindowDays = parseInt(rollingSel.value, 10);
+      renderActive();  // Validation tab panels read _rollingWindowDays
+    });
+  }
+}
+
+function classifyRegimes(reps) {
+  const WINDOW_DAYS = 70;
+  const msPerDay = 86400000;
+  // Assumes reps sorted ascending by date; if not, sort a copy first.
+  const sorted = [...reps].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  for (let i = 0; i < sorted.length; i++) {
+    const r = sorted[i];
+    if (r.block_range_pts == null) { r._regime = 'unknown'; continue; }
+    const rDate = new Date((r.date || '').slice(0, 10)).getTime();
+    if (isNaN(rDate)) { r._regime = 'unknown'; continue; }
+    const cutoff = rDate - WINDOW_DAYS * msPerDay;
+    const window = [];
+    for (let j = i - 1; j >= 0; j--) {
+      const pDate = new Date((sorted[j].date || '').slice(0, 10)).getTime();
+      if (isNaN(pDate) || pDate < cutoff) break;
+      if (sorted[j].block_range_pts != null) window.push(sorted[j].block_range_pts);
+    }
+    if (window.length < 30) { r._regime = 'unknown'; continue; }
+    window.sort((a, b) => a - b);
+    const p33 = window[Math.floor(window.length * 0.333)];
+    const p67 = window[Math.floor(window.length * 0.667)];
+    if      (r.block_range_pts >= p67) r._regime = 'expanding';
+    else if (r.block_range_pts <= p33) r._regime = 'contracting';
+    else                                r._regime = 'neutral';
+  }
 }
 
 function render() {
@@ -1007,6 +1847,13 @@ function render() {
 // ── DATA LOADING ───────────────────────────────────────────────────────────
 function applyLoadedData(j) {
   DATA = j;
+  // Classify regimes once per model at load time
+  for (const mk of Object.keys(DATA)) {
+    const model = DATA[mk];
+    if (model && model.recent_reps) {
+      classifyRegimes(model.recent_reps);
+    }
+  }
   const resolvedKey = j['1H_5M'] ? '1H_5M' : (Object.keys(j)[0] || '1H_5M');
   activeModel = resolvedKey;
   render();
@@ -1019,6 +1866,7 @@ function parseJsonWithNaN(text) {
 
 // ── INIT ───────────────────────────────────────────────────────────────────
 render();
+_initFilterControls();
 let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => renderActive(), 150); });
 
 fetch('./model_stats_fixed_constant.json')

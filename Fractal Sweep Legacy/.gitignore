@@ -1,0 +1,20 @@
+# Data files (large binaries)
+*.duckdb
+*.dbn
+*.parquet
+*.csv
+
+# Logs
+*.log
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Secrets
+.env

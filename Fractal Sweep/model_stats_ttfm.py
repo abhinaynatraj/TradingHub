@@ -237,6 +237,26 @@ def check_confirmation(bar_open, bar_close, pivot_level, pivot_bar_idx, touch_ba
         return bar_open > pivot_level and bar_close < pivot_level and pivot_level < touch_level
 
 
+# ── HOUR OPEN HELPER ─────────────────────────────────────────────────────────
+_HOUR_NS = 60 * 60 * 10**9
+
+def compute_hour_open_ttfm(m1_arrs, entry_ts_ns):
+    """
+    Return the open of the first 1m bar inside the clock hour containing
+    entry_ts_ns. Floor-hour boundary on naive-ET ts_ns. Returns None if
+    the entire hour has no 1m bars.
+    """
+    hour_start_ns = (int(entry_ts_ns) // _HOUR_NS) * _HOUR_NS
+    hour_end_ns = hour_start_ns + _HOUR_NS
+    ts = m1_arrs['ts_ns']
+    idx = int(np.searchsorted(ts, hour_start_ns, side='left'))
+    if idx >= len(ts):
+        return None
+    if int(ts[idx]) >= hour_end_ns:
+        return None
+    return float(m1_arrs['open'][idx])
+
+
 # ── MFE MEASUREMENT ──────────────────────────────────────────────────────────
 def measure_mfe(m1_arrs, entry_ts_ns, stop_price, cutoff_ns, pivot_level, direction):
     start = int(np.searchsorted(m1_arrs['ts_ns'], entry_ts_ns, side='left'))
@@ -334,6 +354,10 @@ def scan_ttfm_model(htf_arrs, chart_arrs, m1_arrs, model_key, cfg):
                 entry_price = float(chart_arrs['close'][j])
                 entry_ts_ns = int(chart_arrs['ts_ns'][j])
 
+                # Hour open: first 1m bar inside the clock hour containing the entry.
+                # Used by the Hour-Open Bias filter (entry > hour_open = bullish setup).
+                hour_open = compute_hour_open_ttfm(m1_arrs, entry_ts_ns)
+
                 if direction == 'LONG':
                     stop_price = float(np.min(chart_arrs['low'][pivot_bar:j+1]))
                     mae_pct = (pivot_level - stop_price) / pivot_level * 100
@@ -380,6 +404,7 @@ def scan_ttfm_model(htf_arrs, chart_arrs, m1_arrs, model_key, cfg):
                     'mae_pct': round(mae_pct, 4),
                     'mfe_pct': round(mfe_pct, 4) if mfe_pct is not None else None,
                     'risk_pts': round(abs(entry_price - stop_price), 2),
+                    'hour_open': round(hour_open, 2) if hour_open is not None else None,
                 }
                 trades.append(trade)
                 break  # one trade per T-Spot
