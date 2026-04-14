@@ -25,3 +25,7 @@ __pycache__/
 
 # Generated stats
 555/model_stats.json
+# Fixed Constant JSON exceeds GitHub's 100 MB push limit (~137 MB with full
+# doctrine fields). Treated as a build artifact — regenerate locally via
+# `python3 Fractal\ Sweep/model_stats_fixed_constant.py` (~20 s runtime).
+Fractal Sweep/model_stats_fixed_constant.json
