@@ -677,11 +677,33 @@ function switchMFESeg(seg) {
   if (D) renderMFEStudy(D);
 }
 
-// ── SMT FILTER ────────────────────────────────────────────────────────────
+// ── TRADE-LEVEL FILTER ────────────────────────────────────────────────────
+// Applies the same 7-filter pipeline as getFilteredD(), but on a raw
+// trades[] array. Used by secondary panels that recompute stats directly
+// from trades (custom ranges, verdict, compare, MAE/MFE study).
+//
+// Kept as getSmtFilteredTrades() for back-compat with legacy call sites.
+// Historical name is misleading — it now honors ALL active filters.
 function getSmtFilteredTrades(trades) {
-  if (!trades) return trades;
-  if (activeSmt) return trades.filter(t => t.smt === true);
-  return trades;
+  if (!trades || !trades.length) return trades;
+  let out = trades;
+  if (activeF1) out = out.filter(t => t.passes_f1 !== false);
+  if (activeF3) out = out.filter(t => t.passes_f3 !== false);
+  if (activeF4) out = out.filter(t => t.passes_f4 !== false);
+  if (activeSmt)               out = out.filter(t => t.smt === true);
+  if (activeHourAligned)       out = out.filter(t => t.cisd_aligned === true);
+  if (activePriorCounterClose) out = out.filter(t => t.prior_counter_close === true);
+  if (activePriorEngulfing)    out = out.filter(t => t.prior_engulfing === true);
+  return out;
+}
+
+// True when any filter deviates from the precomputed-baseline assumption
+// (baseline = F1+F3+F4 ON, positive filters OFF). Secondary panels check
+// this before recomputing from recent_trades instead of using d.meta.
+function hasNonBaselineFilters() {
+  return !activeF1 || !activeF3 || !activeF4
+      || activeSmt || activeHourAligned
+      || activePriorCounterClose || activePriorEngulfing;
 }
 
 function switchSMT(checked) {
@@ -5059,8 +5081,11 @@ function renderProfileComparison(targetEl, dateRanges, tradeDateSet) {
 
     let wr, ev, pf, n, sharpe, maxDD, totalPnl, minEq, blown, mcw, mcl;
 
-    // Determine if we need to recompute from trades (SMT filter, date ranges, or exact date set)
-    const needsRecompute = activeSmt || dateRanges || tradeDateSet;
+    // Determine if we need to recompute from trades. Recompute when:
+    //   - any filter toggle deviates from baseline (F1+F3+F4 on, others off),
+    //   - a custom date range is active, or
+    //   - an exact trade-date set is active.
+    const needsRecompute = hasNonBaselineFilters() || dateRanges || tradeDateSet;
     if (needsRecompute && d.recent_trades) {
       let trades = d.recent_trades;
       // Apply exact date set filter (from custom ranges combined trades)
@@ -5071,10 +5096,8 @@ function renderProfileComparison(targetEl, dateRanges, tradeDateSet) {
       else if (dateRanges && dateRanges.length > 0) {
         trades = trades.filter(t => dateRanges.some(r => t.date >= r.start && t.date <= r.end));
       }
-      // Apply SMT filter
-      if (activeSmt) {
-        trades = trades.filter(t => t.smt === true);
-      }
+      // Apply full 7-filter pipeline (F1/F3/F4/SMT/Hour/PriorCC/PriorEng)
+      trades = getSmtFilteredTrades(trades);
       const s = statsFromTrades(trades);
       ({wr, ev, pf, n, sharpe, maxDD, totalPnl, minEq, blown, mcw, mcl} = s);
     } else {
@@ -5193,8 +5216,8 @@ function renderVerdict(targetEl, opts = {}) {
     }
     // Apply date filter (for custom ranges)
     if (tradeDateSet) pt = pt.filter(t => tradeDateSet.has(t.date));
-    // Apply SMT filter
-    if (activeSmt) pt = pt.filter(t => t.smt === true);
+    // Apply full 7-filter pipeline (F1/F3/F4/SMT/Hour/PriorCC/PriorEng)
+    pt = getSmtFilteredTrades(pt);
     const wl = pt.filter(t => t.outcome === 'WIN' || t.outcome === 'LOSS');
     if (wl.length < 5) return null;
     const n = wl.length;
