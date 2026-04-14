@@ -327,6 +327,20 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
       Hour-Aligned
     </label>
   </div>
+  <div class="sel-group" style="justify-content:flex-end;">
+    <label class="sel-label">&nbsp;</label>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-family:var(--font-data);font-size:12px;font-weight:600;color:var(--text-secondary);user-select:none;padding:6px 0;" title="Only include setups where the prior sweep-TF candle closed OPPOSITE to the trade direction. LONG (swept prior low): prior candle close < open (bearish body). SHORT (swept prior high): prior candle close > open (bullish body).">
+      <input type="checkbox" id="prior-counter-checkbox" onchange="switchPriorCounterClose(this.checked)" style="width:14px;height:14px;cursor:pointer;accent-color:var(--amber);">
+      Prior Counter
+    </label>
+  </div>
+  <div class="sel-group" style="justify-content:flex-end;">
+    <label class="sel-label">&nbsp;</label>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-family:var(--font-data);font-size:12px;font-weight:600;color:var(--text-secondary);user-select:none;padding:6px 0;" title="Only include setups where the prior sweep-TF candle engulfs the one before it (wick-inclusive): prior.high ≥ prev_prev.high AND prior.low ≤ prev_prev.low. The prior candle's range fully contains the range of its own predecessor.">
+      <input type="checkbox" id="prior-engulf-checkbox" onchange="switchPriorEngulfing(this.checked)" style="width:14px;height:14px;cursor:pointer;accent-color:var(--amber);">
+      Prior Engulfing
+    </label>
+  </div>
 </div>
 
 <div id="custom-range-builder" style="display:none;background:var(--bg-card);border-bottom:1px solid var(--border);padding:14px 28px;">
@@ -665,6 +679,22 @@ function switchHourAligned(checked) {
   renderActive();
 }
 
+function switchPriorCounterClose(checked) {
+  activePriorCounterClose = !!checked;
+  _tradesPage = 0;
+  const D = _getActiveD();
+  if (!D) return;
+  renderActive();
+}
+
+function switchPriorEngulfing(checked) {
+  activePriorEngulfing = !!checked;
+  _tradesPage = 0;
+  const D = _getActiveD();
+  if (!D) return;
+  renderActive();
+}
+
 // ── PAGE TAB NAVIGATION ────────────────────────────────────────────────────
 let activePageTab = 'overview';
 function switchPageTab(tab){
@@ -837,8 +867,10 @@ let activeMode    = 'PREV';
 let activeCisd    = 'CISD';
 let activeProfile = 'structural_dynamic';
 let activeTF      = 'all';  // 'all' | '2y' | '1y' | '6m' | '3m' | '1m'
-let activeSmt          = false;  // false = show all, true = filter to smt===true only
-let activeHourAligned  = false;  // false = show all, true = filter to cisd_aligned===true only
+let activeSmt               = false;  // filter to smt===true
+let activeHourAligned       = false;  // filter to cisd_aligned===true
+let activePriorCounterClose = false;  // filter to prior_counter_close===true
+let activePriorEngulfing    = false;  // filter to prior_engulfing===true
 
 const RR_PROFILES = [
   'structural_dynamic',
@@ -3495,16 +3527,18 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
 // ── SMT DATA OVERRIDE ────────────────────────────────────────────────────────
 // When SMT checkbox is checked, recompute aggregated stats from filtered trades
 // so hero tiles, by_hour, by_session, by_dow, and dir_summary all reflect SMT-only trades.
-// Combined filter entry point: applies SMT + Hour-Open Aligned.
-// activeHourAligned (set later in this commit chain) adds the cisd_aligned
-// filter when enabled.
+// Combined filter entry point: applies SMT + Hour-Open Aligned +
+// Prior Counter-Close + Prior Engulfing. Each is an optional positive filter
+// that keeps only trades where the corresponding per-trade boolean is True.
 function getFilteredD(D) {
-  if (!activeSmt && !activeHourAligned) return D;
+  if (!activeSmt && !activeHourAligned && !activePriorCounterClose && !activePriorEngulfing) return D;
   const rawTrades = D?.recent_trades;
   if (!rawTrades || !rawTrades.length) return D;
   let trades = rawTrades;
-  if (activeSmt)         trades = trades.filter(t => t.smt === true);
-  if (activeHourAligned) trades = trades.filter(t => t.cisd_aligned === true);
+  if (activeSmt)               trades = trades.filter(t => t.smt === true);
+  if (activeHourAligned)       trades = trades.filter(t => t.cisd_aligned === true);
+  if (activePriorCounterClose) trades = trades.filter(t => t.prior_counter_close === true);
+  if (activePriorEngulfing)    trades = trades.filter(t => t.prior_engulfing === true);
   if (!trades.length) return D;
 
   const wins = trades.filter(t => t.outcome === 'WIN');
@@ -5294,6 +5328,16 @@ function renderFilterVariants(D, targetEl) {
         <td style="padding:6px 10px;color:var(--text-primary)">Only take setups where the CISD candle closes on the correct side of the current hour open — closes aligned with setup direction confirm the intra-hour shift matches the sweep thesis</td>
         <td style="padding:6px 10px;color:var(--text-muted);font-family:var(--font-data)">LONG: <span style="color:var(--text-primary);font-weight:600">close &gt; hour_open</span><br>SHORT: <span style="color:var(--text-primary);font-weight:600">close &lt; hour_open</span></td>
       </tr>
+      <tr style="background:color-mix(in srgb,var(--bg-raised) 60%,transparent)">
+        <td style="padding:6px 10px;font-weight:700;color:var(--amber)">Prior Counter-Close</td>
+        <td style="padding:6px 10px;color:var(--text-primary)">Only take setups where the prior sweep-TF candle (the one whose level was swept) closed OPPOSITE to the trade direction — a bearish prior candle preceding a long setup signals an exhaustion, not a continuation</td>
+        <td style="padding:6px 10px;color:var(--text-muted);font-family:var(--font-data)">LONG: <span style="color:var(--text-primary);font-weight:600">prior.close &lt; prior.open</span><br>SHORT: <span style="color:var(--text-primary);font-weight:600">prior.close &gt; prior.open</span></td>
+      </tr>
+      <tr>
+        <td style="padding:6px 10px;font-weight:700;color:var(--amber)">Prior Engulfing</td>
+        <td style="padding:6px 10px;color:var(--text-primary)">Only take setups where the prior sweep-TF candle engulfs the candle before it on wick extremes — an engulfing prior signals that the sweep is happening inside an expansion, not a compression</td>
+        <td style="padding:6px 10px;color:var(--text-muted);font-family:var(--font-data)"><span style="color:var(--text-primary);font-weight:600">prior.high ≥ prev_prev.high</span><br>AND <span style="color:var(--text-primary);font-weight:600">prior.low ≤ prev_prev.low</span></td>
+      </tr>
     </tbody></table>
   </div>`;
 
@@ -5350,7 +5394,7 @@ function renderFilterVariants(D, targetEl) {
 
   // All combinations table
   html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;box-shadow:var(--shadow)">
-    <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">All Filter Combinations (2⁵ = 32 variants, sorted by EV)</div>
+    <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">All Filter Combinations (2⁷ = 128 variants, sorted by EV)</div>
     <table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="border-bottom:2px solid var(--border)">
         <th style="padding:8px 10px;text-align:left;color:var(--text-muted)">Filter Combination</th>
@@ -5364,16 +5408,20 @@ function renderFilterVariants(D, targetEl) {
         <th style="padding:8px 6px;text-align:left;color:var(--text-muted)">EV Bar</th>
       </tr></thead><tbody>`;
 
-  // Determine currently active filter set based on SMT + Hour-Aligned toggles
+  // Determine currently active filter set based on all header toggles
   const activeFilters = ['F1_SMALL_RANGE', 'F3_SWEEP_TOO_LARGE', 'F4_NO_CLOSE_BACK'];
   if (activeSmt) activeFilters.push('SMT');
   if (activeHourAligned) activeFilters.push('HOUR_ALIGNED');
+  if (activePriorCounterClose) activeFilters.push('PRIOR_COUNTER_CLOSE');
+  if (activePriorEngulfing) activeFilters.push('PRIOR_ENGULFING');
   const activeLabel = activeFilters.map(f => ({
     'F1_SMALL_RANGE': 'F1: Prior Range Floor',
     'F3_SWEEP_TOO_LARGE': 'F3: Sweep Max Cap',
     'F4_NO_CLOSE_BACK': 'F4: Close-Back Required',
     'SMT': 'SMT Divergence',
     'HOUR_ALIGNED': 'Hour-Open Aligned',
+    'PRIOR_COUNTER_CLOSE': 'Prior Counter-Close',
+    'PRIOR_ENGULFING': 'Prior Engulfing',
   }[f])).join(' + ');
 
   const maxEV = Math.max(...combos.map(c => Math.abs(c.ev)));

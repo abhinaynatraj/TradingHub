@@ -1085,8 +1085,10 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
     gap_limit  = np.int64(model_cfg['sweep_tf_min']) * NS_PER_MIN * 3
 
     s_ts    = s_arrs['ts_ns']
+    s_open  = s_arrs['open']
     s_high  = s_arrs['high']
     s_low   = s_arrs['low']
+    s_close = s_arrs['close']
     s_n     = len(s_ts)
 
     # ES data for SMT divergence
@@ -1246,6 +1248,33 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                 c_arrs, ret_ts_ns, direction, cisd_fast_bars, 'CISD'
             )
 
+            # ── Prior candle filters (optional, evaluated per-trade) ──────────
+            #
+            # prior_counter_close: the prior sweep-TF candle (s_arrs[i-1], e.g.
+            #   10am when 11am sweeps 10am's low) closed in the OPPOSITE
+            #   direction to the trade setup. LONG trades (sweep of low) want a
+            #   bearish prior close (close < open). SHORT trades (sweep of
+            #   high) want a bullish prior close (close > open).
+            #
+            # prior_engulfing: the prior sweep-TF candle engulfs the candle
+            #   before it (s_arrs[i-2]), using extremes (wick-inclusive): the
+            #   prior candle's range strictly contains the one before it, i.e.
+            #   prior.high >= prev_prev.high AND prior.low <= prev_prev.low.
+            _prior_o = float(s_open[i - 1])
+            _prior_c = float(s_close[i - 1])
+            if direction == 'LONG':
+                prior_counter_close = bool(_prior_c < _prior_o)
+            else:
+                prior_counter_close = bool(_prior_c > _prior_o)
+            if i >= 2:
+                _prior_h = float(s_high[i - 1])
+                _prior_l = float(s_low[i - 1])
+                _prev_h  = float(s_high[i - 2])
+                _prev_l  = float(s_low[i - 2])
+                prior_engulfing = bool(_prior_h >= _prev_h and _prior_l <= _prev_l)
+            else:
+                prior_engulfing = None  # no prev-prev candle available
+
             base_row = dict(
                 date          = str(s_arrs['trade_date'][i]),
                 yr            = int(s_arrs['yr'][i]),
@@ -1256,6 +1285,8 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                 sweep_pct     = round(sweep_ext / ref_range, 3) if ref_range > 0 else 0,
                 sweep_extreme = round(float(sweep_extreme), 2),
                 sweep_mode    = 'PREV',
+                prior_counter_close = prior_counter_close,
+                prior_engulfing     = prior_engulfing,
                 cisd_mode     = 'CISD',
                 ref_lookback  = ref_lookback,
                 smt           = smt_divergence,
@@ -1688,7 +1719,8 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
     recent_cols = ['date','direction','hr','mn','session','dow','entry_price',
                    'sweep_extreme','target_price','risk_pts','r','outcome',
                    'mae_pct','mfe_pct','mae_pct_hr','mfe_pct_hr','hour_range_pts','smt',
-                   'cisd_close','cisd_hour_open','cisd_aligned']
+                   'cisd_close','cisd_hour_open','cisd_aligned',
+                   'prior_counter_close','prior_engulfing']
     recent_rows = (wl[recent_cols]
                    .sort_values('date', ascending=False)
                    .copy())
@@ -2108,7 +2140,8 @@ def _build_slice_stats(wl_sub, stop_mult, target_mult, agg_fn, hr_labels,
     recent_cols = ['date','direction','hr','mn','session','dow','entry_price',
                    'sweep_extreme','target_price','risk_pts','r','outcome',
                    'mae_pct','mfe_pct','mae_pct_hr','mfe_pct_hr','hour_range_pts','smt',
-                   'cisd_close','cisd_hour_open','cisd_aligned']
+                   'cisd_close','cisd_hour_open','cisd_aligned',
+                   'prior_counter_close','prior_engulfing']
     available = [c for c in recent_cols if c in wl_sub.columns]
     rt = wl_sub[available].sort_values('date', ascending=False).copy()
     rt['dow_name'] = rt['dow'].map(lambda d: dow_names.get(int(d), '?'))
@@ -2241,14 +2274,20 @@ def compute_filter_variants(df_all):
       - cumulative_additive: adding filters one at a time in optimal order
       - best_combo: the filter combination that maximizes EV
     """
-    FILTERS = ['F1_SMALL_RANGE', 'F3_SWEEP_TOO_LARGE', 'F4_NO_CLOSE_BACK', 'SMT', 'HOUR_ALIGNED']
+    FILTERS = ['F1_SMALL_RANGE', 'F3_SWEEP_TOO_LARGE', 'F4_NO_CLOSE_BACK',
+               'SMT', 'HOUR_ALIGNED', 'PRIOR_COUNTER_CLOSE', 'PRIOR_ENGULFING']
     FILTER_LABELS = {
         'F1_SMALL_RANGE':    'F1: Prior Range Floor',
         'F3_SWEEP_TOO_LARGE':'F3: Sweep Max Cap',
         'F4_NO_CLOSE_BACK':  'F4: Close-Back Required',
         'SMT':               'SMT Divergence',
         'HOUR_ALIGNED':      'Hour-Open Aligned',
+        'PRIOR_COUNTER_CLOSE':'Prior Counter-Close',
+        'PRIOR_ENGULFING':   'Prior Engulfing',
     }
+    # Positive filters (off-by-default, additive): these don't use rejected_by
+    # codes — they gate on per-trade boolean columns.
+    POSITIVE_FILTERS = {'SMT', 'HOUR_ALIGNED', 'PRIOR_COUNTER_CLOSE', 'PRIOR_ENGULFING'}
 
     def stats_of(df):
         wl = df[df['outcome'].isin(['WIN', 'LOSS'])].copy()
@@ -2295,6 +2334,8 @@ def compute_filter_variants(df_all):
     all_valid = df_all[~df_all['outcome'].isin(['SKIP', 'INVALID'])].copy()
     has_smt = 'smt' in all_valid.columns
     has_hour_aligned = 'cisd_aligned' in all_valid.columns
+    has_prior_counter = 'prior_counter_close' in all_valid.columns
+    has_prior_engulfing = 'prior_engulfing' in all_valid.columns
 
     # Helper: apply a set of filters to all_valid
     def apply_filters(active_set):
@@ -2302,21 +2343,26 @@ def compute_filter_variants(df_all):
         mask = pd.Series(True, index=all_valid.index)
         for f in active_set:
             if f == 'SMT':
-                # SMT filter: keep only smt=True trades
                 if has_smt:
                     mask &= all_valid['smt'] == True
             elif f == 'HOUR_ALIGNED':
-                # Hour-Open Alignment filter: keep only cisd_aligned=True trades
                 if has_hour_aligned:
                     mask &= all_valid['cisd_aligned'] == True
+            elif f == 'PRIOR_COUNTER_CLOSE':
+                if has_prior_counter:
+                    mask &= all_valid['prior_counter_close'] == True
+            elif f == 'PRIOR_ENGULFING':
+                if has_prior_engulfing:
+                    mask &= all_valid['prior_engulfing'] == True
             else:
                 # Standard rejection filter: remove trades rejected by this code
                 mask &= all_valid['rejected_by'] != f
         return all_valid[mask]
 
-    # Standard filters (excluding SMT and HOUR_ALIGNED for baseline — they're
-    # "positive" filters that are OFF by default; the dashboard toggles them on)
-    STD_FILTERS = [f for f in FILTERS if f not in ('SMT', 'HOUR_ALIGNED')]
+    # Standard filters = rejection-based filters (on by default).
+    # Positive filters (SMT, HOUR_ALIGNED, PRIOR_COUNTER_CLOSE, PRIOR_ENGULFING)
+    # are off by default and appear in individual_removal as "Add X".
+    STD_FILTERS = [f for f in FILTERS if f not in POSITIVE_FILTERS]
 
     # Current production baseline (F1 + F3 + F4, no SMT)
     fully_filtered = apply_filters(STD_FILTERS)
@@ -2332,7 +2378,7 @@ def compute_filter_variants(df_all):
     # ── Individual removal: remove ONE filter from current, keep all others ──
     individual_removal = []
     for f in FILTERS:
-        if f in ('SMT', 'HOUR_ALIGNED'):
+        if f in POSITIVE_FILTERS:
             # "Add X" — apply all standard filters PLUS this positive filter
             kept = apply_filters(STD_FILTERS + [f])
             s = stats_of(kept)
