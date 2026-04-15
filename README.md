@@ -1,6 +1,6 @@
 # Statistic.ally
 
-A personal trading research hub for NQ and ES futures. Three statistical backtesting models run against 11+ years of 1-minute bar data, each with an interactive dashboard you open in a browser.
+A personal trading research hub for NQ and ES futures. Multiple statistical backtesting models run against 11+ years of 1-minute bar data, each with an interactive dashboard you open in a browser.
 
 > **No trading experience required to view the dashboards.** You only need to install Python and run two commands to get everything working locally.
 
@@ -10,11 +10,12 @@ A personal trading research hub for NQ and ES futures. Three statistical backtes
 
 | Folder | What it does |
 |---|---|
-| `Fractal Sweep/` | **Fractal Sweep Model** — detects sweep + structure break setups across four timeframe combinations |
+| `Fractal Sweep/` | **Fixed Constant + TTFM models** — doctrine-compliant range anchor backtests (Fixed Constant is the primary dashboard) |
+| `Fractal Sweep Legacy/` | **Sweep + CISD model** — the original sweep-of-prior-high/low setup with CISD confirmation, risk profiles, equity tracking. Still actively maintained as a separate strategy. |
 | `NY1 FPFVG/` | **NY1 Fair Value Gap Model** — first presented FVG in the 9:31–9:59 ET opening window on NQ 1-minute |
 | `TTrades Fractal Model Analysis/` | **TTrades Fractal Model** — T-Spot zone entry backtest based on sweep + zone-touch mechanic |
 
-The root `index.html` is a **hub page** that links to all three dashboards from one place.
+The root `index.html` is a **hub page** that links to all the dashboards from one place.
 
 ---
 
@@ -132,9 +133,12 @@ You'll see the **Statistic.ally** hub page with links to all three dashboards.
 
 ## About the Data
 
-The dashboards load from pre-computed JSON files that are already included in this repo (`model_stats.json`, `ny1_results.json`, `ttfm_results.json`). You don't need to do anything special — the dashboards will work immediately with the data that's already there.
+Most dashboards load from pre-computed JSON files that are included in this repo (`ny1_results.json`, `ttfm_results.json`, etc.). Two exceptions:
 
-If you want to re-run the backtests yourself (to update with newer data), see the README inside each project folder.
+- **`Fractal Sweep/model_stats_fixed_constant.json`** — the Fixed Constant results file exceeds GitHub's 100 MB per-file limit, so it's gitignored. Run `python3 Fractal\ Sweep/model_stats_fixed_constant.py` once locally to generate it (~20 seconds). The dashboard shows a "Run the engine" fallback if it's missing.
+- **`Fractal Sweep Legacy/model_stats.json`** — same story. Run `python3 Fractal\ Sweep\ Legacy/model_stats.py` once to generate.
+
+If you want to re-run the other backtests to update with newer data, see the README inside each project folder.
 
 ---
 
@@ -142,22 +146,30 @@ If you want to re-run the backtests yourself (to update with newer data), see th
 
 ```
 Statistic.ally/
-├── index.html                          ← Hub page (open this in browser)
-├── mae_mfe_guide.html                  ← MAE/MFE reference guide
-├── Fractal Sweep/
-│   ├── model_dashboard.html            ← Sweep model dashboard
-│   ├── model_stats.py                  ← Backtest engine
-│   ├── model_stats.json                ← Pre-computed results (loaded by dashboard)
-│   └── daily_update.py                 ← Fetches new data (optional)
+├── index.html                                ← Hub page (open this in browser)
+├── mae_mfe_guide.html                        ← MAE/MFE reference guide
+├── Fractal Sweep/                            [Fixed Constant + TTFM]
+│   ├── model_dashboard_fixed_constant.html   ← Fixed Constant dashboard (primary)
+│   ├── model_dashboard_ttfm.html             ← TTFM dashboard
+│   ├── model_stats_fixed_constant.py         ← Fixed Constant engine
+│   ├── model_stats_ttfm.py                   ← TTFM engine
+│   ├── model_stats.py                        ← Original sweep+CISD engine
+│   ├── candle_science.duckdb                 ← Shared DB (gitignored, ~550 MB)
+│   └── daily_update.py                       ← Fetches new bar data
+├── Fractal Sweep Legacy/                     [Sweep + CISD]
+│   ├── model_dashboard.html                  ← Legacy sweep+CISD dashboard
+│   ├── model_stats.py                        ← Legacy engine (F1 filter removed)
+│   ├── candle_science.duckdb                 ← Symlink to ../Fractal Sweep/candle_science.duckdb
+│   ├── LEGACY_NOTE.md                        ← Change history since snapshot
+│   └── tests/                                ← pytest suite
 ├── NY1 FPFVG/
-│   ├── index.html                      ← NY1 FVG dashboard
-│   ├── ny1_backtest.py                 ← Backtest engine
-│   ├── ny1_results.json                ← Pre-computed results
-│   └── export_trades.py                ← Exports trade log to Excel
+│   ├── index.html                            ← NY1 FVG dashboard
+│   ├── ny1_backtest.py                       ← Backtest engine
+│   └── ny1_results.json                      ← Pre-computed results
 └── TTrades Fractal Model Analysis/
-    ├── index.html                      ← TTrades dashboard
-    ├── ttfm_backtest.py                ← Backtest engine
-    └── ttfm_results.json               ← Pre-computed results
+    ├── index.html                            ← TTrades dashboard
+    ├── ttfm_backtest.py                      ← Backtest engine
+    └── ttfm_results.json                     ← Pre-computed results
 ```
 
 ---

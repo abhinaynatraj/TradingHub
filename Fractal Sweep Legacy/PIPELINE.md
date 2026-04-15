@@ -1,6 +1,6 @@
-# Fractal Sweep Pipeline — Complete Architecture
+# Fractal Sweep Legacy Pipeline — Complete Architecture
 
-**Last updated:** 2026-04-05
+**Last updated:** 2026-04-15
 
 ---
 
@@ -61,21 +61,23 @@ Timestamps stored as `TIMESTAMP WITH TIME ZONE` (America/Toronto). Always conver
 
 ## The 4 Sweep Models
 
-| Key | Sweep TF | CISD TF | Q1 Window | Min Range |
-|-----|----------|---------|-----------|-----------|
-| `4H_15M` | 4 Hour | 15 Min | 60 min | 30 pts |
-| `1H_5M` | 1 Hour | 5 Min | 15 min | 12 pts |
-| `1H_3M` | 1 Hour | 3 Min | 15 min | 12 pts |
-| `30M_3M` | 30 Min | 3 Min | 8 min | 8 pts |
+| Key | Sweep TF | CISD TF | Q1 Window |
+|-----|----------|---------|-----------|
+| `4H_15M` | 4 Hour | 15 Min | 60 min |
+| `1H_5M` | 1 Hour | 5 Min | 15 min |
+| `1H_3M` | 1 Hour | 3 Min | 15 min |
+| `30M_3M` | 30 Min | 3 Min | 8 min |
 
 **Constants:** `SWEEP_MAX_PCT = 0.50` · `MIN_RISK_PTS = 3.0` · `MAX_RISK_PTS = 112.5` · `CISD_FAST_BARS = None` (unlimited)
+
+**Note (2026-04-15):** The `min_range` parameter (F1 filter) was removed entirely. Data showed it was rejecting above-average trades on every timeframe. See the commit `62eda17` and the Runtime Filters section below.
 
 ---
 
 ## Setup Detection (3 Phases)
 
 ### Phase 1 — Sweep
-Price breaks beyond the prior HTF candle's high or low within Q1. Sweep must be ≤50% of prior range. Prior range ≥ min_range. Sweep extreme (lowest low for long, highest high for short) locked at detection.
+Price breaks beyond the prior HTF candle's high or low within Q1. Sweep must be ≤50% of prior range (F3). Sweep extreme (lowest low for long, highest high for short) locked at detection.
 
 ### Phase 2 — Return to Range
 Price closes back inside the prior candle's range. No deadline — can happen anytime within the HTF period.
@@ -102,17 +104,33 @@ Backward scan from the return bar finds the consecutive opposing delivery run. C
 
 ---
 
-## SMT Divergence
+## Runtime Filters (6, dashboard-toggleable)
 
-NQ sweeps its HTF level but ES does **not** sweep its corresponding level.
+Two groups render in a dedicated filter bar below the Period/TF/Profile dropdowns. Each chip shows a live `±N` badge indicating how many trades would be added or removed if that single chip were toggled, so users can see the impact before clicking.
 
-| Component | Implementation |
-|-----------|---------------|
-| **Backtest** | Loads ES 1m, builds ES sweep-TF candles, checks ES Q1 window at sweep detection. `smt` bool per trade row |
-| **Indicator** | 10 ES security calls. "SMT" (green/red) or "NO SMT" (gray) label |
-| **Dashboard** | SMT checkbox filter — when checked, all stats recompute from SMT-only trades |
+**Setup Quality** (default ON, uncheck to relax — amber highlight)
 
-**Results (1H_5M):** SMT = 90.2% WR / 10.2 PF vs non-SMT = 84.4% WR / 6.1 PF
+| Chip | Code | What it requires |
+|---|---|---|
+| Shallow Sweep | `F3_SWEEP_TOO_LARGE` | `sweep_ext / ref_range ≤ 0.50` |
+| Closed Back Inside | `F4_NO_CLOSE_BACK` | `ret_close` is inside the prior candle's range |
+
+**Add Confirmation** (default OFF, check to narrow — purple highlight)
+
+| Chip | Column | Condition |
+|---|---|---|
+| NQ-ES Divergence | `smt` | NQ swept its prior level but ES did not sweep its corresponding level |
+| Hour Open Aligned | `cisd_aligned` | LONG: CISD close > current hour open · SHORT: CISD close < current hour open |
+| Prior Bar Counters | `prior_counter_close` | LONG: prior sweep-TF bar closed bearish · SHORT: prior bar closed bullish |
+| Prior Bar Engulfs | `prior_engulfing` | Prior sweep-TF bar's range contains the previous bar's range (wick-inclusive) |
+
+**Combinatorics.** `compute_filter_variants()` enumerates 2⁶ = 64 combinations per model × profile, sorted by EV, rendered in the Filters tab.
+
+**SMT backtest.** Loads `es_1m` alongside `nq_1m`, builds ES sweep-TF candles, checks the ES Q1 window at NQ sweep detection time. Pine indicator uses 10 ES security calls.
+
+**Toggle scope.** Filters work on every Period selection (All Time + 2y/1y/6m/3m/1m). `_compute_by_tf` builds `recent_trades` for each sub-slice from `wl_full` (which includes F3/F4-rejected trades), so toggling a rejection filter off on e.g. Last 3 Months restores the F-rejected trades that fell inside that 3-month window.
+
+**Removed filter.** F1 (min prior range) was removed entirely on 2026-04-15. On every timeframe, removing F1 both increased trade count **and** improved WR — the filter was rejecting above-average trades.
 
 ---
 
@@ -236,12 +254,17 @@ Applied to: `by_hour`, `by_session`, `by_dow`, `by_year`, `dir_summary`, `tspot_
 | `session` | str | PRE / NY1 / NY2 / OTHER |
 | `entry_price` | float | CISD-TF candle open |
 | `sweep_extreme` | float | Wick tip (SL level) |
-| `risk_pts` | float | |entry − sweep_extreme| |
+| `risk_pts` | float | \|entry − sweep_extreme\| |
 | `r` | float | R-multiple outcome |
 | `outcome` | str | WIN / LOSS / INVALID / SKIP |
 | `mae_pct`, `mfe_pct` | float | As % of entry price |
 | `mae_pct_hr`, `mfe_pct_hr` | float | As % of hourly range |
-| `smt` | bool | SMT divergence flag |
+| `hour_range_pts` | float | High − low of 1m bars in entry (date, hour) |
+| `smt` | bool | NQ-ES Divergence flag |
+| `cisd_aligned` | bool | CISD close on correct side of hour open |
+| `prior_counter_close` | bool | Prior sweep-TF bar closed against trade direction |
+| `prior_engulfing` | bool | Prior sweep-TF bar engulfs its predecessor (wick-inclusive) |
+| `passes_f3`, `passes_f4` | bool | Whether trade passes the Shallow Sweep / Closed Back Inside filters |
 | `classification` | str | DWP / DNP / R1 / R2 |
 | `sweep_pct` | float | Sweep / prior range ratio |
 
@@ -250,7 +273,7 @@ Applied to: `by_hour`, `by_session`, `by_dow`, `by_year`, `dir_summary`, `tspot_
 ## Execution
 
 ```bash
-# Run backtest (all models)
+# Run backtest (all models) — writes model_stats.json to this folder
 python3 model_stats.py
 
 # Run specific models
@@ -259,12 +282,13 @@ python3 model_stats.py --models 1H_5M 1H_3M
 # Run for ES
 python3 model_stats.py --table es_1m
 
-# Fetch new data
-python3 daily_update.py
+# Run the test suite (188 pass, 7 pre-existing failures, 20 skipped)
+python3 -m pytest tests/ -q
 
-# Serve dashboard
+# Serve dashboard (from repo root, not this folder)
+cd ..
 python3 -m http.server 8001
-# → http://localhost:8001/Fractal Sweep/model_dashboard.html
+# → http://localhost:8001/Fractal Sweep Legacy/model_dashboard.html
 ```
 
 ---
@@ -273,17 +297,24 @@ python3 -m http.server 8001
 
 ```
 Statistic.ally/
-├── Fractal Sweep/
-│   ├── candle_science.duckdb      [gitignored]
-│   ├── model_stats.py             [backtest engine, 2400 lines]
-│   ├── model_stats.json           [pre-computed results]
-│   ├── model_dashboard.html       [dashboard, 5600+ lines]
-│   ├── daily_update.py            [cron data fetcher]
-│   ├── CLAUDE.md                  [project context]
-│   └── PIPELINE.md                [this file]
+├── Fractal Sweep/                           [primary — Fixed Constant, TTFM]
+│   ├── candle_science.duckdb                [gitignored, ~550 MB]
+│   ├── model_stats_fixed_constant.py        [Fixed Constant engine]
+│   ├── model_stats_ttfm.py                  [TTFM engine]
+│   ├── model_stats.py                       [original sweep+CISD engine, still F1-on]
+│   ├── model_dashboard_fixed_constant.html  [primary dashboard]
+│   └── model_dashboard_ttfm.html
+├── Fractal Sweep Legacy/                    [this folder — sweep+CISD, F1 removed]
+│   ├── candle_science.duckdb                [symlink to ../Fractal Sweep/candle_science.duckdb]
+│   ├── model_stats.py                       [backtest engine, ~2700 lines]
+│   ├── model_stats.json                     [build artifact, gitignored]
+│   ├── model_dashboard.html                 [dashboard, ~6700 lines]
+│   ├── CLAUDE.md                            [project context]
+│   ├── PIPELINE.md                          [this file]
+│   ├── LEGACY_NOTE.md                       [history of the snapshot and its evolution]
+│   └── README.md                            [setup + usage guide]
 ├── Live Scanner/
-│   ├── fractal_sweep_cisd.pine    [Pine v5 indicator, 971 lines]
-│   └── fractal_sweep_cisd_description.md
-├── .claude/rules/fractal-sweep.md [system rules]
-└── CLAUDE.md                      [root project config]
+│   └── fractal_sweep_cisd.pine              [Pine v5 indicator]
+├── .claude/rules/fractal-sweep.md           [system rules — scoped to main Fractal Sweep/]
+└── CLAUDE.md                                [root project config]
 ```

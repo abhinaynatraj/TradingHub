@@ -31,26 +31,43 @@ python3 -m http.server 8000         # serve dashboard at localhost:8000
 - Setup: prior candle swept in Q1 → price returns inside range → CISD confirms
 - Entry: next candle open | Stop: sweep extreme | Target: 1R (structural)
 - CISD: no bar limit — can form anytime after sweep returns within the HTF period
-- Filters: min range (8-30 pts per model), sweep max 50%, min risk 3 pts, max risk 112.5 pts
+- Baseline filters (always on): sweep max 50%, min risk 3 pts, max risk 112.5 pts
 - `long_base`/`short_base` validity is separated from `max_risk` check — enables over-risk detection
+- **Note:** F1 (min prior range) was removed on 2026-04-15 — data showed it was
+  rejecting above-average trades across all 4 TFs. WR/EV improved after removal.
+
+## Runtime Filters (6, dashboard-toggleable)
+
+Two groups, visible in the dashboard filter bar below the dropdowns:
+
+**Setup Quality** (default ON, uncheck to relax)
+- **Shallow Sweep** (`F3_SWEEP_TOO_LARGE`) — sweep pierced ≤ 50% of prior range
+- **Closed Back Inside** (`F4_NO_CLOSE_BACK`) — price returned inside prior range
+
+**Add Confirmation** (default OFF, check to narrow)
+- **NQ-ES Divergence** (`SMT`) — NQ swept but ES did not
+- **Hour Open Aligned** (`HOUR_ALIGNED`) — CISD close on correct side of current hour open
+- **Prior Bar Counters** (`PRIOR_COUNTER_CLOSE`) — prior sweep-TF candle closed against trade direction
+- **Prior Bar Engulfs** (`PRIOR_ENGULFING`) — prior sweep-TF candle engulfs its predecessor wick-inclusive
+
+Each chip shows a live `±N` badge indicating how many trades would be added or
+removed if that chip were toggled. `2⁶ = 64` combinations are precomputed in
+`filter_variants.all_combinations` for the dashboard's Filters tab.
+
+Filter toggles work on **every Period** (All Time, 2y, 1y, 6m, 3m, 1m), not
+just All Time. `_compute_by_tf` builds `recent_trades` for each sub-slice from
+`wl_full` (which includes F3/F4-rejected trades) so runtime toggles can bring
+rejected trades back in.
 
 ## SMT Divergence
 
-SMT (Smart Money Technique) detects when NQ sweeps a HTF level but ES does **not** sweep its corresponding level — indicating divergence between the two instruments.
+SMT (Smart Money Technique) detects when NQ sweeps a HTF level but ES does **not** sweep its corresponding level — indicating divergence between the two instruments. Exposed in the dashboard filter bar as "NQ-ES Divergence".
 
 ### Backtest (`model_stats.py`)
 - Loads `es_1m` data alongside `nq_1m`
 - Builds ES sweep-TF candles and checks the ES Q1 window at NQ sweep detection time
 - Each trade row carries a `smt` boolean
 - JSON output includes `smt_summary` with WR/EV/PF split for SMT vs non-SMT trades
-
-### Dashboard (`model_dashboard.html`)
-- SMT checkbox filter (unchecked by default)
-- When checked, filters all data: hero tiles, breakdowns, trades table, MAE/MFE studies
-
-### Results (1H_5M model)
-- SMT divergence: 90.2% WR / 10.2 PF
-- Non-SMT: 84.4% WR / 6.1 PF
 
 ## Risk Profiles (RR_PROFILES in model_stats.py)
 
