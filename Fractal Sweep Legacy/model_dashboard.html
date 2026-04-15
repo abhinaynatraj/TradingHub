@@ -254,6 +254,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 .filter-chk:has(input:checked){background:rgba(245,158,11,0.08);border-color:rgba(245,158,11,0.45);color:var(--text-primary);font-weight:600}
 .filter-group-confirm .filter-chk:has(input:checked){background:rgba(139,92,246,0.10);border-color:rgba(139,92,246,0.45)}
 .filter-group-confirm .filter-chk input[type=checkbox]{accent-color:#8b5cf6}
+.filter-delta{font-family:var(--font-data);font-size:10px;font-weight:600;margin-left:2px;padding:1px 4px;border-radius:3px;background:rgba(255,255,255,0.04);min-width:24px;text-align:center;letter-spacing:-0.02em}
 
 /* MODEL EXPLAINER */
 .model-explainer-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}
@@ -3786,6 +3787,77 @@ function renderActive(){
   const D = getActiveTFData(baseD);
   renderModel(getSmtD(D));
   renderProfileCompare();
+  updateFilterChipDeltas(D);
+}
+
+// ── FILTER CHIP DELTAS ────────────────────────────────────────────────────
+// For each filter chip, compute how many trades would be added (+) or
+// removed (−) if that single chip were toggled. Lets the user instantly
+// see which filters actually move the needle on the current view.
+function updateFilterChipDeltas(D){
+  const rt = D?.recent_trades || [];
+  if (!rt.length){
+    ['f1-checkbox','f3-checkbox','f4-checkbox','smt-checkbox','hour-aligned-checkbox','prior-counter-checkbox','prior-engulf-checkbox']
+      .forEach(id => _setChipDelta(id, null));
+    return;
+  }
+  // Helper that re-applies the full pipeline with one filter overridden.
+  function countWith(over){
+    let t = rt;
+    const f1 = over.f1 !== undefined ? over.f1 : activeF1;
+    const f3 = over.f3 !== undefined ? over.f3 : activeF3;
+    const f4 = over.f4 !== undefined ? over.f4 : activeF4;
+    const sm = over.smt !== undefined ? over.smt : activeSmt;
+    const hr = over.hr  !== undefined ? over.hr  : activeHourAligned;
+    const pc = over.pcc !== undefined ? over.pcc : activePriorCounterClose;
+    const pe = over.peng!== undefined ? over.peng: activePriorEngulfing;
+    if (f1) t = t.filter(x => x.passes_f1 !== false);
+    if (f3) t = t.filter(x => x.passes_f3 !== false);
+    if (f4) t = t.filter(x => x.passes_f4 !== false);
+    if (sm) t = t.filter(x => x.smt === true);
+    if (hr) t = t.filter(x => x.cisd_aligned === true);
+    if (pc) t = t.filter(x => x.prior_counter_close === true);
+    if (pe) t = t.filter(x => x.prior_engulfing === true);
+    return t.length;
+  }
+  const cur = countWith({});
+  const deltas = [
+    ['f1-checkbox',             countWith({f1:  !activeF1})              - cur],
+    ['f3-checkbox',             countWith({f3:  !activeF3})              - cur],
+    ['f4-checkbox',             countWith({f4:  !activeF4})              - cur],
+    ['smt-checkbox',            countWith({smt: !activeSmt})             - cur],
+    ['hour-aligned-checkbox',   countWith({hr:  !activeHourAligned})     - cur],
+    ['prior-counter-checkbox',  countWith({pcc: !activePriorCounterClose}) - cur],
+    ['prior-engulf-checkbox',   countWith({peng:!activePriorEngulfing})  - cur],
+  ];
+  deltas.forEach(([id, delta]) => _setChipDelta(id, delta));
+}
+
+function _setChipDelta(checkboxId, delta){
+  const chk = document.getElementById(checkboxId);
+  if (!chk) return;
+  const lbl = chk.closest('label.filter-chk');
+  if (!lbl) return;
+  let badge = lbl.querySelector('.filter-delta');
+  if (!badge){
+    badge = document.createElement('span');
+    badge.className = 'filter-delta';
+    lbl.appendChild(badge);
+  }
+  if (delta === null || delta === undefined){
+    badge.textContent = '';
+    return;
+  }
+  if (delta === 0){
+    badge.textContent = '·0';
+    badge.style.color = 'var(--text-muted)';
+    badge.style.opacity = '0.55';
+  } else {
+    const sign = delta > 0 ? '+' : '';
+    badge.textContent = `${sign}${delta}`;
+    badge.style.color = delta > 0 ? 'var(--green)' : 'var(--red)';
+    badge.style.opacity = '1';
+  }
 }
 
 function renderModel(D){
