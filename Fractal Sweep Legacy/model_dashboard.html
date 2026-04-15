@@ -244,9 +244,15 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 .sel-drop:hover{border-color:var(--border-hi);box-shadow:0 1px 4px rgba(0,0,0,0.12)}
 .sel-drop:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 2px rgba(52,211,153,0.15)}
 .sel-drop option{background:var(--bg-card);color:var(--text-primary)}
-/* Filter-group containers (Setup Quality + Add Confirmation) */
-.filter-group{margin-left:auto}
+/* Dedicated filter bar (Setup Quality + Add Confirmation) — sits below the
+   dropdown row so both groups stay left-aligned with the dropdowns above. */
+.filter-bar{background:var(--bg-card);border-bottom:1px solid var(--border);padding:10px 28px 14px;display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end}
+.filter-group{display:flex;flex-direction:column;gap:6px}
 .filter-group .sel-label{display:flex;align-items:baseline}
+.sel-label-hint{text-transform:none;font-weight:500;color:var(--text-muted);letter-spacing:0}
+/* Thin vertical separator between the two filter groups. Auto-hides when
+   the groups wrap to separate lines on narrow viewports. */
+.filter-divider{width:1px;align-self:stretch;background:var(--border);margin:0 4px}
 .filter-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .filter-chk{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-family:var(--font-data);font-size:12px;font-weight:500;color:var(--text-secondary);user-select:none;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg-raised);transition:background .12s,border-color .12s,color .12s}
 .filter-chk:hover{border-color:var(--border-hi);color:var(--text-primary)}
@@ -255,6 +261,8 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 .filter-group-confirm .filter-chk:has(input:checked){background:rgba(139,92,246,0.10);border-color:rgba(139,92,246,0.45)}
 .filter-group-confirm .filter-chk input[type=checkbox]{accent-color:#8b5cf6}
 .filter-delta{font-family:var(--font-data);font-size:10px;font-weight:600;margin-left:2px;padding:1px 4px;border-radius:3px;background:rgba(255,255,255,0.04);min-width:24px;text-align:center;letter-spacing:-0.02em}
+/* When the filter bar wraps narrow, hide the divider so groups stack cleanly. */
+@media (max-width: 900px){.filter-divider{display:none}}
 
 /* MODEL EXPLAINER */
 .model-explainer-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}
@@ -324,8 +332,12 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
     <label class="sel-label">Risk Profile</label>
     <select id="profile-select" class="sel-drop" onchange="switchProfile(this.value)"></select>
   </div>
-  <div class="sel-group filter-group filter-group-quality">
-    <label class="sel-label">Setup Quality &nbsp;<span style="text-transform:none;font-weight:500;color:var(--text-muted);letter-spacing:0;">— uncheck to relax</span></label>
+</div>
+
+<!-- Filter bar: runtime-toggleable filters, dedicated row below the dropdowns -->
+<div class="filter-bar">
+  <div class="filter-group filter-group-quality">
+    <label class="sel-label">Setup Quality &nbsp;<span class="sel-label-hint">— uncheck to relax</span></label>
     <div class="filter-row">
       <label class="filter-chk" title="The sweep was a wick, not a breakout. Rejects sweeps that pierced more than 50% of the prior candle's range. Deep penetration looks like real momentum, not a liquidity grab.">
         <input type="checkbox" id="f3-checkbox" checked onchange="switchF3(this.checked)">
@@ -337,8 +349,9 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
       </label>
     </div>
   </div>
-  <div class="sel-group filter-group filter-group-confirm">
-    <label class="sel-label">Add Confirmation &nbsp;<span style="text-transform:none;font-weight:500;color:var(--text-muted);letter-spacing:0;">— check to narrow</span></label>
+  <div class="filter-divider" aria-hidden="true"></div>
+  <div class="filter-group filter-group-confirm">
+    <label class="sel-label">Add Confirmation &nbsp;<span class="sel-label-hint">— check to narrow</span></label>
     <div class="filter-row">
       <label class="filter-chk" title="NQ swept the prior level but ES did not sweep its corresponding level. Indicates one index is leading the other — historically a much higher-WR setup.">
         <input type="checkbox" id="smt-checkbox" onchange="switchSMT(this.checked)">
