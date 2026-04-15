@@ -304,7 +304,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
     <div class="hdr-sub" id="hdr-sub">Multi-TF Probability Engine · NQ</div>
   </div>
   <div class="hdr-right">
-    <div class="demo-badge" id="demo-badge">⚠ Demo Data</div>
+    <div class="demo-badge" id="demo-badge" style="display:none">⚠ Demo Data</div>
     <button class="load-btn" onclick="document.getElementById('json-loader').click()">↑ Load model_stats.json</button>
     <button class="theme-toggle" id="theme-toggle" title="Toggle theme">☀</button>
   </div>
@@ -398,7 +398,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 </div>
 
 <main class="main">
-  <div class="infobar" id="infobar">
+  <div class="infobar" id="infobar" style="display:none">
     Demo data shown. Run <code>python3 model_stats.py</code> to generate all 4 variants (4 models × PREV sweep × CISD), then load the JSON.<br/>
     <strong>PREV</strong> = prior candle's high/low &nbsp;·&nbsp;
     <strong>CISD</strong> = close beyond the <em>open of the first candle</em> of the opposing delivery leg
