@@ -163,7 +163,6 @@ MODELS = {
         sweep_tf_min = 4 * 60,
         cisd_tf_min  = 15,
         q1_min       = 60,
-        min_range    = 30,
         session_hrs  = (7.0, 16.0),
     ),
     '1H_5M': dict(
@@ -171,7 +170,6 @@ MODELS = {
         sweep_tf_min = 60,
         cisd_tf_min  = 5,
         q1_min       = 15,
-        min_range    = 12,
         session_hrs  = (7.0, 16.0),
     ),
     '1H_3M': dict(
@@ -179,7 +177,6 @@ MODELS = {
         sweep_tf_min = 60,
         cisd_tf_min  = 3,
         q1_min       = 15,
-        min_range    = 12,
         session_hrs  = (7.0, 16.0),
     ),
     '30M_3M': dict(
@@ -187,7 +184,6 @@ MODELS = {
         sweep_tf_min = 30,
         cisd_tf_min  = 3,
         q1_min       = 8,
-        min_range    = 8,
         session_hrs  = (7.0, 16.0),
     ),
 }
@@ -1076,7 +1072,6 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                             base_risk, direction} for every valid entry.
     """
     q1_min    = model_cfg['q1_min']
-    min_range = model_cfg['min_range']
     sess_hrs  = model_cfg['session_hrs']
     label     = f"{model_key}_PREV_CISD"
 
@@ -1217,14 +1212,11 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
 
             # Compute each filter condition INDEPENDENTLY (no short-circuit).
             # rejected_by still gets a single first-match code for legacy
-            # stat code paths, but passes_f1/f3/f4 reflect the true condition
+            # stat code paths, but passes_f3/f4 reflect the true condition
             # for each filter so they can be toggled independently in the UI.
-            passes_f1 = bool(ref_range >= min_range)
             passes_f3 = bool(ref_range <= 0 or (sweep_ext / ref_range) <= SWEEP_MAX_PCT)
             rejected_by = ''
-            if not passes_f1:
-                rejected_by = 'F1_SMALL_RANGE'
-            elif not passes_f3:
+            if not passes_f3:
                 rejected_by = 'F3_SWEEP_TOO_LARGE'
 
             post_s = pos + 1
@@ -1245,8 +1237,8 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
             ret_ts_ns = int(q1_ts[ret_idx])
 
             # F4: Close-Back Required — computed independently regardless of
-            # whether F1 or F3 already flagged the trade. A trade rejected by
-            # F1 can still have valid F4 behavior.
+            # whether F3 already flagged the trade. A trade rejected by F3
+            # can still have valid F4 behavior.
             if direction == 'SHORT':
                 passes_f4 = bool(ret_close <= ref_level)
             else:
@@ -1295,7 +1287,6 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                 sweep_pct     = round(sweep_ext / ref_range, 3) if ref_range > 0 else 0,
                 sweep_extreme = round(float(sweep_extreme), 2),
                 sweep_mode    = 'PREV',
-                passes_f1           = passes_f1,
                 passes_f3           = passes_f3,
                 passes_f4           = passes_f4,
                 prior_counter_close = prior_counter_close,
@@ -1554,7 +1545,7 @@ def agg(g):
 def build_model_stats(df_raw, trading_days, model_key, model_cfg,
                       stop_mult=1.0, target_mult=2.0, profile_key='1:2',
                       profile_type='mult'):
-    # `df` / `wl` = tightly-filtered set (F1+F3+F4 all passing). All the
+    # `df` / `wl` = tightly-filtered set (F3+F4 all passing). All the
     # pre-computed stats (hero tiles, MAE study, filter impact, heatmap,
     # by_hour, by_dow, etc.) operate on this set — it's the "default view"
     # the user sees when all three F-checkboxes are enabled.
@@ -1562,13 +1553,10 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
     wl   = df[df['outcome'].isin(['WIN','LOSS'])].copy()
     wl['win'] = (wl['outcome'] == 'WIN').astype(int)
 
-    # `wl_full` = WIN/LOSS trades regardless of F1/F3/F4 rejection, EXCLUDING
+    # `wl_full` = WIN/LOSS trades regardless of F3/F4 rejection, EXCLUDING
     # system-level skips (NO_CISD, INVALID_RISK, RISK_TOO_LARGE). This is the
-    # trade set that gets serialized as `recent_trades`, with passes_f1/f3/f4
+    # trade set that gets serialized as `recent_trades`, with passes_f3/f4
     # booleans so the dashboard can toggle F-filters on/off at runtime.
-    # F1 (min prior range) is now baked-in baseline — always applied, never
-    # exposed as a runtime toggle. Only F3/F4 rejected trades stay in wl_full
-    # for runtime toggling.
     FTOGGLE_REJECTS = {'', 'F3_SWEEP_TOO_LARGE', 'F4_NO_CLOSE_BACK'}
     wl_full = df_raw[
         df_raw['rejected_by'].isin(FTOGGLE_REJECTS) &
@@ -1747,9 +1735,8 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
             overall=agg(grp), heatmap=hm, by_hour=bh, by_dow=bd, top_combos=tc[:10])
 
     # All resolved trades (including F3/F4-rejected ones, so the dashboard can
-    # toggle F3/F4 on/off at runtime). F1 (min prior range) is baked-in and
-    # F1-rejected trades are excluded from wl_full, so passes_f1 is omitted.
-    # System-level skips (NO_CISD, INVALID_RISK, RISK_TOO_LARGE) stay excluded.
+    # toggle F3/F4 on/off at runtime). System-level skips (NO_CISD,
+    # INVALID_RISK, RISK_TOO_LARGE) stay excluded.
     recent_cols = ['date','direction','hr','mn','session','dow','entry_price',
                    'sweep_extreme','target_price','risk_pts','r','outcome',
                    'mae_pct','mfe_pct','mae_pct_hr','mfe_pct_hr','hour_range_pts','smt',
@@ -2084,12 +2071,12 @@ def _build_slice_stats(wl_sub, stop_mult, target_mult, agg_fn, hr_labels,
     """Build compact stats for a sub-timeframe slice. Used by _compute_by_tf and
     per-TF split profile resolution.
 
-    `wl_sub` is the baseline-filtered set (F1+F3+F4 PASS) — used for all the
+    `wl_sub` is the baseline-filtered set (F3+F4 PASS) — used for all the
     precomputed stats (meta/by_hour/by_dow/etc).
 
     `wl_sub_full`, if provided, is the same period slice but INCLUDING trades
-    rejected by F1/F3/F4. It is used only to source the `recent_trades` array
-    so the dashboard can toggle F1/F3/F4 on/off at runtime. If omitted, falls
+    rejected by F3/F4. It is used only to source the `recent_trades` array
+    so the dashboard can toggle F3/F4 on/off at runtime. If omitted, falls
     back to `wl_sub` (legacy behavior — F-toggle becomes a no-op for callers
     that don't supply the full set).
     """
@@ -2186,7 +2173,7 @@ def _build_slice_stats(wl_sub, stop_mult, target_mult, agg_fn, hr_labels,
         {'bucket': f'-1R (loss)', 'n': n - wins, 'fill': 'loss'},
         {'bucket': f'{rr_actual}R (target)', 'n': wins, 'fill': 'win'},
     ]
-    # recent trades — source from wl_sub_full when available so F1/F3/F4 toggles
+    # recent trades — source from wl_sub_full when available so F3/F4 toggles
     # work on Period sub-slices. Falls back to wl_sub for legacy callers.
     recent_cols = ['date','direction','hr','mn','session','dow','entry_price',
                    'sweep_extreme','target_price','risk_pts','r','outcome',
@@ -2247,12 +2234,12 @@ def _compute_by_tf(wl, wl_sorted, stop_mult, target_mult,
                    wl_full=None) -> dict:
     """Compute compact hero+chart stats for each sub-timeframe slice.
 
-    `wl` is baseline-filtered (F1+F3+F4 PASS). It drives the precomputed
+    `wl` is baseline-filtered (F3+F4 PASS). It drives the precomputed
     stats (meta, by_hour, by_dow, dir_summary, etc) in each sub-slice.
 
     `wl_full`, if supplied, is the WIN/LOSS set INCLUDING trades rejected by
-    F1/F3/F4. It is used only to source the per-slice `recent_trades` array
-    so the dashboard can runtime-toggle F1/F3/F4 on every Period selection
+    F3/F4. It is used only to source the per-slice `recent_trades` array
+    so the dashboard can runtime-toggle F3/F4 on every Period selection
     (not just 'all time').
     """
     from datetime import date, timedelta
@@ -2299,12 +2286,11 @@ def _compute_by_tf(wl, wl_sorted, stop_mult, target_mult,
 
 
 def compute_filter_impact(df_all):
-    FILTER_ORDER  = ['F1_SMALL_RANGE','F3_SWEEP_TOO_LARGE',
-                     'F4_NO_CLOSE_BACK','NO_CISD','INVALID_RISK','RISK_TOO_LARGE']
+    FILTER_ORDER  = ['F3_SWEEP_TOO_LARGE','F4_NO_CLOSE_BACK',
+                     'NO_CISD','INVALID_RISK','RISK_TOO_LARGE']
     FILTER_LABELS_MAP = {
-        'F1_SMALL_RANGE':    'F1: Prior Range Floor',
-        'F3_SWEEP_TOO_LARGE':'F3: Sweep Max Cap',
-        'F4_NO_CLOSE_BACK':  'F4: Close-Back Required',
+        'F3_SWEEP_TOO_LARGE':'Shallow Sweep',
+        'F4_NO_CLOSE_BACK':  'Closed Back Inside',
         'NO_CISD':           'No CISD Formed',
         'INVALID_RISK':      'Invalid Risk (< min)',
         'RISK_TOO_LARGE':    'Risk Too Large (> $225 MNQ)',
@@ -2345,8 +2331,6 @@ def compute_filter_variants(df_all):
       - cumulative_additive: adding filters one at a time in optimal order
       - best_combo: the filter combination that maximizes EV
     """
-    # F1 (min prior range) is baked-in baseline — not exposed as a runtime
-    # toggle, so it's excluded from filter-variant combinatorics.
     FILTERS = ['F3_SWEEP_TOO_LARGE', 'F4_NO_CLOSE_BACK',
                'SMT', 'HOUR_ALIGNED', 'PRIOR_COUNTER_CLOSE', 'PRIOR_ENGULFING']
     FILTER_LABELS = {
@@ -2436,7 +2420,7 @@ def compute_filter_variants(df_all):
     # are off by default and appear in individual_removal as "Add X".
     STD_FILTERS = [f for f in FILTERS if f not in POSITIVE_FILTERS]
 
-    # Current production baseline (F1 + F3 + F4, no SMT)
+    # Current production baseline (F3 + F4, no SMT)
     fully_filtered = apply_filters(STD_FILTERS)
     baseline = stats_of(fully_filtered)
     baseline['label'] = 'All Filters (current)'
@@ -2714,8 +2698,7 @@ def main():
                     if len(_tf_wl) < 3:
                         continue
                     # Sibling slice including F-rejected trades, for runtime
-                    # F1/F3/F4 toggling on this Period sub-slice.
-                    # F1 is baked-in baseline; only F3/F4 stay toggleable at runtime.
+                    # F3/F4 toggling on this Period sub-slice.
                     _FTOGGLE = {'','F3_SWEEP_TOO_LARGE','F4_NO_CLOSE_BACK'}
                     _tf_wl_full = _tf_df[
                         (_tf_df['date'].astype(str).str[:10] >= _cutoff) &

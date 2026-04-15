@@ -40,7 +40,7 @@ class TestComputeFilterImpact:
         df = _make_filtered_df()
         result = ms.compute_filter_impact(df)
         filter_codes = [r.get('filter_code') for r in result[1:] if 'filter_code' in r]
-        expected_order = ['F1_SMALL_RANGE', 'F3_SWEEP_TOO_LARGE', 'F4_NO_CLOSE_BACK',
+        expected_order = ['F3_SWEEP_TOO_LARGE', 'F4_NO_CLOSE_BACK',
                           'NO_CISD', 'INVALID_RISK', 'RISK_TOO_LARGE']
         for code in filter_codes:
             assert code in expected_order

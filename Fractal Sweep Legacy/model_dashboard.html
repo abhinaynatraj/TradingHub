@@ -802,7 +802,6 @@ const SVG_FONT = "'JetBrains Mono',monospace";
 function makeDemoModel(key, label, mode, cisd, wrBase, evBase, pfBase, riskMed, spd){
   const fi=[
     {label:'Baseline (unfiltered)',n:Math.round(6200*(riskMed/18)),wr:wrBase-0.07,ev:evBase-0.22,pf:pfBase-0.58,removed:0},
-    {label:'Min Range (baked-in)',n:Math.round(5800*(riskMed/18)),wr:wrBase-0.05,ev:evBase-0.16,pf:pfBase-0.44,removed:Math.round(400*(riskMed/18))},
     {label:'Shallow Sweep',n:Math.round(4900*(riskMed/18)),wr:wrBase-0.02,ev:evBase-0.06,pf:pfBase-0.20,removed:Math.round(200*(riskMed/18))},
     {label:'Closed Back Inside',n:Math.round(4200*(riskMed/18)),wr:wrBase-0.01,ev:evBase-0.03,pf:pfBase-0.10,removed:Math.round(700*(riskMed/18))},
     {label:'CISD',n:Math.round(3400*(riskMed/18)),wr:wrBase,ev:evBase,pf:pfBase,removed:Math.round(800*(riskMed/18))},
@@ -918,8 +917,7 @@ let activeProfile = 'structural_dynamic';
 let activeTF      = 'all';  // 'all' | '2y' | '1y' | '6m' | '3m' | '1m'
 // F3/F4 are "rejection" filters — default CHECKED (active). Unchecking
 // lets F-rejected trades through. SMT/Hour-Aligned/Prior-* are "positive"
-// filters, default UNCHECKED. F1 (min prior range) is baked-in baseline
-// and not exposed as a runtime toggle.
+// filters, default UNCHECKED.
 let activeF3                = true;   // filter to passes_f3===true
 let activeF4                = true;   // filter to passes_f4===true
 let activeSmt               = false;  // filter to smt===true
@@ -3584,7 +3582,7 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
 // so hero tiles, by_hour, by_session, by_dow, and dir_summary all reflect SMT-only trades.
 // Combined filter entry point: applies all 6 runtime filters individually.
 //
-// F1/F3/F4 default CHECKED (active) — they're the baseline quality filters.
+// F3/F4 default CHECKED (active) — they're the baseline quality filters.
 // When a checkbox is unchecked the corresponding F-rejected trades are
 // included in the view.
 //
@@ -5137,7 +5135,7 @@ function renderProfileComparison(targetEl, dateRanges, tradeDateSet) {
     let wr, ev, pf, n, sharpe, maxDD, totalPnl, minEq, blown, mcw, mcl;
 
     // Determine if we need to recompute from trades. Recompute when:
-    //   - any filter toggle deviates from baseline (F1+F3+F4 on, others off),
+    //   - any filter toggle deviates from baseline (F3+F4 on, others off),
     //   - a custom date range is active, or
     //   - an exact trade-date set is active.
     const needsRecompute = hasNonBaselineFilters() || dateRanges || tradeDateSet;
@@ -5151,7 +5149,7 @@ function renderProfileComparison(targetEl, dateRanges, tradeDateSet) {
       else if (dateRanges && dateRanges.length > 0) {
         trades = trades.filter(t => dateRanges.some(r => t.date >= r.start && t.date <= r.end));
       }
-      // Apply full 7-filter pipeline (F1/F3/F4/SMT/Hour/PriorCC/PriorEng)
+      // Apply full 6-filter pipeline (F3/F4/SMT/Hour/PriorCC/PriorEng)
       trades = getSmtFilteredTrades(trades);
       const s = statsFromTrades(trades);
       ({wr, ev, pf, n, sharpe, maxDD, totalPnl, minEq, blown, mcw, mcl} = s);
@@ -5423,14 +5421,6 @@ function renderFilterVariants(D, targetEl) {
   }
 
   // Filter legend
-  const modelKey = activeModel || '1H_5M';
-  const modelCfg = {
-    '4H_15M': {min_range: 30, sweep_tf: '4H'},
-    '1H_5M':  {min_range: 12, sweep_tf: '1H'},
-    '1H_3M':  {min_range: 12, sweep_tf: '1H'},
-    '30M_3M': {min_range: 8,  sweep_tf: '30M'},
-  }[modelKey] || {min_range: 12, sweep_tf: '1H'};
-
   html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow)">
     <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">Filter Definitions</div>
     <table style="width:100%;border-collapse:collapse;font-size:12px;font-family:var(--font-data)">
@@ -5439,11 +5429,6 @@ function renderFilterVariants(D, targetEl) {
         <th style="padding:8px 10px;text-align:left;color:var(--text-muted)">What it does</th>
         <th style="padding:8px 10px;text-align:left;color:var(--text-muted);width:200px">Parameter</th>
       </tr></thead><tbody>
-      <tr style="border-bottom:1px solid color-mix(in srgb,var(--border) 40%,transparent)">
-        <td style="padding:6px 10px;font-weight:700;color:var(--text-muted)">Min Range (baked-in)</td>
-        <td style="padding:6px 10px;color:var(--text-primary)">Always-on baseline. Rejects setups where the prior HTF candle's range is too small — tiny candles produce unreliable levels. Not exposed as a runtime toggle.</td>
-        <td style="padding:6px 10px;color:var(--text-muted);font-family:var(--font-data)">min_range = <span style="color:var(--text-primary);font-weight:600">${modelCfg.min_range} pts</span> (${modelCfg.sweep_tf})</td>
-      </tr>
       <tr style="background:color-mix(in srgb,var(--bg-raised) 60%,transparent);border-bottom:1px solid color-mix(in srgb,var(--border) 40%,transparent)">
         <td style="padding:6px 10px;font-weight:700;color:var(--text-primary)">Shallow Sweep</td>
         <td style="padding:6px 10px;color:var(--text-primary)">Rejects sweeps that penetrate too far beyond the prior candle's range — deep sweeps indicate momentum, not manipulation</td>
