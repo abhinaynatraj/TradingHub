@@ -199,25 +199,6 @@ if is_new_anchor
             break
         if low[k] <= anc_lo + _tol
             anc_lo_bar := bar_index - k
-    // Pre-seed: did the prior HTF candle itself sweep beyond prev-prev range?
-    if not na(prev2_high) and not na(prev2_low)
-        pp_range = prev2_high - prev2_low
-        if prior_high > prev2_high and prior_close <= prev2_high
-            swept_short      := true
-            sweep_ext_short  := prior_high
-            sweep_bar_short  := bar_index - 1
-            ret_short        := true
-            ret_bar_short    := bar_index - 1
-            anc_hi := prev2_high
-            anc_lo := prev2_low
-        if prior_low < prev2_low and prior_close >= prev2_low
-            swept_long       := true
-            sweep_ext_long   := prior_low
-            sweep_bar_long   := bar_index - 1
-            ret_long         := true
-            ret_bar_long     := bar_index - 1
-            anc_hi := prev2_high
-            anc_lo := prev2_low
 
 // ── BAR COUNTER + RUNNING SWEEP EXTREMES ─────────────────────────────────────
 elapsed += 1
