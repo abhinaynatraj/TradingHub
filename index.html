@@ -679,31 +679,6 @@ main {
       </div>
     </div>
 
-    <!-- NY1 FPFVG -->
-    <div class="model-panel">
-      <div class="model-panel-hd">
-        <div class="model-panel-icon">🎯</div>
-        <div>
-          <div class="model-panel-title">NY1 F.P.FVG — First Presented Fair Value Gap</div>
-          <div class="model-panel-sub">9:31–10:00 ET window · Fixed % Stop · Fixed % TP</div>
-        </div>
-      </div>
-      <div class="model-panel-body">
-        <ul class="rule-list green" style="margin-bottom:16px;">
-          <li><strong>FVG Detection:</strong> First 3-candle fair value gap forming between 9:31–9:59 ET (9:30 excluded — institutional open noise)</li>
-          <li><strong>Direction:</strong> C2 bullish body → LONG FVG · C2 bearish body → SHORT FVG</li>
-          <li><strong>Entry:</strong> Limit at FVG boundary on retrace (C3.low LONG / C3.high SHORT) · <strong>Stop:</strong> C1 extreme</li>
-          <li><strong>TP1 (PTQ):</strong> +10 basis points (0.10%) from entry — 50% of position exits. Runner (50%) moves to breakeven, held to 16:00 EOD</li>
-        </ul>
-        <div class="kv-grid">
-          <div class="kv-item"><div class="kv-key">TP1 Target</div><div class="kv-val green">10 bps</div></div>
-          <div class="kv-item"><div class="kv-key">Position Split</div><div class="kv-val">50 / 50</div></div>
-          <div class="kv-item"><div class="kv-key">Window</div><div class="kv-val amber">9:31–10:00</div></div>
-          <div class="kv-item"><div class="kv-key">Instrument</div><div class="kv-val">NQ</div></div>
-        </div>
-      </div>
-    </div>
-
     <!-- Stack & infrastructure -->
     <div class="model-panel">
       <div class="model-panel-hd">
@@ -793,18 +768,6 @@ const PROJECTS = [
     type:     'sweep',
     stats:    null,
   },
-  {
-    id:       'ny1',
-    title:    'NY1 F.P.FVG',
-    subtitle: 'First Presented Fair Value Gap · 9:31–10:00 ET · Structural Stop',
-    desc:     'Scans 9:31–9:59 ET for the first 3-candle FVG. Enters Long at C3.low / Short at C3.high with a fixed % stop and fixed % TP. 10 combos ranked by Certainty Equivalent across 2,721 trades from 2014–2026.',
-    json:     'NY1 FPFVG/ny1_results.json',
-    link:     'NY1 FPFVG/index.html',
-    color:    '#10b981',
-    icon:     '🎯',
-    type:     'ny1',
-    stats:    null,
-  },
 ];
 
 // ── Load JSON and extract key stats ──────────────────────────────────────────
@@ -849,40 +812,6 @@ async function loadStats(project) {
       };
     }
 
-    if (project.type === 'ny1') {
-      // Load real scan results dynamically
-      let NY1_COMBOS = [];
-      try {
-        const scanRes = await fetch('NY1 FPFVG/fixed_scan_results.json');
-        if (scanRes.ok) {
-          const scanData = await scanRes.json();
-          NY1_COMBOS = (scanData.fpfvg_combos_on_ny1 || []).map((c, i) => ({
-            rank:    c.rank || i + 1,
-            label:   `SL ${(c.sl_pct).toFixed(2)}% / TP ${(c.tp_pct).toFixed(2)}%`,
-            rr:      c.rr,
-            wr:      c.win_rate,
-            ev_r:    c.ev_r,
-            pf:      c.pf,
-            ce:      c.ce,
-            pl:      Math.round(c.final_equity - 4500),
-            sharpe:  c.sharpe,
-            blown:   c.blown,
-          }));
-        }
-      } catch(e) { /* use empty */ }
-      const top = NY1_COMBOS[0];
-      const m1 = d?.all?.profiles?.open_run?.meta || {};
-      if (!top) return null;
-      const bestWR = Math.max(...NY1_COMBOS.map(c => c.wr));
-      return {
-        label1: 'Best CE',  val1: top.ce.toFixed(3),   cls1: 'pos',
-        label2: 'Best WR',  val2: pct(bestWR),          cls2: 'pos',
-        label3: 'Trades',   val3: num(m1.n || top.trades), cls3: 'neutral',
-        dateRange: m1.date_range || '—',
-        combos10: NY1_COMBOS.slice(0, 4),
-      };
-    }
-
   } catch(e) {
     return null;
   }
@@ -915,10 +844,6 @@ function buildCard(p) {
     </div>
   `;
 
-  const compHtml = s?.combos10       ? buildNy1RankingsTable(s.combos10)
-                 : s?.profileRows   ? buildNy1ProfileTable(s.profileRows)
-                 : '';
-
   return `
   <div class="project-card" id="card-${p.id}">
     <div class="card-accent" style="background:${p.color};"></div>
@@ -931,7 +856,6 @@ function buildCard(p) {
       <div class="card-subtitle">${s?.subtitle2 || p.subtitle}</div>
       <p class="card-desc">${p.desc}</p>
       ${statsHtml}
-      ${compHtml}
     </div>
     <div class="card-footer">
       <div class="card-date-range">${s?.dateRange || '—'}</div>
@@ -944,70 +868,6 @@ function buildCard(p) {
       </a>
     </div>
   </div>`;
-}
-
-function buildNy1RankingsTable(combos) {
-  const fmtPL = v => (v >= 0 ? '+$' : '-$') + Math.abs(v).toLocaleString('en-US', {maximumFractionDigits:0});
-  const vcls  = v => v > 0 ? 'pos' : v < 0 ? 'neg' : '';
-  const rows = combos.map(c => {
-    const blownVal = c.blown ? 'Yes' : 'No';
-    const blownCls = c.blown ? 'neg' : 'pos';
-    return `<tr>
-      <td style="font-weight:700;color:var(--text-sub);">${c.rank}</td>
-      <td style="color:var(--text-sub);font-size:11px;">${c.label}</td>
-      <td style="text-align:right;">${c.rr.toFixed(2)}</td>
-      <td class="stat-val ${vcls(c.wr - 0.5)}" style="font-size:11px;text-align:right;">${pct(c.wr)}</td>
-      <td class="stat-val ${vcls(c.ev_r)}" style="font-size:11px;text-align:right;">${c.ev_r >= 0 ? '+' : ''}${c.ev_r.toFixed(3)}</td>
-      <td style="text-align:right;color:var(--text-sub);font-size:11px;">${c.pf.toFixed(3)}</td>
-      <td class="stat-val ${vcls(c.ce)}" style="font-size:11px;text-align:right;">${c.ce.toFixed(3)}</td>
-      <td class="stat-val ${vcls(c.pl)}" style="font-size:11px;text-align:right;">${fmtPL(c.pl)}</td>
-      <td style="text-align:right;color:var(--text-sub);font-size:11px;">${c.sharpe.toFixed(1)}</td>
-      <td class="stat-val ${blownCls}" style="font-size:11px;text-align:right;">${blownVal}</td>
-    </tr>`;
-  }).join('');
-  return `
-    <div style="margin-bottom:18px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
-      <div style="padding:8px 10px;border-bottom:1px solid var(--border);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);">
-        Top ${combos.length} Combos · Ranked by CE · $4,500 acct · $225/trade
-      </div>
-      <div style="overflow-x:auto;">
-        <table class="sweep-sub-table" style="min-width:560px;">
-          <thead><tr>
-            <th>#</th><th>SL / TP</th>
-            <th style="text-align:right;">R:R</th>
-            <th style="text-align:right;">WR</th>
-            <th style="text-align:right;">EV(R)</th>
-            <th style="text-align:right;">PF</th>
-            <th style="text-align:right;">CE</th>
-            <th style="text-align:right;">P&amp;L</th>
-            <th style="text-align:right;">Sharpe</th>
-            <th style="text-align:right;">Blown</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </div>`;
-}
-
-function buildNy1ProfileTable(profileRows) {
-  const rows = profileRows.map(r => {
-    const wrCls = r.wr >= 0.55 ? 'pos' : r.wr <= 0.42 ? 'neg' : '';
-    return `<tr>
-      <td style="color:var(--text-sub);">${r.name}</td>
-      <td class="stat-val ${wrCls}" style="font-size:12px;">${pct(r.wr)}</td>
-      <td style="color:var(--text-muted);font-size:12px;">${num(r.n)}</td>
-    </tr>`;
-  }).join('');
-  return `
-    <div style="margin-bottom:18px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
-      <div style="padding:8px 10px;border-bottom:1px solid var(--border);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);">
-        Risk Profiles
-      </div>
-      <table class="sweep-sub-table">
-        <thead><tr><th>Profile</th><th>WR%</th><th>N</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

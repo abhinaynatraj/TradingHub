@@ -10,9 +10,8 @@ A personal trading research hub for NQ and ES futures. Multiple statistical back
 
 | Folder | What it does |
 |---|---|
-| `Fractal Sweep/` | **Fixed Constant + TTFM models** — doctrine-compliant range anchor backtests (Fixed Constant is the primary dashboard) |
+| `Fractal Sweep/` | **Fixed Constant + TTFM + original sweep+CISD engines** — doctrine-compliant locked-anchor backtests (Fixed Constant is the primary dashboard linked from the hub) |
 | `Fractal Sweep Legacy/` | **Sweep + CISD model** — the original sweep-of-prior-high/low setup with CISD confirmation, risk profiles, equity tracking. Still actively maintained as a separate strategy. |
-| `NY1 FPFVG/` | **NY1 Fair Value Gap Model** — first presented FVG in the 9:31–9:59 ET opening window on NQ 1-minute |
 | `TTrades Fractal Model Analysis/` | **TTrades Fractal Model** — T-Spot zone entry backtest based on sweep + zone-touch mechanic |
 
 The root `index.html` is a **hub page** that links to all the dashboards from one place.
@@ -125,7 +124,7 @@ Open your web browser (Chrome, Firefox, Safari, Edge — any of them) and go to:
 http://localhost:8001
 ```
 
-You'll see the **Statistic.ally** hub page with links to all three dashboards.
+You'll see the **Statistic.ally** hub page, which links the Fractal Sweep Fixed Constant dashboard. The TTFM, sweep+CISD, and Legacy dashboards open from their respective folders via direct URL.
 
 > **Tip:** Bookmark `http://localhost:8001` so you can come back to it easily.
 
@@ -133,7 +132,7 @@ You'll see the **Statistic.ally** hub page with links to all three dashboards.
 
 ## About the Data
 
-Most dashboards load from pre-computed JSON files that are included in this repo (`ny1_results.json`, `ttfm_results.json`, etc.). Two exceptions:
+Most dashboards load from pre-computed JSON files that are included in this repo (`ttfm_results.json`, `model_stats.json`, etc.). Two exceptions:
 
 - **`Fractal Sweep/model_stats_fixed_constant.json`** — the Fixed Constant results file exceeds GitHub's 100 MB per-file limit, so it's gitignored. Run `python3 Fractal\ Sweep/model_stats_fixed_constant.py` once locally to generate it (~20 seconds). The dashboard shows a "Run the engine" fallback if it's missing.
 - **`Fractal Sweep Legacy/model_stats.json`** — same story. Run `python3 Fractal\ Sweep\ Legacy/model_stats.py` once to generate.
@@ -147,8 +146,7 @@ If you want to re-run the other backtests to update with newer data, see the REA
 ```
 Statistic.ally/
 ├── index.html                                ← Hub page (open this in browser)
-├── mae_mfe_guide.html                        ← MAE/MFE reference guide
-├── Fractal Sweep/                            [Fixed Constant + TTFM]
+├── Fractal Sweep/                            [Fixed Constant · TTFM · sweep+CISD]
 │   ├── model_dashboard_fixed_constant.html   ← Fixed Constant dashboard (primary)
 │   ├── model_dashboard_ttfm.html             ← TTFM dashboard
 │   ├── model_stats_fixed_constant.py         ← Fixed Constant engine
@@ -162,10 +160,6 @@ Statistic.ally/
 │   ├── candle_science.duckdb                 ← Symlink to ../Fractal Sweep/candle_science.duckdb
 │   ├── LEGACY_NOTE.md                        ← Change history since snapshot
 │   └── tests/                                ← pytest suite
-├── NY1 FPFVG/
-│   ├── index.html                            ← NY1 FVG dashboard
-│   ├── ny1_backtest.py                       ← Backtest engine
-│   └── ny1_results.json                      ← Pre-computed results
 └── TTrades Fractal Model Analysis/
     ├── index.html                            ← TTrades dashboard
     ├── ttfm_backtest.py                      ← Backtest engine

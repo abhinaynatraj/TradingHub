@@ -19,16 +19,9 @@ show_debug    = input.bool(false, "Show Debug Labels", group=G8)
 max_setups    = input.int(5, "Max Setups to Show", group=G8, minval=1, maxval=20, tooltip="How many past setups stay visible on the chart. Increase for journaling/review.")
 show_midlines = input.bool(true, "Show 50% Midpoint Lines", group=G8, tooltip="Dashed lines at 50% of risk zone (Move to BE) and 50% of reward zone (Take Partial)")
 
-var string G9 = "Split Profile"
-use_split       = input.bool(false,   "Use Split Profile", group=G9, tooltip="TP1 @ PTQ%, SL = min(struct, MAE p90%). Values from backtest dashboard.")
-split_ptq_pct   = input.float(0.42,   "TP1 PTQ %", group=G9, step=0.01, tooltip="PTQ level from MFE study (e.g. 0.42 = 0.42% of entry price)")
-split_p50_pct   = input.float(1.12,   "TP2 p50 MFE %", group=G9, step=0.01, tooltip="Median winner MFE — runner target (10% position)")
-split_mae_pct   = input.float(0.36,   "SL MAE p90 %", group=G9, step=0.01, tooltip="MAE p90 of winners — SL cap. SL = min(sweep extreme, entry × MAE p90%)")
-split_tp1_size  = input.float(90.0,   "TP1 Exit %", group=G9, step=5.0, minval=50, maxval=100, tooltip="% of position to exit at TP1")
-
 var string G3 = "R:R Box"
 rr_extend      = input.int(20,    "Box Width (bars)", group=G3, minval=5, maxval=100)
-rr_ratio       = input.float(1.0, "R:R Target", group=G3, step=0.5, minval=0.5, tooltip="e.g. 2 = TP at 2R. Ignored when Split Profile is on.")
+rr_ratio       = input.float(1.0, "R:R Target", group=G3, step=0.5, minval=0.5, tooltip="e.g. 2 = TP at 2R. Default 1R matches the backtest simple_1r profile.")
 rr_risk_col    = input.color(color.new(#ef4444, 85), "Risk Zone Fill",    group=G3)
 rr_risk_border = input.color(color.new(#ef4444, 40), "Risk Zone Border",  group=G3)
 rr_rew_col     = input.color(color.new(#06b6d4, 85), "Reward Zone Fill",  group=G3, tooltip="Cyan by default — separates from bullish green candles")
@@ -69,7 +62,6 @@ c_cisd         = input.color(#3b82f6, "CISD Level",  group=G11, tooltip="Blue �
 c_sl           = input.color(#ef4444, "Stop Loss",   group=G11, tooltip="Red — the loss line. Universal.")
 c_tp           = input.color(#06b6d4, "Take Profit", group=G11, tooltip="Cyan — separates from bullish green candles.")
 c_tspot        = input.color(#8b5cf6, "T-Spot Zone", group=G11, tooltip="Violet — structural zone. Distinct from TP teal/cyan.")
-c_tp2          = input.color(#a855f7, "TP2 Runner",  group=G11, tooltip="Purple — split profile runner target.")
 c_mid          = input.color(#94a3b8, "Midpoint (BE / Partial)", group=G11, tooltip="Slate — neutral management line (not a loss).")
 c_overrisk     = input.color(#ff6600, "Over-Risk Warning", group=G11, tooltip="Orange — unambiguous risk-too-large flag.")
 c_proj         = input.color(#64748b, "CISD Projection", group=G11, tooltip="Slate — ghost lines for projection levels.")
@@ -288,53 +280,6 @@ if is_new_anchor and tf_supported
             break
         if low[k] <= anc_lo + _tol
             anc_lo_bar := bar_index - k
-    // ── Pre-seed: did the prior candle itself sweep beyond the prev-prev range? ─
-    // If the just-closed HTF candle swept above prev2_high and closed back below,
-    // that IS a valid sweep+return — pre-seed state so only CISD is needed.
-    if not na(prev2_high) and not na(prev2_low)
-        pp_range = prev2_high - prev2_low
-        // SHORT pre-seed: prior candle swept above prev-prev high, closed back below
-        if prior_high > prev2_high and prior_close <= prev2_high
-            ext_s = prior_high - prev2_high
-            swept_short      := true
-            sweep_ext_short  := prior_high
-            sweep_bar_short  := bar_index - 1
-            sweep_pct_short  := pp_range > 0 ? ext_s / pp_range : 0.0
-            ret_short        := true
-            ret_bar_short    := bar_index - 1
-            // override anc_hi/lo to the prev-prev candle (the one that was swept)
-            anc_hi := prev2_high
-            anc_lo := prev2_low
-            // re-search for anchor bars in prev-prev period (wider range)
-            for k2 = _htf_bars * 2 to 1
-                if high[k2] >= prev2_high - _tol
-                    anc_hi_bar := bar_index - k2
-                    break
-            for k2 = _htf_bars * 2 to 1
-                if low[k2] <= prev2_low + _tol
-                    anc_lo_bar := bar_index - k2
-                    break
-        // LONG pre-seed: prior candle swept below prev-prev low, closed back above
-        if prior_low < prev2_low and prior_close >= prev2_low
-            ext_l = prev2_low - prior_low
-            swept_long       := true
-            sweep_ext_long   := prior_low
-            sweep_bar_long   := bar_index - 1
-            sweep_pct_long   := pp_range > 0 ? ext_l / pp_range : 0.0
-            ret_long         := true
-            ret_bar_long     := bar_index - 1
-            // override anc_hi/lo to the prev-prev candle (the one that was swept)
-            anc_hi := prev2_high
-            anc_lo := prev2_low
-            // re-search for anchor bars in prev-prev period (wider range)
-            for k2 = _htf_bars * 2 to 1
-                if high[k2] >= prev2_high - _tol
-                    anc_hi_bar := bar_index - k2
-                    break
-            for k2 = _htf_bars * 2 to 1
-                if low[k2] <= prev2_low + _tol
-                    anc_lo_bar := bar_index - k2
-                    break
     // clean up UNFIRED drawings only — fired setups keep their drawings
     if not _was_alerted_long
         line.delete(sweep_line_long)
@@ -674,12 +619,9 @@ if draw_long
     _snap_labels := array.size(fired_labels)
     _snap_boxes  := array.size(fired_boxes)
     entry = open
-    _struct_sl = sl_mode == "CISD Level" ? draw_cisd_lvl_long : draw_sweep_ext_long
-    sl = use_split ? math.max(_struct_sl, entry - entry * split_mae_pct / 100) : _struct_sl
+    sl    = sl_mode == "CISD Level" ? draw_cisd_lvl_long : draw_sweep_ext_long
     risk  = entry - sl
-    tp    = use_split ? entry + entry * split_ptq_pct / 100 : entry + risk * rr_ratio
-    _tp2  = use_split ? entry + entry * split_p50_pct / 100 : float(na)
-    _tp1_r = risk > 0 ? (tp - entry) / risk : 0.0
+    tp    = entry + risk * rr_ratio
     r_end = bar_index + rr_extend
     f_reg_line(line.new(draw_cisd_bar_long, draw_cisd_lvl_long, r_end, draw_cisd_lvl_long, color=c_cisd, width=2, style=line.style_solid))
     cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : draw_cisd_bar_long
@@ -691,7 +633,7 @@ if draw_long
     f_reg_box(box.new(bar_index, entry, r_end, sl,  border_color=rr_risk_border, bgcolor=rr_risk_col))
     f_reg_box(box.new(bar_index, tp,    r_end, entry, border_color=rr_rew_border,  bgcolor=rr_rew_col))
     f_reg_line(line.new(bar_index, entry, r_end, entry, color=rr_entry_col, width=1, style=line.style_solid))
-    _tp_lbl = use_split ? "TP1  +" + str.tostring(tp - entry, "#.##") + " pts  " + str.tostring(_tp1_r, "#.#") + "R  (" + str.tostring(split_tp1_size, "#") + "%)" : "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R"
+    _tp_lbl = "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R"
     f_reg_label(label.new(bar_index + rr_lbl_x, tp, _tp_lbl, color=rr_lbl_tp_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny))
     f_reg_label(label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=rr_lbl_en_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny))
     f_reg_label(label.new(bar_index + rr_lbl_x, sl,    "SL  -" + str.tostring(risk, "#.##") + " pts", color=rr_lbl_sl_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny))
@@ -703,9 +645,6 @@ if draw_long
         f_reg_line(line.new(bar_index, _partial_level, r_end, _partial_level, color=_mid_col, width=1, style=line.style_dashed))
         f_reg_label(label.new(bar_index + rr_lbl_x, _be_level,      "Move to BE", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
         f_reg_label(label.new(bar_index + rr_lbl_x, _partial_level, "Take Partial", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
-    if use_split and not na(_tp2)
-        f_reg_line(line.new(bar_index, _tp2, r_end, _tp2, color=color.new(c_tp2, 30), width=1, style=line.style_dotted))
-        f_reg_label(label.new(bar_index + rr_lbl_x, _tp2, "TP2  +" + str.tostring(_tp2 - entry, "#.##") + " pts  (runner " + str.tostring(100 - split_tp1_size, "#") + "%)", color=color.new(c_tp2, 20), textcolor=color.white, style=rr_lbl_style, size=size.tiny))
     if show_tspot and not na(draw_sweep_logmid_long) and not na(draw_sweep_close_long)
         tspot_top  = math.max(draw_sweep_logmid_long, draw_sweep_close_long)
         tspot_bot  = math.min(draw_sweep_logmid_long, draw_sweep_close_long)
@@ -770,12 +709,9 @@ if draw_short
     _snap_labels := array.size(fired_labels)
     _snap_boxes  := array.size(fired_boxes)
     entry = open
-    _struct_sl = sl_mode == "CISD Level" ? draw_cisd_lvl_short : draw_sweep_ext_short
-    sl = use_split ? math.min(_struct_sl, entry + entry * split_mae_pct / 100) : _struct_sl
+    sl    = sl_mode == "CISD Level" ? draw_cisd_lvl_short : draw_sweep_ext_short
     risk  = sl - entry
-    tp    = use_split ? entry - entry * split_ptq_pct / 100 : entry - risk * rr_ratio
-    _tp2  = use_split ? entry - entry * split_p50_pct / 100 : float(na)
-    _tp1_r = risk > 0 ? (entry - tp) / risk : 0.0
+    tp    = entry - risk * rr_ratio
     r_end = bar_index + rr_extend
     f_reg_line(line.new(draw_cisd_bar_short, draw_cisd_lvl_short, r_end, draw_cisd_lvl_short, color=c_cisd, width=2, style=line.style_solid))
     cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : draw_cisd_bar_short
@@ -787,7 +723,7 @@ if draw_short
     f_reg_box(box.new(bar_index, sl,    r_end, entry, border_color=rr_risk_border, bgcolor=rr_risk_col))
     f_reg_box(box.new(bar_index, entry, r_end, tp,    border_color=rr_rew_border,  bgcolor=rr_rew_col))
     f_reg_line(line.new(bar_index, entry, r_end, entry, color=rr_entry_col, width=1, style=line.style_solid))
-    _tp_lbl = use_split ? "TP1  +" + str.tostring(entry - tp, "#.##") + " pts  " + str.tostring(_tp1_r, "#.#") + "R  (" + str.tostring(split_tp1_size, "#") + "%)" : "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R"
+    _tp_lbl = "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R"
     f_reg_label(label.new(bar_index + rr_lbl_x, tp, _tp_lbl, color=rr_lbl_tp_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny))
     f_reg_label(label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=rr_lbl_en_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny))
     f_reg_label(label.new(bar_index + rr_lbl_x, sl,    "SL  -" + str.tostring(risk, "#.##") + " pts", color=rr_lbl_sl_col, textcolor=color.white, style=rr_lbl_style, size=size.tiny))
@@ -799,9 +735,6 @@ if draw_short
         f_reg_line(line.new(bar_index, _partial_level, r_end, _partial_level, color=_mid_col, width=1, style=line.style_dashed))
         f_reg_label(label.new(bar_index + rr_lbl_x, _be_level,      "Move to BE", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
         f_reg_label(label.new(bar_index + rr_lbl_x, _partial_level, "Take Partial", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
-    if use_split and not na(_tp2)
-        f_reg_line(line.new(bar_index, _tp2, r_end, _tp2, color=color.new(c_tp2, 30), width=1, style=line.style_dotted))
-        f_reg_label(label.new(bar_index + rr_lbl_x, _tp2, "TP2  +" + str.tostring(entry - _tp2, "#.##") + " pts  (runner " + str.tostring(100 - split_tp1_size, "#") + "%)", color=color.new(c_tp2, 20), textcolor=color.white, style=rr_lbl_style, size=size.tiny))
     if show_tspot and not na(draw_sweep_logmid_short) and not na(draw_sweep_close_short)
         tspot_top  = math.max(draw_sweep_logmid_short, draw_sweep_close_short)
         tspot_bot  = math.min(draw_sweep_logmid_short, draw_sweep_close_short)

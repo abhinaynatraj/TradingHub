@@ -26,8 +26,9 @@ It tests **4 combinations** of timeframes (e.g., 4-Hour sweep detected, 15-Minut
 | `model_dashboard.html` | The dashboard — open this in your browser to see the results |
 | `model_stats.py` | The backtest engine — runs the analysis and saves results |
 | `model_stats.json` | **Build artifact** — gitignored. Run `python3 model_stats.py` to generate it. The dashboard shows a "Run model_stats.py" fallback if it's missing. |
-| `daily_update.py` | Optional — fetches new bar data from Databento to keep the database current |
 | `candle_science.duckdb` | Symlink to `../Fractal Sweep/candle_science.duckdb` (shared DB). Recreate with `ln -sf "../Fractal Sweep/candle_science.duckdb" candle_science.duckdb` if missing. |
+
+> Data updates are driven by `../Fractal Sweep/daily_update.py`. This folder reads the shared DB read-only.
 
 ---
 
@@ -105,20 +106,6 @@ python3 model_stats.py --models 1H_5M 1H_3M
 ```
 
 > **Note:** The database file (`candle_science.duckdb`) is not included in the repo because it's very large (~550 MB). This folder uses a symlink to `../Fractal Sweep/candle_science.duckdb` — see the Files table above.
-
----
-
-## Step 4 (Optional) — Keep Data Up to Date
-
-If you have a Databento API key and want to pull in new bar data automatically:
-
-```
-python3 daily_update.py
-```
-
-This fetches any bars that are newer than what's in the database and saves them.
-
-To run this automatically every weekday morning, you can set up a scheduled task. See the comments at the top of `daily_update.py` for instructions.
 
 ---
 

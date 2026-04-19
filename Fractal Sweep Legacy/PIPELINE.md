@@ -8,7 +8,7 @@
 
 Statistical backtesting engine for NQ and ES micro futures. Detects fractal sweep + CISD setups across 15 years of 1-minute data, validates with walk-forward regime analysis, Monte Carlo simulation, and cross-instrument SMT divergence — then displays results in an interactive probability dashboard.
 
-**Stack:** Python 3.9+ · DuckDB · pandas · numpy · Pine v5 · standalone HTML (zero CDN deps)
+**Stack:** Python 3.14 · DuckDB 1.4.4 · pandas · numpy · standalone HTML (zero CDN deps)
 
 ---
 
@@ -203,13 +203,9 @@ Client-side in `model_dashboard.html`. User defines consecutive date ranges.
 
 ---
 
-## Pine v5 Indicator
+## Pine Indicator
 
-**File:** `Live Scanner/fractal_sweep_cisd.pine` (971 lines)
-
-Auto-detects chart TF → maps to sweep/CISD combo. Draws sweep lines, CISD lines, R:R boxes, T-Spot zones, CISD projections, SMT labels, over-risk badges.
-
-**35 security calls** (25 NQ + 10 ES). All pre-declared with literal TF strings.
+Lives in `../Fractal Sweep/fractal_sweep.pine` (indicator) and `fractal_sweep_strategy.pine` (strategy version). Auto-detects chart TF → maps to sweep/CISD combo. Draws sweep lines, CISD lines, R:R boxes, T-Spot zones, SMT labels, over-risk badges.
 
 ### Visual Hierarchy
 | Setup Type | Lines | Boxes | Badge |
@@ -313,8 +309,6 @@ Statistic.ally/
 │   ├── PIPELINE.md                          [this file]
 │   ├── LEGACY_NOTE.md                       [history of the snapshot and its evolution]
 │   └── README.md                            [setup + usage guide]
-├── Live Scanner/
-│   └── fractal_sweep_cisd.pine              [Pine v5 indicator]
 ├── .claude/rules/fractal-sweep.md           [system rules — scoped to main Fractal Sweep/]
 └── CLAUDE.md                                [root project config]
 ```

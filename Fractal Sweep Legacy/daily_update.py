@@ -167,10 +167,6 @@ BACKTESTS = [
         "script": Path(__file__).parent / "model_stats.py",
     },
     {
-        "name": "NY1 F.P.FVG",
-        "script": Path(__file__).parent.parent / "NY1 FPFVG" / "ny1_backtest.py",
-    },
-    {
         "name": "TTrades Fractal Model",
         "script": Path(__file__).parent.parent / "TTrades Fractal Model Analysis" / "ttfm_backtest.py",
     },

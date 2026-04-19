@@ -1,137 +1,127 @@
-# Fractal Sweep Model — Fractal Sweep
+# Fractal Sweep
 
-This folder contains the **Fractal Sweep Model** — a backtest that scans 11+ years of 1-minute NQ/ES futures data looking for a specific price action setup: a sweep of a prior candle's high or low, followed by a structural shift (CISD). The results are displayed in an interactive dashboard.
+This folder hosts three backtesting engines over 11+ years of NQ/ES 1-minute futures data, sharing a single `candle_science.duckdb`.
 
----
-
-## What This Model Does
-
-The backtest looks for setups where:
-1. Price sweeps (goes just above or below) the high or low of a previous candle on a higher timeframe
-2. Then reverses back inside the prior candle's range
-3. A lower-timeframe candle confirms the reversal (this is the "CISD" — Change in State of Delivery)
-
-It tests **4 combinations** of timeframes (e.g., 4-Hour sweep detected, 15-Minute CISD confirmed). For each setup found, it records whether the trade hit its target or stopped out.
+| Engine | What it does | Dashboard |
+|---|---|---|
+| **Fixed Constant** | Doctrine-compliant locked-anchor MAE/MFE study — one rep per HTF block, no filters | `model_dashboard_fixed_constant.html` (primary, linked from hub) |
+| **TTFM** | TTrades Fractal Model — T-Spot touch setups across 6 variants | `model_dashboard_ttfm.html` |
+| **Original Sweep + CISD** | Prior-candle sweep → return → CISD confirmation (F1 intact) | *(dashboard lives in `Fractal Sweep Legacy/`)* |
 
 ---
 
-## Files in This Folder
+## Setup
 
-| File | What it does |
-|---|---|
-| `model_dashboard.html` | The dashboard — open this in your browser to see the results |
-| `model_stats.py` | The backtest engine — runs the analysis and saves results |
-| `model_stats.json` | Pre-computed results — already included, dashboard loads this automatically |
-| `daily_update.py` | Optional — fetches new bar data from Databento to keep the database current |
-| `fractal_sweep_cisd.pine` | TradingView Pine v5 indicator — live sweep+CISD detection with alert support |
-
----
-
-## Step 1 — Make Sure You've Done the Main Setup
-
-Before using this, make sure you've:
-- Installed Python (see the main README in the root folder)
-- Installed the required packages:
-
-  **Mac (Terminal):**
-  ```
-  pip3 install duckdb pandas numpy
-  ```
-
-  **Windows (Command Prompt):**
-  ```
-  pip install duckdb pandas numpy
-  ```
-
----
-
-## Step 2 — View the Dashboard
-
-The dashboard already has pre-computed results included — you don't need to run anything to see it.
-
-1. Start the web server from the **root of the repo** (the main `Statistic.ally` folder, not this subfolder):
-
-   **Mac:**
-   ```
-   cd path/to/Statistic.ally
-   python3 -m http.server 8001
-   ```
-
-   **Windows:**
-   ```
-   cd C:\path\to\Statistic.ally
-   python -m http.server 8001
-   ```
-
-2. Open your browser and go to:
-   ```
-   http://localhost:8001/Fractal Sweep/model_dashboard.html
-   ```
-
-   Or navigate there from the hub page at `http://localhost:8001`.
-
----
-
-## Step 3 (Optional) — Re-Run the Backtest
-
-If you have the database file (`candle_science.duckdb`) and want to regenerate the results:
+Install Python (see the root README) and the required packages.
 
 **Mac:**
 ```
-cd path/to/Statistic.ally/Fractal Sweep
-python3 model_stats.py
+pip3 install duckdb pandas numpy
 ```
 
 **Windows:**
 ```
-cd C:\path\to\Statistic.ally\Fractal Sweep
-python model_stats.py
+pip install duckdb pandas numpy
 ```
-
-This will overwrite `model_stats.json` with fresh results. You can also run just specific models:
-
-```
-python3 model_stats.py --models 1H_5M 1H_3M
-```
-
-> **Note:** The database file (`candle_science.duckdb`) is not included in the repo because it's very large. The pre-computed `model_stats.json` is already there, so you don't need the database to view the dashboard.
 
 ---
 
-## Step 4 (Optional) — Keep Data Up to Date
+## View the Dashboards
 
-If you have a Databento API key and want to pull in new bar data automatically:
+The hub page at `http://localhost:8001` links to **Fixed Constant**. Other dashboards open by direct URL.
+
+Start the web server from the **repo root** (not this subfolder):
+
+```
+cd path/to/Statistic.ally
+python3 -m http.server 8001
+```
+
+Then open:
+
+- Fixed Constant: `http://localhost:8001/Fractal Sweep/model_dashboard_fixed_constant.html`
+- TTFM: `http://localhost:8001/Fractal Sweep/model_dashboard_ttfm.html`
+
+The Fixed Constant JSON is large (>100 MB) and is **gitignored**. If the dashboard says "Run the engine," generate it once:
+
+```
+cd "path/to/Statistic.ally/Fractal Sweep"
+python3 model_stats_fixed_constant.py
+```
+
+`model_stats.json` and `model_stats_ttfm.json` are pre-computed and committed, so their dashboards load immediately.
+
+---
+
+## Re-Run a Backtest
+
+Only needed if you have `candle_science.duckdb` and want fresh results.
+
+```
+python3 model_stats_fixed_constant.py           # Fixed Constant, ~20s
+python3 model_stats_ttfm.py                     # TTFM
+python3 model_stats.py                          # Original sweep+CISD
+```
+
+All three accept `--table es_1m` and `--models <keys>`:
+
+```
+python3 model_stats.py --models 1H_5M 1H_3M --table es_1m
+```
+
+> **Database note:** `candle_science.duckdb` (~550 MB) is not in the repo. `Fractal Sweep Legacy/` symlinks to this folder's copy. Without the DB, use the committed JSON.
+
+---
+
+## Keep Data Current (Optional)
+
+With a Databento API key:
 
 ```
 python3 daily_update.py
 ```
 
-This fetches any bars that are newer than what's in the database and saves them.
-
-To run this automatically every weekday morning, you can set up a scheduled task. See the comments at the top of `daily_update.py` for instructions.
+To schedule it, see `install_cron.sh`.
 
 ---
 
-## The 4 Timeframe Combinations
+## Models by Engine
 
-| Name | Sweep Detected On | CISD Confirmed On |
+**Fixed Constant** (3 models — `15M_1M` deliberately excluded):
+| Key | HTF | Chart TF |
 |---|---|---|
-| `4H_15M` | 4-Hour candle | 15-Minute candle |
-| `1H_5M` | 1-Hour candle | 5-Minute candle |
-| `1H_3M` | 1-Hour candle | 3-Minute candle |
-| `30M_3M` | 30-Minute candle | 3-Minute candle |
+| `30M_3M` | 30-min | 3-min |
+| `1H_5M` | 1-hour | 5-min |
+| `4H_15M` | 4-hour | 15-min |
 
-The dashboard lets you switch between all four and shows stats broken down by day of week, session time, and more.
+**TTFM** (4 models):
+| Key | HTF | Chart TF |
+|---|---|---|
+| `15M_1M` | 15-min | 1-min |
+| `30M_3M` | 30-min | 3-min |
+| `1H_5M` | 1-hour | 5-min |
+| `4H_15M` | 4-hour | 15-min |
+
+**Original Sweep + CISD** (4 models):
+| Key | Sweep TF | CISD TF |
+|---|---|---|
+| `4H_15M` | 4-hour | 15-min |
+| `1H_5M` | 1-hour | 5-min |
+| `1H_3M` | 1-hour | 3-min |
+| `30M_3M` | 30-min | 3-min |
 
 ---
 
 ## Common Problems
 
 **Dashboard shows no data**
-→ Make sure the web server is running and you're opening `http://localhost:8001/Fractal Sweep/model_dashboard.html` (not the file directly).
+→ Web server not running, or you're opening the HTML file directly. Serve from the repo root and use `http://localhost:8001/...`.
 
-**`python3 model_stats.py` gives a database error**
-→ The `candle_science.duckdb` database file isn't included in the repo. The pre-computed `model_stats.json` is already there — you don't need to re-run the backtest.
+**"Run the engine" fallback on Fixed Constant**
+→ `model_stats_fixed_constant.json` is gitignored. Run `python3 model_stats_fixed_constant.py` once.
+
+**Database error on re-run**
+→ `candle_science.duckdb` isn't in the repo. Use the committed JSON, or point the script at your own copy.
 
 **Port already in use**
-→ Change the port: `python3 -m http.server 8002`, then go to `http://localhost:8002/Fractal Sweep/model_dashboard.html`.
+→ Change it: `python3 -m http.server 8002` and adjust URLs.
