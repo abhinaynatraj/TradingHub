@@ -179,27 +179,21 @@ class TestMaeMfeEdgeCases:
 
 class TestFilterImpactEdgeCases:
     def test_with_actual_rejected_trades(self):
-        """Filter impact with real rejection codes (lines 2125-2127)."""
+        """Filter impact returns at least the baseline."""
         rows = []
-        # Valid WIN/LOSS trades
         for _ in range(30):
             rows.append(dict(outcome='WIN', r=1.0, rejected_by=''))
         for _ in range(10):
             rows.append(dict(outcome='LOSS', r=-1.0, rejected_by=''))
-        # Rejected trades that would change stats if included
-        for _ in range(20):
-            rows.append(dict(outcome='WIN', r=0.5, rejected_by='F1_SMALL_RANGE'))
         for _ in range(15):
-            rows.append(dict(outcome='LOSS', r=-1.0, rejected_by='F3_SWEEP_TOO_LARGE'))
+            rows.append(dict(outcome='SKIP', r=0.0, rejected_by='NO_CISD'))
         for _ in range(10):
-            rows.append(dict(outcome='LOSS', r=-1.0, rejected_by='F4_NO_CLOSE_BACK'))
+            rows.append(dict(outcome='INVALID', r=0.0, rejected_by='INVALID_RISK'))
 
         df = pd.DataFrame(rows)
         result = ms.compute_filter_impact(df)
-        assert len(result) >= 2  # baseline + at least one filter step
-        # Verify removal counts
-        total_removed = sum(r.get('removed', 0) for r in result[1:])
-        assert total_removed > 0
+        assert len(result) >= 1
+        assert result[0]['n'] == 40
 
 
 # ── compute_filter_variants with SMT (line 2070) ────────────────────────────
@@ -222,11 +216,10 @@ class TestFilterVariantsSmt:
 
         result = ms.compute_filter_variants(df)
         assert 'all_combinations' in result
-        # 6 runtime filter dimensions (F3, F4, SMT, HOUR_ALIGNED,
-        # PRIOR_COUNTER_CLOSE, PRIOR_ENGULFING). F1 is now baked-in baseline
-        # and excluded from runtime combinatorics. The loop includes the
-        # empty set, so 2**6 = 64 combos.
-        assert len(result['all_combinations']) == 2**6
+        # 3 runtime filter dimensions (SMT, HOUR_ALIGNED, PRIOR_ENGULFING).
+        # F1, F3, F4, Prior Counter all removed. The loop includes the
+        # empty set, so 2**3 = 8 combos.
+        assert len(result['all_combinations']) == 2**3
         # SMT combos should exist
         smt_combos = [c for c in result['all_combinations']
                       if 'NQ-ES' in (c.get('label') or '') or 'SMT' in (c.get('label') or '')]
@@ -278,7 +271,7 @@ class TestBuildModelStatsEquity:
     def test_equity_min_tracked(self):
         """min_equity_usd is tracked correctly (line 1659)."""
         cfg = dict(label='T', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         df = self._make_df(50, wr=0.5)  # lower WR to hit min equity
         result = ms.build_model_stats(df, 100, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
@@ -288,7 +281,7 @@ class TestBuildModelStatsEquity:
     def test_all_losses_blown(self):
         """All losses should blow the account."""
         cfg = dict(label='T', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         df = self._make_df(30, wr=0.0)  # all losses
         result = ms.build_model_stats(df, 100, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
@@ -298,7 +291,7 @@ class TestBuildModelStatsEquity:
     def test_filter_variants_in_output(self):
         """filter_variants is present in output."""
         cfg = dict(label='T', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         df = self._make_df(100)
         result = ms.build_model_stats(df, 100, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,

@@ -336,20 +336,6 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 
 <!-- Filter bar: runtime-toggleable filters, dedicated row below the dropdowns -->
 <div class="filter-bar">
-  <div class="filter-group filter-group-quality">
-    <label class="sel-label">Setup Quality &nbsp;<span class="sel-label-hint">— uncheck to relax</span></label>
-    <div class="filter-row">
-      <label class="filter-chk" title="The sweep was a wick, not a breakout. Rejects sweeps that pierced more than 50% of the prior candle's range. Deep penetration looks like real momentum, not a liquidity grab.">
-        <input type="checkbox" id="f3-checkbox" checked onchange="switchF3(this.checked)">
-        <span>Shallow Sweep</span>
-      </label>
-      <label class="filter-chk" title="Price came back inside the prior bar's range after the sweep. Confirms the sweep was a fakeout. Without this, you may be chasing a real breakout in disguise.">
-        <input type="checkbox" id="f4-checkbox" checked onchange="switchF4(this.checked)">
-        <span>Closed Back Inside</span>
-      </label>
-    </div>
-  </div>
-  <div class="filter-divider" aria-hidden="true"></div>
   <div class="filter-group filter-group-confirm">
     <label class="sel-label">Add Confirmation &nbsp;<span class="sel-label-hint">— check to narrow</span></label>
     <div class="filter-row">
@@ -360,10 +346,6 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
       <label class="filter-chk" title="The CISD candle closed on the bullish/bearish side of the current hour's open. LONG: CISD close > hour open. SHORT: CISD close < hour open. Adds a hourly-bias confirmation on top of the CISD.">
         <input type="checkbox" id="hour-aligned-checkbox" onchange="switchHourAligned(this.checked)">
         <span>Hour Open Aligned</span>
-      </label>
-      <label class="filter-chk" title="The prior sweep-TF candle closed against the trade direction. LONG (sweeping a prior low): prior bar must be a bearish body. SHORT (sweeping a prior high): prior bar must be a bullish body. Filters for true reversal setups.">
-        <input type="checkbox" id="prior-counter-checkbox" onchange="switchPriorCounterClose(this.checked)">
-        <span>Prior Bar Counters</span>
       </label>
       <label class="filter-chk" title="The prior sweep-TF candle fully engulfs the one before it (wick-inclusive): its range contains the previous bar's range. Strong displacement signature from the prior bar.">
         <input type="checkbox" id="prior-engulf-checkbox" onchange="switchPriorEngulfing(this.checked)">
@@ -390,11 +372,9 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
   <button class="page-tab active" onclick="switchPageTab('overview')">Overview</button>
   <button class="page-tab" onclick="switchPageTab('edge')">Edge</button>
   <button class="page-tab" onclick="switchPageTab('risk')">Risk</button>
-  <button class="page-tab" onclick="switchPageTab('mae')">MAE Study</button>
-  <button class="page-tab" onclick="switchPageTab('mfe')">MFE Study</button>
+  <button class="page-tab" onclick="switchPageTab('excursion')">MAE / MFE Study</button>
   <button class="page-tab" onclick="switchPageTab('filters')">Filters</button>
   <button class="page-tab" onclick="switchPageTab('trades')">Trades</button>
-  <button class="page-tab" onclick="switchPageTab('profiles')">Profiles</button>
 </div>
 
 <main class="main">
@@ -408,11 +388,11 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
   <div class="page-pane active" id="pane-overview">
 
     <div class="sec-label">Model Overview</div>
-    <div class="panel">
-      <div class="ph">
+    <details class="panel" style="border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)">
+      <summary class="ph" style="cursor:pointer;list-style:none">
         <span class="ph-title">Fractal Sweep + CISD · Setup Anatomy</span>
-        <span class="ph-note">Sweep → Return → Confirm → Execute</span>
-      </div>
+        <span class="ph-note">Click to expand · Sweep → Return → Confirm → Execute</span>
+      </summary>
       <div class="pb">
         <div class="model-explainer-grid">
 
@@ -422,8 +402,8 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
             <div class="model-step">
               <div class="model-step-num">1</div>
               <div>
-                <div class="model-step-title">Q1 Sweep</div>
-                <div class="model-step-body">Within Q1 (first 8–60 min of the anchor period), price sweeps the prior anchor candle's high or low. Sweep must be ≤50% of the prior range.</div>
+                <div class="model-step-title">Sweep</div>
+                <div class="model-step-body">At any point within the anchor period, price sweeps the prior candle's high or low — taking out resting liquidity.</div>
               </div>
             </div>
             <div class="model-step">
@@ -451,11 +431,11 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
             </div>
             <div class="model-mech-row">
               <span class="model-mech-label">Stop</span>
-              <span class="model-mech-val">Structural: sweep extreme · Split: min(sweep extreme, MAE p90 winners)</span>
+              <span class="model-mech-val">Sweep extreme (|entry – deepest sweep point|)</span>
             </div>
             <div class="model-mech-row">
               <span class="model-mech-label">Target</span>
-              <span class="model-mech-val">Structural: 1R TP1 (90%) + free runner (10%) · Split: PTQ TP1 (90%) + p50 MFE TP2 (10%)</span>
+              <span class="model-mech-val">1R (100% exit at 1× risk)</span>
             </div>
             <div style="margin-top:14px">
               <div class="model-col-head">Filters</div>
@@ -479,20 +459,20 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
             <div class="model-col-head">4 Timeframe Combinations</div>
             <table class="model-tf-table">
               <thead>
-                <tr><th>Model</th><th>Sweep TF</th><th>CISD TF</th><th>Q1 Window</th></tr>
+                <tr><th>Model</th><th>Sweep TF</th><th>CISD TF</th></tr>
               </thead>
               <tbody>
-                <tr><td>4H_15M</td><td>4 Hour</td><td>15 Min</td><td>First 1h</td></tr>
-                <tr><td>1H_5M</td><td>1 Hour</td><td>5 Min</td><td>First 15m</td></tr>
-                <tr><td>1H_3M</td><td>1 Hour</td><td>3 Min</td><td>First 15m</td></tr>
-                <tr><td>30M_3M</td><td>30 Min</td><td>3 Min</td><td>First 8m</td></tr>
+                <tr><td>4H_15M</td><td>4 Hour</td><td>15 Min</td></tr>
+                <tr><td>1H_5M</td><td>1 Hour</td><td>5 Min</td></tr>
+                <tr><td>1H_3M</td><td>1 Hour</td><td>3 Min</td></tr>
+                <tr><td>30M_3M</td><td>30 Min</td><td>3 Min</td></tr>
               </tbody>
             </table>
           </div>
 
         </div>
       </div>
-    </div>
+    </details>
 
 
     <div class="meta-row" id="meta-row"></div>
@@ -513,45 +493,53 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 
   <!-- ══ TAB: EDGE ══════════════════════════════════════════════════════════ -->
   <div class="page-pane" id="pane-edge">
-    <div class="sec-label">Win Rate by Hour</div>
-    <div class="panel">
-      <div class="ph">
-        <span class="ph-title">Win Rate % · Hour of Day</span>
-        <div class="legend">
-          <div class="leg-item"><div class="leg-dot" style="background:var(--green)"></div>Long</div>
-          <div class="leg-item"><div class="leg-dot" style="background:var(--red)"></div>Short</div>
-          <div class="leg-item"><div class="leg-dot" style="background:var(--amber)"></div><span id="be-wr-legend">Breakeven</span></div>
-        </div>
-      </div>
-      <div class="pb"><div id="hour-chart"></div></div>
+    <!-- Headline edge metrics -->
+    <div class="sec-label">Edge Summary</div>
+    <div id="edge-hero" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:18px"></div>
+
+    <!-- Direction asymmetry -->
+    <div class="sec-label">Direction Asymmetry · LONG vs SHORT</div>
+    <div class="panel" style="margin-bottom:18px">
+      <div class="ph"><span class="ph-title">Side-by-Side Performance</span><span class="ph-note">Statistical comparison · Wilson 95% CI on win rates</span></div>
+      <div class="pb"><div id="edge-dir-table"></div></div>
     </div>
 
-    <div class="sec-label">Session & Day Breakdown</div>
-    <div class="grid2">
-      <div class="panel">
-        <div class="ph"><span class="ph-title">By Session</span><span class="ph-note">NY1 08:30–11:30 · NY2 11:30–16:00</span></div>
-        <div class="pb"><div id="sess-chart"></div></div>
-      </div>
-      <div class="panel">
-        <div class="ph"><span class="ph-title">By Day of Week</span></div>
-        <div class="pb"><div id="dow-chart"></div></div>
-      </div>
+    <!-- Temporal edge stability -->
+    <div class="sec-label">Temporal Edge Stability · Yearly EV</div>
+    <div class="panel" style="margin-bottom:18px">
+      <div class="ph"><span class="ph-title">Regime Stability</span><span class="ph-note">Year-over-year EV with linear trend · slope = edge decay rate</span></div>
+      <div class="pb"><div id="edge-yearly"></div></div>
     </div>
 
-    <div class="sec-label">Hour × Day Heatmap</div>
-    <div class="panel">
-      <div class="ph"><span class="ph-title">Win Rate % · Hour × Day · All Directions</span><span class="ph-note">Darker green = stronger edge</span></div>
+    <!-- Hour × Day EV heatmap (replaces WR version) -->
+    <div class="sec-label">EV Heatmap · Hour × Day of Week</div>
+    <div class="panel" style="margin-bottom:18px">
+      <div class="ph"><span class="ph-title">Expected Value per Trade</span><span class="ph-note">n ≥ 3 per cell · green = positive EV · darker = stronger</span></div>
       <div class="pb"><div id="heatmap"></div></div>
     </div>
 
-    <div class="sec-label">Best & Worst Setups</div>
+    <!-- Session + DoW compact tables -->
+    <div class="sec-label">Session &amp; Day Decomposition</div>
+    <div class="grid2" style="margin-bottom:18px">
+      <div class="panel">
+        <div class="ph"><span class="ph-title">By Session</span><span class="ph-note">NY1 08:30–11:30 · NY2 11:30–16:00</span></div>
+        <div class="pb"><div id="edge-sess-table"></div></div>
+      </div>
+      <div class="panel">
+        <div class="ph"><span class="ph-title">By Day of Week</span><span class="ph-note">Wilson 95% CI shown</span></div>
+        <div class="pb"><div id="edge-dow-table"></div></div>
+      </div>
+    </div>
+
+    <!-- Best & Worst by z-score -->
+    <div class="sec-label">Highest &amp; Lowest Conviction Setups</div>
     <div class="grid2">
       <div class="panel">
-        <div class="ph"><span class="ph-title">Top Setups by EV</span><span class="ph-note">Min 6 occurrences</span></div>
+        <div class="ph"><span class="ph-title">Strongest Edge</span><span class="ph-note">Ranked by z-score of EV vs baseline · n ≥ 6</span></div>
         <div class="pb"><div id="top-combos"></div></div>
       </div>
       <div class="panel">
-        <div class="ph"><span class="ph-title">Setups to Avoid</span><span class="ph-note">Lowest EV</span></div>
+        <div class="ph"><span class="ph-title">Weakest / Negative Edge</span><span class="ph-note">Setups to avoid</span></div>
         <div class="pb"><div id="worst-combos"></div></div>
       </div>
     </div>
@@ -595,23 +583,16 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
     </div>
   </div>
 
-  <!-- ══ TAB: MAE STUDY ════════════════════════════════════════════════════ -->
-  <div class="page-pane" id="pane-mae">
-    <div id="mae-study-panel"></div>
-  </div>
-
-  <!-- ══ TAB: MFE STUDY ════════════════════════════════════════════════════ -->
-  <div class="page-pane" id="pane-mfe">
-    <div id="mfe-study-panel"></div>
-    <!-- Structural Dynamic panel (shown only when structural_dynamic profile active) -->
-    <div id="structural-panel" style="display:none;margin-top:0">
-      <div class="sec-label">Structural Dynamic · Runner Analysis</div>
-      <div class="panel">
-        <div class="ph">
-          <span class="ph-title">TP1 Hit Rate · Runner Distribution · Net R Breakdown</span>
-          <span class="ph-note">90% exits at 1R (TP1) · Runner (10%) holds with BE stop · Tracks free</span>
-        </div>
-        <div class="pb"><div id="structural-runner-body"></div></div>
+  <!-- ══ TAB: EXCURSION STUDY (MAE + MFE side by side) ═════════════════════ -->
+  <div class="page-pane" id="pane-excursion">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+      <div>
+        <div class="sec-label" style="color:var(--red)">MAE · Maximum Adverse Excursion</div>
+        <div id="mae-study-panel"></div>
+      </div>
+      <div>
+        <div class="sec-label" style="color:var(--green)">MFE · Maximum Favourable Excursion</div>
+        <div id="mfe-study-panel"></div>
       </div>
     </div>
   </div>
@@ -626,15 +607,6 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
         <button onclick="downloadFSTrades()" style="margin-left:auto;font-family:var(--font-data);font-size:11px;font-weight:600;letter-spacing:.04em;padding:5px 14px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-primary);cursor:pointer;" onmouseover="this.style.background='var(--accent)';this.style.color='#fff'" onmouseout="this.style.background='var(--bg-raised)';this.style.color='var(--text-primary)'">↓ Download CSV</button>
       </div>
       <div class="pb"><div id="recent-trades-table"></div><div id="recent-trades-pagination" style="display:none;align-items:center;gap:8px;padding:10px 0 2px;font-family:var(--font-data);font-size:11px;"></div></div>
-    </div>
-  </div>
-
-  <!-- ══ TAB: PROFILES ══════════════════════════════════════════════════════ -->
-  <div class="page-pane" id="pane-profiles">
-    <div class="sec-label">Profile Comparison</div>
-    <div class="panel full">
-      <div class="ph"><span class="ph-title">All Risk Profiles — Side by Side</span><span class="ph-note">Click any row to switch active profile · same setup universe, different stop &amp; target distances</span></div>
-      <div class="pb"><div id="profile-compare"></div></div>
     </div>
   </div>
 
@@ -657,9 +629,10 @@ function applyTheme(dark){
 themeBtn.addEventListener('click', () => applyTheme(!isDark));
 if (localStorage.getItem('hub-theme') === 'light') applyTheme(false);
 
-// ── MAE/MFE SEGMENT STATE ─────────────────────────────────────────────────
-var _maeSegment = 'wins';  // 'wins' | 'losses' | 'all'
-var _mfeSegment = 'wins';  // 'wins' | 'losses' | 'all'
+// ── EXCURSION SEGMENT STATE (locked to 'all' — segment UI removed) ────────
+var _excSegment = 'all';
+Object.defineProperty(window, '_maeSegment', { get: () => 'all', set: () => {} });
+Object.defineProperty(window, '_mfeSegment', { get: () => 'all', set: () => {} });
 
 function _getActiveD() {
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
@@ -668,50 +641,27 @@ function _getActiveD() {
   return getActiveTFData(baseD);
 }
 
-function switchMAESeg(seg) {
-  _maeSegment = seg;
-  document.querySelectorAll('.mae-seg').forEach(b => b.classList.remove('active'));
-  const btn = [...document.querySelectorAll('.mae-seg')].find(b => b.dataset.seg === seg);
-  if (btn) btn.classList.add('active');
+function switchExcSeg(seg) {
+  _excSegment = seg;
   const D = _getActiveD();
-  if (D) renderMAEStudy(D);
+  if (D) { renderMAEStudy(D); renderMFEStudy(D); }
 }
-
-function switchMFESeg(seg) {
-  _mfeSegment = seg;
-  document.querySelectorAll('.mfe-seg').forEach(b => b.classList.remove('active'));
-  const btn = [...document.querySelectorAll('.mfe-seg')].find(b => b.dataset.seg === seg);
-  if (btn) btn.classList.add('active');
-  const D = _getActiveD();
-  if (D) renderMFEStudy(D);
-}
+// Legacy aliases
+function switchMAESeg(seg) { switchExcSeg(seg); }
+function switchMFESeg(seg) { switchExcSeg(seg); }
 
 // ── TRADE-LEVEL FILTER ────────────────────────────────────────────────────
-// Applies the same 7-filter pipeline as getFilteredD(), but on a raw
-// trades[] array. Used by secondary panels that recompute stats directly
-// from trades (custom ranges, verdict, compare, MAE/MFE study).
-//
-// Kept as getSmtFilteredTrades() for back-compat with legacy call sites.
-// Historical name is misleading — it now honors ALL active filters.
 function getSmtFilteredTrades(trades) {
   if (!trades || !trades.length) return trades;
   let out = trades;
-  if (activeF3) out = out.filter(t => t.passes_f3 !== false);
-  if (activeF4) out = out.filter(t => t.passes_f4 !== false);
   if (activeSmt)               out = out.filter(t => t.smt === true);
   if (activeHourAligned)       out = out.filter(t => t.cisd_aligned === true);
-  if (activePriorCounterClose) out = out.filter(t => t.prior_counter_close === true);
   if (activePriorEngulfing)    out = out.filter(t => t.prior_engulfing === true);
   return out;
 }
 
-// True when any filter deviates from the precomputed-baseline assumption
-// (baseline = F3+F4 ON, positive filters OFF). Secondary panels check
-// this before recomputing from recent_trades instead of using d.meta.
 function hasNonBaselineFilters() {
-  return !activeF3 || !activeF4
-      || activeSmt || activeHourAligned
-      || activePriorCounterClose || activePriorEngulfing;
+  return activeSmt || activeHourAligned || activePriorEngulfing;
 }
 
 function switchSMT(checked) {
@@ -722,28 +672,8 @@ function switchSMT(checked) {
   renderActive();
 }
 
-function switchF3(checked) {
-  activeF3 = !!checked;
-  _tradesPage = 0;
-  renderActive();
-}
-
-function switchF4(checked) {
-  activeF4 = !!checked;
-  _tradesPage = 0;
-  renderActive();
-}
-
 function switchHourAligned(checked) {
   activeHourAligned = !!checked;
-  _tradesPage = 0;
-  const D = _getActiveD();
-  if (!D) return;
-  renderActive();
-}
-
-function switchPriorCounterClose(checked) {
-  activePriorCounterClose = !!checked;
   _tradesPage = 0;
   const D = _getActiveD();
   if (!D) return;
@@ -760,6 +690,21 @@ function switchPriorEngulfing(checked) {
 
 // ── PAGE TAB NAVIGATION ────────────────────────────────────────────────────
 let activePageTab = 'overview';
+const RAW_TABS = ['excursion', 'trades'];
+const RAW_TAB_LABELS = {'excursion':'mae/mfestudy', 'trades':'trades'};
+
+function updateTabVisibility() {
+  const isRaw = activeProfile === 'raw_measure';
+  document.querySelectorAll('.page-tab').forEach(btn => {
+    const label = btn.textContent.trim().toLowerCase().replace(/\s+/g,'');
+    const isRawTab = RAW_TABS.some(t => label.includes(RAW_TAB_LABELS[t] || t));
+    btn.style.display = (isRaw && !isRawTab) ? 'none' : '';
+  });
+  if (isRaw && !RAW_TABS.includes(activePageTab)) {
+    switchPageTab('excursion');
+  }
+}
+
 function switchPageTab(tab){
   activePageTab = tab;
   document.querySelectorAll('.page-pane').forEach(p => { p.classList.remove('active'); p.style.display = 'none'; });
@@ -775,9 +720,7 @@ function switchPageTab(tab){
   if(!baseD) return;
   const D = getSmtD(getActiveTFData(baseD));
   if(tab === 'edge'){
-    barChart(document.getElementById('hour-chart'),(D.by_hour||[]).map(d=>({group:d.hr_label||`${d.hr}:00`,key:d.direction,val:+(d.wr*100).toFixed(1),n:d.n,ev:d.ev,pf:d.pf,avg_mae:d.avg_mae,avg_mfe:d.avg_mfe,avg_mae_hr:d.avg_mae_hr,avg_mfe_hr:d.avg_mfe_hr})),260,25,75);
-    barChart(document.getElementById('sess-chart'),(D.by_session||[]).map(d=>({group:d.session,key:d.direction,val:+(d.wr*100).toFixed(1),n:d.n,ev:d.ev,pf:d.pf,avg_mae:d.avg_mae,avg_mfe:d.avg_mfe,avg_mae_hr:d.avg_mae_hr,avg_mfe_hr:d.avg_mfe_hr})),200,30,70);
-    barChart(document.getElementById('dow-chart'), (D.by_dow||[]).map(d=>({group:d.dow_name,key:d.direction,val:+(d.wr*100).toFixed(1),n:d.n,ev:d.ev,pf:d.pf,avg_mae:d.avg_mae,avg_mfe:d.avg_mfe,avg_mae_hr:d.avg_mae_hr,avg_mfe_hr:d.avg_mfe_hr})),200,35,70);
+    renderEdgeStudy(D);
   }
   if(tab === 'filters'){
     renderFilterVariants(D);
@@ -787,12 +730,9 @@ function switchPageTab(tab){
     lineChart(document.getElementById('year-chart'),D.by_year||[],200,40,75,'wr','yr');
     renderEquityCurveFS(D);
   }
-  if(tab === 'mae'){
+  if(tab === 'excursion'){
     renderMAEStudy(D);
-  }
-  if(tab === 'mfe'){
     renderMFEStudy(D);
-    renderStructuralPanel(D);
   }
   if(tab === 'trades') renderRecentTrades(0);
   if(tab === 'overview') drawSetupViz();
@@ -815,8 +755,6 @@ const SVG_FONT = "'JetBrains Mono',monospace";
 function makeDemoModel(key, label, mode, cisd, wrBase, evBase, pfBase, riskMed, spd){
   const fi=[
     {label:'Baseline (unfiltered)',n:Math.round(6200*(riskMed/18)),wr:wrBase-0.07,ev:evBase-0.22,pf:pfBase-0.58,removed:0},
-    {label:'Shallow Sweep',n:Math.round(4900*(riskMed/18)),wr:wrBase-0.02,ev:evBase-0.06,pf:pfBase-0.20,removed:Math.round(200*(riskMed/18))},
-    {label:'Closed Back Inside',n:Math.round(4200*(riskMed/18)),wr:wrBase-0.01,ev:evBase-0.03,pf:pfBase-0.10,removed:Math.round(700*(riskMed/18))},
     {label:'CISD',n:Math.round(3400*(riskMed/18)),wr:wrBase,ev:evBase,pf:pfBase,removed:Math.round(800*(riskMed/18))},
   ];
   const wl=Math.round(3400*(riskMed/18));
@@ -892,22 +830,12 @@ function makeDemoModel(key, label, mode, cisd, wrBase, evBase, pfBase, riskMed, 
   const mfe_wins_dist={...mfe_all_dist,count:nW,p50:+(mfe_all_dist.p50*1.4).toFixed(4),mean:+(mfe_all_dist.mean*1.4).toFixed(4)};
   const mae_loss_dist={...mae_all_dist,count:nL,p50:+(mae_all_dist.p50*1.5).toFixed(4),mean:+(mae_all_dist.mean*1.5).toFixed(4)};
   const mfe_loss_dist={...mfe_all_dist,count:nL,p50:+(mfe_all_dist.p50*0.5).toFixed(4),mean:+(mfe_all_dist.mean*0.5).toFixed(4)};
-  // Structural demo stats
-  const tp1Rate = +(wrBase + 0.06).toFixed(3); // TP1 hit rate slightly higher than 2R win rate
-  const runnerHist = _mkHist(1.2, 0.9, Math.round(wl*tp1Rate));
-  const structural_stats = {
-    tp1_hit_rate: tp1Rate,
-    runner_ran_further_rate: 0.58,
-    runner_stats: {count:Math.round(wl*tp1Rate),min:0,p10:0,p25:0,p50:0.8,p75:1.9,p90:3.2,p95:4.1,p99:6.5,max:9.8,mean:1.2,std:0.9,mode:0.4,hist:runnerHist},
-    runner_ran_stats: {count:Math.round(wl*tp1Rate*0.58),min:0.1,p10:0.2,p25:0.5,p50:1.2,p75:2.4,p90:3.8,p95:5.0,p99:7.2,max:9.8,mean:1.8,std:1.1,mode:0.8},
-  };
   return {
     meta:{model_key:key,full_key:`${key}_${mode}_${cisd}`,model_label:label,sweep_mode:mode,cisd_mode:cisd,cisd_mode_label:'ICT Body Open (True CISD)',instrument:'NQ',date_range:'2010-01-04 – 2025-03-07',trading_days:3782,total_raw:Math.round(8000*(riskMed/18)),total_wl:wl,total_expired:Math.round(wl*0.12),win_rate:wrBase,ev_per_trade:evBase,profit_factor:pfBase,avg_risk_pts:riskMed+2,risk_median:riskMed,risk_p25:Math.round(riskMed*0.6),risk_p75:Math.round(riskMed*1.55),risk_p90:Math.round(riskMed*2.3),setups_per_day_ny:spd,risk_breakeven_wr:0.333,rr_target:2},
     by_hour,by_session,by_dow,heatmap,top_combos,worst_combos,by_year,r_hist,dir_summary,filter_impact:fi,tspot_breakdown,
     mae_dist:{ext_count:wl,...Object.fromEntries(Object.entries(mae_all_dist).map(([k,v])=>[`ext_${k}`,v]))},
     mfe_dist:{ext_count:wl,...Object.fromEntries(Object.entries(mfe_all_dist).map(([k,v])=>[`ext_${k}`,v]))},
     mae_wins_dist, mfe_wins_dist, mae_loss_dist, mfe_loss_dist,
-    structural_stats,
   };
 }
 
@@ -926,31 +854,21 @@ let isDemo        = true;
 let activeModel   = '1H_5M';
 let activeMode    = 'PREV';
 let activeCisd    = 'CISD';
-let activeProfile = 'structural_dynamic';
+let activeProfile = 'simple_1r';
 let activeTF      = 'all';  // 'all' | '2y' | '1y' | '6m' | '3m' | '1m'
-// F3/F4 are "rejection" filters — default CHECKED (active). Unchecking
-// lets F-rejected trades through. SMT/Hour-Aligned/Prior-* are "positive"
-// filters, default UNCHECKED.
-let activeF3                = true;   // filter to passes_f3===true
-let activeF4                = true;   // filter to passes_f4===true
 let activeSmt               = false;  // filter to smt===true
 let activeHourAligned       = false;  // filter to cisd_aligned===true
-let activePriorCounterClose = false;  // filter to prior_counter_close===true
 let activePriorEngulfing    = false;  // filter to prior_engulfing===true
 
 const RR_PROFILES = [
-  'structural_dynamic',
-  'split_80_20',
   'simple_1r',
+  'raw_measure',
 ];
 const PROFILE_LABELS = {
-  'simple_1r':          'Simple 1R — TP @ 1R · 100% exit · SL = sweep extreme',
-  'structural_dynamic': 'Structural Dynamic — TP1 @ 1R · 90% exit · Runner Free (10%)',
-  'split_80_20':        'Split Exit — TP1 @ PTQ (90%) · TP2 @ p50 MFE (10%) · SL min(struct, MAE p90)',
+  'simple_1r':    'Simple 1R — TP @ 1R · 100% exit · SL = sweep extreme',
+  'raw_measure':  'Raw Measure — no SL/TP · full-session MAE/MFE only',
 };
 const PCT_PROFILES = new Set();
-const STRUCTURAL_PROFILE = 'structural_dynamic';
-const SPLIT_PROFILES = new Set(['split_80_20']);
 
 // Helper — resolve active profile data (handles both flat DEMO and {profiles:{}} real JSON)
 function getProfileData(fullKey, profile) {
@@ -981,9 +899,8 @@ function getAvailableProfiles(fullKey) {
   const base = DATA[fullKey];
   if (!base) return RR_PROFILES;
   if (base.profiles) {
-    // Merge JSON profiles with full list so structural_dynamic always appears
     const fromJson = new Set(Object.keys(base.profiles));
-    return RR_PROFILES.filter(pk => fromJson.has(pk) || pk === STRUCTURAL_PROFILE || SPLIT_PROFILES.has(pk));
+    return RR_PROFILES.filter(pk => fromJson.has(pk));
   }
   return RR_PROFILES; // demo data — all profiles point to same data
 }
@@ -1165,6 +1082,309 @@ function dirCards(container,data){
   </div>`).join('');
 }
 
+// ── EDGE STUDY (PhD-level: Wilson CI, asymmetry, regime stability) ────────────
+function _wilsonCI(wins, n, z=1.96) {
+  // Wilson score interval for binomial proportion — robust for small n.
+  if (n === 0) return [0, 0];
+  const p = wins / n;
+  const denom = 1 + z*z/n;
+  const centre = (p + z*z/(2*n)) / denom;
+  const margin = (z * Math.sqrt(p*(1-p)/n + z*z/(4*n*n))) / denom;
+  return [Math.max(0, centre - margin), Math.min(1, centre + margin)];
+}
+
+function _linearReg(xs, ys) {
+  // Simple OLS: returns {slope, intercept, r, residStd}
+  const n = xs.length;
+  if (n < 2) return null;
+  const mx = xs.reduce((a,b)=>a+b,0)/n;
+  const my = ys.reduce((a,b)=>a+b,0)/n;
+  let sxy=0, sxx=0, syy=0;
+  for (let i=0;i<n;i++) { const dx=xs[i]-mx, dy=ys[i]-my; sxy+=dx*dy; sxx+=dx*dx; syy+=dy*dy; }
+  if (sxx === 0) return null;
+  const slope = sxy/sxx;
+  const intercept = my - slope*mx;
+  const r = sxy / Math.sqrt(sxx*syy || 1);
+  let ss=0;
+  for (let i=0;i<n;i++) { const e = ys[i] - (slope*xs[i]+intercept); ss += e*e; }
+  const residStd = n > 2 ? Math.sqrt(ss/(n-2)) : 0;
+  return { slope, intercept, r, residStd };
+}
+
+function renderEdgeStudy(D) {
+  if (!D) return;
+  const meta = D.meta || {};
+  const wr = meta.win_rate ?? 0;
+  const ev = meta.ev_per_trade ?? 0;
+  const pf = meta.profit_factor ?? 0;
+  const n  = meta.total_wl ?? 0;
+  const sharpe = D.risk_stats?.sharpe;
+  const be = meta.risk_breakeven_wr ?? 0.5;
+
+  // ── 1. Edge Summary hero tiles ────────────────────────────────────────────
+  const heroEl = document.getElementById('edge-hero');
+  if (heroEl) {
+    const byYear = (D.by_year||[]).filter(y => y.n >= 20).sort((a,b)=>a.yr-b.yr);
+    const regYr = byYear.length >= 3 ? _linearReg(byYear.map(y=>y.yr), byYear.map(y=>y.ev)) : null;
+    const slope = regYr?.slope;
+    const [wrLo, wrHi] = _wilsonCI(Math.round(wr*n), n);
+
+    const tiles = [
+      { lbl:'Win Rate',    v:(wr*100).toFixed(1)+'%', sub:`95% CI ${(wrLo*100).toFixed(1)}–${(wrHi*100).toFixed(1)}%`, c: wr>=be?'var(--green)':'var(--red)' },
+      { lbl:'EV / Trade',  v:(ev>=0?'+':'')+ev.toFixed(3)+'R', sub:`${n.toLocaleString()} resolved trades`, c: ev>0?'var(--green)':'var(--red)' },
+      { lbl:'Profit Factor', v:pf.toFixed(2), sub: pf>=1.5?'strong':pf>=1.0?'marginal':'losing', c: pf>=1.5?'var(--green)':pf>=1.0?'var(--amber)':'var(--red)' },
+      { lbl:'Sharpe',      v:sharpe!=null?sharpe.toFixed(2):'—', sub:'annualised · daily returns', c: sharpe!=null && sharpe>=1.5?'var(--green)':sharpe!=null && sharpe>=1?'var(--amber)':'var(--red)' },
+      { lbl:'EV Decay / yr', v:slope!=null?(slope>=0?'+':'')+slope.toFixed(4)+'R':'—', sub:regYr?`r=${regYr.r.toFixed(2)} over ${byYear.length}y`:'needs ≥3 yrs', c: slope==null?'var(--text-muted)':slope>=0?'var(--green)':slope>=-0.02?'var(--amber)':'var(--red)' },
+    ];
+    heroEl.innerHTML = tiles.map(t=>`
+      <div style="background:var(--bg-raised);border:1px solid var(--border-mid);border-radius:8px;padding:14px">
+        <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">${t.lbl}</div>
+        <div style="font-family:var(--font-display);font-size:22px;font-weight:800;color:${t.c};line-height:1.1">${t.v}</div>
+        <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-top:6px">${t.sub}</div>
+      </div>`).join('');
+  }
+
+  // ── 2. Direction Asymmetry table ──────────────────────────────────────────
+  const dirEl = document.getElementById('edge-dir-table');
+  if (dirEl) {
+    const dirs = D.dir_summary || [];
+    const fmtPctPts = v => v!=null ? (+v).toFixed(4)+'%' : '—';
+    const rows = dirs.map(d => {
+      const [lo, hi] = _wilsonCI(d.wins||0, d.n||0);
+      return { ...d, wr_lo: lo, wr_hi: hi };
+    });
+    let html = `<table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:12px">
+      <thead><tr style="border-bottom:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em">
+        <th style="padding:8px 10px;text-align:left;font-weight:400">Direction</th>
+        <th style="padding:8px 10px;text-align:right;font-weight:400">N</th>
+        <th style="padding:8px 10px;text-align:right;font-weight:400">Win Rate</th>
+        <th style="padding:8px 10px;text-align:right;font-weight:400">Wilson 95% CI</th>
+        <th style="padding:8px 10px;text-align:right;font-weight:400">EV</th>
+        <th style="padding:8px 10px;text-align:right;font-weight:400">PF</th>
+        <th style="padding:8px 10px;text-align:right;font-weight:400">Avg MAE</th>
+        <th style="padding:8px 10px;text-align:right;font-weight:400">Avg MFE</th>
+        <th style="padding:8px 10px;text-align:right;font-weight:400">Risk (pts)</th>
+      </tr></thead><tbody>`;
+    rows.forEach(d => {
+      const dirColor = d.direction==='LONG'?'var(--green)':'var(--red)';
+      const evColor = d.ev>0?'var(--green)':'var(--red)';
+      const pfColor = d.pf>=1.5?'var(--green)':d.pf>=1?'var(--amber)':'var(--red)';
+      html += `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:8px 10px;font-weight:700;color:${dirColor}">${d.direction==='LONG'?'↑ LONG':'↓ SHORT'}</td>
+        <td style="padding:8px 10px;text-align:right;color:var(--text-primary)">${(d.n||0).toLocaleString()}</td>
+        <td style="padding:8px 10px;text-align:right;font-weight:600;color:var(--text-primary)">${((d.wr||0)*100).toFixed(1)}%</td>
+        <td style="padding:8px 10px;text-align:right;color:var(--text-muted)">[${(d.wr_lo*100).toFixed(1)}–${(d.wr_hi*100).toFixed(1)}]</td>
+        <td style="padding:8px 10px;text-align:right;font-weight:600;color:${evColor}">${d.ev>0?'+':''}${(d.ev||0).toFixed(3)}R</td>
+        <td style="padding:8px 10px;text-align:right;font-weight:600;color:${pfColor}">${(d.pf||0).toFixed(2)}</td>
+        <td style="padding:8px 10px;text-align:right;color:#fbbf24">${fmtPctPts(d.avg_mae)}</td>
+        <td style="padding:8px 10px;text-align:right;color:#10b981">${fmtPctPts(d.avg_mfe)}</td>
+        <td style="padding:8px 10px;text-align:right;color:var(--text-muted)">${(d.avg_risk_pts||0).toFixed(1)}</td>
+      </tr>`;
+    });
+    html += `</tbody></table>`;
+    // asymmetry note
+    if (rows.length === 2) {
+      const [a,b] = rows;
+      const evGap = Math.abs(a.ev - b.ev);
+      const better = a.ev > b.ev ? a.direction : b.direction;
+      const ciOverlap = !(a.wr_hi < b.wr_lo || b.wr_hi < a.wr_lo);
+      html += `<div style="margin-top:12px;padding:10px 14px;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;font-family:var(--font-data);font-size:11px;color:var(--text-secondary);line-height:1.6">
+        <strong style="color:var(--text-primary)">${better}</strong> leads by <strong>${evGap.toFixed(3)}R</strong> in EV.
+        Win-rate CIs ${ciOverlap ? '<span style="color:var(--amber)">overlap</span> — asymmetry is not statistically significant at 95%' : '<span style="color:var(--green)">do not overlap</span> — asymmetry is statistically significant at 95%'}.
+      </div>`;
+    }
+    dirEl.innerHTML = html;
+  }
+
+  // ── 3. Yearly EV regression plot ──────────────────────────────────────────
+  const yrEl = document.getElementById('edge-yearly');
+  if (yrEl) {
+    const byYear = (D.by_year||[]).filter(y => y.n >= 20).sort((a,b)=>a.yr-b.yr);
+    if (byYear.length < 2) {
+      yrEl.innerHTML = `<div style="padding:20px;font-family:var(--font-data);font-size:11px;color:var(--text-muted)">Need at least 2 years with ≥20 trades for regime analysis.</div>`;
+    } else {
+      const reg = _linearReg(byYear.map(y=>y.yr), byYear.map(y=>y.ev));
+      const W = 900, H = 240, padL = 50, padR = 20, padT = 20, padB = 38;
+      const cW = W - padL - padR, cH = H - padT - padB;
+      const evs = byYear.map(y=>y.ev);
+      const evMin = Math.min(0, ...evs) - 0.05;
+      const evMax = Math.max(0.5, ...evs) + 0.05;
+      const xS = yr => padL + (byYear.length===1?0.5:(yr - byYear[0].yr)/(byYear[byYear.length-1].yr - byYear[0].yr))*cW;
+      const yS = ev => padT + (1 - (ev - evMin)/(evMax - evMin))*cH;
+
+      let svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:100%;display:block" preserveAspectRatio="xMidYMid meet">`;
+      // grid
+      [0.0, 0.25, 0.5, 0.75, 1.0].forEach(f => {
+        const y = padT + f*cH;
+        svg += `<line x1="${padL}" y1="${y}" x2="${padL+cW}" y2="${y}" stroke="var(--border)" stroke-width="0.5"/>`;
+        const ev = evMin + (1-f)*(evMax-evMin);
+        svg += `<text x="${padL-6}" y="${y+3}" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--text-muted)">${ev.toFixed(2)}R</text>`;
+      });
+      // zero line (breakeven EV)
+      const y0 = yS(0);
+      svg += `<line x1="${padL}" y1="${y0}" x2="${padL+cW}" y2="${y0}" stroke="var(--amber)" stroke-width="1" stroke-dasharray="4,3" opacity="0.6"/>`;
+      svg += `<text x="${padL+cW-4}" y="${y0-4}" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--amber)">break-even</text>`;
+      // regression band
+      if (reg) {
+        const r0 = reg.slope*byYear[0].yr + reg.intercept;
+        const r1 = reg.slope*byYear[byYear.length-1].yr + reg.intercept;
+        const band = reg.residStd;
+        svg += `<polygon points="${xS(byYear[0].yr)},${yS(r0+band)} ${xS(byYear[byYear.length-1].yr)},${yS(r1+band)} ${xS(byYear[byYear.length-1].yr)},${yS(r1-band)} ${xS(byYear[0].yr)},${yS(r0-band)}" fill="${reg.slope>=0?'rgba(16,185,129,0.08)':'rgba(239,68,68,0.08)'}"/>`;
+        svg += `<line x1="${xS(byYear[0].yr)}" y1="${yS(r0)}" x2="${xS(byYear[byYear.length-1].yr)}" y2="${yS(r1)}" stroke="${reg.slope>=0?'var(--green)':'var(--red)'}" stroke-width="2" stroke-dasharray="5,4"/>`;
+      }
+      // EV line
+      const pts = byYear.map(y => `${xS(y.yr)},${yS(y.ev)}`).join(' ');
+      svg += `<polyline points="${pts}" fill="none" stroke="var(--blue)" stroke-width="2"/>`;
+      byYear.forEach(y => {
+        const r = Math.min(8, Math.max(3, Math.sqrt(y.n)/3));
+        svg += `<circle cx="${xS(y.yr)}" cy="${yS(y.ev)}" r="${r}" fill="var(--blue)" stroke="var(--bg-card)" stroke-width="2">
+          <title>${y.yr}: ${y.n} trades · WR ${(y.wr*100).toFixed(1)}% · EV ${y.ev>0?'+':''}${y.ev.toFixed(3)}R · PF ${y.pf.toFixed(2)}</title>
+        </circle>`;
+        svg += `<text x="${xS(y.yr)}" y="${padT+cH+16}" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--text-muted)">${y.yr}</text>`;
+      });
+      svg += `</svg>`;
+
+      let regNote = '';
+      if (reg) {
+        const trend = reg.slope >= 0.005 ? 'improving' : reg.slope <= -0.005 ? 'degrading' : 'stable';
+        const trendColor = reg.slope >= 0 ? 'var(--green)' : Math.abs(reg.slope) < 0.01 ? 'var(--amber)' : 'var(--red)';
+        regNote = `<div style="margin-top:10px;padding:10px 14px;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;font-family:var(--font-data);font-size:11px;color:var(--text-secondary);line-height:1.6">
+          Linear trend: <strong style="color:${trendColor}">${trend}</strong> at
+          <strong>${reg.slope>=0?'+':''}${reg.slope.toFixed(4)}R/yr</strong>
+          · correlation r=${reg.r.toFixed(2)}
+          · residual σ=${reg.residStd.toFixed(3)}R
+          ${Math.abs(reg.r) < 0.3 ? '· <span style="color:var(--amber)">weak fit — EV likely noisy around mean</span>' : ''}
+        </div>`;
+      }
+      yrEl.innerHTML = svg + regNote;
+    }
+  }
+
+  // ── 4. Hour × Day EV heatmap ─────────────────────────────────────────────
+  const hmEl = document.getElementById('heatmap');
+  if (hmEl) {
+    const data = D.heatmap || [];
+    const DOW_ORDER = ['Mon','Tue','Wed','Thu','Fri'];
+    const hrs = [...new Set(data.map(d=>d.hr))].sort((a,b)=>a-b);
+    const byKey = {};
+    data.forEach(d => byKey[`${d.dow_name}_${d.hr}`] = d);
+    const evs = data.map(d=>d.ev).filter(v=>v!=null);
+    const evMax = Math.max(0.1, ...evs);
+    const evMin = Math.min(0, ...evs);
+    const evColor = ev => {
+      if (ev == null) return 'var(--bg-raised)';
+      if (ev >= 0) {
+        const t = Math.min(1, ev/evMax);
+        return `rgba(16,185,129,${0.15 + t*0.65})`;
+      } else {
+        const t = Math.min(1, Math.abs(ev)/Math.abs(evMin||1));
+        return `rgba(239,68,68,${0.15 + t*0.65})`;
+      }
+    };
+    let html = `<div style="overflow-x:auto"><table style="border-collapse:collapse;font-family:var(--font-data);font-size:10px;margin:0 auto"><thead><tr>
+      <th style="padding:4px 8px"></th>
+      ${hrs.map(h=>`<th style="padding:5px 6px;text-align:center;color:var(--text-muted);font-weight:500">${String(h).padStart(2,'0')}</th>`).join('')}
+    </tr></thead><tbody>`;
+    DOW_ORDER.forEach(dn => {
+      html += `<tr><td style="padding:4px 8px;color:var(--text-muted);font-weight:600">${dn}</td>`;
+      hrs.forEach(h => {
+        const c = byKey[`${dn}_${h}`];
+        if (!c) { html += `<td style="background:var(--bg-raised);width:34px;height:24px"></td>`; return; }
+        const bg = evColor(c.ev);
+        const textColor = Math.abs(c.ev) > evMax*0.5 ? '#ffffff' : 'var(--text-primary)';
+        html += `<td style="background:${bg};width:34px;height:24px;padding:0;text-align:center;border:1px solid rgba(0,0,0,0.1);color:${textColor};font-weight:600" title="${dn} ${h}:00 · n=${c.n} · WR ${(c.wr*100).toFixed(0)}% · EV ${c.ev>0?'+':''}${c.ev.toFixed(3)}R">${c.ev>=0?'+':''}${c.ev.toFixed(2)}</td>`;
+      });
+      html += `</tr>`;
+    });
+    html += `</tbody></table></div>`;
+    hmEl.innerHTML = html;
+  }
+
+  // ── 5. Session / DOW tables with Wilson CI ───────────────────────────────
+  function renderGrpTable(el, rows, groupKey, groupLabel) {
+    if (!el) return;
+    if (!rows || !rows.length) { el.innerHTML = `<div style="padding:16px;color:var(--text-muted);font-family:var(--font-data);font-size:11px">No data.</div>`; return; }
+    // Aggregate by group (combine LONG+SHORT)
+    const byG = {};
+    rows.forEach(r => {
+      const k = r[groupKey];
+      if (!byG[k]) byG[k] = { n:0, wins:0, evSum:0, pfNum:0, pfDen:0 };
+      byG[k].n += r.n;
+      byG[k].wins += r.wins;
+      byG[k].evSum += r.ev * r.n;
+      // reconstruct win_r / loss_r from pf (not exact but we have it per-row)
+    });
+    const aggregated = Object.entries(byG).map(([k,v]) => {
+      const [lo, hi] = _wilsonCI(v.wins, v.n);
+      return { grp:k, n:v.n, wr:v.n?v.wins/v.n:0, wr_lo:lo, wr_hi:hi, ev:v.n?v.evSum/v.n:0 };
+    }).sort((a,b)=> b.ev - a.ev);
+    let html = `<table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:11px">
+      <thead><tr style="border-bottom:1px solid var(--border-mid);color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:.04em">
+        <th style="padding:7px 8px;text-align:left;font-weight:400">${groupLabel}</th>
+        <th style="padding:7px 8px;text-align:right;font-weight:400">N</th>
+        <th style="padding:7px 8px;text-align:right;font-weight:400">WR</th>
+        <th style="padding:7px 8px;text-align:right;font-weight:400">95% CI</th>
+        <th style="padding:7px 8px;text-align:right;font-weight:400">EV</th>
+      </tr></thead><tbody>`;
+    aggregated.forEach(a => {
+      const evC = a.ev>0?'var(--green)':'var(--red)';
+      html += `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:6px 8px;color:var(--text-primary);font-weight:600">${a.grp}</td>
+        <td style="padding:6px 8px;text-align:right;color:var(--text-muted)">${a.n.toLocaleString()}</td>
+        <td style="padding:6px 8px;text-align:right;color:var(--text-primary);font-weight:600">${(a.wr*100).toFixed(1)}%</td>
+        <td style="padding:6px 8px;text-align:right;color:var(--text-muted)">[${(a.wr_lo*100).toFixed(0)}–${(a.wr_hi*100).toFixed(0)}]</td>
+        <td style="padding:6px 8px;text-align:right;color:${evC};font-weight:600">${a.ev>0?'+':''}${a.ev.toFixed(3)}R</td>
+      </tr>`;
+    });
+    html += `</tbody></table>`;
+    el.innerHTML = html;
+  }
+  renderGrpTable(document.getElementById('edge-sess-table'), D.by_session||[], 'session', 'Session');
+  renderGrpTable(document.getElementById('edge-dow-table'),  D.by_dow||[],     'dow_name','Day');
+
+  // ── 6. Top/Worst combos — ranked by EV z-score vs baseline ──────────────
+  const baseEV = ev, baseVar = (be*(1-be))/Math.max(n,1); // crude variance proxy
+  const rankCombo = c => {
+    const sd = Math.sqrt(Math.max(0.001, (c.pf||1) * 0.5 / Math.max(c.n,1)));
+    return (c.ev - baseEV) / sd;
+  };
+  const topEl = document.getElementById('top-combos');
+  const worstEl = document.getElementById('worst-combos');
+  if (topEl || worstEl) {
+    const combos = (D.top_combos||[]).filter(c => c.n >= 6).map(c => ({...c, z: rankCombo(c)}));
+    combos.sort((a,b)=> b.z - a.z);
+    const renderCombo = (container, rows) => {
+      if (!container) return;
+      if (!rows.length) { container.innerHTML = `<div style="padding:14px;color:var(--text-muted);font-family:var(--font-data);font-size:11px">No combos meeting n≥6.</div>`; return; }
+      let html = `<table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:11px">
+        <thead><tr style="border-bottom:1px solid var(--border-mid);color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:.04em">
+          <th style="padding:7px 8px;text-align:left;font-weight:400">Setup</th>
+          <th style="padding:7px 8px;text-align:right;font-weight:400">N</th>
+          <th style="padding:7px 8px;text-align:right;font-weight:400">WR</th>
+          <th style="padding:7px 8px;text-align:right;font-weight:400">EV</th>
+          <th style="padding:7px 8px;text-align:right;font-weight:400">PF</th>
+          <th style="padding:7px 8px;text-align:right;font-weight:400">z-vs-base</th>
+        </tr></thead><tbody>`;
+      rows.forEach(c => {
+        const evC = c.ev>0?'var(--green)':'var(--red)';
+        const zC  = c.z>=1.5?'var(--green)':c.z>=0.5?'var(--amber)':c.z<=-0.5?'var(--red)':'var(--text-muted)';
+        html += `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:6px 8px;color:var(--text-primary)">${c.label}</td>
+          <td style="padding:6px 8px;text-align:right;color:var(--text-muted)">${c.n}</td>
+          <td style="padding:6px 8px;text-align:right;color:var(--text-primary);font-weight:600">${(c.wr*100).toFixed(1)}%</td>
+          <td style="padding:6px 8px;text-align:right;color:${evC};font-weight:600">${c.ev>0?'+':''}${c.ev.toFixed(3)}R</td>
+          <td style="padding:6px 8px;text-align:right;color:var(--text-secondary)">${c.pf.toFixed(2)}</td>
+          <td style="padding:6px 8px;text-align:right;color:${zC};font-weight:700">${c.z>=0?'+':''}${c.z.toFixed(2)}σ</td>
+        </tr>`;
+      });
+      html += `</tbody></table>`;
+      container.innerHTML = html;
+    };
+    renderCombo(topEl, combos.slice(0, 10));
+    renderCombo(worstEl, [...combos].reverse().slice(0, 8));
+  }
+}
+
 
 // ── T-SPOT VARIANT ──────────────────────────────────────────────────────────
 function renderClassificationBreakdown(){
@@ -1249,10 +1469,7 @@ function renderProfileDropdown(){
   function optHtml(pk){
     const d  = getActiveTFData(getProfileData(fullKey, pk));
     const ev = d?.meta?.ev_per_trade;
-    let baseLabel = PROFILE_LABELS[pk] || pk;
-    if (pk === 'split_80_20') {
-      baseLabel = `Split Exit — TP1 @ PTQ (90%) · TP2 @ p50 MFE (10%) · SL min(struct, MAE p90)`;
-    }
+    const baseLabel = PROFILE_LABELS[pk] || pk;
     const label = baseLabel + (ev != null ? '  ·  EV ' + (ev>0?'+':'') + ev.toFixed(3) + 'R' : '');
     return `<option value="${pk}" ${pk===activeProfile?'selected':''}>${label}</option>`;
   }
@@ -1262,6 +1479,8 @@ function renderProfileDropdown(){
 
 function switchProfile(pk){
   activeProfile=pk; _tradesPage=0;
+  if (pk === 'raw_measure') { _maeSegment = 'all'; _mfeSegment = 'all'; }
+  updateTabVisibility();
   renderProfileDropdown(); renderModelDropdown(); renderActive();
 }
 function switchTF(tf){
@@ -1549,6 +1768,214 @@ function computeRangeStats(trades){
 
 /* ── Walk-Forward Regime Analysis: Core Computation Functions ─────── */
 
+// Regime stats for raw_measure: MAE/MFE distribution characteristics per range.
+// No WIN/LOSS needed — every trade has mae_pct and mfe_pct.
+function computeRegimeStats(trades) {
+  const n = trades.length;
+  if (n === 0) return null;
+
+  function pctl(sorted, q) {
+    if (!sorted.length) return 0;
+    const i = q * (sorted.length - 1);
+    const lo = Math.floor(i), hi = Math.ceil(i);
+    return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi]-sorted[lo]) * (i-lo);
+  }
+  function mean(arr) { return arr.length ? arr.reduce((s,v)=>s+v,0)/arr.length : 0; }
+
+  const mae = trades.map(t => t.mae_pct).filter(v => v != null && isFinite(v) && v >= 0).sort((a,b)=>a-b);
+  const mfe = trades.map(t => t.mfe_pct).filter(v => v != null && isFinite(v) && v >= 0).sort((a,b)=>a-b);
+
+  const medMAE  = pctl(mae, 0.5);
+  const medMFE  = pctl(mfe, 0.5);
+  const meanMAE = mean(mae);
+  const meanMFE = mean(mfe);
+
+  // Ratio: MAE / MFE. Low = directional (little pullback vs run). High = choppy.
+  const ratioMed  = medMFE  > 0 ? medMAE / medMFE : null;
+  const ratioMean = meanMFE > 0 ? meanMAE / meanMFE : null;
+
+  // Asymmetry: (MFE - MAE) / (MFE + MAE). -1 = all pain, +1 = all reward, 0 = symmetric.
+  const asymMed  = (medMFE + medMAE) > 0 ? (medMFE - medMAE) / (medMFE + medMAE) : 0;
+  const asymMean = (meanMFE + meanMAE) > 0 ? (meanMFE - meanMAE) / (meanMFE + meanMAE) : 0;
+
+  // Per-trade ratios for dispersion
+  const perTradeRatios = trades
+    .map(t => (t.mae_pct != null && t.mfe_pct != null && t.mfe_pct > 0) ? t.mae_pct / t.mfe_pct : null)
+    .filter(v => v != null && isFinite(v) && v >= 0)
+    .sort((a,b)=>a-b);
+  const ratioP25 = pctl(perTradeRatios, 0.25);
+  const ratioP75 = pctl(perTradeRatios, 0.75);
+
+  // Direction split
+  const longs  = trades.filter(t => t.direction === 'LONG');
+  const shorts = trades.filter(t => t.direction === 'SHORT');
+  function subRatio(sub) {
+    const sMae = sub.map(t=>t.mae_pct).filter(v=>v!=null && v>=0).sort((a,b)=>a-b);
+    const sMfe = sub.map(t=>t.mfe_pct).filter(v=>v!=null && v>=0).sort((a,b)=>a-b);
+    const mm = pctl(sMae, 0.5), mf = pctl(sMfe, 0.5);
+    return { n: sub.length, medMAE: mm, medMFE: mf, ratio: mf > 0 ? mm/mf : null };
+  }
+
+  return {
+    n,
+    med_mae: medMAE,
+    med_mfe: medMFE,
+    mean_mae: meanMAE,
+    mean_mfe: meanMFE,
+    ratio_med: ratioMed,
+    ratio_mean: ratioMean,
+    asym_med: asymMed,
+    asym_mean: asymMean,
+    ratio_p25: ratioP25,
+    ratio_p75: ratioP75,
+    long: subRatio(longs),
+    short: subRatio(shorts),
+  };
+}
+
+function renderCustomRangesRegime(rangeResults) {
+  const cv = document.getElementById('custom-view');
+  if (!cv) return;
+
+  if (!rangeResults || rangeResults.length === 0) {
+    cv.innerHTML = '<div style="padding:40px 0;text-align:center;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">No ranges defined. Add ranges and click Apply.</div>';
+    return;
+  }
+
+  const fmtPct = v => v != null ? (+v).toFixed(4) + '%' : '\u2014';
+  const fmtRatio = v => v != null ? v.toFixed(3) : '\u2014';
+  const fmtAsym = v => v != null ? (v >= 0 ? '+' : '') + (v*100).toFixed(1) + '%' : '\u2014';
+
+  // Regime character classifier for the ratio
+  function regimeLabel(ratio) {
+    if (ratio == null) return { label: '\u2014', color: 'var(--text-muted)' };
+    if (ratio <= 0.40) return { label: 'Directional',   color: '#10b981' };
+    if (ratio <= 0.65) return { label: 'Favourable',    color: '#60a5fa' };
+    if (ratio <= 0.90) return { label: 'Balanced',      color: '#fbbf24' };
+    if (ratio <= 1.25) return { label: 'Choppy',        color: '#fb923c' };
+    return                     { label: 'Adverse',      color: '#ef4444' };
+  }
+
+  // Delta vs first range (baseline)
+  const baseline = rangeResults[0]?.stats;
+
+  let html = `<div style="padding:24px 0 40px">`;
+  html += `<div style="font-family:var(--font-data);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px">Regime Comparison \u00b7 MAE : MFE</div>`;
+  html += `<div style="font-family:var(--font-data);font-size:11px;color:var(--text-secondary);line-height:1.6;margin-bottom:20px">
+    Compares the <strong style="color:var(--text-primary)">character</strong> of each period by MAE / MFE ratio \u2014 lower ratio means trades run favourably with little pullback (directional regime); higher ratio means trades take as much heat as reward (choppy).
+    Performance metrics (WR / EV / PF) aren't applicable for raw measure \u2014 there's no SL/TP resolution. This view shows regime drift only.
+  </div>`;
+
+  // Headline comparison cards
+  html += `<div style="display:grid;grid-template-columns:repeat(${rangeResults.length},1fr);gap:12px;margin-bottom:24px">`;
+  rangeResults.forEach((r, idx) => {
+    const s = r.stats;
+    if (!s) {
+      html += `<div style="background:var(--bg-raised);border:1px solid var(--border);border-radius:10px;padding:16px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="width:10px;height:10px;border-radius:3px;background:${r.color}"></div>
+          <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">${r.label}</div>
+        </div>
+        <div style="font-family:var(--font-data);font-size:11px;color:var(--text-muted)">No trades in range.</div>
+      </div>`;
+      return;
+    }
+    const reg = regimeLabel(s.ratio_med);
+    const isBaseline = idx === 0;
+    const drift = !isBaseline && baseline && baseline.ratio_med != null && s.ratio_med != null
+      ? ((s.ratio_med - baseline.ratio_med) / baseline.ratio_med * 100)
+      : null;
+    const driftStr = drift != null
+      ? `<span style="color:${Math.abs(drift) < 10 ? 'var(--green)' : Math.abs(drift) < 25 ? 'var(--amber)' : 'var(--red)'};font-weight:600">${drift >= 0 ? '+' : ''}${drift.toFixed(1)}% vs baseline</span>`
+      : `<span style="color:var(--text-muted)">baseline</span>`;
+
+    html += `<div style="background:var(--bg-card);border:1px solid ${r.color}44;border-radius:10px;padding:16px 18px;box-shadow:var(--shadow);position:relative;overflow:hidden">
+      <div style="position:absolute;top:0;left:0;width:100%;height:3px;background:${r.color}"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <div style="width:10px;height:10px;border-radius:3px;background:${r.color}"></div>
+        <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">${r.label}</div>
+      </div>
+      <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-bottom:4px">MAE : MFE ratio</div>
+      <div style="font-family:var(--font-display);font-size:30px;font-weight:800;color:${reg.color};line-height:1">${fmtRatio(s.ratio_med)}</div>
+      <div style="font-family:var(--font-data);font-size:11px;font-weight:700;color:${reg.color};margin-top:4px">${reg.label}</div>
+      <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-top:8px">${s.n.toLocaleString()} trades \u00b7 ${driftStr}</div>
+    </div>`;
+  });
+  html += `</div>`;
+
+  // Detailed metrics table
+  html += `<div style="font-family:var(--font-data);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)">Detailed Regime Metrics</div>`;
+  html += `<div style="overflow-x:auto;margin-bottom:28px"><table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:11px">
+    <thead><tr style="border-bottom:1px solid var(--border-mid);color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:.04em">
+      <th style="padding:8px 10px;text-align:left;font-weight:400">Metric</th>
+      ${rangeResults.map(r => `<th style="padding:8px 10px;text-align:right;font-weight:500;color:${r.color}">${r.label.split(' to ')[0]}</th>`).join('')}
+    </tr></thead><tbody>`;
+
+  const rows = [
+    { lbl:'Trades',          f:s=> s.n.toLocaleString(),     note:'sample size' },
+    { lbl:'Median MAE',      f:s=> fmtPct(s.med_mae),        note:'typical adverse excursion' },
+    { lbl:'Median MFE',      f:s=> fmtPct(s.med_mfe),        note:'typical favourable excursion' },
+    { lbl:'Mean MAE',        f:s=> fmtPct(s.mean_mae),       note:'arithmetic avg' },
+    { lbl:'Mean MFE',        f:s=> fmtPct(s.mean_mfe),       note:'arithmetic avg' },
+    { lbl:'MAE : MFE (med)', f:s=> fmtRatio(s.ratio_med),    note:'lower = directional', emphasize:true },
+    { lbl:'MAE : MFE (mean)',f:s=> fmtRatio(s.ratio_mean),   note:'mean-based ratio' },
+    { lbl:'Asymmetry (med)', f:s=> fmtAsym(s.asym_med),      note:'+1 = all reward, \u22121 = all pain' },
+    { lbl:'Ratio IQR',       f:s=> `${fmtRatio(s.ratio_p25)} \u2013 ${fmtRatio(s.ratio_p75)}`, note:'p25\u2013p75 per-trade ratio spread' },
+  ];
+  rows.forEach(row => {
+    html += `<tr style="border-bottom:1px solid var(--border)${row.emphasize?';background:var(--bg-raised)':''}">
+      <td style="padding:7px 10px;color:var(--text-primary);font-weight:${row.emphasize?700:500}">${row.lbl}
+        <div style="font-size:9px;color:var(--text-muted);font-weight:400;margin-top:1px">${row.note}</div>
+      </td>
+      ${rangeResults.map(r => {
+        if (!r.stats) return `<td style="padding:7px 10px;text-align:right;color:var(--text-muted)">\u2014</td>`;
+        return `<td style="padding:7px 10px;text-align:right;color:var(--text-primary);font-weight:${row.emphasize?700:500}">${row.f(r.stats)}</td>`;
+      }).join('')}
+    </tr>`;
+  });
+  html += `</tbody></table></div>`;
+
+  // Direction split
+  html += `<div style="font-family:var(--font-data);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)">Direction Split \u00b7 LONG vs SHORT Regime</div>`;
+  html += `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:11px">
+    <thead><tr style="border-bottom:1px solid var(--border-mid);color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:.04em">
+      <th style="padding:8px 10px;text-align:left;font-weight:400">Range</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:400">Dir</th>
+      <th style="padding:8px 10px;text-align:right;font-weight:400">N</th>
+      <th style="padding:8px 10px;text-align:right;font-weight:400">Med MAE</th>
+      <th style="padding:8px 10px;text-align:right;font-weight:400">Med MFE</th>
+      <th style="padding:8px 10px;text-align:right;font-weight:400">MAE : MFE</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:400">Character</th>
+    </tr></thead><tbody>`;
+  rangeResults.forEach(r => {
+    if (!r.stats) return;
+    [['LONG', r.stats.long, 'var(--green)'], ['SHORT', r.stats.short, 'var(--red)']].forEach(([dir, sub, dirColor]) => {
+      if (!sub || sub.n === 0) {
+        html += `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:6px 10px;color:${r.color}">${r.label.split(' to ')[0]}</td>
+          <td style="padding:6px 10px;font-weight:700;color:${dirColor}">${dir}</td>
+          <td style="padding:6px 10px;text-align:right;color:var(--text-muted)" colspan="5">\u2014 no trades</td>
+        </tr>`;
+        return;
+      }
+      const reg = regimeLabel(sub.ratio);
+      html += `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:6px 10px;color:${r.color}">${r.label.split(' to ')[0]}</td>
+        <td style="padding:6px 10px;font-weight:700;color:${dirColor}">${dir}</td>
+        <td style="padding:6px 10px;text-align:right;color:var(--text-muted)">${sub.n.toLocaleString()}</td>
+        <td style="padding:6px 10px;text-align:right;color:#fbbf24">${fmtPct(sub.medMAE)}</td>
+        <td style="padding:6px 10px;text-align:right;color:#10b981">${fmtPct(sub.medMFE)}</td>
+        <td style="padding:6px 10px;text-align:right;color:${reg.color};font-weight:700">${fmtRatio(sub.ratio)}</td>
+        <td style="padding:6px 10px;color:${reg.color};font-weight:600">${reg.label}</td>
+      </tr>`;
+    });
+  });
+  html += `</tbody></table></div>`;
+
+  html += `</div>`;
+  cv.innerHTML = html;
+}
+
 function computeTrainParams(trades) {
   const winners = trades.filter(t => t.outcome === 'WIN');
   if (winners.length < 5) return null;
@@ -1663,7 +2090,7 @@ function computeOverfitScore(trainEV, testEV) {
 }
 
 function findBestVariant(pairs) {
-  const names = ['Structural', 'Max MAE', 'P90 MAE', 'P85 MAE', 'P50 MAE'];
+  const names = ['Sweep Extreme', 'Max MAE', 'P90 MAE', 'P85 MAE', 'P50 MAE'];
   let bestIdx = 0, bestCV = Infinity;
 
   for (let vi = 0; vi < 5; vi++) {
@@ -1682,7 +2109,7 @@ function findBestVariant(pairs) {
 function buildWalkForwardPairs(rangeResults) {
   // Rolling walk-forward: R1→R2, R2→R3, R3→R4, etc.
   const pairs = [], unpaired = [];
-  const capNames = ['Structural', 'Max MAE', 'P90 MAE', 'P85 MAE', 'P50 MAE'];
+  const capNames = ['Sweep Extreme', 'Max MAE', 'P90 MAE', 'P85 MAE', 'P50 MAE'];
 
   if (rangeResults.length < 2) {
     unpaired.push(...rangeResults);
@@ -1719,7 +2146,7 @@ function buildWalkForwardPairs(rangeResults) {
     }
 
     // MFE target variants — Structural (no TP cap), PTQ Level, P50 MFE, P75 MFE, P90 MFE
-    const mfeCapNames = ['Structural 1R', 'PTQ Level', 'P50 MFE', 'P75 MFE', 'P90 MFE'];
+    const mfeCapNames = ['1R Baseline', 'PTQ Level', 'P50 MFE', 'P75 MFE', 'P90 MFE'];
 
     // Compute MFE percentiles from train winners
     function pctlLocal(sorted, q) {
@@ -1782,6 +2209,19 @@ function applyCustomRanges(){
   const baseD = getProfileData(fullKey, activeProfile);
   if(!baseD || !baseD.recent_trades) return;
   const allTrades = getSmtFilteredTrades(baseD.recent_trades);
+
+  // Raw-measure: no WIN/LOSS → use MAE:MFE regime analysis instead of performance stats.
+  if (activeProfile === 'raw_measure') {
+    const rangeResults = customRanges.map((r, i) => {
+      if (!r.start || !r.end) return null;
+      const filtered = allTrades.filter(t => t.date >= r.start && t.date <= r.end);
+      return { label: r.start + ' to ' + r.end, color: RANGE_COLORS[i],
+               trades: filtered, stats: computeRegimeStats(filtered) };
+    }).filter(Boolean);
+    renderCustomRangesRegime(rangeResults);
+    return;
+  }
+
   const rangeResults = customRanges.map((r, i) => {
     if(!r.start || !r.end) return null;
     const filtered = allTrades.filter(t => t.date >= r.start && t.date <= r.end);
@@ -2205,7 +2645,7 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
         const isBestMfe = mi === pair.bestMfeVariantIdx;
         const tr = v.train, te = v.test;
         if (!tr || !te) return;
-        const tpLabel = v.tp != null ? fmtPct(v.tp) : '1R structural';
+        const tpLabel = v.tp != null ? fmtPct(v.tp) : '1R baseline';
         html += `<div style="background:var(--bg-card);border:1px solid ${isBestMfe ? 'rgba(16,185,129,0.5)' : 'var(--border)'};border-radius:10px;overflow:hidden;${isBestMfe ? 'box-shadow:0 0 0 1px rgba(16,185,129,0.3);' : ''}">`;
         // Card header
         html += `<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:${isBestMfe ? 'rgba(16,185,129,0.06)' : 'transparent'}">`;
@@ -3593,29 +4033,17 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
 // ── SMT DATA OVERRIDE ────────────────────────────────────────────────────────
 // When SMT checkbox is checked, recompute aggregated stats from filtered trades
 // so hero tiles, by_hour, by_session, by_dow, and dir_summary all reflect SMT-only trades.
-// Combined filter entry point: applies all 6 runtime filters individually.
+// Combined filter entry point: applies all 4 runtime filters individually.
 //
-// F3/F4 default CHECKED (active) — they're the baseline quality filters.
-// When a checkbox is unchecked the corresponding F-rejected trades are
-// included in the view.
-//
-// SMT/Hour-Aligned/Prior-Counter/Prior-Engulfing default UNCHECKED — they
-// are positive add-on filters that narrow the set when enabled.
-//
-// Trades missing passes_f3/f4 fields (older JSONs) default to passing
-// the filter (treat undefined as permissive) so back-compat is preserved.
+// F3 defaults CHECKED (active) — it's the baseline quality filter.
 function getFilteredD(D) {
-  const anyActive = activeF3 || activeF4
-    || activeSmt || activeHourAligned || activePriorCounterClose || activePriorEngulfing;
+  const anyActive = activeSmt || activeHourAligned || activePriorEngulfing;
   if (!anyActive) return D;
   const rawTrades = D?.recent_trades;
   if (!rawTrades || !rawTrades.length) return D;
   let trades = rawTrades;
-  if (activeF3) trades = trades.filter(t => t.passes_f3 !== false);
-  if (activeF4) trades = trades.filter(t => t.passes_f4 !== false);
   if (activeSmt)               trades = trades.filter(t => t.smt === true);
   if (activeHourAligned)       trades = trades.filter(t => t.cisd_aligned === true);
-  if (activePriorCounterClose) trades = trades.filter(t => t.prior_counter_close === true);
   if (activePriorEngulfing)    trades = trades.filter(t => t.prior_engulfing === true);
   if (!trades.length) return D;
 
@@ -3784,7 +4212,6 @@ function renderActive(){
   }
   const D = getActiveTFData(baseD);
   renderModel(getSmtD(D));
-  renderProfileCompare();
   updateFilterChipDeltas(D);
 }
 
@@ -3795,34 +4222,24 @@ function renderActive(){
 function updateFilterChipDeltas(D){
   const rt = D?.recent_trades || [];
   if (!rt.length){
-    ['f3-checkbox','f4-checkbox','smt-checkbox','hour-aligned-checkbox','prior-counter-checkbox','prior-engulf-checkbox']
+    ['smt-checkbox','hour-aligned-checkbox','prior-engulf-checkbox']
       .forEach(id => _setChipDelta(id, null));
     return;
   }
-  // Helper that re-applies the full pipeline with one filter overridden.
   function countWith(over){
     let t = rt;
-    const f3 = over.f3 !== undefined ? over.f3 : activeF3;
-    const f4 = over.f4 !== undefined ? over.f4 : activeF4;
     const sm = over.smt !== undefined ? over.smt : activeSmt;
     const hr = over.hr  !== undefined ? over.hr  : activeHourAligned;
-    const pc = over.pcc !== undefined ? over.pcc : activePriorCounterClose;
     const pe = over.peng!== undefined ? over.peng: activePriorEngulfing;
-    if (f3) t = t.filter(x => x.passes_f3 !== false);
-    if (f4) t = t.filter(x => x.passes_f4 !== false);
     if (sm) t = t.filter(x => x.smt === true);
     if (hr) t = t.filter(x => x.cisd_aligned === true);
-    if (pc) t = t.filter(x => x.prior_counter_close === true);
     if (pe) t = t.filter(x => x.prior_engulfing === true);
     return t.length;
   }
   const cur = countWith({});
   const deltas = [
-    ['f3-checkbox',             countWith({f3:  !activeF3})              - cur],
-    ['f4-checkbox',             countWith({f4:  !activeF4})              - cur],
     ['smt-checkbox',            countWith({smt: !activeSmt})             - cur],
     ['hour-aligned-checkbox',   countWith({hr:  !activeHourAligned})     - cur],
-    ['prior-counter-checkbox',  countWith({pcc: !activePriorCounterClose}) - cur],
     ['prior-engulf-checkbox',   countWith({peng:!activePriorEngulfing})  - cur],
   ];
   deltas.forEach(([id, delta]) => _setChipDelta(id, delta));
@@ -3869,6 +4286,12 @@ function renderModel(D){
 
   // Hero tiles — Row 1: performance, Row 2: risk
   const mrEl=document.getElementById('meta-row'); mrEl.innerHTML='';
+  if (activeProfile === 'raw_measure') {
+    const note = document.createElement('div');
+    note.style.cssText = 'grid-column:1/-1;padding:10px 14px;background:var(--bg-raised);border:1px solid var(--border-mid);border-radius:8px;font-family:var(--font-data);font-size:11px;color:var(--amber);margin-bottom:4px';
+    note.innerHTML = '<strong>Raw Measure profile:</strong> No SL or TP applied. WR / EV / PF are not meaningful here — use the MAE and MFE tabs to study excursion distributions.';
+    mrEl.appendChild(note);
+  }
   const rrTarget = m.rr_target != null ? m.rr_target : (rs.tp_pct != null && rs.sl_pct != null && rs.sl_pct > 0 ? rs.tp_pct / rs.sl_pct : null);
   const rrStr = rrTarget != null ? rrTarget.toFixed(2)+':1' : '—';
   const totalPnl = rs.total_pnl_usd;
@@ -3911,13 +4334,8 @@ function renderModel(D){
   });
 
   drawSetupViz();
-  barChart(document.getElementById('hour-chart'),(D.by_hour||[]).map(d=>({group:d.hr_label||`${d.hr}:00`,key:d.direction,val:+(d.wr*100).toFixed(1),n:d.n,ev:d.ev,pf:d.pf,avg_mae:d.avg_mae,avg_mfe:d.avg_mfe,avg_mae_hr:d.avg_mae_hr,avg_mfe_hr:d.avg_mfe_hr})),260,25,75);
-  barChart(document.getElementById('sess-chart'),(D.by_session||[]).map(d=>({group:d.session,key:d.direction,val:+(d.wr*100).toFixed(1),n:d.n,ev:d.ev,pf:d.pf,avg_mae:d.avg_mae,avg_mfe:d.avg_mfe,avg_mae_hr:d.avg_mae_hr,avg_mfe_hr:d.avg_mfe_hr})),200,30,70);
-  barChart(document.getElementById('dow-chart'), (D.by_dow||[]).map(d=>({group:d.dow_name,key:d.direction,val:+(d.wr*100).toFixed(1),n:d.n,ev:d.ev,pf:d.pf,avg_mae:d.avg_mae,avg_mfe:d.avg_mfe,avg_mae_hr:d.avg_mae_hr,avg_mfe_hr:d.avg_mfe_hr})),200,35,70);
-  dirCards(document.getElementById('dir-cards'),D.dir_summary||[]);
-  renderHeatmap(document.getElementById('heatmap'),D.heatmap||[]);
-  comboTable(document.getElementById('top-combos'),(D.top_combos||[]).slice(0,12));
-  comboTable(document.getElementById('worst-combos'),D.worst_combos||[]);
+  if(activePageTab === 'edge') renderEdgeStudy(D);
+  if(document.getElementById('dir-cards')) dirCards(document.getElementById('dir-cards'),D.dir_summary||[]);
   // Filter waterfall + variants rendered in Filters tab via switchPageTab
   if(activePageTab === 'filters'){
     filterWaterfall(document.getElementById('filter-waterfall'),D.filter_impact||[]);
@@ -3938,8 +4356,7 @@ function renderModel(D){
   rn.textContent=`Stop = |entry – sweep extreme|. Median stop = ${m.risk_median||'—'}pt → ~${(m.risk_median||0)*2}pt target at 1:2. Breakeven WR = ${pct(be)}.`;
 
   // MAE / MFE tabs — only render if active (saves work on other tabs)
-  if(activePageTab === 'mae') renderMAEStudy(D);
-  if(activePageTab === 'mfe'){ renderMFEStudy(D); renderStructuralPanel(D); }
+  if(activePageTab === 'excursion'){ renderMAEStudy(D); renderMFEStudy(D); }
   // Risk tab
   if(activePageTab === 'risk') renderEquityCurveFS(D);
 
@@ -4290,7 +4707,8 @@ function renderRecentTrades(page) {
   displayTrades.forEach((t, i) => {
     const bg = i % 2 === 0 ? 'transparent' : 'color-mix(in srgb,var(--bg-raised) 60%,transparent)';
     const isWin = t.outcome === 'WIN';
-    const resColor = isWin ? 'var(--green)' : 'var(--red)';
+    const isMeasured = t.outcome === 'MEASURED';
+    const resColor = isMeasured ? 'var(--blue)' : isWin ? 'var(--green)' : 'var(--red)';
     const dirColor = t.direction === 'LONG' ? 'var(--green)' : 'var(--red)';
     const dirArrow = t.direction === 'LONG' ? '▲' : '▼';
     const dowName  = t.dow_name || DOW_NAMES[t.dow] || '?';
@@ -4308,7 +4726,7 @@ function renderRecentTrades(page) {
       <td style="padding:7px 6px;text-align:right;color:var(--text-primary);">${t.risk_pts != null ? t.risk_pts.toFixed(1) : '—'}</td>
       <td style="padding:7px 6px;text-align:right;color:var(--red);font-size:11px;">${t.mae_pct != null ? t.mae_pct.toFixed(4) + '%' : '—'}</td>
       <td style="padding:7px 6px;text-align:right;color:var(--green);font-size:11px;">${t.mfe_pct != null ? t.mfe_pct.toFixed(4) + '%' : '—'}</td>
-      <td style="padding:7px 6px;text-align:center;font-weight:700;color:${resColor};">${isWin ? '✓ WIN' : '✗ LOSS'}</td>
+      <td style="padding:7px 6px;text-align:center;font-weight:700;color:${resColor};">${isMeasured ? '● MEASURED' : isWin ? '✓ WIN' : '✗ LOSS'}</td>
     </tr>`;
   });
   html += '</tbody></table></div>';
@@ -4877,7 +5295,9 @@ function _drawDistHist(canvas, hist, which, label, color){
 // Replicates Python's _full_mae_stats / _full_mfe_stats entirely in JS
 // so MAE/MFE studies always match the current Period/TF/Profile slice.
 function computeRichStudy(trades, field) {
-  const vals = trades.map(t => t[field]).filter(v => v != null && v > 0);
+  // Include all trades with a numeric value (zeros are meaningful — trade never went adverse/favourable).
+  // Every trade has an MAE and MFE, so counts must match Overview/Trades.
+  const vals = trades.map(t => t[field]).filter(v => v != null && isFinite(v) && v >= 0);
   const n = vals.length;
   if (n < 3) return null;
 
@@ -4994,9 +5414,14 @@ function computeRichStudy(trades, field) {
   let sl_sweep = null, opt_sl = null, be_triggers = null, ptq_level = null, ptq_reach_rate = null;
   const totalTrades = trades.length;
 
+  // Baseline WR across the full slice — used as lift benchmark
+  const baselineWins = trades.filter(t => t.outcome === 'WIN').length;
+  const baselineWL   = trades.filter(t => t.outcome === 'WIN' || t.outcome === 'LOSS').length;
+  const baselineWR   = baselineWL > 0 ? baselineWins / baselineWL : 0;
+
   if (isMAE) {
     sl_sweep = [];
-    let _optFallback = null;
+    let opt_p_ko = null;
     [5,10,15,20,25,30,33,40,50,60,75,90].forEach(exceedPct => {
       const thr = pct(exceedPct);
       const touched = trades.filter(t => t[field] != null && t[field] >= thr);
@@ -5004,53 +5429,67 @@ function computeRichStudy(trades, field) {
       if (nt === 0) return;
       const nWin = touched.filter(t => t.outcome === 'WIN').length;
       const nLoss = touched.filter(t => t.outcome === 'LOSS').length;
-      const pRec = Math.round(nWin / nt * 10000) / 10000;
-      const pKo = Math.round(nLoss / nt * 10000) / 10000;
-      const exc = Math.round(nt / totalTrades * 1000) / 10;
+      const wlTouched = nWin + nLoss;
+      const pRec = wlTouched > 0 ? Math.round(nWin / wlTouched * 10000) / 10000 : 0;
+      const pKo  = wlTouched > 0 ? Math.round(nLoss / wlTouched * 10000) / 10000 : 0;
       sl_sweep.push({exceed_pct: exceedPct, threshold: Math.round(thr*10000)/10000,
                      n_exceeded: nt, p_recovered: pRec, p_ko: pKo, ev_cost: 0});
-      // opt_sl: first threshold (highest reach) where p_ko >= 0.70
-      // = tightest stop where 70%+ of trades dipping this deep are genuine losses
-      if (opt_sl === null && pKo >= 0.70) { opt_sl = Math.round(thr*10000)/10000; }
-      if (_optFallback === null && pKo >= 0.50) { _optFallback = Math.round(thr*10000)/10000; }
+      // Optimal SL: TIGHTEST threshold (smallest MAE) where reaching it almost always
+      // means the trade is already lost. Criteria: P(LOSS|touched) >= 70%, and enough
+      // sample size (touch rate >= 10% of trades).
+      // Iteration goes tight → loose, so first match = tightest level. Don't overwrite.
+      const touchFrac = nt / totalTrades;
+      if (opt_sl === null && pKo >= 0.70 && touchFrac >= 0.10 && wlTouched >= 20) {
+        opt_sl = Math.round(thr*10000)/10000;
+        opt_p_ko = pKo;
+      }
     });
-    if (opt_sl === null) opt_sl = _optFallback;
+    // Stash the KO probability at opt_sl so the callout can report it
+    if (opt_sl !== null) sl_sweep._opt_p_ko = opt_p_ko;
   } else {
     be_triggers = [];
-    // Compute base EV from all trades
     const rVals = trades.map(t => t.r).filter(v => v != null);
     const baseEV = rVals.length > 0 ? rVals.reduce((s,v) => s+v, 0) / rVals.length : 0;
-    let _ptqFallback = null, _ptqFallbackRR = null;
+    let ptq_p_pos = null;
 
-    [5,10,15,20,25,30,33,40,50,60,75,90].forEach(reachRate => {
+    // Iterate TIGHT → LOOSE: reach_rate small = threshold large (stringent).
+    // Reverse: reach_rate large = threshold small (trivial level).
+    // We want the SMALLEST threshold where reaching it provides MEANINGFUL lift
+    // over baseline WR. So iterate LOOSE → TIGHT and pick first level clearing the bar.
+    const reachRates = [90,75,60,50,40,33,30,25,20,15,10,5];
+    const liftTarget = Math.min(0.95, baselineWR + 0.10); // at least +10pp lift, capped at 95%
+    const minSampleFrac = 0.25;  // PTQ level must be reachable by >= 25% of trades
+
+    reachRates.forEach(reachRate => {
       const thr = pct(100 - reachRate);
       const reached = trades.filter(t => t[field] != null && t[field] >= thr);
       const nr = reached.length;
       if (nr === 0) return;
       const nPos = reached.filter(t => t.outcome === 'WIN').length;
-      const pPos = Math.round(nPos / nr * 10000) / 10000;
-      const nRescued = reached.filter(t => t.outcome === 'LOSS').length;
-      // EV delta: rescued losses would become 0R instead of negative R
+      const nLossReached = reached.filter(t => t.outcome === 'LOSS').length;
+      const wlReached = nPos + nLossReached;
+      const pPos = wlReached > 0 ? Math.round(nPos / wlReached * 10000) / 10000 : 0;
       const rescuedLossR = reached.filter(t => t.outcome === 'LOSS').map(t => t.r).filter(v => v != null);
       const savedR = rescuedLossR.length > 0 ? rescuedLossR.reduce((s,v) => s + Math.abs(v), 0) : 0;
       const evDelta = totalTrades > 0 ? Math.round(savedR / totalTrades * 10000) / 10000 : 0;
       const newEV = Math.round((baseEV + evDelta) * 10000) / 10000;
       be_triggers.push({reach_rate: reachRate, trigger_pct: Math.round(thr*10000)/10000,
-                        n_reached: nr, p_pos_given: pPos, n_rescued: nRescued,
+                        n_reached: nr, p_pos_given: pPos, n_rescued: nLossReached,
                         ev_delta: evDelta, new_ev: newEV});
-      // PTQ: highest reach_rate where p_pos >= 0.70; fallback to 0.50
-      // Iteration goes low→high reach, so keep overwriting to get highest reach
-      if (pPos >= 0.70) {
+      // PTQ: tightest (smallest) threshold where P(WIN|reached) >= baselineWR + 0.10
+      //      AND reach rate >= 25% of all trades (enough to matter)
+      //      AND >= 20 resolved trades in the conditional group (statistical validity)
+      if (ptq_level === null
+          && pPos >= liftTarget
+          && (nr / totalTrades) >= minSampleFrac
+          && wlReached >= 20) {
         ptq_level = Math.round(thr*10000)/10000;
         ptq_reach_rate = reachRate;
-      } else if (pPos >= 0.50) {
-        _ptqFallback = Math.round(thr*10000)/10000;
-        _ptqFallbackRR = reachRate;
+        ptq_p_pos = pPos;
       }
     });
-    if (ptq_level === null && _ptqFallback !== null) {
-      ptq_level = _ptqFallback; ptq_reach_rate = _ptqFallbackRR;
-    }
+    if (ptq_level !== null) be_triggers._ptq_p_pos = ptq_p_pos;
+    be_triggers._baselineWR = Math.round(baselineWR * 10000) / 10000;
   }
 
   // CE score: concentration efficiency (median/mean ratio)
@@ -5071,7 +5510,11 @@ function computeRichStudy(trades, field) {
     skewness, kurtosis, ce,
     percentiles, lognorm, clusters: clusterData,
     histogram: { edges: histEdges, counts: histCounts },
-    ...(isMAE ? { sl_sweep, opt_sl } : { be_triggers, ptq_level, ptq_reach_rate }),
+    ...(isMAE
+      ? { sl_sweep, opt_sl, opt_p_ko: sl_sweep?._opt_p_ko ?? null }
+      : { be_triggers, ptq_level, ptq_reach_rate,
+          ptq_p_pos: be_triggers?._ptq_p_pos ?? null,
+          baseline_wr: be_triggers?._baselineWR ?? null }),
     bell
   };
 }
@@ -5162,7 +5605,7 @@ function renderProfileComparison(targetEl, dateRanges, tradeDateSet) {
       else if (dateRanges && dateRanges.length > 0) {
         trades = trades.filter(t => dateRanges.some(r => t.date >= r.start && t.date <= r.end));
       }
-      // Apply full 6-filter pipeline (F3/F4/SMT/Hour/PriorCC/PriorEng)
+      // Apply full 4-filter pipeline (F3/SMT/Hour/PriorEng)
       trades = getSmtFilteredTrades(trades);
       const s = statsFromTrades(trades);
       ({wr, ev, pf, n, sharpe, maxDD, totalPnl, minEq, blown, mcw, mcl} = s);
@@ -5282,7 +5725,7 @@ function renderVerdict(targetEl, opts = {}) {
     }
     // Apply date filter (for custom ranges)
     if (tradeDateSet) pt = pt.filter(t => tradeDateSet.has(t.date));
-    // Apply full 7-filter pipeline (F1/F3/F4/SMT/Hour/PriorCC/PriorEng)
+    // Apply full 4-filter pipeline (F3/SMT/Hour/PriorEng)
     pt = getSmtFilteredTrades(pt);
     const wl = pt.filter(t => t.outcome === 'WIN' || t.outcome === 'LOSS');
     if (wl.length < 5) return null;
@@ -5442,17 +5885,7 @@ function renderFilterVariants(D, targetEl) {
         <th style="padding:8px 10px;text-align:left;color:var(--text-muted)">What it does</th>
         <th style="padding:8px 10px;text-align:left;color:var(--text-muted);width:200px">Parameter</th>
       </tr></thead><tbody>
-      <tr style="background:color-mix(in srgb,var(--bg-raised) 60%,transparent);border-bottom:1px solid color-mix(in srgb,var(--border) 40%,transparent)">
-        <td style="padding:6px 10px;font-weight:700;color:var(--text-primary)">Shallow Sweep</td>
-        <td style="padding:6px 10px;color:var(--text-primary)">Rejects sweeps that penetrate too far beyond the prior candle's range — deep sweeps indicate momentum, not manipulation</td>
-        <td style="padding:6px 10px;color:var(--text-muted);font-family:var(--font-data)">SWEEP_MAX_PCT = <span style="color:var(--text-primary);font-weight:600">50%</span> of prior range</td>
-      </tr>
       <tr style="border-bottom:1px solid color-mix(in srgb,var(--border) 40%,transparent)">
-        <td style="padding:6px 10px;font-weight:700;color:var(--text-primary)">Closed Back Inside</td>
-        <td style="padding:6px 10px;color:var(--text-primary)">Requires price to close back inside the prior candle's range after sweeping — confirms the sweep was a liquidity grab, not a breakout</td>
-        <td style="padding:6px 10px;color:var(--text-muted);font-family:var(--font-data)">Close must be <span style="color:var(--text-primary);font-weight:600">inside range</span></td>
-      </tr>
-      <tr style="background:color-mix(in srgb,var(--bg-raised) 60%,transparent)">
         <td style="padding:6px 10px;font-weight:700;color:#ff6600">NQ-ES Divergence</td>
         <td style="padding:6px 10px;color:var(--text-primary)">Only take setups where ES does <em>not</em> confirm the NQ sweep — divergence between correlated instruments signals manipulation, not genuine market direction</td>
         <td style="padding:6px 10px;color:var(--text-muted);font-family:var(--font-data)">ES holds <span style="color:var(--text-primary);font-weight:600">above/below</span> its prior HTF level</td>
@@ -5463,11 +5896,6 @@ function renderFilterVariants(D, targetEl) {
         <td style="padding:6px 10px;color:var(--text-muted);font-family:var(--font-data)">LONG: <span style="color:var(--text-primary);font-weight:600">close &gt; hour_open</span><br>SHORT: <span style="color:var(--text-primary);font-weight:600">close &lt; hour_open</span></td>
       </tr>
       <tr style="background:color-mix(in srgb,var(--bg-raised) 60%,transparent)">
-        <td style="padding:6px 10px;font-weight:700;color:var(--amber)">Prior Bar Counters</td>
-        <td style="padding:6px 10px;color:var(--text-primary)">Only take setups where the prior sweep-TF candle (the one whose level was swept) closed OPPOSITE to the trade direction — a bearish prior candle preceding a long setup signals an exhaustion, not a continuation</td>
-        <td style="padding:6px 10px;color:var(--text-muted);font-family:var(--font-data)">LONG: <span style="color:var(--text-primary);font-weight:600">prior.close &lt; prior.open</span><br>SHORT: <span style="color:var(--text-primary);font-weight:600">prior.close &gt; prior.open</span></td>
-      </tr>
-      <tr>
         <td style="padding:6px 10px;font-weight:700;color:var(--amber)">Prior Bar Engulfs</td>
         <td style="padding:6px 10px;color:var(--text-primary)">Only take setups where the prior sweep-TF candle engulfs the candle before it on wick extremes — an engulfing prior signals that the sweep is happening inside an expansion, not a compression</td>
         <td style="padding:6px 10px;color:var(--text-muted);font-family:var(--font-data)"><span style="color:var(--text-primary);font-weight:600">prior.high ≥ prev_prev.high</span><br>AND <span style="color:var(--text-primary);font-weight:600">prior.low ≤ prev_prev.low</span></td>
@@ -5528,7 +5956,7 @@ function renderFilterVariants(D, targetEl) {
 
   // All combinations table
   html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;box-shadow:var(--shadow)">
-    <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">All Filter Combinations (2⁶ = 64 variants, sorted by EV)</div>
+    <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">All Filter Combinations (2³ = 8 variants, sorted by EV)</div>
     <table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="border-bottom:2px solid var(--border)">
         <th style="padding:8px 10px;text-align:left;color:var(--text-muted)">Filter Combination</th>
@@ -5544,18 +5972,12 @@ function renderFilterVariants(D, targetEl) {
 
   // Determine currently active filter set based on all header toggles
   const activeFilters = [];
-  if (activeF3) activeFilters.push('F3_SWEEP_TOO_LARGE');
-  if (activeF4) activeFilters.push('F4_NO_CLOSE_BACK');
   if (activeSmt) activeFilters.push('SMT');
   if (activeHourAligned) activeFilters.push('HOUR_ALIGNED');
-  if (activePriorCounterClose) activeFilters.push('PRIOR_COUNTER_CLOSE');
   if (activePriorEngulfing) activeFilters.push('PRIOR_ENGULFING');
   const activeLabel = activeFilters.map(f => ({
-    'F3_SWEEP_TOO_LARGE': 'Shallow Sweep',
-    'F4_NO_CLOSE_BACK': 'Closed Back Inside',
     'SMT': 'NQ-ES Divergence',
     'HOUR_ALIGNED': 'Hour Open Aligned',
-    'PRIOR_COUNTER_CLOSE': 'Prior Bar Counters',
     'PRIOR_ENGULFING': 'Prior Bar Engulfs',
   }[f])).join(' + ');
 
@@ -5594,43 +6016,44 @@ function renderMAEStudy(D) {
   if (!el) return;
 
   // Compute MAE stats client-side from recent_trades so data matches selected Period/TF/Profile
+  const isRaw = activeProfile === 'raw_measure';
   const allTrades = getSmtFilteredTrades(D?.recent_trades || []);
-  const winTrades = allTrades.filter(t => t.outcome === 'WIN');
-  const lossTrades = allTrades.filter(t => t.outcome === 'LOSS');
+  const winTrades = isRaw ? [] : allTrades.filter(t => t.outcome === 'WIN');
+  const lossTrades = isRaw ? [] : allTrades.filter(t => t.outcome === 'LOSS');
   const maeAll = computeRichStudy(allTrades, 'mae_pct');
-  const maeWins = computeRichStudy(winTrades, 'mae_pct');
-  const maeLosses = computeRichStudy(lossTrades, 'mae_pct');
+  const maeWins = isRaw ? null : computeRichStudy(winTrades, 'mae_pct');
+  const maeLosses = isRaw ? null : computeRichStudy(lossTrades, 'mae_pct');
 
-  const dist = _maeSegment === 'wins' ? maeWins
-             : _maeSegment === 'losses' ? maeLosses
+  const _activeSeg = isRaw ? 'all' : _excSegment;
+  // Mirror active state onto shared pill bar (if present)
+  document.querySelectorAll('#exc-seg-bar .seg-btn').forEach(b => {
+    const active = b.dataset.seg === _activeSeg;
+    b.classList.toggle('active', active);
+  });
+  const dist = _activeSeg === 'wins' ? maeWins
+             : _activeSeg === 'losses' ? maeLosses
              : maeAll;
-  const _segCount = _maeSegment === 'wins' ? winTrades.length : _maeSegment === 'losses' ? lossTrades.length : allTrades.length;
+  const _segCount = _activeSeg === 'wins' ? winTrades.length : _activeSeg === 'losses' ? lossTrades.length : allTrades.length;
   const ce   = dist?.ce ?? D?.risk_stats?.ce;
-  // Segment selector (always visible)
-  const _segBtns = `<div style="display:flex;gap:6px;margin-bottom:14px;">
-    <button class="seg-btn${_maeSegment==='wins'?' active':''}" data-accent="green" onclick="switchMAESeg('wins')">Winners</button>
-    <button class="seg-btn${_maeSegment==='losses'?' active':''}" data-accent="red" onclick="switchMAESeg('losses')">Losers</button>
-    <button class="seg-btn${_maeSegment==='all'?' active':''}" data-accent="blue" onclick="switchMAESeg('all')">All Trades</button>
-  </div>`;
   if (!dist) {
-    const _segName = _maeSegment === 'wins' ? 'winning' : _maeSegment === 'losses' ? 'losing' : '';
-    el.innerHTML = _segBtns + `<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">Not enough ${_segName} trades for MAE study (${_segCount} trades, need at least 3 with MAE &gt; 0).</div>`;
+    const _segName = _activeSeg === 'wins' ? 'winning' : _activeSeg === 'losses' ? 'losing' : '';
+    el.innerHTML = `<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">Not enough ${_segName} trades for MAE study (${_segCount} trades, need at least 3 with MAE &gt; 0).</div>`;
     return;
   }
 
   // Segment-specific accent and callout
-  const segAccent = _maeSegment === 'wins' ? 'green' : _maeSegment === 'losses' ? 'red' : 'blue';
-  const segColor  = _maeSegment === 'wins' ? 'var(--green)' : _maeSegment === 'losses' ? 'var(--red)' : 'var(--blue)';
-  const segBg     = _maeSegment === 'wins' ? 'var(--green-tint)' : _maeSegment === 'losses' ? 'var(--red-tint)' : 'rgba(59,130,246,.08)';
-  const segBorder = _maeSegment === 'wins' ? 'var(--green-border)' : _maeSegment === 'losses' ? 'var(--red-border)' : 'rgba(59,130,246,.2)';
+  const segAccent = _activeSeg === 'wins' ? 'green' : _activeSeg === 'losses' ? 'red' : 'blue';
+  const segColor  = _activeSeg === 'wins' ? 'var(--green)' : _activeSeg === 'losses' ? 'var(--red)' : 'var(--blue)';
+  const segBg     = _activeSeg === 'wins' ? 'var(--green-tint)' : _activeSeg === 'losses' ? 'var(--red-tint)' : 'rgba(59,130,246,.08)';
+  const segBorder = _activeSeg === 'wins' ? 'var(--green-border)' : _activeSeg === 'losses' ? 'var(--red-border)' : 'rgba(59,130,246,.2)';
   const fmtPctCb  = v => v != null ? (+v).toFixed(4) + '%' : '--';
-  const segTitle  = _maeSegment === 'wins' ? 'Optimal Stop Placement' : _maeSegment === 'losses' ? 'Stop Validation' : 'Combined MAE Distribution';
-  const segDetail = _maeSegment === 'wins'
+  const segTitle  = _activeSeg === 'wins' ? 'Optimal Stop Placement' : _activeSeg === 'losses' ? 'Stop Validation' : isRaw ? 'Raw MAE Distribution (all setups)' : 'Combined MAE Distribution';
+  const segDetail = _activeSeg === 'wins'
     ? `90% of winners stay within ${fmtPctCb((dist.percentiles||{}).p90)} MAE · Median dip: ${fmtPctCb(dist.median)}${dist.opt_sl != null ? ' · Optimal SL: ' + fmtPctCb(dist.opt_sl) : ''}`
-    : _maeSegment === 'losses'
+    : _activeSeg === 'losses'
     ? `Losers MAE median: ${fmtPctCb(dist.median)} confirms SL placement · Mean: ${fmtPctCb(dist.mean)} · ${dist.n||0} losing trades`
     : `${dist.n||0} trades · Median MAE: ${fmtPctCb(dist.median)} · Mean: ${fmtPctCb(dist.mean)}`;
-  const segLabel  = _maeSegment === 'wins' ? 'Winners' : _maeSegment === 'losses' ? 'Losers' : 'All Trades';
+  const segLabel  = _activeSeg === 'wins' ? 'Winners' : _activeSeg === 'losses' ? 'Losers' : 'All Trades';
   const p   = dist.percentiles || {};
   const ln  = dist.lognorm || {};
   const clus = dist.clusters || [];
@@ -5641,210 +6064,78 @@ function renderMAEStudy(D) {
   const fmt    = (v, d=4) => v != null ? (+v).toFixed(d) : '—';
   const fmtPct = v => v != null ? (+v).toFixed(4) + '%' : '—';
 
+  // Compact 4-tile summary
   const statTiles = [
-    { lbl:'Mean MAE',   v:fmtPct(dist.mean),                 c:'#fbbf24', note:'arithmetic avg' },
-    { lbl:'Median MAE', v:fmtPct(dist.median),               c:'#fb923c', note:'50th pct' },
-    { lbl:'Mode MAE',   v:fmtPct(dist.mode),                 c:'#60a5fa', note:'most common heat' },
-    { lbl:'Std Dev',    v:fmtPct(dist.std),                  c:'#94a3b8', note:'dispersion' },
-    { lbl:'Skewness',   v:fmt(dist.skewness,1),              c: dist.skewness > 2 ? '#f87171':'#94a3b8', note: dist.skewness > 2 ? 'heavy right tail' : 'mild' },
-    { lbl:'CE Score',   v: ce != null ? ce.toFixed(2) : '—', c: ce >= 3 ? '#10b981' : ce >= 1.5 ? '#fbbf24' : '#f87171', note: ce >= 3 ? 'strong entries' : ce >= 1.5 ? 'decent' : ce != null ? 'marginal' : 'n/a' },
+    { lbl:'Median (p50)', v:fmtPct(dist.median), c:'#fb923c' },
+    { lbl:'p75',          v:fmtPct(p.p75),       c:'#10b981' },
+    { lbl:'p90',          v:fmtPct(p.p90),       c:'#a78bfa' },
+    { lbl:'p95',          v:fmtPct(p.p95),       c:'#c084fc' },
   ];
 
   const pctRows = [
-    {lbl:'p5',  v:p.p5,  exceed:95, color:'#94a3b8'},
-    {lbl:'p10', v:p.p10, exceed:90, color:'#94a3b8'},
-    {lbl:'p15', v:p.p15, exceed:85, color:'#64748b'},
-    {lbl:'p20', v:p.p20, exceed:80, color:'#64748b'},
-    {lbl:'p25', v:p.p25, exceed:75, color:'#60a5fa'},
-    {lbl:'p30', v:p.p30, exceed:70, color:'#60a5fa'},
-    {lbl:'p35', v:p.p35, exceed:65, color:'#60a5fa'},
-    {lbl:'p40', v:p.p40, exceed:60, color:'#fb923c'},
-    {lbl:'p50 (Median)', v:dist.median, exceed:50, color:'#fb923c', bold:true},
-    {lbl:'p60', v:p.p60, exceed:40, color:'#fb923c'},
-    {lbl:'p65', v:p.p65, exceed:35, color:'#fbbf24'},
-    {lbl:'p70', v:p.p70, exceed:30, color:'#fbbf24'},
-    {lbl:'p75', v:p.p75, exceed:25, color:'#10b981'},
-    {lbl:'p80', v:p.p80, exceed:20, color:'#10b981'},
-    {lbl:'p85', v:p.p85, exceed:15, color:'#10b981'},
-    {lbl:'p90', v:p.p90, exceed:10, color:'#a78bfa'},
-    {lbl:'p95', v:p.p95, exceed:5,  color:'#c084fc'},
-    {lbl:'p99', v:p.p99, exceed:1,  color:'#f87171'},
+    {lbl:'p5',  v:p.p5,        color:'#94a3b8'},
+    {lbl:'p10', v:p.p10,       color:'#94a3b8'},
+    {lbl:'p15', v:p.p15,       color:'#64748b'},
+    {lbl:'p20', v:p.p20,       color:'#64748b'},
+    {lbl:'p25', v:p.p25,       color:'#60a5fa'},
+    {lbl:'p30', v:p.p30,       color:'#60a5fa'},
+    {lbl:'p35', v:p.p35,       color:'#60a5fa'},
+    {lbl:'p40', v:p.p40,       color:'#fb923c'},
+    {lbl:'p50', v:dist.median, color:'#fb923c', bold:true, desc:'median trade'},
+    {lbl:'p60', v:p.p60,       color:'#fb923c'},
+    {lbl:'p65', v:p.p65,       color:'#fbbf24'},
+    {lbl:'p70', v:p.p70,       color:'#fbbf24'},
+    {lbl:'p75', v:p.p75,       color:'#10b981',            desc:'75% of trades dip less'},
+    {lbl:'p80', v:p.p80,       color:'#10b981'},
+    {lbl:'p85', v:p.p85,       color:'#10b981'},
+    {lbl:'p90', v:p.p90,       color:'#a78bfa',            desc:'candidate SL \u2192 90% stay tighter'},
+    {lbl:'p95', v:p.p95,       color:'#c084fc'},
+    {lbl:'p99', v:p.p99,       color:'#f87171',            desc:'tail risk'},
   ];
 
   el.innerHTML = `
-  <div style="display:flex;gap:6px;margin-bottom:14px;">
-    <button class="seg-btn mae-seg ${_maeSegment==='wins'?'active':''}" data-seg="wins" data-accent="green" onclick="switchMAESeg('wins')">Winners</button>
-    <button class="seg-btn mae-seg ${_maeSegment==='losses'?'active':''}" data-seg="losses" data-accent="red" onclick="switchMAESeg('losses')">Losers</button>
-    <button class="seg-btn mae-seg ${_maeSegment==='all'?'active':''}" data-seg="all" data-accent="blue" onclick="switchMAESeg('all')">All Trades</button>
+  <div style="background:${segBg};border:1px solid ${segBorder};border-radius:8px;padding:12px 14px;margin-bottom:12px;">
+    <div style="font-family:var(--font-data);font-size:12px;font-weight:700;color:${segColor}">How much heat does a typical trade take?</div>
+    <div style="font-family:var(--font-data);font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">
+      ${(dist.n||0).toLocaleString()} trades \u00b7 median dip = <strong style="color:var(--text-primary)">${fmtPct(dist.median)}</strong>.
+      Zero rows at low percentiles indicate trades that never moved against the entry.
+      For practical SL placement see the <em>Stop Variant Analysis</em> panel below.
+    </div>
   </div>
-  <div style="background:${segBg};border:1px solid ${segBorder};border-radius:8px;padding:12px 16px;margin-bottom:16px;">
-    <div style="font-family:var(--font-data);font-size:13px;font-weight:700;color:${segColor};">${segTitle}</div>
-    <div style="font-family:var(--font-data);font-size:11px;color:var(--text-secondary);margin-top:4px;">${segDetail}</div>
-  </div>
-  <div class="panel" style="margin-bottom:14px">
-    <div class="ph"><span class="ph-title">MAE Distribution Analysis · ${segLabel}</span><span class="ph-note">Max Adverse Excursion · ${dist.n||''} resolved trades · log-normal fit r=${fmt(ln.goodness,4)}</span></div>
+  <div class="panel" style="margin-bottom:12px">
+    <div class="ph"><span class="ph-title">MAE Distribution</span><span class="ph-note">\u03c3=${fmt(dist.std,3)}% \u00b7 skew=${fmt(dist.skewness,1)} \u00b7 right-tailed</span></div>
     <div class="pb">
-      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">
         ${statTiles.map(s=>`
-        <div style="background:var(--bg-raised);border:1px solid var(--border-mid);border-radius:8px;padding:12px 10px">
-          <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">${s.lbl}</div>
-          <div style="font-family:var(--font-display);font-size:18px;font-weight:700;color:${s.c};line-height:1.1">${s.v}</div>
-          <div style="font-size:9px;color:var(--text-muted);margin-top:3px">${s.note}</div>
+        <div style="background:var(--bg-raised);border:1px solid var(--border-mid);border-radius:6px;padding:10px 8px;text-align:center">
+          <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">${s.lbl}</div>
+          <div style="font-family:var(--font-display);font-size:15px;font-weight:700;color:${s.c};line-height:1.1">${s.v}</div>
         </div>`).join('')}
       </div>
-      <div style="display:grid;grid-template-columns:1fr 260px;gap:20px;align-items:start">
-        <div>
-          <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">MAE Frequency Distribution (0 → p99)</div>
-          <canvas id="mae-study-hist" height="140" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas>
-        </div>
-        <div style="background:var(--bg-raised);border:1px solid var(--border-mid);border-radius:10px;padding:14px">
-          <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Log-Normal Fit</div>
-          ${[
-            {lbl:'μ (log space)',  v:fmt(ln.mu,4)},
-            {lbl:'σ (log space)',  v:fmt(ln.sigma,4)},
-            {lbl:'Implied Median', v:fmtPct(ln.implied_median)},
-            {lbl:'Implied Mean',   v:fmtPct(ln.implied_mean)},
-            {lbl:'Implied Mode',   v:fmtPct(ln.implied_mode)},
-            {lbl:'Goodness (r)',   v:fmt(ln.goodness,4)},
-          ].map(r=>`
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)">
-            <span style="font-size:11px;color:var(--text-secondary)">${r.lbl}</span>
-            <span style="font-family:var(--font-data);font-size:11px;color:var(--text-primary);font-weight:500">${r.v}</span>
-          </div>`).join('')}
-          <div style="margin-top:10px;font-size:10px;color:var(--text-muted);line-height:1.6">MAE is right-skewed — most trades absorb small heat, but outliers run deep.</div>
-        </div>
+      <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Frequency (0 \u2192 p99)</div>
+      <canvas id="mae-study-hist" height="130" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas>
+      <table style="width:100%;border-collapse:collapse;margin-top:12px">
+        <thead><tr style="border-bottom:1px solid var(--border)">
+          <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:5px 8px;text-align:left;font-weight:400">Pct</th>
+          <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:5px 8px;text-align:right;font-weight:400">MAE %</th>
+          <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:5px 8px;text-align:left;font-weight:400">Reading</th>
+        </tr></thead>
+        <tbody>
+          ${pctRows.map(r=>`<tr style="border-bottom:1px solid var(--border)">
+            <td style="font-family:var(--font-data);font-size:11px;color:${r.color};padding:5px 8px;font-weight:${r.bold?700:500}">${r.lbl}</td>
+            <td style="font-family:var(--font-data);font-size:11px;color:var(--text-primary);padding:5px 8px;text-align:right;font-weight:600">${r.v!=null?(+r.v).toFixed(4)+'%':'\u2014'}</td>
+            <td style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);padding:5px 8px">${r.desc || (r.v === 0 ? 'never moved' : '')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <div style="margin-top:14px;padding:12px 14px;background:var(--bg-raised);border:1px solid var(--border);border-radius:8px;font-family:var(--font-data);font-size:11px;color:var(--text-secondary);line-height:1.6">
+        <strong style="color:var(--text-primary)">Looking for the best stop?</strong> The table above describes <em>what happened</em> \u2014
+        it doesn't prescribe an SL. See the <strong style="color:var(--red)">Stop Variant Analysis</strong> panel below \u2014 it
+        simulates every candidate SL level on the actual trade set and reports resulting Win Rate, EV, PF and drawdown.
+        That's the empirical answer; picking a percentile here would be circular.
       </div>
     </div>
-  </div>
-
-  <div class="panel" style="margin-bottom:14px">
-    <div class="ph"><span class="ph-title">MAE Natural Clusters · ${segLabel}</span><span class="ph-note">3-tier segmentation at p33 and p75 breakpoints</span></div>
-    <div class="pb">
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
-        ${clus.map((c,i)=>`
-        <div style="background:var(--bg-raised);border:1px solid ${clusterColors[i]}44;border-radius:10px;padding:16px;position:relative;overflow:hidden">
-          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${clusterColors[i]};opacity:.6"></div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-            <div style="width:8px;height:8px;border-radius:50%;background:${clusterColors[i]}"></div>
-            <span style="font-family:var(--font-data);font-size:13px;font-weight:700;color:${clusterColors[i]}">${c.label}</span>
-            <span style="font-family:var(--font-data);font-size:10px;color:var(--text-muted)">${c.range}</span>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-            ${[{lbl:'Trades',v:c.n},{lbl:'Share',v:c.pct_of_trades+'%'},{lbl:'Mean',v:fmtPct(c.mean)},{lbl:'Median',v:fmtPct(c.median)},{lbl:'Max',v:fmtPct(c.max)}].map(s=>`
-            <div>
-              <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em">${s.lbl}</div>
-              <div style="font-family:var(--font-data);font-size:12px;color:var(--text-primary);font-weight:600">${s.v}</div>
-            </div>`).join('')}
-          </div>
-        </div>`).join('')}
-      </div>
-      <div style="margin-top:12px;font-size:11px;color:var(--text-secondary);line-height:1.7">
-        <strong style="color:var(--text-primary)">Tight</strong> (bottom 33%) — minimal heat before resolution.
-        <strong style="color:var(--text-primary)">Moderate</strong> (middle 42%) — typical adversity before direction confirms.
-        <strong style="color:var(--text-primary)">Wide</strong> (top 25%) — deep pullbacks; many still recover (see SL sweep below).
-      </div>
-    </div>
-  </div>
-
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-    <div class="panel">
-      <div class="ph"><span class="ph-title">Full Percentile Table</span><span class="ph-note">X% of trades exceed this MAE level</span></div>
-      <div class="pb" style="padding:0">
-        <table style="width:100%;border-collapse:collapse;font-size:12px">
-          <thead><tr style="border-bottom:1px solid var(--border);background:var(--bg-raised)">
-            <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 14px;text-align:left;font-weight:400">Pct</th>
-            <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 14px;text-align:right;font-weight:400">MAE %</th>
-            <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 14px;text-align:left;font-weight:400">Exceeded by</th>
-          </tr></thead>
-          <tbody>
-            ${pctRows.map(r=>`<tr style="border-bottom:1px solid var(--border)">
-              <td style="font-family:var(--font-data);font-size:11px;color:${r.color};padding:5px 14px;font-weight:${r.bold?700:500}">${r.lbl}</td>
-              <td style="font-family:var(--font-data);font-size:12px;color:var(--text-primary);padding:5px 14px;font-weight:600;text-align:right">${r.v!=null?(+r.v).toFixed(4)+'%':'—'}</td>
-              <td style="padding:5px 14px">
-                <div style="display:flex;align-items:center;gap:7px">
-                  <div style="flex:1;height:4px;background:var(--border);border-radius:3px;max-width:100px">
-                    <div style="width:${r.exceed}%;height:100%;background:${r.color};border-radius:3px;opacity:.7"></div>
-                  </div>
-                  <span style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);min-width:30px">${r.exceed}%</span>
-                </div>
-              </td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="ph"><span class="ph-title">Optimum Stop Loss · SL Sweep Analysis</span><span class="ph-note">If SL = X → P(false stop — would recover) · P(genuine loss)</span></div>
-      <div class="pb" style="padding:0">
-        <table style="width:100%;border-collapse:collapse;font-size:12px">
-          <thead><tr style="border-bottom:1px solid var(--border);background:var(--bg-raised)">
-            <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">Touch%</th>
-            <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">SL Level</th>
-            <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">P(false)</th>
-            <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">P(genuine)</th>
-          </tr></thead>
-          <tbody>
-            ${sweep.map(t=>{
-              const isOpt = t.threshold === optSl;
-              const koColor = t.p_ko >= 0.5 ? '#10b981' : t.p_ko >= 0.35 ? '#fbbf24' : '#f87171';
-              return `<tr style="border-bottom:1px solid var(--border);${isOpt?'background:var(--green-tint)':''}">
-                <td style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);padding:5px 10px;text-align:right">${t.exceed_pct}%</td>
-                <td style="font-family:var(--font-data);font-size:11px;color:var(--text-primary);padding:5px 10px;text-align:right;font-weight:${isOpt?700:500}">${(+t.threshold).toFixed(4)}%${isOpt?' ✦':''}</td>
-                <td style="font-family:var(--font-data);font-size:11px;color:#f87171;padding:5px 10px;text-align:right">${(t.p_recovered*100).toFixed(1)}%</td>
-                <td style="padding:5px 10px;text-align:right"><span style="font-family:var(--font-data);font-size:11px;color:${koColor};font-weight:700">${(t.p_ko*100).toFixed(1)}%</span></td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <div style="background:${segBg};border:1.5px solid ${segBorder};border-radius:12px;padding:20px 24px;margin-bottom:14px;display:flex;gap:24px;align-items:flex-start">
-    <div style="font-size:28px;flex-shrink:0">${_maeSegment==='wins'?'🎯':_maeSegment==='losses'?'🛡':'📊'}</div>
-    <div style="flex:1">
-      <div style="font-family:var(--font-data);font-size:16px;font-weight:800;color:${segColor};margin-bottom:6px">${
-        _maeSegment==='wins' ? 'Stop Placement Insight — Winners Only'
-        : _maeSegment==='losses' ? 'Stop Confirmation — Losers Only'
-        : 'Stop Loss Insight — All Trades'
-      }</div>
-      <div style="font-size:12px;color:var(--text-secondary);line-height:1.8">${
-        _maeSegment==='wins'
-        ? `Winners dip a median of <strong style="color:var(--text-primary)">${fmtPct(dist.median)}</strong> before winning.
-           90% of winners stay within <strong style="color:var(--green)">${fmtPct((dist.percentiles||{}).p90)}</strong> MAE —
-           place your stop beyond this to keep 90% of wins.
-           ${dist.opt_sl!=null?`Optimal SL at <strong style="color:var(--green)">${fmtPct(dist.opt_sl)}</strong> balances false-stop risk vs loss capture.`:''}
-           Tight clustering (σ=${fmt(dist.std,4)}%) confirms clean directional entries.`
-        : _maeSegment==='losses'
-        ? `Losers hit a median MAE of <strong style="color:var(--text-primary)">${fmtPct(dist.median)}</strong> before expiring —
-           this is the full depth of adverse excursion on losing trades.
-           ${sweep.length?`Even at the widest SL tested (<strong style="color:var(--text-primary)">${sweep[0].threshold.toFixed(4)}%</strong>),
-           <strong style="color:var(--red)">${(sweep[0].p_recovered*100).toFixed(1)}%</strong> of touched losers still recover.`:''}
-           Compare with winners MAE to confirm your SL sits between the two distributions.`
-        : `Across all SL levels tested, <strong style="color:var(--text-primary)">P(false stop)</strong> never drops below
-           <strong style="color:#f87171">${sweep.length?(Math.min(...sweep.map(s=>s.p_recovered))*100).toFixed(1)+'%':'—'}</strong>.
-           Even at the widest level tested (<strong style="color:var(--text-primary)">${sweep.length?sweep[0].threshold.toFixed(4)+'%':'—'}</strong>),
-           <strong style="color:var(--red)">${sweep.length?(sweep[0].p_recovered*100).toFixed(1)+'%':'—'}</strong> of touched trades still recover.
-           MAE is tightly clustered (σ=${fmt(dist.std,4)}%) relative to MFE, confirming clean directional entries.`
-      }</div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;flex-shrink:0">
-      ${[
-        {lbl:'Median MAE', v:fmtPct(dist.median),  c:'#fb923c'},
-        {lbl:'Mean MAE',   v:fmtPct(dist.mean),    c:'#fbbf24'},
-        {lbl: _maeSegment==='wins'?'p90 MAE':_maeSegment==='losses'?'p90 MAE':'Min False%',
-         v: _maeSegment==='all'&&sweep.length ? (Math.min(...sweep.map(s=>s.p_recovered))*100).toFixed(1)+'%' : fmtPct((dist.percentiles||{}).p90),
-         c: _maeSegment==='wins'?'#10b981':'#f87171'},
-        {lbl:'N trades',   v:(dist.n||0).toLocaleString(), c:'#94a3b8'},
-      ].map(s=>`
-      <div style="background:var(--bg-card);border:1px solid ${segBorder};border-radius:8px;padding:10px 14px;text-align:center">
-        <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">${s.lbl}</div>
-        <div style="font-family:var(--font-display);font-size:18px;font-weight:800;color:${s.c}">${s.v}</div>
-      </div>`).join('')}
-    </div>
-  </div>
-  `;
+  </div>`;
 
   // Draw histogram
   const canvas = document.getElementById('mae-study-hist');
@@ -5868,22 +6159,6 @@ function renderMAEStudy(D) {
   [0,.25,.5,.75,1].forEach(f=>{const xVal=edges[0]+f*(xMax-edges[0]);ctx.fillText(xVal.toFixed(2)+'%',padL+f*cW,padT+cH+16);});
   ctx.textAlign='right';ctx.fillText(maxC,padL-4,padT+4);ctx.fillText('0',padL-4,padT+cH+4);
 
-  // ── Probability Curve + MAE Heatmap ──────────────────────────────────────
-  el.insertAdjacentHTML('beforeend',`
-    <div class="panel" style="margin-bottom:14px">
-      <div class="ph"><span class="ph-title">MAE Probability Curve</span><span class="ph-note">CDF · P(false stop | MAE≥X) · P(genuine loss | MAE≥X) vs SL level</span></div>
-      <div class="pb" style="padding:12px 12px 6px"><canvas id="mae-prob-canvas" height="140" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas></div>
-    </div>
-    <div class="panel" style="margin-bottom:14px">
-      <div class="ph"><span class="ph-title">MAE Heatmap by Day of Week</span><span class="ph-note">trade density by MAE bucket per weekday · median line shown</span></div>
-      <div class="pb" style="padding:12px 12px 6px"><canvas id="mae-dow-heatmap" height="160" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas></div>
-    </div>
-  `);
-  requestAnimationFrame(()=>{
-    _drawMAEProbCurve(document.getElementById('mae-prob-canvas'), dist.sl_sweep||[], dist);
-    _drawExcursionHeatmap(document.getElementById('mae-dow-heatmap'), D.mae_heatmap, dist.median, 'MAE %');
-  });
-
   // ── Stop Variant Cards ────────────────────────────────────────────────────
   // Show how performance changes under 5 MAE-based stop caps applied to all trades.
   (function renderMAEStopVariants() {
@@ -5894,13 +6169,23 @@ function renderMAEStudy(D) {
     const params = computeTrainParams(trades);
     if (!params) return;
 
-    const capNames = ['Structural', 'Max MAE', 'P90 MAE', 'P85 MAE', 'P50 MAE'];
+    const capNames = ['No Cap', 'Max (winners)', 'P90 (winners)', 'P85 (winners)', 'P50 (winners)'];
     const caps = [Infinity, params.mae.max, params.mae.p90, params.mae.p85, params.mae.p50];
+
+    // Count original winners once — used to compute "Winners Killed" row per cap.
+    const origWinners = trades.filter(t => t.outcome === 'WIN').length;
 
     const variants = caps.map((cap, ci) => {
       const resolved = resolveWithStopCap(trades, cap);
       const stats = computeRangeStats(resolved);
-      return { name: capNames[ci], cap, stats };
+      // Winners killed = trades that were WIN but now LOSS under this cap
+      let killed = 0;
+      if (isFinite(cap)) {
+        trades.forEach(t => {
+          if (t.outcome === 'WIN' && t.mae_pct != null && t.mae_pct > cap) killed++;
+        });
+      }
+      return { name: capNames[ci], cap, stats, killed };
     });
 
     // Best = highest EV
@@ -5917,38 +6202,60 @@ function renderMAEStudy(D) {
       return val >= threshGood ? 'var(--green)' : val <= threshBad ? 'var(--red)' : 'var(--amber)';
     }
 
+    // Compact table layout — rows = metrics, cols = variants.
+    // "Winners Killed" appears first so you see immediately which caps actually bite.
+    const metrics = [
+      { lbl:'Winners Killed', fmt:(s,v)=>{
+          const pct = origWinners>0 ? (v.killed/origWinners*100).toFixed(1)+'%' : '0%';
+          return v.killed>0 ? `${v.killed} (${pct})` : '0';
+        }, score:(s,v)=> v.killed===0 ? 'var(--text-muted)' : v.killed < origWinners*0.05 ? 'var(--amber)' : 'var(--red)' },
+      { lbl:'Win %',    fmt:s=>(s.wr*100).toFixed(1)+'%',                    score:s=>scSV(s.wr, 0.55, 0.45, false) },
+      { lbl:'EV $',     fmt:s=>fmtDolSV(s.ev_r * RPT_SV),                    score:s=>scSV(s.ev_r, 0.05, -0.05, false) },
+      { lbl:'Sharpe',   fmt:s=>s.sharpe!=null?s.sharpe.toFixed(2):'—',       score:s=>s.sharpe!=null?scSV(s.sharpe, 1.5, 0.5, false):'var(--text-muted)' },
+      { lbl:'PF',       fmt:s=>s.pf.toFixed(2),                              score:s=>scSV(s.pf, 1.5, 1.0, false) },
+      { lbl:'Max DD',   fmt:s=>'-'+fmtDolSV(s.maxDDPct/100*ACCT_SV),         score:s=>scSV(s.maxDDPct, 10, 25, true) },
+      { lbl:'Total $',  fmt:s=>fmtDolSV(s.totalPnl),                          score:s=>scSV(s.totalPnl, 0, -1, false) },
+    ];
+
     let html = `<div class="panel" style="margin-bottom:14px">
-      <div class="ph"><span class="ph-title">Stop Variant Analysis</span><span class="ph-note">Performance impact of MAE-based stop caps on current trades · BEST = highest EV</span></div>
-      <div class="pb">
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">`;
-
-    variants.forEach((v, vi) => {
-      const s = v.stats;
-      if (!s) return;
-      const isBest = vi === bestIdx;
-      const capLabel = v.cap === Infinity ? 'sweep extreme' : fmtPctSV(v.cap);
-      html += `<div style="background:var(--bg-raised);border:1px solid ${isBest ? 'var(--green-border)' : 'var(--border)'};border-radius:10px;overflow:hidden;${isBest ? 'box-shadow:0 0 0 1px var(--green-border);' : ''}">`;
-      html += `<div style="padding:10px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;${isBest ? 'background:var(--green-tint);' : ''}">`;
-      html += `<div><div style="font-family:var(--font-data);font-size:12px;font-weight:700;color:var(--text-primary)">${v.name}</div>`;
-      html += `<div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted)">SL: ${capLabel}</div></div>`;
-      if (isBest) html += `<span style="font-family:var(--font-data);font-size:9px;font-weight:700;padding:2px 8px;border-radius:3px;background:var(--green-tint);border:1px solid var(--green-border);color:var(--green)">BEST</span>`;
-      html += `</div>`;
-      const row = (lbl, val, color) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 12px;border-bottom:1px solid color-mix(in srgb,var(--border) 30%,transparent)">
-        <span style="font-family:var(--font-data);font-size:11px;color:var(--text-muted)">${lbl}</span>
-        <span style="font-family:var(--font-data);font-size:12px;font-weight:700;color:${color}">${val}</span>
-      </div>`;
-      html += row('Win Rate %', (s.wr*100).toFixed(1)+'%', scSV(s.wr, 0.55, 0.45, false));
-      html += row('EV $/trade', fmtDolSV(s.ev_r * RPT_SV), scSV(s.ev_r, 0.05, -0.05, false));
-      html += row('Sharpe', s.sharpe != null ? s.sharpe.toFixed(2) : '\u2014', s.sharpe != null ? scSV(s.sharpe, 1.5, 0.5, false) : 'var(--text-muted)');
-      html += row('Profit Factor', s.pf.toFixed(2), scSV(s.pf, 1.5, 1.0, false));
-      html += row('Max DD $', '-' + fmtDolSV(s.maxDDPct / 100 * ACCT_SV), scSV(s.maxDDPct, 10, 25, true));
-      html += row('Max Consec L', s.mcl, scSV(s.mcl, 5, 10, true));
-      html += row('Total $', fmtDolSV(s.totalPnl), scSV(s.totalPnl, 0, -1, false));
-      html += row('Final Bal $', fmtDolSV(ACCT_SV + s.totalPnl), scSV(ACCT_SV + s.totalPnl, ACCT_SV, ACCT_SV * 0.5, false));
-      html += `</div>`;
-    });
-
-    html += `</div></div></div>`;
+      <div class="ph"><span class="ph-title">Stop Variant Analysis</span><span class="ph-note">SL caps derived from <em>winners'</em> MAE distribution \u00b7 \u2605 = highest EV</span></div>
+      <div class="pb" style="padding:0">
+        <table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:11px">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);background:var(--bg-raised)">
+              <th style="padding:7px 8px;text-align:left;font-weight:400;font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">Metric</th>
+              ${variants.map((v,vi)=>{
+                const isBest = vi===bestIdx;
+                const capLabel = v.cap===Infinity?'\u221E':fmtPctSV(v.cap);
+                return `<th style="padding:7px 6px;text-align:right;font-weight:700;font-size:10px;color:${isBest?'var(--green)':'var(--text-secondary)'};${isBest?'background:var(--green-tint);':''}">
+                  <div>${v.name}${isBest?' \u2605':''}</div>
+                  <div style="font-weight:400;font-size:9px;color:var(--text-muted);margin-top:1px">${capLabel}</div>
+                </th>`;
+              }).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${metrics.map(m=>`
+            <tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:6px 8px;color:var(--text-muted)">${m.lbl}</td>
+              ${variants.map((v,vi)=>{
+                if(!v.stats) return `<td style="padding:6px 6px;text-align:right;color:var(--text-muted)">—</td>`;
+                const isBest = vi===bestIdx;
+                const val   = m.fmt(v.stats, v);
+                const color = m.score(v.stats, v);
+                return `<td style="padding:6px 6px;text-align:right;color:${color};font-weight:600;${isBest?'background:color-mix(in srgb,var(--green-tint) 40%,transparent);':''}">${val}</td>`;
+              }).join('')}
+            </tr>`).join('')}
+          </tbody>
+        </table>
+        <div style="padding:10px 14px;border-top:1px solid var(--border);font-family:var(--font-data);font-size:10px;color:var(--text-muted);line-height:1.6">
+          <strong style="color:var(--text-primary)">How to read:</strong> caps above use MAE percentiles <em>from winners only</em>.
+          A cap of "P90 (winners)" converts any trade with MAE above that level into a forced LOSS.
+          If <strong>Winners Killed = 0</strong>, that cap has no effect (values identical to <em>No Cap</em>).
+          Compare <strong>EV $</strong> across columns \u2014 that's the column that matters for SL selection.
+        </div>
+      </div>
+    </div>`;
     el.insertAdjacentHTML('beforeend', html);
   })();
 }
@@ -5960,42 +6267,38 @@ function renderMFEStudy(D) {
   if (!el) return;
 
   // Compute MFE stats client-side from recent_trades so data matches selected Period/TF/Profile
+  const isRaw = activeProfile === 'raw_measure';
   const allTrades = getSmtFilteredTrades(D?.recent_trades || []);
-  const winTrades = allTrades.filter(t => t.outcome === 'WIN');
-  const lossTrades = allTrades.filter(t => t.outcome === 'LOSS');
+  const winTrades = isRaw ? [] : allTrades.filter(t => t.outcome === 'WIN');
+  const lossTrades = isRaw ? [] : allTrades.filter(t => t.outcome === 'LOSS');
   const mfeAll = computeRichStudy(allTrades, 'mfe_pct');
-  const mfeWins = computeRichStudy(winTrades, 'mfe_pct');
-  const mfeLosses = computeRichStudy(lossTrades, 'mfe_pct');
+  const mfeWins = isRaw ? null : computeRichStudy(winTrades, 'mfe_pct');
+  const mfeLosses = isRaw ? null : computeRichStudy(lossTrades, 'mfe_pct');
 
-  const dist = _mfeSegment === 'wins' ? mfeWins
-             : _mfeSegment === 'losses' ? mfeLosses
+  const _activeSeg = isRaw ? 'all' : _excSegment;
+  const dist = _activeSeg === 'wins' ? mfeWins
+             : _activeSeg === 'losses' ? mfeLosses
              : mfeAll;
-  const _segCount = _mfeSegment === 'wins' ? winTrades.length : _mfeSegment === 'losses' ? lossTrades.length : allTrades.length;
-  // Segment selector (always visible)
-  const _segBtns = `<div style="display:flex;gap:6px;margin-bottom:14px;">
-    <button class="seg-btn${_mfeSegment==='wins'?' active':''}" data-accent="green" onclick="switchMFESeg('wins')">Winners</button>
-    <button class="seg-btn${_mfeSegment==='losses'?' active':''}" data-accent="amber" onclick="switchMFESeg('losses')">Losers</button>
-    <button class="seg-btn${_mfeSegment==='all'?' active':''}" data-accent="blue" onclick="switchMFESeg('all')">All Trades</button>
-  </div>`;
+  const _segCount = _activeSeg === 'wins' ? winTrades.length : _activeSeg === 'losses' ? lossTrades.length : allTrades.length;
   if (!dist) {
-    const _segName = _mfeSegment === 'wins' ? 'winning' : _mfeSegment === 'losses' ? 'losing' : '';
-    el.innerHTML = _segBtns + `<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">Not enough ${_segName} trades for MFE study (${_segCount} trades, need at least 3 with MFE &gt; 0).</div>`;
+    const _segName = _activeSeg === 'wins' ? 'winning' : _activeSeg === 'losses' ? 'losing' : '';
+    el.innerHTML = `<div style="padding:24px;font-family:var(--font-data);font-size:12px;color:var(--text-muted)">Not enough ${_segName} trades for MFE study (${_segCount} trades, need at least 3 with MFE &gt; 0).</div>`;
     return;
   }
 
   // Segment-specific accent and callout
-  const segAccent = _mfeSegment === 'wins' ? 'green' : _mfeSegment === 'losses' ? 'amber' : 'blue';
-  const segColor  = _mfeSegment === 'wins' ? 'var(--green)' : _mfeSegment === 'losses' ? 'var(--amber)' : 'var(--blue)';
-  const segBg     = _mfeSegment === 'wins' ? 'var(--green-tint)' : _mfeSegment === 'losses' ? 'var(--amber-tint)' : 'rgba(59,130,246,.08)';
-  const segBorder = _mfeSegment === 'wins' ? 'var(--green-border)' : _mfeSegment === 'losses' ? 'rgba(245,158,11,.25)' : 'rgba(59,130,246,.2)';
+  const segAccent = _activeSeg === 'wins' ? 'green' : _activeSeg === 'losses' ? 'amber' : 'blue';
+  const segColor  = _activeSeg === 'wins' ? 'var(--green)' : _activeSeg === 'losses' ? 'var(--amber)' : 'var(--blue)';
+  const segBg     = _activeSeg === 'wins' ? 'var(--green-tint)' : _activeSeg === 'losses' ? 'var(--amber-tint)' : 'rgba(59,130,246,.08)';
+  const segBorder = _activeSeg === 'wins' ? 'var(--green-border)' : _activeSeg === 'losses' ? 'rgba(245,158,11,.25)' : 'rgba(59,130,246,.2)';
   const fmtPctCb  = v => v != null ? (+v).toFixed(4) + '%' : '--';
-  const segTitle  = _mfeSegment === 'wins' ? 'Optimal Take Profit' : _mfeSegment === 'losses' ? 'Rescue Opportunity' : 'Combined MFE Distribution';
-  const segDetail = _mfeSegment === 'wins'
+  const segTitle  = _activeSeg === 'wins' ? 'Optimal Take Profit' : _activeSeg === 'losses' ? 'Rescue Opportunity' : isRaw ? 'Raw MFE Distribution (all setups)' : 'Combined MFE Distribution';
+  const segDetail = _activeSeg === 'wins'
     ? `Median winner runs ${fmtPctCb(dist.median)}${dist.ptq_level != null ? ' · PTQ at ' + fmtPctCb(dist.ptq_level) : ''}${dist.ptq_reach_rate != null ? ' · ' + dist.ptq_reach_rate + '% reach rate' : ''}`
-    : _mfeSegment === 'losses'
+    : _activeSeg === 'losses'
     ? `50% of losers reached ${fmtPctCb(dist.median)} favorable before reversing · ${dist.n||0} losing trades`
     : `${dist.n||0} trades · Median MFE: ${fmtPctCb(dist.median)} · Mean: ${fmtPctCb(dist.mean)}`;
-  const segLabel  = _mfeSegment === 'wins' ? 'Winners' : _mfeSegment === 'losses' ? 'Losers' : 'All Trades';
+  const segLabel  = _activeSeg === 'wins' ? 'Winners' : _activeSeg === 'losses' ? 'Losers' : 'All Trades';
   const p       = dist.percentiles || {};
   const ln      = dist.lognorm || {};
   const clus    = dist.clusters || [];
@@ -6008,229 +6311,89 @@ function renderMFEStudy(D) {
   const fmtPct = v => v!=null?(+v).toFixed(4)+'%':'—';
 
   const statTiles = [
-    {lbl:'Mean MFE',   v:fmtPct(dist.mean),    c:'#fbbf24', note:'arithmetic avg'},
-    {lbl:'Median MFE', v:fmtPct(dist.median),  c:'#fb923c', note:'50th pct — 50% reach this'},
-    {lbl:'Mode MFE',   v:fmtPct(dist.mode),    c:'#60a5fa', note:'most common run'},
-    {lbl:'Std Dev',    v:fmtPct(dist.std),      c:'#94a3b8', note:'dispersion'},
-    {lbl:'Skewness',   v:fmt(dist.skewness,1),  c:dist.skewness>2?'#f87171':'#94a3b8', note:dist.skewness>2?'heavy right tail':'mild skew'},
-    {lbl:'Kurtosis',   v:fmt(dist.kurtosis,1),  c:dist.kurtosis>10?'#f87171':'#94a3b8', note:dist.kurtosis>10?'fat tails / outliers':'moderate tails'},
+    {lbl:'Median', v:fmtPct(dist.median),  c:'#fb923c'},
+    {lbl:'Mean',   v:fmtPct(dist.mean),    c:'#fbbf24'},
+    {lbl:'p75',    v:fmtPct(p.p75),       c:'#10b981'},
+    {lbl:'p90',    v:fmtPct(p.p90),       c:'#a78bfa'},
   ];
 
   const pctRows = [
-    {lbl:'p5',  v:p.p5,  rr:95, color:'#94a3b8'},
-    {lbl:'p10', v:p.p10, rr:90, color:'#94a3b8'},
-    {lbl:'p15', v:p.p15, rr:85, color:'#64748b'},
-    {lbl:'p20', v:p.p20, rr:80, color:'#64748b'},
-    {lbl:'p25', v:p.p25, rr:75, color:'#60a5fa'},
-    {lbl:'p30', v:p.p30, rr:70, color:'#60a5fa'},
-    {lbl:'p35', v:p.p35, rr:65, color:'#60a5fa'},
-    {lbl:'p40', v:p.p40, rr:60, color:'#fb923c'},
-    {lbl:'p50 (Median)', v:dist.median, rr:50, color:'#fb923c', bold:true},
-    {lbl:'p60', v:p.p60, rr:40, color:'#fb923c'},
-    {lbl:'p65', v:p.p65, rr:35, color:'#fbbf24'},
-    {lbl:'p70', v:p.p70, rr:30, color:'#fbbf24'},
+    {lbl:'p50', v:dist.median, rr:50, color:'#fb923c', bold:true},
     {lbl:'p75', v:p.p75, rr:25, color:'#10b981'},
-    {lbl:'p80', v:p.p80, rr:20, color:'#10b981'},
-    {lbl:'p85', v:p.p85, rr:15, color:'#10b981'},
     {lbl:'p90', v:p.p90, rr:10, color:'#a78bfa'},
     {lbl:'p95', v:p.p95, rr:5,  color:'#c084fc'},
     {lbl:'p99', v:p.p99, rr:1,  color:'#f87171'},
   ];
 
+  const statTilesF = [
+    { lbl:'Median (p50)', v:fmtPct(dist.median), c:'#fb923c' },
+    { lbl:'p75',          v:fmtPct(p.p75),       c:'#10b981' },
+    { lbl:'p90',          v:fmtPct(p.p90),       c:'#a78bfa' },
+    { lbl:'p95',          v:fmtPct(p.p95),       c:'#c084fc' },
+  ];
+  const pctRowsF = [
+    {lbl:'p5',  v:p.p5,        color:'#94a3b8'},
+    {lbl:'p10', v:p.p10,       color:'#94a3b8'},
+    {lbl:'p15', v:p.p15,       color:'#64748b'},
+    {lbl:'p20', v:p.p20,       color:'#64748b'},
+    {lbl:'p25', v:p.p25,       color:'#60a5fa'},
+    {lbl:'p30', v:p.p30,       color:'#60a5fa'},
+    {lbl:'p35', v:p.p35,       color:'#60a5fa'},
+    {lbl:'p40', v:p.p40,       color:'#fb923c'},
+    {lbl:'p50', v:dist.median, color:'#fb923c', bold:true, desc:'median run'},
+    {lbl:'p60', v:p.p60,       color:'#fb923c'},
+    {lbl:'p65', v:p.p65,       color:'#fbbf24'},
+    {lbl:'p70', v:p.p70,       color:'#fbbf24'},
+    {lbl:'p75', v:p.p75,       color:'#10b981',            desc:'25% of trades run further'},
+    {lbl:'p80', v:p.p80,       color:'#10b981'},
+    {lbl:'p85', v:p.p85,       color:'#10b981'},
+    {lbl:'p90', v:p.p90,       color:'#a78bfa',            desc:'TP ambition \u2192 10% reach this'},
+    {lbl:'p95', v:p.p95,       color:'#c084fc'},
+    {lbl:'p99', v:p.p99,       color:'#f87171',            desc:'1% outliers'},
+  ];
+
   el.innerHTML = `
-  <div style="display:flex;gap:6px;margin-bottom:14px;">
-    <button class="seg-btn mfe-seg ${_mfeSegment==='wins'?'active':''}" data-seg="wins" data-accent="green" onclick="switchMFESeg('wins')">Winners</button>
-    <button class="seg-btn mfe-seg ${_mfeSegment==='losses'?'active':''}" data-seg="losses" data-accent="amber" onclick="switchMFESeg('losses')">Losers</button>
-    <button class="seg-btn mfe-seg ${_mfeSegment==='all'?'active':''}" data-seg="all" data-accent="blue" onclick="switchMFESeg('all')">All Trades</button>
+  <div style="background:${segBg};border:1px solid ${segBorder};border-radius:8px;padding:12px 14px;margin-bottom:12px;">
+    <div style="font-family:var(--font-data);font-size:12px;font-weight:700;color:${segColor}">How far do trades run in your favour?</div>
+    <div style="font-family:var(--font-data);font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">
+      ${(dist.n||0).toLocaleString()} trades \u00b7 median run = <strong style="color:var(--text-primary)">${fmtPct(dist.median)}</strong>.
+      For practical TP placement see the <em>Target Variant Analysis</em> panel below \u2014 it simulates each TP level on actual trades.
+    </div>
   </div>
-  <div style="background:${segBg};border:1px solid ${segBorder};border-radius:8px;padding:12px 16px;margin-bottom:16px;">
-    <div style="font-family:var(--font-data);font-size:13px;font-weight:700;color:${segColor};">${segTitle}</div>
-    <div style="font-family:var(--font-data);font-size:11px;color:var(--text-secondary);margin-top:4px;">${segDetail}</div>
-  </div>
-  <div class="panel" style="margin-bottom:14px">
-    <div class="ph"><span class="ph-title">MFE Distribution Analysis · ${segLabel}</span><span class="ph-note">Max Favorable Excursion · ${dist.n||''} resolved trades · log-normal fit r=${fmt(ln.goodness,4)}</span></div>
+  <div class="panel" style="margin-bottom:12px">
+    <div class="ph"><span class="ph-title">MFE Distribution</span><span class="ph-note">\u03c3=${fmt(dist.std,3)}% \u00b7 skew=${fmt(dist.skewness,1)}</span></div>
     <div class="pb">
-      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px">
-        ${statTiles.map(s=>`
-        <div style="background:var(--bg-raised);border:1px solid var(--border-mid);border-radius:8px;padding:12px 10px">
-          <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">${s.lbl}</div>
-          <div style="font-family:var(--font-display);font-size:18px;font-weight:700;color:${s.c};line-height:1.1">${s.v}</div>
-          <div style="font-size:9px;color:var(--text-muted);margin-top:3px">${s.note}</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">
+        ${statTilesF.map(s=>`
+        <div style="background:var(--bg-raised);border:1px solid var(--border-mid);border-radius:6px;padding:10px 8px;text-align:center">
+          <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">${s.lbl}</div>
+          <div style="font-family:var(--font-display);font-size:15px;font-weight:700;color:${s.c};line-height:1.1">${s.v}</div>
         </div>`).join('')}
       </div>
-      <div style="display:grid;grid-template-columns:1fr 260px;gap:20px;align-items:start">
-        <div>
-          <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">MFE Frequency Distribution (0 → p99)${ptq!=null?' · PTQ marked':''}</div>
-          <canvas id="mfe-study-hist" height="140" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas>
-        </div>
-        <div style="background:var(--bg-raised);border:1px solid var(--border-mid);border-radius:10px;padding:14px">
-          <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Log-Normal Fit</div>
-          ${[
-            {lbl:'μ (log space)',  v:fmt(ln.mu,4)},
-            {lbl:'σ (log space)',  v:fmt(ln.sigma,4)},
-            {lbl:'Implied Median', v:fmtPct(ln.implied_median)},
-            {lbl:'Implied Mean',   v:fmtPct(ln.implied_mean)},
-            {lbl:'Implied Mode',   v:fmtPct(ln.implied_mode)},
-            {lbl:'Goodness (r)',   v:fmt(ln.goodness,4)},
-          ].map(r=>`
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)">
-            <span style="font-size:11px;color:var(--text-secondary)">${r.lbl}</span>
-            <span style="font-family:var(--font-data);font-size:11px;color:var(--text-primary);font-weight:500">${r.v}</span>
-          </div>`).join('')}
-          <div style="margin-top:10px;font-size:10px;color:var(--text-muted);line-height:1.6">MFE is strongly right-skewed. Most trades run short, but outliers drive positive EV.</div>
-        </div>
+      <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Frequency (0 \u2192 p99)</div>
+      <canvas id="mfe-study-hist" height="130" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas>
+      <table style="width:100%;border-collapse:collapse;margin-top:12px">
+        <thead><tr style="border-bottom:1px solid var(--border)">
+          <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:5px 8px;text-align:left;font-weight:400">Pct</th>
+          <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:5px 8px;text-align:right;font-weight:400">MFE %</th>
+          <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:5px 8px;text-align:left;font-weight:400">Reading</th>
+        </tr></thead>
+        <tbody>
+          ${pctRowsF.map(r=>`<tr style="border-bottom:1px solid var(--border)">
+            <td style="font-family:var(--font-data);font-size:11px;color:${r.color};padding:5px 8px;font-weight:${r.bold?700:500}">${r.lbl}</td>
+            <td style="font-family:var(--font-data);font-size:11px;color:var(--text-primary);padding:5px 8px;text-align:right;font-weight:600">${r.v!=null?(+r.v).toFixed(4)+'%':'\u2014'}</td>
+            <td style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);padding:5px 8px">${r.desc || (r.v === 0 ? 'never moved' : '')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <div style="margin-top:14px;padding:12px 14px;background:var(--bg-raised);border:1px solid var(--border);border-radius:8px;font-family:var(--font-data);font-size:11px;color:var(--text-secondary);line-height:1.6">
+        <strong style="color:var(--text-primary)">Looking for the best take-profit?</strong> The table above describes <em>what happened</em> \u2014
+        it doesn't prescribe a TP. See the <strong style="color:var(--green)">Target Variant Analysis</strong> panel below \u2014 it
+        simulates every candidate TP level on the actual trade set and reports resulting Win Rate, EV, PF and drawdown.
+        That's the empirical answer; picking a percentile here would be circular.
       </div>
     </div>
-  </div>
-
-  <div class="panel" style="margin-bottom:14px">
-    <div class="ph"><span class="ph-title">MFE Natural Clusters · ${segLabel}</span><span class="ph-note">3-tier segmentation at p33 and p75 breakpoints</span></div>
-    <div class="pb">
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
-        ${clus.map((c,i)=>`
-        <div style="background:var(--bg-raised);border:1px solid ${clusterColors[i]}44;border-radius:10px;padding:16px;position:relative;overflow:hidden">
-          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${clusterColors[i]};opacity:.6"></div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-            <div style="width:8px;height:8px;border-radius:50%;background:${clusterColors[i]}"></div>
-            <span style="font-family:var(--font-data);font-size:13px;font-weight:700;color:${clusterColors[i]}">${c.label}</span>
-            <span style="font-family:var(--font-data);font-size:10px;color:var(--text-muted)">${c.range}</span>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-            ${[{lbl:'Trades',v:c.n},{lbl:'Share',v:c.pct_of_trades+'%'},{lbl:'Mean',v:fmtPct(c.mean)},{lbl:'Median',v:fmtPct(c.median)},{lbl:'Max',v:fmtPct(c.max)}].map(s=>`
-            <div>
-              <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em">${s.lbl}</div>
-              <div style="font-family:var(--font-data);font-size:12px;color:var(--text-primary);font-weight:600">${s.v}</div>
-            </div>`).join('')}
-          </div>
-        </div>`).join('')}
-      </div>
-      <div style="margin-top:12px;font-size:11px;color:var(--text-secondary);line-height:1.7">
-        <strong style="color:var(--text-primary)">Small</strong> (bottom 33%) — trades that barely moved before stopping or closing flat.
-        <strong style="color:var(--text-primary)">Moderate</strong> (middle 42%) — clean directional runs with meaningful excursion.
-        <strong style="color:var(--text-primary)">Large</strong> (top 25%) — momentum breakouts; the outliers that drive positive EV.
-      </div>
-    </div>
-  </div>
-
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-    <div class="panel">
-      <div class="ph"><span class="ph-title">Full Percentile Table</span><span class="ph-note">TP at this level would hit on X% of trades</span></div>
-      <div class="pb" style="padding:0">
-        <table style="width:100%;border-collapse:collapse;font-size:12px">
-          <thead><tr style="border-bottom:1px solid var(--border);background:var(--bg-raised)">
-            <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 14px;text-align:left;font-weight:400">Pct</th>
-            <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 14px;text-align:right;font-weight:400">MFE %</th>
-            <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 14px;text-align:left;font-weight:400">TP Hit Rate</th>
-          </tr></thead>
-          <tbody>
-            ${pctRows.map(r=>{
-              const isPTQ = ptq!=null && Math.abs((r.v||0)-ptq)<0.0005;
-              return `<tr style="border-bottom:1px solid var(--border);${isPTQ?'background:var(--green-tint)':''}">
-                <td style="font-family:var(--font-data);font-size:11px;color:${r.color};padding:5px 14px;font-weight:${r.bold?700:500}">${r.lbl}${isPTQ?' ♛':''}</td>
-                <td style="font-family:var(--font-data);font-size:12px;color:var(--text-primary);padding:5px 14px;font-weight:600;text-align:right">${r.v!=null?(+r.v).toFixed(4)+'%':'—'}</td>
-                <td style="padding:5px 14px">
-                  <div style="display:flex;align-items:center;gap:7px">
-                    <div style="flex:1;height:4px;background:var(--border);border-radius:3px;max-width:100px">
-                      <div style="width:${r.rr}%;height:100%;background:${r.color};border-radius:3px;opacity:.7"></div>
-                    </div>
-                    <span style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);min-width:30px">${r.rr}%</span>
-                  </div>
-                </td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="ph"><span class="ph-title">Protect the Queen · Breakeven Trigger Analysis</span><span class="ph-note">If MFE ≥ X → move stop to entry · P(positive exit | MFE ≥ X)</span></div>
-      <div class="pb" style="padding:0">
-        <table style="width:100%;border-collapse:collapse;font-size:12px">
-          <thead><tr style="border-bottom:1px solid var(--border);background:var(--bg-raised)">
-            <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">Reach%</th>
-            <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">Trigger</th>
-            <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">P(pos)</th>
-            <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">Rescued</th>
-            <th style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:7px 10px;text-align:right;font-weight:400">ΔEV</th>
-          </tr></thead>
-          <tbody>
-            ${triggers.map(t=>{
-              const isPTQ = t.trigger_pct === ptq;
-              const pPos  = t.p_pos_given;
-              const pColor= pPos>=0.5?'#10b981':pPos>=0.35?'#fbbf24':'#f87171';
-              return `<tr style="border-bottom:1px solid var(--border);${isPTQ?'background:var(--green-tint)':''}">
-                <td style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);padding:5px 10px;text-align:right">${t.reach_rate}%</td>
-                <td style="font-family:var(--font-data);font-size:11px;color:var(--text-primary);padding:5px 10px;text-align:right;font-weight:${isPTQ?700:500}">${(+t.trigger_pct).toFixed(4)}%</td>
-                <td style="padding:5px 10px;text-align:right"><span style="font-family:var(--font-data);font-size:11px;color:${pColor};font-weight:700">${(pPos*100).toFixed(1)}%</span></td>
-                <td style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);padding:5px 10px;text-align:right">${t.n_rescued}</td>
-                <td style="font-family:var(--font-data);font-size:11px;color:var(--green);padding:5px 10px;text-align:right">+${(+t.ev_delta).toFixed(4)}R</td>
-              </tr>
-              ${isPTQ?`<tr><td colspan="5" style="padding:2px 10px 6px;font-size:10px;color:#10b981;font-style:italic">← Protect the Queen recommendation</td></tr>`:''}`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <div style="background:${segBg};border:1.5px solid ${segBorder};border-radius:12px;padding:20px 24px;margin-bottom:14px;display:flex;gap:24px;align-items:flex-start">
-    <div style="font-size:28px;flex-shrink:0">${_mfeSegment==='wins'?'♛':_mfeSegment==='losses'?'🔄':'📊'}</div>
-    <div style="flex:1">
-      <div style="font-family:var(--font-data);font-size:16px;font-weight:800;color:${segColor};margin-bottom:6px">${
-        _mfeSegment==='wins'
-        ? (ptq!=null ? 'Protect the Queen — Recommended BE Trigger: '+fmtPct(ptq) : 'Winners MFE Insight')
-        : _mfeSegment==='losses'
-        ? 'Rescue Opportunity — Losers Favorable Excursion'
-        : (ptq!=null ? 'Protect the Queen — All Trades · BE Trigger: '+fmtPct(ptq) : 'MFE Insight — All Trades')
-      }</div>
-      <div style="font-size:12px;color:var(--text-secondary);line-height:1.8">${
-        _mfeSegment==='wins'
-        ? (ptq!=null
-          ? `When MFE reaches <strong style="color:#10b981">${fmtPct(ptq)}</strong>, move your stop to breakeven.
-             This level is reached by <strong style="color:var(--text-primary)">${ptqRR}%</strong> of winning trades.
-             Once reached, <strong style="color:#10b981">${((triggers.find(t=>t.trigger_pct===ptq)||{}).p_pos_given*100||0).toFixed(1)}%</strong> exit positively.
-             Median winner runs <strong style="color:var(--green)">${fmtPct(dist.median)}</strong> — this is your optimal TP zone.`
-          : `Median winner runs <strong style="color:var(--green)">${fmtPct(dist.median)}</strong>.
-             Mean: <strong style="color:var(--text-primary)">${fmtPct(dist.mean)}</strong> · N: ${dist.n||0} winning trades.`)
-        : _mfeSegment==='losses'
-        ? `50% of losers ran <strong style="color:var(--amber)">${fmtPct(dist.median)}</strong> in your favour before reversing.
-           Mean favorable excursion on losers: <strong style="color:var(--text-primary)">${fmtPct(dist.mean)}</strong>.
-           This is your rescue window — if price reaches this level on a losing trade, consider partial exit or tightening stops.
-           ${(dist.percentiles||{}).p75 != null ? `25% of losers ran at least <strong style="color:var(--amber)">${fmtPct((dist.percentiles||{}).p75)}</strong> before dying.` : ''}`
-        : (ptq!=null
-          ? `When MFE reaches <strong style="color:#10b981">${fmtPct(ptq)}</strong>, move your stop to breakeven (entry price).
-             This level is reached by <strong style="color:var(--text-primary)">${ptqRR}%</strong> of all trades.
-             Once reached, <strong style="color:#10b981">${((triggers.find(t=>t.trigger_pct===ptq)||{}).p_pos_given*100||0).toFixed(1)}%</strong> of those trades exit positively.
-             Moving to BE saves approximately <strong style="color:var(--text-primary)">${triggers.find(t=>t.trigger_pct===ptq)?.n_rescued||'—'} trades</strong> from negative exits
-             and improves EV by <strong style="color:#10b981">+${(+(triggers.find(t=>t.trigger_pct===ptq)||{}).ev_delta||0).toFixed(4)}R per trade</strong>.`
-          : `Median MFE: <strong style="color:var(--text-primary)">${fmtPct(dist.median)}</strong> · Mean: ${fmtPct(dist.mean)} · ${dist.n||0} trades.`)
-      }</div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;flex-shrink:0">
-      ${(_mfeSegment==='wins' ? [
-        {lbl:'Median MFE', v:fmtPct(dist.median), c:'#10b981'},
-        {lbl:'PTQ Level',  v:ptq!=null?fmtPct(ptq):'—', c:'#10b981'},
-        {lbl:'Reach Rate', v:ptqRR!=null?ptqRR+'%':'—', c:'#fbbf24'},
-        {lbl:'N Winners',  v:(dist.n||0).toLocaleString(), c:'#94a3b8'},
-      ] : _mfeSegment==='losses' ? [
-        {lbl:'Median MFE', v:fmtPct(dist.median), c:'#f59e0b'},
-        {lbl:'Mean MFE',   v:fmtPct(dist.mean),   c:'#fbbf24'},
-        {lbl:'p75 MFE',    v:fmtPct((dist.percentiles||{}).p75), c:'#f59e0b'},
-        {lbl:'N Losers',   v:(dist.n||0).toLocaleString(), c:'#94a3b8'},
-      ] : [
-        {lbl:'Trigger',    v:ptq!=null?fmtPct(ptq):'—', c:'#10b981'},
-        {lbl:'Reach Rate', v:ptqRR!=null?ptqRR+'%':'—', c:'#fbbf24'},
-        {lbl:'P(+exit)',   v:ptq!=null?((triggers.find(t=>t.trigger_pct===ptq)||{}).p_pos_given*100||0).toFixed(1)+'%':'—', c:'#10b981'},
-        {lbl:'New EV',     v:ptq!=null?'+'+((triggers.find(t=>t.trigger_pct===ptq)||{}).new_ev||0).toFixed(4)+'R':'—', c:'#10b981'},
-      ]).map(s=>`
-      <div style="background:var(--bg-card);border:1px solid ${segBorder};border-radius:8px;padding:10px 14px;text-align:center">
-        <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">${s.lbl}</div>
-        <div style="font-family:var(--font-display);font-size:18px;font-weight:800;color:${s.c}">${s.v}</div>
-      </div>`).join('')}
-    </div>
-  </div>
-  `;
+  </div>`;
 
   // Draw MFE histogram
   const canvas = document.getElementById('mfe-study-hist');
@@ -6255,22 +6418,6 @@ function renderMFEStudy(D) {
   [0,.25,.5,.75,1].forEach(f=>{const xVal=edges[0]+f*(xMax-edges[0]);ctx.fillText(xVal.toFixed(2)+'%',padL+f*cW,padT+cH+16);});
   ctx.textAlign='right';ctx.fillText(maxC,padL-4,padT+4);ctx.fillText('0',padL-4,padT+cH+4);
 
-  // ── Probability Curve + MFE Heatmap ──────────────────────────────────────
-  el.insertAdjacentHTML('beforeend',`
-    <div class="panel" style="margin-bottom:14px">
-      <div class="ph"><span class="ph-title">MFE Probability Curve</span><span class="ph-note">P(MFE≥X) reach rate · P(+exit | MFE≥X) · PTQ recommendation</span></div>
-      <div class="pb" style="padding:12px 12px 6px"><canvas id="mfe-prob-canvas" height="140" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas></div>
-    </div>
-    <div class="panel" style="margin-bottom:14px">
-      <div class="ph"><span class="ph-title">MFE Heatmap by Day of Week</span><span class="ph-note">trade density by MFE bucket per weekday · median line shown</span></div>
-      <div class="pb" style="padding:12px 12px 6px"><canvas id="mfe-dow-heatmap" height="160" style="width:100%;display:block;border-radius:6px;background:var(--bg-raised)"></canvas></div>
-    </div>
-  `);
-  requestAnimationFrame(()=>{
-    _drawMFEProbCurve(document.getElementById('mfe-prob-canvas'), dist.be_triggers||[], dist);
-    _drawExcursionHeatmap(document.getElementById('mfe-dow-heatmap'), D.mfe_heatmap, dist.median, 'MFE %');
-  });
-
   // ── MFE Target Variant Cards ──────────────────────────────────────────────
   // Show how performance changes under 5 MFE-based take-profit caps applied to all trades.
   (function renderMFETargetVariants() {
@@ -6293,13 +6440,18 @@ function renderMFEStudy(D) {
     const mfeP90TV = pctlTV(mfeValsTV, 0.90);
     const mfePtqTV = params ? params.mfe.ptq : null;
 
-    const varNames = ['Structural 1R', 'PTQ Level', 'P50 MFE', 'P75 MFE', 'P90 MFE'];
+    const varNames = ['1R Baseline', 'PTQ (winners)', 'P50 (winners)', 'P75 (winners)', 'P90 (winners)'];
     const tpLevels = [null, mfePtqTV, mfeP50TV, mfeP75TV, mfeP90TV];
 
     const variants = tpLevels.map((tp, vi) => {
       const resolved = tp != null ? resolveWithMFETarget(trades, tp) : trades.map(t => Object.assign({}, t));
       const stats = computeRangeStats(resolved);
-      return { name: varNames[vi], tp, stats };
+      // Count how many trades actually hit this TP (reached = took profit early)
+      let reached = 0;
+      if (tp != null) {
+        trades.forEach(t => { if (t.mfe_pct != null && t.mfe_pct >= tp) reached++; });
+      }
+      return { name: varNames[vi], tp, stats, reached };
     });
 
     // Best = highest EV
@@ -6316,38 +6468,60 @@ function renderMFEStudy(D) {
       return val >= threshGood ? 'var(--green)' : val <= threshBad ? 'var(--red)' : 'var(--amber)';
     }
 
+    const totalTV = trades.length;
+    const metrics = [
+      { lbl:'TP Hit', fmt:(s,v)=>{
+          if (v.tp == null) return '\u2014';
+          const pct = totalTV>0 ? (v.reached/totalTV*100).toFixed(1)+'%' : '0%';
+          return `${v.reached} (${pct})`;
+        }, score:(s,v)=> v.tp==null ? 'var(--text-muted)' : v.reached/totalTV >= 0.5 ? 'var(--green)' : v.reached/totalTV >= 0.2 ? 'var(--amber)' : 'var(--red)' },
+      { lbl:'Win %',   fmt:s=>(s.wr*100).toFixed(1)+'%',             score:s=>scTV(s.wr, 0.55, 0.45, false) },
+      { lbl:'EV $',    fmt:s=>fmtDolTV(s.ev_r * RPT_TV),             score:s=>scTV(s.ev_r, 0.05, -0.05, false) },
+      { lbl:'Sharpe',  fmt:s=>s.sharpe!=null?s.sharpe.toFixed(2):'—', score:s=>s.sharpe!=null?scTV(s.sharpe, 1.5, 0.5, false):'var(--text-muted)' },
+      { lbl:'PF',      fmt:s=>s.pf.toFixed(2),                       score:s=>scTV(s.pf, 1.5, 1.0, false) },
+      { lbl:'Max DD',  fmt:s=>'-'+fmtDolTV(s.maxDDPct/100*ACCT_TV), score:s=>scTV(s.maxDDPct, 10, 25, true) },
+      { lbl:'Total $', fmt:s=>fmtDolTV(s.totalPnl),                   score:s=>scTV(s.totalPnl, 0, -1, false) },
+    ];
+
     let html = `<div class="panel" style="margin-bottom:14px">
-      <div class="ph"><span class="ph-title">Target Variant Analysis</span><span class="ph-note">Performance impact of MFE-based TP caps on current trades · BEST = highest EV</span></div>
-      <div class="pb">
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">`;
-
-    variants.forEach((v, vi) => {
-      const s = v.stats;
-      if (!s) return;
-      const isBest = vi === bestIdx;
-      const tpLabel = v.tp != null ? fmtPctTV(v.tp) : '1R structural';
-      html += `<div style="background:var(--bg-raised);border:1px solid ${isBest ? 'rgba(16,185,129,0.5)' : 'var(--border)'};border-radius:10px;overflow:hidden;${isBest ? 'box-shadow:0 0 0 1px rgba(16,185,129,0.3);' : ''}">`;
-      html += `<div style="padding:10px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;${isBest ? 'background:var(--green-tint);' : ''}">`;
-      html += `<div><div style="font-family:var(--font-data);font-size:12px;font-weight:700;color:var(--text-primary)">${v.name}</div>`;
-      html += `<div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted)">TP: ${tpLabel}</div></div>`;
-      if (isBest) html += `<span style="font-family:var(--font-data);font-size:9px;font-weight:700;padding:2px 8px;border-radius:3px;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);color:#10b981">BEST</span>`;
-      html += `</div>`;
-      const row = (lbl, val, color) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 12px;border-bottom:1px solid color-mix(in srgb,var(--border) 30%,transparent)">
-        <span style="font-family:var(--font-data);font-size:11px;color:var(--text-muted)">${lbl}</span>
-        <span style="font-family:var(--font-data);font-size:12px;font-weight:700;color:${color}">${val}</span>
-      </div>`;
-      html += row('Win Rate %', (s.wr*100).toFixed(1)+'%', scTV(s.wr, 0.55, 0.45, false));
-      html += row('EV $/trade', fmtDolTV(s.ev_r * RPT_TV), scTV(s.ev_r, 0.05, -0.05, false));
-      html += row('Sharpe', s.sharpe != null ? s.sharpe.toFixed(2) : '\u2014', s.sharpe != null ? scTV(s.sharpe, 1.5, 0.5, false) : 'var(--text-muted)');
-      html += row('Profit Factor', s.pf.toFixed(2), scTV(s.pf, 1.5, 1.0, false));
-      html += row('Max DD $', '-' + fmtDolTV(s.maxDDPct / 100 * ACCT_TV), scTV(s.maxDDPct, 10, 25, true));
-      html += row('Max Consec L', s.mcl, scTV(s.mcl, 5, 10, true));
-      html += row('Total $', fmtDolTV(s.totalPnl), scTV(s.totalPnl, 0, -1, false));
-      html += row('Final Bal $', fmtDolTV(ACCT_TV + s.totalPnl), scTV(ACCT_TV + s.totalPnl, ACCT_TV, ACCT_TV * 0.5, false));
-      html += `</div>`;
-    });
-
-    html += `</div></div></div>`;
+      <div class="ph"><span class="ph-title">Target Variant Analysis</span><span class="ph-note">TP caps derived from <em>winners'</em> MFE distribution \u00b7 \u2605 = highest EV</span></div>
+      <div class="pb" style="padding:0">
+        <table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:11px">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);background:var(--bg-raised)">
+              <th style="padding:7px 8px;text-align:left;font-weight:400;font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">Metric</th>
+              ${variants.map((v,vi)=>{
+                const isBest = vi===bestIdx;
+                const tpLabel = v.tp!=null?fmtPctTV(v.tp):'1R';
+                return `<th style="padding:7px 6px;text-align:right;font-weight:700;font-size:10px;color:${isBest?'var(--green)':'var(--text-secondary)'};${isBest?'background:var(--green-tint);':''}">
+                  <div>${v.name}${isBest?' \u2605':''}</div>
+                  <div style="font-weight:400;font-size:9px;color:var(--text-muted);margin-top:1px">${tpLabel}</div>
+                </th>`;
+              }).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${metrics.map(m=>`
+            <tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:6px 8px;color:var(--text-muted)">${m.lbl}</td>
+              ${variants.map((v,vi)=>{
+                if(!v.stats) return `<td style="padding:6px 6px;text-align:right;color:var(--text-muted)">—</td>`;
+                const isBest = vi===bestIdx;
+                const val   = m.fmt(v.stats, v);
+                const color = m.score(v.stats, v);
+                return `<td style="padding:6px 6px;text-align:right;color:${color};font-weight:600;${isBest?'background:color-mix(in srgb,var(--green-tint) 40%,transparent);':''}">${val}</td>`;
+              }).join('')}
+            </tr>`).join('')}
+          </tbody>
+        </table>
+        <div style="padding:10px 14px;border-top:1px solid var(--border);font-family:var(--font-data);font-size:10px;color:var(--text-muted);line-height:1.6">
+          <strong style="color:var(--text-primary)">How to read:</strong> TP caps above use MFE percentiles <em>from winners only</em>.
+          A cap of "P75 (winners)" converts any trade that reaches that MFE into an early WIN at that level.
+          <strong>TP Hit</strong> shows what fraction of trades actually reach each cap \u2014 low hit rates mean the TP rarely fires, leaving most trades to resolve at the 1R baseline.
+          Compare <strong>EV $</strong> across columns \u2014 that's the column that matters for TP selection.
+        </div>
+      </div>
+    </div>`;
     el.insertAdjacentHTML('beforeend', html);
   })();
 }
@@ -6492,133 +6666,10 @@ function _drawExcursionHeatmap(canvas, hm, median, axisLabel) {
   ctx.fillText('Hi',bx,padT+8);ctx.fillText('Lo',bx,padT+cH+3);
 }
 
-// ── STRUCTURAL DYNAMIC PANEL ─────────────────────────────────────────────────
-function renderStructuralPanel(D){
-  const panelEl  = document.getElementById('structural-panel');
-  const bodyEl   = document.getElementById('structural-runner-body');
-  if(!panelEl || !bodyEl) return;
-
-  const isSplitPanel = activeProfile === STRUCTURAL_PROFILE || SPLIT_PROFILES.has(activeProfile);
-  panelEl.style.display = isSplitPanel ? '' : 'none';
-  if(!isSplitPanel) return;
-
-  const ss = D?.structural_stats;
-  if(!ss){
-    bodyEl.innerHTML = `<p style="font-family:var(--font-data);font-size:11px;color:var(--text-muted)">Run <code>python3 model_stats.py</code> to generate split-exit stats.</p>`;
-    return;
-  }
-
-  const isSplit8020 = activeProfile === 'split_80_20';
-  const tp1Size  = 0.90;
-  const tp2Size  = 0.10;
-  const pct = v => v != null ? (v*100).toFixed(1)+'%' : '—';
-  const fp3 = v => v != null ? (+v).toFixed(3)+'R' : '—';
-  const fp4 = v => v != null ? (+v).toFixed(4)+'%' : '—';
-  const tp1 = ss.tp1_hit_rate;
-  const ranFurther = ss.runner_ran_further_rate;
-  const rs  = ss.runner_stats || {};
-  const rrs = ss.runner_ran_stats || {};
-  const m = D?.meta || {};
-
-  // Per-TF targets for split profile
-  const stt = D?.split_tf_targets || {};
-  const tfTgt = stt[activeTF] || stt['all'] || {};
-
-  // Net EV estimate
-  const netEV = tp1 != null && rs.mean != null
-    ? (+(tp1 * (tp1Size + tp2Size * rs.mean) + (1 - tp1) * (-1.0)).toFixed(3)) : null;
-  const beWR = isSplit8020 ? (1/1.9) : (2/3);
-  const tp1PctLabel = isSplit8020 ? (m.tp1_pct != null ? (+m.tp1_pct).toFixed(4)+'% (PTQ)' : 'PTQ level') : '1R';
-  const slMaePct = m.sl_mae_p90_pct ?? tfTgt.sl_mae_p90_pct;
-  const slLabel = isSplit8020
-    ? (slMaePct != null ? `min(struct, ${(+slMaePct).toFixed(4)}%)` : 'structural')
-    : 'structural';
-
-  bodyEl.innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
-      <div class="rg-cell">
-        <div class="rg-lbl">TP1 Hit Rate</div>
-        <div class="rg-val" style="color:${tp1>=beWR?'var(--green)':'var(--red)'}">${pct(tp1)}</div>
-        <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-top:4px">BE = ${pct(beWR)} (runner→BE worst case)</div>
-      </div>
-      <div class="rg-cell">
-        <div class="rg-lbl">Runner Ran Further</div>
-        <div class="rg-val" style="color:var(--blue)">${pct(ranFurther)}</div>
-        <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-top:4px">of TP1 hits where runner > BE</div>
-      </div>
-      <div class="rg-cell">
-        <div class="rg-lbl">Runner Avg Exit</div>
-        <div class="rg-val" style="color:var(--purple)">${fp3(rs.mean)}</div>
-        <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-top:4px">across all TP1-hit trades</div>
-      </div>
-      <div class="rg-cell">
-        <div class="rg-lbl">Est. Net EV</div>
-        <div class="rg-val" style="color:${netEV>0?'var(--green)':'var(--red)'}">${netEV!=null?(netEV>0?'+':'')+netEV.toFixed(3)+'R':'—'}</div>
-        <div style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);margin-top:4px">TP1_rate×(${tp1Size}×tp1_r+${tp2Size}×runner) − loss×1R</div>
-      </div>
-    </div>
-
-    ${isSplit8020 ? `
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;padding:14px 16px;background:var(--bg-raised);border:1px solid var(--border);border-radius:8px">
-      <div>
-        <div style="font-family:var(--font-data);font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">TP1 (PTQ)</div>
-        <div style="font-family:var(--font-data);font-size:14px;font-weight:800;color:var(--green)">${m.tp1_pct != null ? (+m.tp1_pct).toFixed(4)+'%' : '—'}</div>
-        <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);margin-top:2px">90% exit · from winners MFE</div>
-      </div>
-      <div>
-        <div style="font-family:var(--font-data);font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">TP2 (p50 MFE)</div>
-        <div style="font-family:var(--font-data);font-size:14px;font-weight:800;color:var(--purple)">${m.tp2_pct != null ? (+m.tp2_pct).toFixed(4)+'%' : '—'}</div>
-        <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);margin-top:2px">10% runner · median winner MFE</div>
-      </div>
-      <div>
-        <div style="font-family:var(--font-data);font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">SL Cap (MAE p90)</div>
-        <div style="font-family:var(--font-data);font-size:14px;font-weight:800;color:var(--red)">${slLabel}</div>
-        <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);margin-top:2px">tighter of structural or MAE p90</div>
-      </div>
-    </div>` : ''}
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      <!-- Runner distribution table -->
-      <div>
-        <div style="font-family:var(--font-data);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px">Runner Exit Distribution (R) · All TP1 Hits</div>
-        <table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:11px">
-          ${[['Min','min'],['P10','p10'],['P25','p25'],['Median','p50'],['Mean (μ)','mean'],['P75','p75'],['P90','p90'],['P95','p95'],['Std Dev (σ)','std'],['Max','max']].map(([lbl,k])=>`
-          <tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:5px 8px;color:var(--text-muted)">${lbl}</td>
-            <td style="padding:5px 8px;text-align:right;color:var(--purple);font-weight:600">${rs[k]!=null?(+rs[k]).toFixed(3)+'R':'—'}</td>
-          </tr>`).join('')}
-        </table>
-      </div>
-      <!-- Runner-only-when-ran stats -->
-      <div>
-        <div style="font-family:var(--font-data);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px">Runner When It Ran Further (> BE)</div>
-        <table style="width:100%;border-collapse:collapse;font-family:var(--font-data);font-size:11px">
-          ${[['Min','min'],['P10','p10'],['P25','p25'],['Median','p50'],['Mean (μ)','mean'],['P75','p75'],['P90','p90'],['P95','p95'],['Std Dev (σ)','std'],['Max','max']].map(([lbl,k])=>`
-          <tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:5px 8px;color:var(--text-muted)">${lbl}</td>
-            <td style="padding:5px 8px;text-align:right;color:var(--green);font-weight:600">${rrs[k]!=null?(+rrs[k]).toFixed(3)+'R':'—'}</td>
-          </tr>`).join('')}
-        </table>
-        <div style="margin-top:12px;padding:10px 12px;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;font-family:var(--font-data);font-size:10px;color:var(--text-muted);line-height:1.7">
-          <strong style="color:var(--text-secondary)">Net R formula:</strong><br>
-          ${(tp1Size*100).toFixed(0)}% exits at <span style="color:var(--green)">TP1 (${tp1PctLabel})</span> when hit<br>
-          ${(tp2Size*100).toFixed(0)}% runner free — BE stop, runs to EOD<br>
-          <span style="color:var(--amber)">Net = ${tp1Size} × tp1_r + ${tp2Size} × runner_exit_r</span>${isSplit8020 ? '<br><span style="color:var(--text-muted)">tp1_r = TP1_dist ÷ base_risk (variable per trade)</span><br><span style="color:var(--text-muted)">SL = min(sweep extreme, MAE p90 of winners)</span>' : ''}
-        </div>
-      </div>
-    </div>`;
-}
-
-
 function drawSetupViz(){
-  // Parse sl/tp from active profile key: 'sl_026_tp_018' → sl=0.26%, tp=0.18%
-  let slPct=0.26, tpPct=0.18;
-  if(activeProfile === STRUCTURAL_PROFILE || SPLIT_PROFILES.has(activeProfile)){
-    slPct=0.20; tpPct=0.20; // Show 1:1 for structural/split profiles
-  } else {
-    const m=activeProfile.match(/sl_(\d+)_tp_(\d+)/);
-    if(m){ slPct=parseInt(m[1],10)/100; tpPct=parseInt(m[2],10)/100; }
-  }
+  // simple_1r = 1:1 SL/TP viz; raw_measure = no SL/TP (show neutral)
+  let slPct=0.20, tpPct=0.20;
+  if(activeProfile === 'raw_measure'){ slPct=0.20; tpPct=0.20; }
   drawSetupScene(document.getElementById('setup-canvas-bull'), 'bull', slPct, tpPct);
   drawSetupScene(document.getElementById('setup-canvas-bear'), 'bear', slPct, tpPct);
 }
@@ -6659,6 +6710,7 @@ if(savedTF){
   }
 }
 render();
+updateTabVisibility();
 drawSetupViz();
 let rt; window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{renderActive();drawSetupViz();},150);});
 
@@ -6676,6 +6728,7 @@ function applyLoadedData(j){
       const fp=Object.keys(profiles)[0]; if(fp) activeProfile=fp;
     }
   }
+  updateTabVisibility();
   render();
 }
 

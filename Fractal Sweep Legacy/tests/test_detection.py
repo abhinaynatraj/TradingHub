@@ -16,7 +16,7 @@ def _build_detection_scenario(prior_ohlc, current_m1_bars, model_cfg=None):
     """
     cfg = model_cfg or dict(
         label='Test', sweep_tf_min=60, cisd_tf_min=5,
-        q1_min=15, min_range=12, session_hrs=(7.0, 16.0),
+        min_range=12, session_hrs=(7.0, 16.0),
     )
     tf_step = NS_PER_MIN * cfg['sweep_tf_min']
 
@@ -59,6 +59,8 @@ def _build_detection_scenario(prior_ohlc, current_m1_bars, model_cfg=None):
         high=m1['high'].copy(),
         low=m1['low'].copy(),
         close=m1['close'].copy(),
+        trade_date=m1['trade_date'].copy(),
+        hr=m1['hr'].copy(),
     )
 
     return m1, s_arrs, c_arrs, cfg
@@ -190,7 +192,7 @@ class TestGapHandling:
     def test_large_gap_skips_period(self):
         """Gap > sweep_tf_min * 3 → period is skipped."""
         cfg = dict(label='Test', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         tf_step = NS_PER_MIN * 60
         gap = NS_PER_MIN * 60 * 4  # 4 hours > 3 * 60 min
 

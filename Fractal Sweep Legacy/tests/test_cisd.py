@@ -16,7 +16,10 @@ def _make_cisd_arrs(bars_data):
     closes = np.array([b[1] for b in bars_data], dtype='float64')
     highs = np.maximum(opens, closes) + 1.0
     lows = np.minimum(opens, closes) - 1.0
-    return dict(ts_ns=ts_ns, open=opens, close=closes, high=highs, low=lows)
+    trade_dates = np.array(['2020-01-01'] * n)
+    hrs = np.array([9] * n, dtype='int32')
+    return dict(ts_ns=ts_ns, open=opens, close=closes, high=highs, low=lows,
+                trade_date=trade_dates, hr=hrs)
 
 
 # ── Core backward scan ──────────────────────────────────────────────────────

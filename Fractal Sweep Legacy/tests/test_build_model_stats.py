@@ -55,7 +55,7 @@ class TestBuildModelStats:
         """build_model_stats returns a dict."""
         df = _make_resolved_df(50)
         cfg = dict(label='Test', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         result = ms.build_model_stats(df, 100, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
                                        profile_key='test', profile_type='mult')
@@ -65,7 +65,7 @@ class TestBuildModelStats:
         """Output contains meta with key stats."""
         df = _make_resolved_df(100)
         cfg = dict(label='Test', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         result = ms.build_model_stats(df, 200, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
                                        profile_key='test', profile_type='mult')
@@ -80,7 +80,7 @@ class TestBuildModelStats:
         """by_hour breakdown is populated."""
         df = _make_resolved_df(200)
         cfg = dict(label='Test', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         result = ms.build_model_stats(df, 200, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
                                        profile_key='test', profile_type='mult')
@@ -90,7 +90,7 @@ class TestBuildModelStats:
     def test_by_dow_populated(self):
         df = _make_resolved_df(200)
         cfg = dict(label='Test', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         result = ms.build_model_stats(df, 200, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
                                        profile_key='test', profile_type='mult')
@@ -100,7 +100,7 @@ class TestBuildModelStats:
     def test_by_session_populated(self):
         df = _make_resolved_df(200)
         cfg = dict(label='Test', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         result = ms.build_model_stats(df, 200, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
                                        profile_key='test', profile_type='mult')
@@ -110,7 +110,7 @@ class TestBuildModelStats:
         """dir_summary has LONG and SHORT entries."""
         df = _make_resolved_df(200)
         cfg = dict(label='Test', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         result = ms.build_model_stats(df, 200, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
                                        profile_key='test', profile_type='mult')
@@ -122,7 +122,7 @@ class TestBuildModelStats:
         """smt_summary has True and False entries."""
         df = _make_resolved_df(200)
         cfg = dict(label='Test', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         result = ms.build_model_stats(df, 200, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
                                        profile_key='test', profile_type='mult')
@@ -135,7 +135,7 @@ class TestBuildModelStats:
         """tspot_breakdown is populated."""
         df = _make_resolved_df(200)
         cfg = dict(label='Test', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         result = ms.build_model_stats(df, 200, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
                                        profile_key='test', profile_type='mult')
@@ -145,7 +145,7 @@ class TestBuildModelStats:
         """risk_stats computed correctly."""
         df = _make_resolved_df(100)
         cfg = dict(label='Test', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         result = ms.build_model_stats(df, 200, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
                                        profile_key='test', profile_type='mult')
@@ -159,7 +159,7 @@ class TestBuildModelStats:
         """recent_trades list is included."""
         df = _make_resolved_df(100)
         cfg = dict(label='Test', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         result = ms.build_model_stats(df, 200, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
                                        profile_key='test', profile_type='mult')
@@ -172,7 +172,7 @@ class TestBuildModelStats:
         """Heatmap is populated."""
         df = _make_resolved_df(200)
         cfg = dict(label='Test', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         result = ms.build_model_stats(df, 200, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
                                        profile_key='test', profile_type='mult')
@@ -181,7 +181,7 @@ class TestBuildModelStats:
     def test_by_year(self):
         df = _make_resolved_df(100)
         cfg = dict(label='Test', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         result = ms.build_model_stats(df, 200, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
                                        profile_key='test', profile_type='mult')
