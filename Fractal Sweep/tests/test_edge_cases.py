@@ -363,7 +363,7 @@ class TestBuildModelStatsEdgeCases:
     def test_risk_stats_blown_check(self):
         """Equity curve blown flag (line 1647)."""
         cfg = dict(label='T', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         df = self._make_df(50)
         result = ms.build_model_stats(df, 100, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
@@ -373,7 +373,7 @@ class TestBuildModelStatsEdgeCases:
     def test_classification_breakdown(self):
         """by_classification is populated (line 1815+)."""
         cfg = dict(label='T', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         df = self._make_df(100)
         result = ms.build_model_stats(df, 200, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
@@ -383,7 +383,7 @@ class TestBuildModelStatsEdgeCases:
     def test_r_hist(self):
         """R distribution histogram (line 1716+)."""
         cfg = dict(label='T', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         df = self._make_df(100)
         result = ms.build_model_stats(df, 200, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
@@ -394,7 +394,7 @@ class TestBuildModelStatsEdgeCases:
     def test_top_combos(self):
         """Top combos populated (line 1732+)."""
         cfg = dict(label='T', sweep_tf_min=60, cisd_tf_min=5,
-                   q1_min=15, min_range=12, session_hrs=(7.0, 16.0))
+                   min_range=12, session_hrs=(7.0, 16.0))
         df = self._make_df(200)
         result = ms.build_model_stats(df, 200, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,

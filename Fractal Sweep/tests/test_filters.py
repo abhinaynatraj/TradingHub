@@ -21,18 +21,6 @@ class TestFilterConstants:
 class TestFilterLogic:
     """Test filter rejection logic in isolation."""
 
-    def test_f1_small_range(self):
-        """Prior range < min_range → F1_SMALL_RANGE."""
-        ref_range = 8.0
-        min_range = 12.0
-        rejected = ref_range < min_range
-        assert rejected is True
-
-    def test_f1_passes(self):
-        ref_range = 15.0
-        min_range = 12.0
-        assert not (ref_range < min_range)
-
     def test_f3_sweep_too_large(self):
         """Sweep > 50% of range → F3_SWEEP_TOO_LARGE."""
         sweep_ext = 10.0
@@ -92,29 +80,9 @@ class TestFilterLogic:
     def test_valid_setup_passes_all(self):
         """Setup with valid parameters passes all filters."""
         ref_range = 20.0
-        min_range = 12.0
         sweep_ext = 5.0
         risk_pts = 15.0
 
-        assert not (ref_range < min_range)  # F1 passes
         assert not ((sweep_ext / ref_range) > ms.SWEEP_MAX_PCT)  # F3 passes
         assert not (risk_pts < ms.MIN_RISK_PTS)  # risk valid
         assert not (risk_pts > ms.MAX_RISK_PTS)  # risk valid
-
-
-class TestFilterCumulative:
-    """Filters are checked in order; first failure sets rejected_by."""
-
-    def test_f1_takes_priority_over_f3(self):
-        """If range is too small AND sweep too large, F1 is reported."""
-        ref_range = 5.0
-        min_range = 12.0
-        sweep_ext = 4.0  # 80% > 50%, but F1 checked first
-
-        rejected_by = ''
-        if ref_range < min_range:
-            rejected_by = 'F1_SMALL_RANGE'
-        elif ref_range > 0 and (sweep_ext / ref_range) > ms.SWEEP_MAX_PCT:
-            rejected_by = 'F3_SWEEP_TOO_LARGE'
-
-        assert rejected_by == 'F1_SMALL_RANGE'

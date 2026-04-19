@@ -6,12 +6,10 @@ Guidance for Claude Code when working in this repository.
 
 ```
 Statistic.ally/
-├── index.html                         Hub page (links Fractal Sweep Fixed Constant)
-├── Fractal Sweep/                     Fixed Constant · TTFM · original sweep+CISD
-├── Fractal Sweep Legacy/              Evolved sweep+CISD strategy (F1 removed, 6 runtime filters)
+├── index.html                         Hub page (links Fractal Sweep)
+├── Fractal Sweep/                     Sweep+CISD engine, dashboard, Pine scripts, DB
 ├── TTrades Fractal Model Analysis/    T-Spot touch strategy
 ├── docs/superpowers/specs/            Design docs (reference only)
-├── candle_science.duckdb              Shared DB (gitignored)
 └── .claude/rules/                     Per-folder guidance
 ```
 
@@ -34,11 +32,10 @@ Python 3.9+ works; active development uses Python 3.14.
 ## Shared Database
 
 - Canonical location: `Fractal Sweep/candle_science.duckdb` (gitignored, ~550 MB)
-- `Fractal Sweep Legacy/candle_science.duckdb` is a symlink to the same file
 - Tables: `nq_1m`, `es_1m`
 - Schema: `timestamp TIMESTAMPTZ, open, high, low, close DOUBLE, volume BIGINT`
 - Timestamps stored as `America/Toronto` — **always convert**: `timezone('America/New_York', timestamp)`
-- All engines connect read-only via `Path(__file__).parent.parent / 'Fractal Sweep' / 'candle_science.duckdb'` (or `Path(__file__).parent / …` for scripts living inside `Fractal Sweep/` itself)
+- Scripts inside `Fractal Sweep/` connect via `Path(__file__).parent / 'candle_science.duckdb'`; scripts elsewhere use `Path(__file__).parent.parent / 'Fractal Sweep' / 'candle_science.duckdb'`
 
 ## Data Updates
 
@@ -59,6 +56,6 @@ All dashboards share `localStorage.getItem('hub-theme')` → `'dark'` | `'light'
 
 See each folder's `CLAUDE.md` for engine-specific details:
 
-- `Fractal Sweep/CLAUDE.md` — primary workspace; hosts 3 engines (Fixed Constant doctrine, TTFM, original sweep+CISD)
-- `Fractal Sweep Legacy/CLAUDE.md` — actively-evolved sweep+CISD strategy, separate from the main folder
+- `Fractal Sweep/CLAUDE.md` — sweep+CISD engine, dashboard, Pine scripts, supporting tooling, tests
+- `TTrades Fractal Model Analysis/README.md` — T-Spot touch engine
 - Rules files under `.claude/rules/` scope automatically by path

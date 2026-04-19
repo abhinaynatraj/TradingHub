@@ -51,77 +51,11 @@ import scipy.stats as _scipy_stats
 DB_PATH   = Path(__file__).parent / 'candle_science.duckdb'
 OUT_PATH  = Path(__file__).parent / 'model_stats.json'
 TABLE     = 'nq_1m'
-PHASE1_XL = Path(__file__).parent.parent / 'archive' / 'Fractal Sweep' / 'fractal_phase1_results.xlsx'
 
-# ── DATE → CLASSIFICATION MAP ────────────────────────────────────────────────
-# Uses the daily_classifier engine to classify dates directly from DuckDB.
-# Falls back to the Excel file if the classifier or DB is unavailable.
-def _load_date_classification():
-    """Build {date_str: cls_key} by running the daily classifier on DB data."""
-    # Try live classification from DuckDB first
-    try:
-        sys.path.insert(0, str(Path(__file__).parent.parent / 'NY1 FPFVG'))
-        from daily_classifier import classify_day
-        import duckdb
-
-        con = duckdb.connect(str(DB_PATH), read_only=True)
-        df = con.execute("""
-            SELECT
-                timezone('America/New_York', timestamp) AS datetime,
-                open::DOUBLE AS open, high::DOUBLE AS high,
-                low::DOUBLE  AS low,  close::DOUBLE AS close
-            FROM nq_1m
-            ORDER BY timestamp
-        """).df()
-        con.close()
-
-        df['datetime'] = pd.to_datetime(df['datetime'])
-        df['date'] = df['datetime'].dt.date
-
-        mapping = {}
-        for day, grp in df.groupby('date'):
-            grp = grp.reset_index(drop=True)
-            day_class, _ = classify_day(grp)
-            mapping[str(day)] = day_class
-
-        print(f'  Classified {len(mapping)} dates from DuckDB (live)')
-        return mapping
-    except Exception as e:
-        print(f'  [info] Live classification unavailable ({e}), trying Excel fallback...')
-
-    # Fallback: load from Excel
-    try:
-        import openpyxl
-        wb = openpyxl.load_workbook(PHASE1_XL, read_only=True, data_only=True)
-        mapping = {}
-        for cls_key, sheet_name in [('DWP','DWP Data'),('DNP','DNP Data'),
-                                     ('R1','R1 Data'),('R2','R2 Data'),
-                                     ('Unclassified','Unclassified Data')]:
-            if sheet_name not in wb.sheetnames:
-                continue
-            ws = wb[sheet_name]
-            rows = list(ws.iter_rows(values_only=True))
-            hdr = rows[2]
-            ci  = {h: i for i, h in enumerate(hdr) if h}
-            date_col = ci.get('Date')
-            if date_col is None:
-                continue
-            for row in rows[3:]:
-                if not row[0]:
-                    continue
-                try:
-                    d = str(row[date_col])[:10]
-                    if d and d not in mapping:
-                        mapping[d] = cls_key
-                except Exception:
-                    continue
-        return mapping
-    except Exception as e:
-        print(f'  [warn] Could not load classification map: {e}')
-        return {}
-
-DATE_CLASSIFICATION = _load_date_classification()
-print(f'  Loaded {len(DATE_CLASSIFICATION)} date→classification mappings')
+# Daily classification (DWP/DNP/R1/R2) is no longer wired up — the classifier
+# source lived in the deleted NY1 FPFVG folder. `DATE_CLASSIFICATION` remains
+# an empty dict so downstream aggregations that read it degrade gracefully.
+DATE_CLASSIFICATION = {}
 
 # ── GLOBAL CONSTANTS ──────────────────────────────────────────────────────────
 ACCOUNT_SIZE     = 4500   # $ account size for risk metrics
@@ -143,15 +77,12 @@ UNSWEPT_LOOKBACK = 10
 # profile_type='pct'   → stop/target distances = entry_price × val / 100
 #                         (fixed % of entry price, independent of sweep size)
 RR_PROFILES = [
-    # --- Structural Dynamic: SL = sweep extreme (1×base_risk), TP1 = 1R, 90% exit; runner (10%) with BE stop ---
-    (1.0, 1.0, 'structural_dynamic', 'structural'),
-    # --- Split-exit: TP1 @ structural PTQ level (90% off), 10% runner free with BE stop ---
-    # target_val is a placeholder; overridden per-model with structural ptq_level at runtime
-    (1.0, 0.0, 'split_80_20', 'split_tp'),
     # --- Simple 1R: SL = sweep extreme, TP = 1R, 100% exit (all-in/all-out) ---
     (1.0, 1.0, 'simple_1r', 'mult'),
+    # --- Raw Measure: no SL/TP — records full-session MAE/MFE only ---
+    (0.0, 0.0, 'raw_measure', 'raw'),
 ]
-DEFAULT_PROFILE = 'structural_dynamic'
+DEFAULT_PROFILE = 'simple_1r'
 
 DOW_NAMES = {0:'Sun', 1:'Mon', 2:'Tue', 3:'Wed', 4:'Thu', 5:'Fri', 6:'Sat'}
 HR_LABELS = {h: f"{h:02d}:00" for h in range(0, 24)}
@@ -162,32 +93,24 @@ MODELS = {
         label        = '4H Sweep · 15M CISD',
         sweep_tf_min = 4 * 60,
         cisd_tf_min  = 15,
-        q1_min       = 60,
-        min_range    = 30,
         session_hrs  = (7.0, 16.0),
     ),
     '1H_5M': dict(
         label        = '1H Sweep · 5M CISD',
         sweep_tf_min = 60,
         cisd_tf_min  = 5,
-        q1_min       = 15,
-        min_range    = 12,
         session_hrs  = (7.0, 16.0),
     ),
     '1H_3M': dict(
         label        = '1H Sweep · 3M CISD',
         sweep_tf_min = 60,
         cisd_tf_min  = 3,
-        q1_min       = 15,
-        min_range    = 12,
         session_hrs  = (7.0, 16.0),
     ),
     '30M_3M': dict(
         label        = '30M Sweep · 3M CISD',
         sweep_tf_min = 30,
         cisd_tf_min  = 3,
-        q1_min       = 8,
-        min_range    = 8,
         session_hrs  = (7.0, 16.0),
     ),
 }
@@ -286,6 +209,25 @@ def get_session(hr_float):
     if 7.0  <= hr_float < 8.5:  return 'PRE'
     if 0    <= hr_float < 7.0:  return 'OVERNIGHT'
     return 'OTHER'
+
+
+# ── HOUR OPEN HELPER ─────────────────────────────────────────────────────────
+_HOUR_NS = 60 * 60 * 10**9
+
+def compute_hour_open_legacy(m1_ts_ns, m1_opens, entry_ts_ns):
+    """
+    Return the open of the first 1m bar inside the clock hour containing
+    entry_ts_ns. Used by the CISD Hour-Open Alignment criterion: compares
+    the CISD candle close to the hour's open to confirm setup direction.
+    """
+    hour_start_ns = (int(entry_ts_ns) // _HOUR_NS) * _HOUR_NS
+    hour_end_ns = hour_start_ns + _HOUR_NS
+    idx = int(np.searchsorted(m1_ts_ns, hour_start_ns, side='left'))
+    if idx >= len(m1_ts_ns):
+        return None
+    if int(m1_ts_ns[idx]) >= hour_end_ns:
+        return None
+    return float(m1_opens[idx])
 
 
 
@@ -775,6 +717,47 @@ def resolve_outcomes_split_tp(m1_arrs, pending,
     return results
 
 
+# ── RAW MEASURE OUTCOME RESOLUTION ───────────────────────────────────────────
+def resolve_outcomes_raw(m1_arrs, pending):
+    """
+    Raw Measure profile — no SL or TP.
+    Scans the full OUTCOME_MAX_BARS window and records MAE/MFE only.
+    outcome = 'MEASURED', r = 0.0 for all trades.
+    Returns list of (outcome, r, mae_pct, mfe_pct).
+    """
+    ts_ns  = m1_arrs['ts_ns']
+    highs  = m1_arrs['high']
+    lows   = m1_arrs['low']
+    N      = len(ts_ns)
+
+    results = []
+    for e in pending:
+        entry_ts_ns = e['entry_ts_ns']
+        entry_price = e['entry_price']
+        direction   = e['direction']
+
+        start = int(np.searchsorted(ts_ns, entry_ts_ns, side='right'))
+        end   = min(start + OUTCOME_MAX_BARS, N)
+
+        if start >= N:
+            results.append(('MEASURED', 0.0, 0.0, 0.0))
+            continue
+
+        h = highs[start:end]
+        l = lows[start:end]
+
+        if direction == 'LONG':
+            mae_pct = round(float(max(0.0, entry_price - l.min()) / entry_price * 100), 4)
+            mfe_pct = round(float(max(0.0, h.max() - entry_price) / entry_price * 100), 4)
+        else:
+            mae_pct = round(float(max(0.0, h.max() - entry_price) / entry_price * 100), 4)
+            mfe_pct = round(float(max(0.0, entry_price - l.min()) / entry_price * 100), 4)
+
+        results.append(('MEASURED', 0.0, mae_pct, mfe_pct))
+
+    return results
+
+
 # ── FULL DISTRIBUTION STATS HELPER ────────────────────────────────────────────
 def _dist_stats(vals_series, n_bins=30):
     """Return full percentile stats + histogram for a pandas Series."""
@@ -1056,18 +1039,19 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
     base_pending — list of {idx, entry_ts_ns, entry_price, sweep_extreme,
                             base_risk, direction} for every valid entry.
     """
-    q1_min    = model_cfg['q1_min']
-    min_range = model_cfg['min_range']
-    sess_hrs  = model_cfg['session_hrs']
-    label     = f"{model_key}_PREV_CISD"
+    sweep_tf_min = model_cfg['sweep_tf_min']
+    sess_hrs     = model_cfg['session_hrs']
+    label        = f"{model_key}_PREV_CISD"
 
-    NS_PER_MIN = np.int64(60_000_000_000)
-    q1_ns      = np.int64(q1_min) * NS_PER_MIN
-    gap_limit  = np.int64(model_cfg['sweep_tf_min']) * NS_PER_MIN * 3
+    NS_PER_MIN   = np.int64(60_000_000_000)
+    full_tf_ns   = np.int64(sweep_tf_min) * NS_PER_MIN
+    gap_limit    = full_tf_ns * 3
 
     s_ts    = s_arrs['ts_ns']
+    s_open  = s_arrs['open']
     s_high  = s_arrs['high']
     s_low   = s_arrs['low']
+    s_close = s_arrs['close']
     s_n     = len(s_ts)
 
     # ES data for SMT divergence
@@ -1081,6 +1065,7 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
         es_m1_l   = es_m1_arrs['low']
 
     m1_ts   = m1_arrs['ts_ns']
+    m1_open = m1_arrs['open']
     m1_high = m1_arrs['high']
     m1_low  = m1_arrs['low']
     m1_close= m1_arrs['close']
@@ -1124,7 +1109,7 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
         }
 
         q1_start_ns = curr_ts_ns
-        q1_end_ns   = curr_ts_ns + q1_ns - NS_PER_MIN
+        q1_end_ns   = curr_ts_ns + full_tf_ns - NS_PER_MIN
         q1_s = int(np.searchsorted(m1_ts, q1_start_ns, side='left'))
         q1_e = int(np.searchsorted(m1_ts, q1_end_ns,   side='right'))
         if q1_e - q1_s < 3:
@@ -1193,11 +1178,7 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                         es_also_swept = float(es_m1_l[es_q1_s:es_q1_e].min()) < es_ref_low
                         smt_divergence = not es_also_swept  # Divergence if ES did NOT sweep
 
-            rejected_by = ''
-            if ref_range < min_range:
-                rejected_by = 'F1_SMALL_RANGE'
-            elif ref_range > 0 and (sweep_ext / ref_range) > SWEEP_MAX_PCT:
-                rejected_by = 'F3_SWEEP_TOO_LARGE'
+            rejected_by  = ''
 
             post_s = pos + 1
             if post_s >= len(q1_ts):
@@ -1216,15 +1197,20 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
             ret_close = float(q1_c[ret_idx])
             ret_ts_ns = int(q1_ts[ret_idx])
 
-            if not rejected_by:
-                if direction == 'SHORT' and ret_close > ref_level:
-                    rejected_by = 'F4_NO_CLOSE_BACK'
-                elif direction == 'LONG' and ret_close < ref_level:
-                    rejected_by = 'F4_NO_CLOSE_BACK'
-
             cisd_ts_ns, cisd_level = find_cisd(
                 c_arrs, ret_ts_ns, direction, cisd_fast_bars, 'CISD'
             )
+
+            # prior_engulfing: the prior sweep-TF candle engulfs the candle
+            #   before it (s_arrs[i-2]), using extremes (wick-inclusive).
+            if i >= 2:
+                _prior_h = float(s_high[i - 1])
+                _prior_l = float(s_low[i - 1])
+                _prev_h  = float(s_high[i - 2])
+                _prev_l  = float(s_low[i - 2])
+                prior_engulfing = bool(_prior_h >= _prev_h and _prior_l <= _prev_l)
+            else:
+                prior_engulfing = None  # no prev-prev candle available
 
             base_row = dict(
                 date          = str(s_arrs['trade_date'][i]),
@@ -1236,6 +1222,7 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                 sweep_pct     = round(sweep_ext / ref_range, 3) if ref_range > 0 else 0,
                 sweep_extreme = round(float(sweep_extreme), 2),
                 sweep_mode    = 'PREV',
+                prior_engulfing     = prior_engulfing,
                 cisd_mode     = 'CISD',
                 ref_lookback  = ref_lookback,
                 smt           = smt_divergence,
@@ -1280,6 +1267,20 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
             _entry_date = m1_date[entry_start]
             _hr_rng = _hr_range.get((_entry_date, hr_val), 0.0)
 
+            # CISD Hour-Open Alignment confirmation criterion:
+            #   LONG: CISD candle close must be ABOVE the current hour's open
+            #   SHORT: CISD candle close must be BELOW the current hour's open
+            # "Current hour" = the clock hour containing the CISD candle.
+            # Neutral (exact tie) and missing hour_open both resolve to False.
+            _cisd_close = float(c_arrs['close'][cisd_c_idx])
+            _cisd_hour_open = compute_hour_open_legacy(m1_ts, m1_open, cisd_ts_ns)
+            if _cisd_hour_open is None:
+                _cisd_aligned = None
+            elif direction == 'LONG':
+                _cisd_aligned = bool(_cisd_close > _cisd_hour_open)
+            else:
+                _cisd_aligned = bool(_cisd_close < _cisd_hour_open)
+
             base_row.update(
                 date         = str(_entry_date),
                 dow          = int(m1_dow[entry_start]),
@@ -1290,6 +1291,9 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                 base_risk    = round(base_risk, 2),
                 cisd_level   = round(cisd_level, 2) if cisd_level is not None else None,
                 hour_range_pts = round(_hr_rng, 2),
+                cisd_close      = round(_cisd_close, 2),
+                cisd_hour_open  = round(_cisd_hour_open, 2) if _cisd_hour_open is not None else None,
+                cisd_aligned    = _cisd_aligned,
                 rejected_by  = rejected_by,
                 # profile-dependent fields — filled by apply_profile_and_resolve
                 stop_price   = None,
@@ -1343,6 +1347,20 @@ def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
         base_risk     = bp['base_risk']
         direction     = bp['direction']
 
+        if profile_type == 'raw':
+            # No SL/TP — include all non-rejected setups regardless of risk_pts
+            rows[idx]['stop_price']   = None
+            rows[idx]['target_price'] = None
+            rows[idx]['risk_pts']     = round(base_risk, 2)
+            profile_pending.append(dict(
+                idx            = idx,
+                entry_ts_ns    = bp['entry_ts_ns'],
+                entry_price    = entry_price,
+                direction      = direction,
+                hour_range_pts = bp.get('hour_range_pts', 0.0),
+            ))
+            continue
+
         if profile_type == 'pct':
             stop_dist    = entry_price * stop_val   / 100.0
             target_dist  = entry_price * target_val / 100.0
@@ -1390,7 +1408,21 @@ def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
             hour_range_pts   = bp.get('hour_range_pts', 0.0),
         ))
 
-    if profile_type in ('structural', 'split_tp'):
+    if profile_type == 'raw':
+        outcomes = resolve_outcomes_raw(m1_arrs, profile_pending)
+        for po, (outcome, r_val, mae_pct, mfe_pct) in zip(profile_pending, outcomes):
+            idx = po['idx']
+            rows[idx]['outcome']  = outcome
+            rows[idx]['r']        = r_val
+            rows[idx]['mae_pct']  = mae_pct
+            rows[idx]['mfe_pct']  = mfe_pct
+            hr_rng = po.get('hour_range_pts', 0.0)
+            if hr_rng > 0 and mae_pct is not None:
+                mae_pts = mae_pct / 100.0 * po['entry_price']
+                mfe_pts = mfe_pct / 100.0 * po['entry_price']
+                rows[idx]['mae_pct_hr'] = round(mae_pts / hr_rng * 100, 4)
+                rows[idx]['mfe_pct_hr'] = round(mfe_pts / hr_rng * 100, 4)
+    elif profile_type in ('structural', 'split_tp'):
         # Initialise split-exit columns so DataFrame always has them
         for r in rows:
             r.setdefault('tp1_hit', False)
@@ -1436,9 +1468,14 @@ def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
     df = pd.DataFrame(rows) if rows else pd.DataFrame()
     if not df.empty:
         passed = int((df['rejected_by'] == '').sum())
-        wl_n   = int(df['outcome'].isin(['WIN','LOSS']).sum())
-        print(f"        [{stop_val}:{target_val} {profile_type}]  {passed:,} filtered setups  "
-              f"→  {wl_n:,} resolved (WIN/LOSS)")
+        if profile_type == 'raw':
+            wl_n = int((df['outcome'] == 'MEASURED').sum())
+            print(f"        [{stop_val}:{target_val} {profile_type}]  {passed:,} filtered setups  "
+                  f"→  {wl_n:,} measured (no SL/TP)")
+        else:
+            wl_n   = int(df['outcome'].isin(['WIN','LOSS']).sum())
+            print(f"        [{stop_val}:{target_val} {profile_type}]  {passed:,} filtered setups  "
+                  f"→  {wl_n:,} resolved (WIN/LOSS)")
     return df
 
 
@@ -1474,8 +1511,14 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
                       stop_mult=1.0, target_mult=2.0, profile_key='1:2',
                       profile_type='mult'):
     df   = df_raw[df_raw['rejected_by'] == ''].copy()
-    wl   = df[df['outcome'].isin(['WIN','LOSS'])].copy()
-    wl['win'] = (wl['outcome'] == 'WIN').astype(int)
+    if profile_type == 'raw':
+        wl = df[df['outcome'] == 'MEASURED'].copy()
+        wl['win'] = 0  # no WIN/LOSS concept — all zeros for agg() compatibility
+    else:
+        wl   = df[df['outcome'].isin(['WIN','LOSS'])].copy()
+        wl['win'] = (wl['outcome'] == 'WIN').astype(int)
+
+    wl_full = wl.copy()
 
     # ── T-Spot variant classification ─────────────────────────────────────────
     # Classify each trade into one of 6 T-Spot types based on sweep_pct:
@@ -1647,11 +1690,15 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         tspot_breakdown[tk] = dict(
             overall=agg(grp), heatmap=hm, by_hour=bh, by_dow=bd, top_combos=tc[:10])
 
-    # All resolved trades (capped at 500 for JSON size; sub-TF slices are uncapped)
     recent_cols = ['date','direction','hr','mn','session','dow','entry_price',
                    'sweep_extreme','target_price','risk_pts','r','outcome',
-                   'mae_pct','mfe_pct','mae_pct_hr','mfe_pct_hr','hour_range_pts','smt']
-    recent_rows = (wl[recent_cols]
+                   'mae_pct','mfe_pct','mae_pct_hr','mfe_pct_hr','hour_range_pts','smt',
+                   'cisd_close','cisd_hour_open','cisd_aligned',
+                   'prior_engulfing']
+    # Only include columns that actually exist in wl_full (defensive against
+    # older base_row schemas missing some fields).
+    _avail = [c for c in recent_cols if c in wl_full.columns]
+    recent_rows = (wl_full[_avail]
                    .sort_values('date', ascending=False)
                    .copy())
     recent_rows['dow_name'] = recent_rows['dow'].map(lambda d: DOW_NAMES.get(int(d), '?'))
@@ -1682,20 +1729,20 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
     rs_max_cw = _max_consec(outcomes_seq, 1)
     rs_max_cl = _max_consec(outcomes_seq, 0)
 
-    rr_actual   = round(target_mult / stop_mult, 4) if stop_mult > 0 else 2.0
+    rr_actual   = round(target_mult / stop_mult, 4) if stop_mult > 0 else (None if profile_type == 'raw' else 2.0)
     wins_df     = wl_sorted[wl_sorted['win'] == 1]
     losses_df   = wl_sorted[wl_sorted['win'] == 0]
     avg_win_r   = round(float(wins_df['r'].mean()), 4)   if len(wins_df)   else rr_actual
     avg_loss_r  = round(float(losses_df['r'].mean()), 4) if len(losses_df) else -1.0
-    avg_win_usd  = round(avg_win_r  * RISK_PER_TRADE, 2)
-    avg_loss_usd = round(avg_loss_r * RISK_PER_TRADE, 2)
+    avg_win_usd  = round(avg_win_r  * RISK_PER_TRADE, 2) if avg_win_r  is not None else None
+    avg_loss_usd = round(avg_loss_r * RISK_PER_TRADE, 2) if avg_loss_r is not None else None
 
     # sl_pct = avg (risk_pts / entry_price * 100); tp_pct = sl_pct * rr_actual
     entry_col = wl_sorted['entry_price'].replace(0, np.nan).dropna()
     rp_col    = wl_sorted.loc[entry_col.index, 'risk_pts']
     if len(entry_col):
         sl_pct_val = round(float((rp_col / entry_col * 100).mean()), 4)
-        tp_pct_val = round(sl_pct_val * rr_actual, 4)
+        tp_pct_val = round(sl_pct_val * rr_actual, 4) if rr_actual is not None else None
     else:
         sl_pct_val = None
         tp_pct_val = None
@@ -1767,7 +1814,7 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
     _n_wins = risk_stats['wins']
     _n_losses = risk_stats['losses']
     _n_total = risk_stats['trades']
-    _ev_dollar = (avg_win_usd * _n_wins + avg_loss_usd * _n_losses) / _n_total if _n_total > 0 else 0
+    _ev_dollar = ((avg_win_usd or 0) * _n_wins + (avg_loss_usd or 0) * _n_losses) / _n_total if _n_total > 0 else 0
     _ev_r = _ev_dollar / RISK_PER_TRADE if RISK_PER_TRADE > 0 else 0
     ce = round(_ev_r * _pf, 6) if _pf and _n_total > 0 else None
     risk_stats['ce'] = ce
@@ -1819,6 +1866,8 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         be_wr = round(1.0 / 1.9, 4)
     elif profile_type == 'split_tp':
         be_wr = round(1.0 / 1.9, 4)
+    elif profile_type == 'raw':
+        be_wr = None
     else:
         be_wr = round(stop_mult / (stop_mult + target_mult), 4)
 
@@ -1902,7 +1951,8 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         'by_classification': _compute_by_classification(wl_sorted),
         'by_tf':            _compute_by_tf(wl, wl_sorted, stop_mult, target_mult,
                                            sl_pct_val, tp_pct_val, agg,
-                                           HR_LABELS, DOW_NAMES),
+                                           HR_LABELS, DOW_NAMES,
+                                           wl_full=wl_full),
     }
 
 
@@ -1970,9 +2020,18 @@ def _compute_by_classification(wl_sorted: 'pd.DataFrame') -> dict:
 
 
 def _build_slice_stats(wl_sub, stop_mult, target_mult, agg_fn, hr_labels,
-                       dow_names, date_classification=None):
+                       dow_names, date_classification=None, *,
+                       wl_sub_full=None):
     """Build compact stats for a sub-timeframe slice. Used by _compute_by_tf and
-    per-TF split profile resolution."""
+    per-TF split profile resolution.
+
+    `wl_sub` is the baseline-filtered set (F3+F4 PASS) — used for all the
+    precomputed stats (meta/by_hour/by_dow/etc).
+
+    `wl_sub_full`, if provided, is used as the source for `recent_trades`
+    (e.g. a wider slice including confirmation-filtered trades). Falls back
+    to `wl_sub` if omitted.
+    """
     if len(wl_sub) == 0:
         return None
     wl_sub = wl_sub.copy()
@@ -2066,12 +2125,14 @@ def _build_slice_stats(wl_sub, stop_mult, target_mult, agg_fn, hr_labels,
         {'bucket': f'-1R (loss)', 'n': n - wins, 'fill': 'loss'},
         {'bucket': f'{rr_actual}R (target)', 'n': wins, 'fill': 'win'},
     ]
-    # recent trades
     recent_cols = ['date','direction','hr','mn','session','dow','entry_price',
                    'sweep_extreme','target_price','risk_pts','r','outcome',
-                   'mae_pct','mfe_pct','mae_pct_hr','mfe_pct_hr','hour_range_pts','smt']
-    available = [c for c in recent_cols if c in wl_sub.columns]
-    rt = wl_sub[available].sort_values('date', ascending=False).copy()
+                   'mae_pct','mfe_pct','mae_pct_hr','mfe_pct_hr','hour_range_pts','smt',
+                   'cisd_close','cisd_hour_open','cisd_aligned',
+                   'prior_engulfing']
+    rt_source = wl_sub_full if wl_sub_full is not None else wl_sub
+    available = [c for c in recent_cols if c in rt_source.columns]
+    rt = rt_source[available].sort_values('date', ascending=False).copy()
     rt['dow_name'] = rt['dow'].map(lambda d: dow_names.get(int(d), '?'))
     _dc = date_classification or DATE_CLASSIFICATION
     rt['classification'] = rt['date'].astype(str).str[:10].map(
@@ -2117,17 +2178,18 @@ def _build_slice_stats(wl_sub, stop_mult, target_mult, agg_fn, hr_labels,
     }
 
 
-def _compute_by_tf(wl_full, wl_sorted_full, stop_mult, target_mult,
-                   sl_pct_val, tp_pct_val, agg_fn, hr_labels, dow_names) -> dict:
+def _compute_by_tf(wl, wl_sorted, stop_mult, target_mult,
+                   sl_pct_val, tp_pct_val, agg_fn, hr_labels, dow_names,
+                   wl_full=None) -> dict:
     """Compute compact hero+chart stats for each sub-timeframe slice."""
     from datetime import date, timedelta
     import pandas as pd
 
-    if wl_full is None or len(wl_full) == 0:
+    if wl is None or len(wl) == 0:
         return {}
 
     # Determine reference date from data (latest trade date)
-    max_date_str = str(wl_sorted_full['date'].max())[:10]
+    max_date_str = str(wl_sorted['date'].max())[:10]
     try:
         ref = date.fromisoformat(max_date_str)
     except Exception:
@@ -2142,26 +2204,29 @@ def _compute_by_tf(wl_full, wl_sorted_full, stop_mult, target_mult,
     }
 
     result = {}
-    dates_str = wl_full['date'].astype(str).str[:10]
+    dates_str = wl['date'].astype(str).str[:10]
+    full_dates_str = (wl_full['date'].astype(str).str[:10]
+                      if wl_full is not None else None)
     tf_keys = list(TF_CUTOFFS.items())
     for idx, (tf_key, cutoff) in enumerate(tf_keys, 1):
         print(f"        by_tf [{idx}/{len(tf_keys)}] {tf_key} ...", flush=True)
         mask = dates_str >= cutoff.isoformat()
-        sub  = wl_full[mask]
+        sub  = wl[mask]
+        sub_full = None
+        if wl_full is not None:
+            mask_full = full_dates_str >= cutoff.isoformat()
+            sub_full = wl_full[mask_full]
         result[tf_key] = _build_slice_stats(
-            sub, stop_mult, target_mult, agg_fn, hr_labels, dow_names)
+            sub, stop_mult, target_mult, agg_fn, hr_labels, dow_names,
+            wl_sub_full=sub_full)
         print(f"           {len(sub):,} trades  ✓", flush=True)
 
     return result
 
 
 def compute_filter_impact(df_all):
-    FILTER_ORDER  = ['F1_SMALL_RANGE','F3_SWEEP_TOO_LARGE',
-                     'F4_NO_CLOSE_BACK','NO_CISD','INVALID_RISK','RISK_TOO_LARGE']
+    FILTER_ORDER  = ['NO_CISD','INVALID_RISK','RISK_TOO_LARGE']
     FILTER_LABELS_MAP = {
-        'F1_SMALL_RANGE':    'F1: Prior Range Floor',
-        'F3_SWEEP_TOO_LARGE':'F3: Sweep Max Cap',
-        'F4_NO_CLOSE_BACK':  'F4: Close-Back Required',
         'NO_CISD':           'No CISD Formed',
         'INVALID_RISK':      'Invalid Risk (< min)',
         'RISK_TOO_LARGE':    'Risk Too Large (> $225 MNQ)',
@@ -2202,13 +2267,13 @@ def compute_filter_variants(df_all):
       - cumulative_additive: adding filters one at a time in optimal order
       - best_combo: the filter combination that maximizes EV
     """
-    FILTERS = ['F1_SMALL_RANGE', 'F3_SWEEP_TOO_LARGE', 'F4_NO_CLOSE_BACK', 'SMT']
+    FILTERS = ['SMT', 'HOUR_ALIGNED', 'PRIOR_ENGULFING']
     FILTER_LABELS = {
-        'F1_SMALL_RANGE':    'F1: Prior Range Floor',
-        'F3_SWEEP_TOO_LARGE':'F3: Sweep Max Cap',
-        'F4_NO_CLOSE_BACK':  'F4: Close-Back Required',
-        'SMT':               'SMT Divergence',
+        'SMT':               'NQ-ES Divergence',
+        'HOUR_ALIGNED':      'Hour Open Aligned',
+        'PRIOR_ENGULFING':   'Prior Bar Engulfs',
     }
+    POSITIVE_FILTERS = {'SMT', 'HOUR_ALIGNED', 'PRIOR_ENGULFING'}
 
     def stats_of(df):
         wl = df[df['outcome'].isin(['WIN', 'LOSS'])].copy()
@@ -2254,6 +2319,8 @@ def compute_filter_variants(df_all):
     # Base: all valid trades (no rejected_by filters — SKIP/INVALID already excluded)
     all_valid = df_all[~df_all['outcome'].isin(['SKIP', 'INVALID'])].copy()
     has_smt = 'smt' in all_valid.columns
+    has_hour_aligned = 'cisd_aligned' in all_valid.columns
+    has_prior_engulfing = 'prior_engulfing' in all_valid.columns
 
     # Helper: apply a set of filters to all_valid
     def apply_filters(active_set):
@@ -2261,18 +2328,18 @@ def compute_filter_variants(df_all):
         mask = pd.Series(True, index=all_valid.index)
         for f in active_set:
             if f == 'SMT':
-                # SMT filter: keep only smt=True trades
                 if has_smt:
                     mask &= all_valid['smt'] == True
-            else:
-                # Standard rejection filter: remove trades rejected by this code
-                mask &= all_valid['rejected_by'] != f
+            elif f == 'HOUR_ALIGNED':
+                if has_hour_aligned:
+                    mask &= all_valid['cisd_aligned'] == True
+            elif f == 'PRIOR_ENGULFING':
+                if has_prior_engulfing:
+                    mask &= all_valid['prior_engulfing'] == True
         return all_valid[mask]
 
-    # Standard filters (excluding SMT for baseline)
-    STD_FILTERS = [f for f in FILTERS if f != 'SMT']
+    STD_FILTERS = []
 
-    # Current production baseline (F1 + F3 + F4, no SMT)
     fully_filtered = apply_filters(STD_FILTERS)
     baseline = stats_of(fully_filtered)
     baseline['label'] = 'All Filters (current)'
@@ -2286,9 +2353,9 @@ def compute_filter_variants(df_all):
     # ── Individual removal: remove ONE filter from current, keep all others ──
     individual_removal = []
     for f in FILTERS:
-        if f == 'SMT':
-            # "Add SMT" — apply all standard filters PLUS SMT
-            kept = apply_filters(STD_FILTERS + ['SMT'])
+        if f in POSITIVE_FILTERS:
+            # "Add X" — apply all standard filters PLUS this positive filter
+            kept = apply_filters(STD_FILTERS + [f])
             s = stats_of(kept)
             s['label'] = f'Add {FILTER_LABELS.get(f, f)}'
             s['removed_filter'] = f
@@ -2423,152 +2490,7 @@ def main():
 
         print(f"      Resolving outcomes across {len(RR_PROFILES)} profiles ...")
         model_profiles = {}
-        structural_df = None   # resolved trades from structural_dynamic (for per-TF PTQ)
-        structural_ptq = None  # all-time PTQ from structural_dynamic
-        structural_p50_mfe = None  # all-time p50 MFE
         for p_idx, (stop_val, target_val, pk, ptype) in enumerate(RR_PROFILES, 1):
-            # ── split_80_20: per-TF resolution with period-specific PTQ/p50 ──
-            if pk == 'split_80_20':
-                if structural_df is None or structural_ptq is None:
-                    print(f"      [{p_idx}/{len(RR_PROFILES)}] profile {pk} — skipped (no structural PTQ)", flush=True)
-                    continue
-
-                # Compute TF cutoff dates from structural trades
-                from datetime import date as _date, timedelta as _td
-                _max_date_str = str(structural_df[structural_df['rejected_by'] == '']['date'].max())[:10]
-                try:
-                    _ref = _date.fromisoformat(_max_date_str)
-                except Exception:
-                    _ref = _date.today()
-                _tf_cutoffs = {
-                    'all': None,
-                    '2y': (_ref - _td(days=730)).isoformat(),
-                    '1y': (_ref - _td(days=365)).isoformat(),
-                    '6m': (_ref - _td(days=182)).isoformat(),
-                    '3m': (_ref - _td(days=91)).isoformat(),
-                    '1m': (_ref - _td(days=30)).isoformat(),
-                }
-
-                # Extract per-TF PTQ/p50 from structural trades (winners' MFE)
-                _struct_wl = structural_df[(structural_df['rejected_by'] == '') &
-                                           structural_df['outcome'].isin(['WIN','LOSS'])].copy()
-                _struct_dates = _struct_wl['date'].astype(str).str[:10]
-
-                _tf_targets = {}
-                for _tfk, _cutoff in _tf_cutoffs.items():
-                    if _cutoff is not None:
-                        _sub = _struct_wl[_struct_dates >= _cutoff]
-                    else:
-                        _sub = _struct_wl
-                    _wins = _sub[_sub['outcome'] == 'WIN']
-                    if len(_wins) < 20:
-                        _wins = _sub  # fallback to all trades if too few winners
-                    _mfe_s = _full_mfe_stats(_wins) if len(_wins) >= 20 else None
-                    _mae_s = _full_mae_stats(_wins) if len(_wins) >= 20 else None
-                    if _mfe_s:
-                        _ptq = _mfe_s.get('ptq_level')
-                        _p50 = (_mfe_s.get('percentiles') or {}).get('p50')
-                    else:
-                        _ptq = None; _p50 = None
-                    # MAE p90 of winners = 90% of winners stay within this dip
-                    _mae_p90 = (_mae_s.get('percentiles') or {}).get('p90') if _mae_s else None
-                    _tf_targets[_tfk] = {'ptq': _ptq, 'p50': _p50, 'mae_p90': _mae_p90}
-
-                print(f"      [{p_idx}/{len(RR_PROFILES)}] profile {pk} — per-TF targets:", flush=True)
-                for _tfk, _tgt in _tf_targets.items():
-                    _ptq_v = f"{_tgt['ptq']:.4f}%" if _tgt['ptq'] else 'None'
-                    _p50_v = f"{_tgt['p50']:.4f}%" if _tgt['p50'] else 'None'
-                    _mae_v = f"{_tgt['mae_p90']:.4f}%" if _tgt['mae_p90'] else 'None'
-                    print(f"         {_tfk:>3s}: PTQ={_ptq_v}  p50={_p50_v}  MAE_p90={_mae_v}", flush=True)
-
-                # Use all-time targets for the main (all-time) resolution
-                _all_ptq = _tf_targets['all']['ptq'] or structural_ptq
-                _all_p50 = _tf_targets['all']['p50'] or structural_p50_mfe
-                _all_mae = _tf_targets['all']['mae_p90']
-                if _all_ptq is None:
-                    print(f"         skipped (no all-time PTQ)", flush=True)
-                    continue
-
-                # Resolve all-time first
-                target_val = _all_ptq
-                _tp2_label = f", TP2={_all_p50:.4f}% p50 MFE" if _all_p50 else ""
-                _sl_label = f", SL=min(struct,{_all_mae:.4f}% MAE_p90)" if _all_mae else ""
-                print(f"         all-time: TP1={target_val:.4f}% PTQ{_tp2_label}{_sl_label} ...", flush=True)
-                df_p = apply_profile_and_resolve(
-                    base_rows, base_pending, m1, stop_val, target_val, ptype,
-                    tp2_pct=_all_p50, sl_mae_pct=_all_mae)
-                if df_p.empty:
-                    continue
-                print(f"         building all-time stats + TF slices ...", flush=True)
-                stats = build_model_stats(
-                    df_p, trading_days, mk, cfg, stop_val, target_val, pk, ptype)
-                # Attach all-time TP2 and SL cap to meta
-                stats['meta']['tp2_pct'] = _all_p50
-                stats['meta']['sl_mae_p90_pct'] = _all_mae
-
-                # Build set of main trade keys for consistency filtering
-                _main_wl = df_p[(df_p['rejected_by'] == '') &
-                                df_p['outcome'].isin(['WIN','LOSS'])]
-                _main_keys = set(zip(
-                    _main_wl['date'].astype(str).str[:10],
-                    _main_wl['entry_price'].round(2)))
-
-                # Re-resolve each sub-TF with period-specific targets and replace by_tf
-                for _tfk, _cutoff in _tf_cutoffs.items():
-                    if _tfk == 'all':
-                        continue
-                    _tgt = _tf_targets[_tfk]
-                    _tf_ptq = _tgt['ptq']
-                    _tf_p50 = _tgt['p50']
-                    if _tf_ptq is None:
-                        continue  # keep the sliced stats from all-time resolution
-
-                    _tf_mae = _tgt['mae_p90']
-                    _tp2_v = f", TP2={_tf_p50:.4f}%" if _tf_p50 else ""
-                    _sl_v = f", SL=min(struct,{_tf_mae:.4f}%)" if _tf_mae else ""
-                    print(f"         {_tfk}: TP1={_tf_ptq:.4f}% PTQ{_tp2_v}{_sl_v} ...", flush=True)
-                    _tf_df = apply_profile_and_resolve(
-                        base_rows, base_pending, m1, stop_val, _tf_ptq, ptype,
-                        tp2_pct=_tf_p50, sl_mae_pct=_tf_mae)
-                    if _tf_df.empty:
-                        continue
-                    # Filter to only trades in this TF period that also exist in main trades
-                    _tf_wl = _tf_df[(_tf_df['date'].astype(str).str[:10] >= _cutoff) &
-                                    (_tf_df['rejected_by'] == '') &
-                                    _tf_df['outcome'].isin(['WIN','LOSS'])]
-                    _tf_trade_keys = set(zip(
-                        _tf_wl['date'].astype(str).str[:10],
-                        _tf_wl['entry_price'].round(2)))
-                    _extra = _tf_trade_keys - _main_keys
-                    if _extra:
-                        _mask = pd.Series(
-                            list(zip(_tf_wl['date'].astype(str).str[:10],
-                                     _tf_wl['entry_price'].round(2))),
-                            index=_tf_wl.index
-                        ).isin(_extra)
-                        _tf_wl = _tf_wl[~_mask]
-                    if len(_tf_wl) < 3:
-                        continue
-                    _slice = _build_slice_stats(
-                        _tf_wl, stop_val, target_val, agg, HR_LABELS, DOW_NAMES,
-                        DATE_CLASSIFICATION)
-                    if _slice:
-                        _slice['meta']['tp1_pct'] = _tf_ptq
-                        _slice['meta']['tp2_pct'] = _tf_p50
-                        _slice['meta']['sl_mae_p90_pct'] = _tf_mae
-                        stats['by_tf'][_tfk] = _slice
-                        print(f"           {len(_tf_wl):,} trades  ✓", flush=True)
-
-                # Store per-TF target metadata
-                stats['split_tf_targets'] = {
-                    k: {'tp1_ptq_pct': v['ptq'], 'tp2_p50_pct': v['p50'],
-                        'sl_mae_p90_pct': v['mae_p90']}
-                    for k, v in _tf_targets.items()
-                }
-                model_profiles[pk] = stats
-                print(f"         profile {pk} done ✓", flush=True)
-                continue
-
             print(f"      [{p_idx}/{len(RR_PROFILES)}] profile {pk} ...", flush=True)
             df_p = apply_profile_and_resolve(
                 base_rows, base_pending, m1, stop_val, target_val, ptype)
@@ -2578,13 +2500,6 @@ def main():
             stats = build_model_stats(
                 df_p, trading_days, mk, cfg, stop_val, target_val, pk, ptype)
             model_profiles[pk] = stats
-            # Capture structural_dynamic's PTQ/p50 and resolved trades for split profile
-            if pk == 'structural_dynamic':
-                structural_df = df_p
-                _mfe_wins = stats.get('rich_mfe_wins') or stats.get('rich_mfe') or {}
-                structural_ptq = _mfe_wins.get('ptq_level')
-                _mfe_pcts = _mfe_wins.get('percentiles', {})
-                structural_p50_mfe = _mfe_pcts.get('p50')
             print(f"         profile {pk} done ✓", flush=True)
 
         if not model_profiles:

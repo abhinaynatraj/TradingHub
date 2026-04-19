@@ -163,12 +163,8 @@ def notify(title, message):
 
 BACKTESTS = [
     {
-        "name": "Fixed Constant",
-        "script": Path(__file__).parent / "model_stats_fixed_constant.py",
-    },
-    {
-        "name": "TTFM",
-        "script": Path(__file__).parent / "model_stats_ttfm.py",
+        "name": "Fractal Sweep",
+        "script": Path(__file__).parent / "model_stats.py",
     },
     {
         "name": "TTrades Fractal Model",

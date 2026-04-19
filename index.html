@@ -665,15 +665,15 @@ main {
       </div>
       <div class="model-panel-body">
         <ul class="rule-list blue" style="margin-bottom:16px;">
-          <li><strong>Sweep:</strong> Prior HTF candle's high or low is violated in the Q1 window (first portion of the new candle)</li>
-          <li><strong>Close-back:</strong> Price must close back inside the prior candle's range, confirming the manipulation</li>
-          <li><strong>CISD:</strong> A 1M candle body closes through the open of the first opposing delivery run — confirmation trigger</li>
-          <li><strong>Entry:</strong> Next candle open after CISD · <strong>Stop:</strong> Sweep extreme · <strong>Target:</strong> 2R from manipulation range</li>
+          <li><strong>Sweep:</strong> Prior HTF candle's high or low is violated anywhere within the new candle</li>
+          <li><strong>Close-back:</strong> Price closes back inside the prior candle's range, confirming the manipulation</li>
+          <li><strong>CISD:</strong> The CISD candle closes through the open of the last opposing delivery run — confirmation trigger</li>
+          <li><strong>Entry:</strong> Next candle open after CISD · <strong>Stop:</strong> Sweep extreme · <strong>Target:</strong> 1R (simple_1r profile)</li>
         </ul>
         <div class="kv-grid">
           <div class="kv-item"><div class="kv-key">Timeframe Pairs</div><div class="kv-val blue">4</div></div>
-          <div class="kv-item"><div class="kv-key">Risk:Reward</div><div class="kv-val">1 : 2</div></div>
-          <div class="kv-item"><div class="kv-key">Best Model</div><div class="kv-val amber">1H_5M</div></div>
+          <div class="kv-item"><div class="kv-key">Risk:Reward</div><div class="kv-val">1 : 1</div></div>
+          <div class="kv-item"><div class="kv-key">Runtime Filters</div><div class="kv-val amber">6 chips · 64 combos</div></div>
           <div class="kv-item"><div class="kv-key">Instrument</div><div class="kv-val">NQ / ES</div></div>
         </div>
       </div>
@@ -759,10 +759,10 @@ const PROJECTS = [
   {
     id:       'sweep',
     title:    'Fractal Sweep',
-    subtitle: 'Fixed Constant · 3 Models',
-    desc:     'Doctrine-compliant Wolf Tank model. Locks anchor at close of first chart-TF bar of each new HTF block (30M/3M, 1H/5M, 4H/15M). Aggregated MAE/MFE distribution with P99 structural stop anchor and four doctrine TP levels (Cover the Queen, Cash Flow, Extended, Runner).',
-    json:     'Fractal Sweep/model_stats_fixed_constant.json',
-    link:     'Fractal Sweep/model_dashboard_fixed_constant.html',
+    subtitle: 'Sweep + CISD · 4 Timeframes',
+    desc:     'Prior-candle sweep → return-to-range → CISD confirmation across 4H_15M, 1H_5M, 1H_3M, 30M_3M. 6 runtime-toggleable filters (Shallow Sweep, Closed Back Inside, SMT, Hour Open Aligned, Prior Counters, Prior Engulfs) with 64 precomputed combinations.',
+    json:     'Fractal Sweep/model_stats.json',
+    link:     'Fractal Sweep/model_dashboard.html',
     color:    '#8b5cf6',
     icon:     '🎯',
     type:     'sweep',
@@ -778,37 +778,37 @@ async function loadStats(project) {
     const d = await res.json();
 
     if (project.type === 'sweep') {
-      // Fixed Constant model: locked anchor per HTF block with MAE/MFE distribution
-      // JSON structure: { model_key: { meta, by_hour, by_dow, up_dist, down_dist, recent_reps } }
+      // Sweep+CISD model:
+      //   JSON shape: { "<tf>_PREV_CISD": { profiles: { simple_1r: { meta, ... } } } }
       const models = [];
-      let totalReps = 0;
+      let totalN = 0;
       let latestDate = null;
       for (const [modelKey, modelData] of Object.entries(d)) {
-        const m = modelData.meta || {};
-        const dd = modelData.down_dist || {};
-        const ud = modelData.up_dist || {};
-        if ((m.total_reps || 0) < 100) continue;
+        const simple = (modelData.profiles || {}).simple_1r;
+        if (!simple) continue;
+        const m = simple.meta || {};
+        const n = m.total_wl || 0;
+        if (n < 20) continue;
         models.push({
-          modelKey,
-          reps: m.total_reps,
-          down_p99: dd.p99,
-          up_p50: ud.p50,
-          up_p25: ud.p25,
-          ratio: (ud.p50 && dd.p99) ? ud.p50 / dd.p99 : null,
+          modelKey: m.model_key || modelKey.replace(/_PREV_CISD$/, ''),
+          n,
+          wr: m.win_rate,
+          ev: m.ev_per_trade,
+          pf: m.profit_factor,
         });
-        totalReps += (m.total_reps || 0);
+        totalN += n;
         if (m.date_range) latestDate = m.date_range;
       }
       if (!models.length) return null;
-      // Best = highest MFE/MAE ratio
-      models.sort((a, b) => (b.ratio || 0) - (a.ratio || 0));
+      // Best = highest EV
+      models.sort((a, b) => (b.ev || 0) - (a.ev || 0));
       const best = models[0];
       return {
-        label1: 'Best Ratio', val1: best.ratio ? best.ratio.toFixed(2) + 'x' : '—', cls1: 'pos',
-        label2: 'Stop Anchor', val2: best.down_p99 != null ? best.down_p99.toFixed(3) + '%' : '—', cls2: 'neg',
-        label3: 'Reps',        val3: num(totalReps), cls3: 'neutral',
+        label1: 'Best WR', val1: best.wr != null ? (best.wr * 100).toFixed(1) + '%' : '—', cls1: 'pos',
+        label2: 'Best EV', val2: best.ev != null ? sgn(best.ev) : '—', cls2: (best.ev || 0) >= 0 ? 'pos' : 'neg',
+        label3: 'Trades',  val3: num(totalN), cls3: 'neutral',
         dateRange: latestDate || '—',
-        subtitle2: `Best: ${best.modelKey.replace(/_/g,' · ')} · ${best.reps.toLocaleString()} reps`,
+        subtitle2: `Best: ${best.modelKey.replace(/_/g,' · ')} · PF ${best.pf?.toFixed(2) || '—'} · ${best.n.toLocaleString()} trades`,
       };
     }
 

@@ -24,11 +24,7 @@ __pycache__/
 .claude-design/
 
 # Generated stats
-555/model_stats.json
-# Fixed Constant JSON exceeds GitHub's 100 MB push limit (~137 MB with full
-# doctrine fields). Treated as a build artifact — regenerate locally via
-# `python3 Fractal\ Sweep/model_stats_fixed_constant.py` (~20 s runtime).
-Fractal Sweep/model_stats_fixed_constant.json
-# Legacy dashboard stats (~128 MB) — regenerate via `python3 model_stats.py`
-# inside Fractal Sweep Legacy/.
-Fractal Sweep Legacy/model_stats.json
+# Sweep+CISD dashboard stats (~128 MB) exceed GitHub's push limit.
+# Treat as a build artifact — regenerate locally via
+# `python3 Fractal\ Sweep/model_stats.py`.
+Fractal Sweep/model_stats.json

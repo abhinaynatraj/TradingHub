@@ -6,9 +6,12 @@
 // simple_1r profile (100% exit at SL or at R:R target).
 //
 // Match with indicator: identical TF pairs (1H/1D, 15M/4H, 5M/1H, 3M/30M),
-// identical sweep/return/CISD detection, identical SMT check.
-// Adds: HOUR_ALIGNED and PRIOR_ENGULFING filters (from Python dashboard),
-// a session window, and risk-based position sizing.
+// identical sweep/return/CISD detection (full HTF period, no Q1 gate, no F1).
+// All 6 backtest runtime filters exposed as toggles:
+//   Setup Quality (default ON):  F3 Shallow Sweep, F4 Closed Back Inside
+//   Confirmation (default OFF):  SMT, Hour-Open Aligned, Prior Bar Counters,
+//                                 Prior Bar Engulfs
+// Plus session window and risk-based position sizing.
 //@version=5
 strategy("Fractal Sweep Strategy",
      overlay=true,
@@ -39,10 +42,15 @@ sl_mode       = input.string("Sweep Extreme", "Stop-Loss At", options=["Sweep Ex
 var string G3 = "R:R"
 rr_ratio = input.float(1.0, "R:R Target", group=G3, step=0.5, minval=0.5, tooltip="1.0 matches backtest simple_1r. Try 2.0 for wider targets.")
 
+var string G4Q = "Setup Quality Filters"
+use_shallow_sweep  = input.bool(true, "Require Shallow Sweep (F3)", group=G4Q, tooltip="Reject setups where sweep extent > 50% of prior candle's range.")
+use_closed_back    = input.bool(true, "Require Closed Back Inside (F4)", group=G4Q, tooltip="Reject setups where the return bar did not close back inside the prior candle's range.")
+
 var string G4 = "Confirmation Filters"
-use_smt            = input.bool(false, "Require SMT Divergence",     group=G4, tooltip="Only take trades where NQ sweeps but ES does NOT sweep its corresponding level.")
-use_hour_aligned   = input.bool(false, "Require Hour-Open Alignment", group=G4, tooltip="CISD close must be on the correct side of the hour's opening bar.")
-use_prior_engulf   = input.bool(false, "Require Prior Bar Engulfs",   group=G4, tooltip="Prior sweep-TF candle must engulf (wick-inclusive) its predecessor.")
+use_smt            = input.bool(false, "Require SMT Divergence",        group=G4, tooltip="Only take trades where NQ sweeps but ES does NOT sweep its corresponding level.")
+use_hour_aligned   = input.bool(false, "Require Hour-Open Alignment",   group=G4, tooltip="CISD close must be on the correct side of the hour's opening bar.")
+use_prior_counter  = input.bool(false, "Require Prior Bar Counters",    group=G4, tooltip="LONG: prior sweep-TF candle closed bearish. SHORT: prior closed bullish.")
+use_prior_engulf   = input.bool(false, "Require Prior Bar Engulfs",     group=G4, tooltip="Prior sweep-TF candle's wick-inclusive range contains its predecessor.")
 smt_symbol         = input.string("ES1!", "SMT Symbol", group=G4, tooltip="Continuous ES contract for SMT comparison.")
 
 var string G5 = "Session"
@@ -87,10 +95,10 @@ else if timeframe.period == "3"
     tf_supported := true
 
 // ── ANCHOR CANDLE — batched tuple fetches ────────────────────────────────────
-[ph_1D,  pl_1D,  pc_1D,  at_1D,  ph2_1D,  pl2_1D]  = request.security(syminfo.tickerid, "1D",  [high[1], low[1], close[1], time, high[2], low[2]], lookahead=barmerge.lookahead_on)
-[ph_240, pl_240, pc_240, at_240, ph2_240, pl2_240] = request.security(syminfo.tickerid, "240", [high[1], low[1], close[1], time, high[2], low[2]], lookahead=barmerge.lookahead_on)
-[ph_60,  pl_60,  pc_60,  at_60,  ph2_60,  pl2_60]  = request.security(syminfo.tickerid, "60",  [high[1], low[1], close[1], time, high[2], low[2]], lookahead=barmerge.lookahead_on)
-[ph_30,  pl_30,  pc_30,  at_30,  ph2_30,  pl2_30]  = request.security(syminfo.tickerid, "30",  [high[1], low[1], close[1], time, high[2], low[2]], lookahead=barmerge.lookahead_on)
+[ph_1D,  pl_1D,  pc_1D,  at_1D,  ph2_1D,  pl2_1D,  po_1D]  = request.security(syminfo.tickerid, "1D",  [high[1], low[1], close[1], time, high[2], low[2], open[1]], lookahead=barmerge.lookahead_on)
+[ph_240, pl_240, pc_240, at_240, ph2_240, pl2_240, po_240] = request.security(syminfo.tickerid, "240", [high[1], low[1], close[1], time, high[2], low[2], open[1]], lookahead=barmerge.lookahead_on)
+[ph_60,  pl_60,  pc_60,  at_60,  ph2_60,  pl2_60,  po_60]  = request.security(syminfo.tickerid, "60",  [high[1], low[1], close[1], time, high[2], low[2], open[1]], lookahead=barmerge.lookahead_on)
+[ph_30,  pl_30,  pc_30,  at_30,  ph2_30,  pl2_30,  po_30]  = request.security(syminfo.tickerid, "30",  [high[1], low[1], close[1], time, high[2], low[2], open[1]], lookahead=barmerge.lookahead_on)
 
 // ── ES ANCHOR (for SMT) ──────────────────────────────────────────────────────
 _smt_src = use_smt ? smt_symbol : syminfo.tickerid
@@ -108,6 +116,7 @@ _smt_src = use_smt ? smt_symbol : syminfo.tickerid
 prior_high    = timeframe.period == "60" ? ph_1D  : timeframe.period == "15" ? ph_240  : timeframe.period == "5" ? ph_60  : ph_30
 prior_low     = timeframe.period == "60" ? pl_1D  : timeframe.period == "15" ? pl_240  : timeframe.period == "5" ? pl_60  : pl_30
 prior_close   = timeframe.period == "60" ? pc_1D  : timeframe.period == "15" ? pc_240  : timeframe.period == "5" ? pc_60  : pc_30
+prior_open    = timeframe.period == "60" ? po_1D  : timeframe.period == "15" ? po_240  : timeframe.period == "5" ? po_60  : po_30
 prev2_high    = timeframe.period == "60" ? ph2_1D : timeframe.period == "15" ? ph2_240 : timeframe.period == "5" ? ph2_60 : ph2_30
 prev2_low     = timeframe.period == "60" ? pl2_1D : timeframe.period == "15" ? pl2_240 : timeframe.period == "5" ? pl2_60 : pl2_30
 anchor_time   = timeframe.period == "60" ? at_1D  : timeframe.period == "15" ? at_240  : timeframe.period == "5" ? at_60  : at_30
@@ -133,6 +142,10 @@ var int   anc_hi_bar      = na
 var int   anc_lo_bar      = na
 var int   ret_bar_long    = na
 var int   ret_bar_short   = na
+var float ret_close_long  = na     // close of return bar — for F4 filter
+var float ret_close_short = na
+var float sweep_pct_long  = na     // sweep extent / ref range — for F3 filter
+var float sweep_pct_short = na
 var bool  smt_long_ok     = false  // true when NQ swept but ES did not
 var bool  smt_short_ok    = false
 // deferred-order state — FIRE sets these, DRAW block enters at next bar's open
@@ -161,6 +174,10 @@ if is_new_anchor
     sweep_bar_short := na
     ret_bar_long    := na
     ret_bar_short   := na
+    ret_close_long  := na
+    ret_close_short := na
+    sweep_pct_long  := na
+    sweep_pct_short := na
     ret_long        := false
     ret_short       := false
     fired_long      := false
@@ -225,16 +242,19 @@ if tf_supported and not na(anc_lo)
 
 // ── PHASE 1: SWEEP ────────────────────────────────────────────────────────────
 if tf_supported and not na(anc_hi) and not na(anc_lo)
+    ref_range = anc_hi - anc_lo
     if not swept_long and low < anc_lo
         swept_long        := true
         sweep_ext_long    := not na(period_min_low)  ? period_min_low  : low
         sweep_bar_long    := not na(period_min_bar)  ? period_min_bar  : bar_index
+        sweep_pct_long    := ref_range > 0 ? (anc_lo - low) / ref_range : 0.0
         if not na(es_prior_low)
             smt_long_ok := es_ltf_low > es_prior_low
     if not swept_short and high > anc_hi
         swept_short        := true
         sweep_ext_short    := not na(period_max_high) ? period_max_high : high
         sweep_bar_short    := not na(period_max_bar)  ? period_max_bar  : bar_index
+        sweep_pct_short    := ref_range > 0 ? (high - anc_hi) / ref_range : 0.0
         if not na(es_prior_high)
             smt_short_ok := es_ltf_high < es_prior_high
 
@@ -242,11 +262,13 @@ if tf_supported and not na(anc_hi) and not na(anc_lo)
 can_return = swept_long or swept_short
 if can_return
     if swept_long  and not ret_long  and high >= anc_lo
-        ret_long     := true
-        ret_bar_long := bar_index
+        ret_long       := true
+        ret_bar_long   := bar_index
+        ret_close_long := close
     if swept_short and not ret_short and low <= anc_hi
-        ret_short     := true
-        ret_bar_short := bar_index
+        ret_short       := true
+        ret_bar_short   := bar_index
+        ret_close_short := close
 
 // ── PHASE 3: CISD ─────────────────────────────────────────────────────────────
 f_cisd_long(int ret_bar) =>
@@ -324,11 +346,24 @@ if barstate.isconfirmed
     cisd_short_fired := _csf
     cisd_short_lvl   := _csv
 
+// ── SETUP QUALITY FILTERS (F3, F4) ────────────────────────────────────────────
+// F3 Shallow Sweep: sweep extent ≤ 50% of prior range
+shallow_pass_long  = use_shallow_sweep ? (not na(sweep_pct_long)  and sweep_pct_long  <= 0.50) : true
+shallow_pass_short = use_shallow_sweep ? (not na(sweep_pct_short) and sweep_pct_short <= 0.50) : true
+// F4 Closed Back Inside: return bar closed back inside prior range
+closed_pass_long   = use_closed_back ? (not na(ret_close_long)  and ret_close_long  >= anc_lo) : true
+closed_pass_short  = use_closed_back ? (not na(ret_close_short) and ret_close_short <= anc_hi) : true
+
 // ── CONFIRMATION FILTERS ──────────────────────────────────────────────────────
 // HOUR_ALIGNED: CISD bar close vs the hour's opening price.
 _cisd_hour_open = hour_open_price
 hour_aligned_long  = use_hour_aligned ? (not na(_cisd_hour_open) and close > _cisd_hour_open) : true
 hour_aligned_short = use_hour_aligned ? (not na(_cisd_hour_open) and close < _cisd_hour_open) : true
+
+// PRIOR_COUNTER_CLOSE: prior sweep-TF candle closed against trade direction
+// LONG needs prior candle bearish (close < open); SHORT needs bullish.
+prior_counter_long  = use_prior_counter ? (not na(prior_open) and not na(prior_close) and prior_close < prior_open) : true
+prior_counter_short = use_prior_counter ? (not na(prior_open) and not na(prior_close) and prior_close > prior_open) : true
 
 // PRIOR_ENGULFING: prior sweep-TF candle engulfs its predecessor (wick-inclusive).
 prior_engulfing = not na(prev2_high) and not na(prev2_low) and prior_high >= prev2_high and prior_low <= prev2_low
@@ -351,8 +386,8 @@ short_risk = not na(sweep_ext_short) ? math.abs(close - sweep_ext_short) : 0.0
 long_base   = tf_supported and ret_long  and cisd_long_fired  and not fired_long  and long_risk  >= min_risk and long_risk  <= max_risk
 short_base  = tf_supported and ret_short and cisd_short_fired and not fired_short and short_risk >= min_risk and short_risk <= max_risk
 
-long_valid  = long_base  and smt_pass_long  and hour_aligned_long  and engulf_pass and _sess_ok and _date_ok
-short_valid = short_base and smt_pass_short and hour_aligned_short and engulf_pass and _sess_ok and _date_ok
+long_valid  = long_base  and shallow_pass_long  and closed_pass_long  and smt_pass_long  and hour_aligned_long  and prior_counter_long  and engulf_pass and _sess_ok and _date_ok
+short_valid = short_base and shallow_pass_short and closed_pass_short and smt_pass_short and hour_aligned_short and prior_counter_short and engulf_pass and _sess_ok and _date_ok
 
 // ── FIRE: LONG — store signal; order placed at next bar's open ───────────────
 if long_valid

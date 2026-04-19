@@ -1,73 +1,103 @@
-# Fractal Sweep (main workspace)
+# Fractal Sweep
 
-This folder hosts three independent backtesting engines that share a single database. The original sweep+CISD model lives on in `Fractal Sweep Legacy/` as the actively-evolved strategy; this folder's primary dashboards are now **Fixed Constant** and **TTFM**.
+Statistical backtesting engine for NQ and ES futures. Detects sweep + CISD setups across 15 years of 1-minute data and drives an interactive probability dashboard.
+
+> Historical note: this folder previously coexisted with `Fractal Sweep Legacy/`. As of 2026-04-19 the Legacy engine is the canonical one; it was merged here and the Legacy folder was deleted. See `LEGACY_NOTE.md` for the earlier history.
 
 ## Stack
-- Python 3.14 · DuckDB 1.4.4 · pandas · numpy
-- No web framework — dashboards are standalone HTML (zero CDN deps)
-
-## Engines
-
-| Script | Output JSON | Dashboard | Purpose |
-|---|---|---|---|
-| `model_stats_fixed_constant.py` | `model_stats_fixed_constant.json` | `model_dashboard_fixed_constant.html` | Doctrine-compliant locked-anchor MAE/MFE study. One rep per HTF block. No filters, no win/loss. |
-| `model_stats_ttfm.py` | `model_stats_ttfm.json` | `model_dashboard_ttfm.html` | TTrades Fractal Model — T-Spot touch setups. MAE/MFE only, no win/loss. |
-| `model_stats.py` | `model_stats.json` | *(dashboard lives in Fractal Sweep Legacy/)* | Original sweep+CISD engine with F1 intact. Still here for regression comparison. |
-
-The hub `index.html` links only the Fixed Constant dashboard. TTFM and Legacy dashboards are opened directly.
-
-## Running
-
-```bash
-python3 model_stats_fixed_constant.py           # Fixed Constant (30M_3M, 1H_5M, 4H_15M)
-python3 model_stats_ttfm.py                     # TTFM (15M_1M, 30M_3M, 1H_5M, 4H_15M)
-python3 model_stats.py                          # Original sweep+CISD
-python3 daily_update.py                         # Fetch new bars from Databento
-```
-
-Any engine also accepts `--table es_1m` and `--models <keys>`. Serve dashboards from the repo root (`python3 -m http.server 8001`).
-
-## Database
-
-`candle_science.duckdb` lives in this folder. `Fractal Sweep Legacy/candle_science.duckdb` is a symlink pointing here. Schema and timezone rules are in the root `CLAUDE.md`.
-
-## Fixed Constant Engine
-
-Locked-anchor H3 architecture from the Wolf Tank doctrine. For each new HTF block, the engine locks the anchor at the close of the FIRST chart-TF bar inside that block. From that lock close, MAE/MFE are measured to the end of the HTF block.
-
-- One rep per HTF block · Same time every rep · Zero conditional judgment
-- Models: `30M_3M`, `1H_5M`, `4H_15M` (no `15M_1M` — measurement window too short)
-- No filters, no direction labels, no win/loss resolution
-
-## TTFM Engine
-
-T-Spot → Touch → Pivot Sweep Confirmation. No WIN/LOSS resolution, MAE/MFE only.
-
-- T-Spot zone: `C3.close ↔ sweep_mid` (log-weighted midpoint of the C3 sweep candle)
-- 6 variants: `Normal` × `Expansive` × `ProTrend` crossed with `BEAR`/`BULL`
-- Defaults: `DEFAULT_MIN_RISK = 5.0 pts`, `DEFAULT_MAX_HOLD = 240 bars`
-- Models: `15M_1M`, `30M_3M`, `1H_5M`, `4H_15M`
-
-## Original Sweep+CISD Engine (`model_stats.py`)
-
-Still the canonical reference implementation. F1 (min prior range) is **intact** here — the removal happened only in `Fractal Sweep Legacy/`. Keep this engine unchanged unless you are explicitly re-baselining.
-
-- 4 TF pairs: `4H_15M`, `1H_5M`, `1H_3M`, `30M_3M`
-- Filters F1–F5 applied cumulatively
-- `SWEEP_MAX_PCT = 0.50`, `MIN_RISK_PTS = 3.0`, `MAX_RISK_PTS = 112.5`
-- `CISD_FAST_BARS = None` (no bar limit)
-- `min_range` per model: 4H=30, 1H=12, 30M=8 pts
-- SMT divergence included (loads `es_1m`, per-trade `smt` bool)
-
-## Pine Scripts
-
-| File | Purpose |
-|---|---|
-| `fractal_sweep.pine` | Indicator — draws sweep/CISD setups, SMT labels, over-risk badges |
-| `fractal_sweep_strategy.pine` | Strategy version for TradingView backtester |
-| `fractal-sweep-indicator-apr16` | Snapshot (Pine v5 source, extension missing on purpose) |
+- Python 3.14 · DuckDB 1.4.4 · pandas
+- Dashboards are standalone HTML (zero CDN deps)
 
 ## Key Files
-- `daily_update.py` — cron entry point (weekdays 7am), refreshes the shared DB
+- `model_stats.py` — sweep+CISD detection engine → `model_stats.json` (gitignored)
+- `model_dashboard.html` — dashboard with 6 runtime filter chips + 64 filter combinations
+- `daily_update.py` — cron entry point (weekdays 7am); fetches missing bars from Databento
 - `install_cron.sh` — one-time cron setup helper
-- `tests/` — pytest suite for the sweep+CISD engine
+- `fractal_sweep.pine` / `fractal_sweep_strategy.pine` — TradingView indicator + strategy
+- `ttfm+fadi.pine` — TTFM+Fadi indicator (separate experiment)
+- `master_backtester.py`, `sltp_analyzer.py`, `recalc.py` — supporting tooling
+- `tests/` — pytest suite (188 pass · 7 pre-existing fail · 20 skip as of 2026-04-15)
+
+## Running
+```bash
+python3 model_stats.py                          # all 4 sweep models
+python3 model_stats.py --models 1H_5M 1H_3M    # subset
+python3 model_stats.py --table es_1m            # ES instead of NQ
+python3 -m pytest tests/ -q                     # test suite
+python3 daily_update.py                         # fetch new bars from Databento
+```
+
+Dashboard served from the repo root: `python3 -m http.server 8001`, then open `http://localhost:8001/Fractal Sweep/model_dashboard.html`.
+
+## Trading Model
+- 4 timeframe pairs: `4H_15M`, `1H_5M`, `1H_3M`, `30M_3M`
+- Setup: prior candle swept → price returns inside range → CISD confirms
+- Entry: next candle open · Stop: sweep extreme · Target: 1R (`simple_1r`)
+- Sweep detection runs across the **full HTF period** — no Q1 window gate
+- CISD has no bar limit — can form anytime after sweep returns
+- Baseline filters (always on): `SWEEP_MAX_PCT = 0.50` (reference only — now a runtime toggle), `MIN_RISK_PTS = 3.0`, `MAX_RISK_PTS = 112.5`
+- `long_base`/`short_base` separated from `max_risk` check — enables over-risk detection
+- **F1 (min prior range) is removed.** Data showed it rejected above-average trades on all 4 TFs (2026-04-15).
+
+## Runtime Filters (6, dashboard-toggleable)
+
+Two groups below the Period/TF/Profile dropdowns. Each chip shows a live `±N` badge before you click.
+
+**Setup Quality** (default ON, uncheck to relax)
+- **Shallow Sweep** (`F3_SWEEP_TOO_LARGE`) — sweep pierced ≤ 50% of prior range
+- **Closed Back Inside** (`F4_NO_CLOSE_BACK`) — price returned inside prior range
+
+**Add Confirmation** (default OFF, check to narrow)
+- **NQ-ES Divergence** (`SMT`) — NQ swept but ES did not
+- **Hour Open Aligned** (`HOUR_ALIGNED`) — CISD close on correct side of current hour open
+- **Prior Bar Counters** (`PRIOR_COUNTER_CLOSE`) — prior sweep-TF candle closed against trade direction
+- **Prior Bar Engulfs** (`PRIOR_ENGULFING`) — prior sweep-TF candle engulfs its predecessor wick-inclusive
+
+`2⁶ = 64` combinations are precomputed in `filter_variants.all_combinations` for the Filters tab.
+
+Filters work on **every Period** (All Time, 2y, 1y, 6m, 3m, 1m). `_compute_by_tf` builds `recent_trades` per sub-slice from `wl_full` (which includes F3/F4-rejected trades), so runtime toggles can bring rejected trades back in.
+
+## SMT Divergence
+
+SMT = NQ sweeps its HTF level but ES does **not** sweep its corresponding level. Exposed as "NQ-ES Divergence" in the dashboard filter bar.
+
+- `model_stats.py` loads `es_1m` alongside `nq_1m`, builds ES sweep-TF candles, checks the ES window at NQ sweep detection time
+- Each trade row carries `smt: bool`
+- `smt_summary` in JSON output: WR/EV/PF split for SMT vs non-SMT
+
+## Risk Profiles (`RR_PROFILES` in `model_stats.py`)
+
+| profile_type | Key | Description |
+|---|---|---|
+| `mult` | `simple_1r` | SL = sweep extreme (1× base_risk); TP = 1R (100% exit) |
+| `raw` | `raw_measure` | No SL/TP — records full-session MAE/MFE only, `outcome='MEASURED'` |
+
+`simple_1r` is the default and drives all win/loss stats. `raw_measure` is the measurement-only profile used for MAE/MFE distribution studies.
+
+### MAE/MFE Recommendation Logic
+- **PTQ**: highest reach_rate where P(positive exit | MFE ≥ X) ≥ 0.70, fallback 0.50
+- **opt_sl**: tightest MAE where P(genuine loss | MAE ≥ X) ≥ 0.70, fallback 0.50
+- Computed both in `model_stats.py` and client-side in `model_dashboard.html` for recent trades
+
+## Hourly Normalization
+- `hour_range_pts` — high minus low of all 1m bars sharing the trade's (date, hour)
+- `mae_pct_hr = mae_pts / hour_range_pts × 100`
+- `mfe_pct_hr = mfe_pts / hour_range_pts × 100`
+- `agg()` emits `avg_mae`, `avg_mfe`, `avg_mae_hr`, `avg_mfe_hr` in all breakdowns
+
+## Equity Tracking
+- `min_equity_usd` — actual running minimum equity (not final equity)
+- `max_dd_usd` — dollar value of worst peak-to-trough drawdown
+- `max_dd_pct` — percentage drawdown from running peak
+
+### Walk-Forward Regime Analysis
+Custom date ranges view pairs consecutive ranges into train→test walk-forward pairs. Train period derives MAE stop variants (max, p90, p85, p50) and MFE targets (PTQ, p50) from winners. Test period resolves trades with each variant. Overfitting score = Test EV / Train EV × 100. Fully client-side in `model_dashboard.html`.
+
+## Analysis Scripts Convention
+- Reference point for candle analysis: `close` of the anchor candle
+- Scan window: anchor+1 bar through 16:00 ET same day
+- Group results by day of week (0=Mon … 4=Fri)
+
+## Date Classification
+- `DATE_CLASSIFICATION` is an empty dict — the classifier source (`daily_classifier.py`) was in the deleted NY1 FPFVG folder
+- Downstream aggregations read it defensively; absence is fine

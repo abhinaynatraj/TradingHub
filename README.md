@@ -10,11 +10,10 @@ A personal trading research hub for NQ and ES futures. Multiple statistical back
 
 | Folder | What it does |
 |---|---|
-| `Fractal Sweep/` | **Fixed Constant + TTFM + original sweep+CISD engines** — doctrine-compliant locked-anchor backtests (Fixed Constant is the primary dashboard linked from the hub) |
-| `Fractal Sweep Legacy/` | **Sweep + CISD model** — the original sweep-of-prior-high/low setup with CISD confirmation, risk profiles, equity tracking. Still actively maintained as a separate strategy. |
+| `Fractal Sweep/` | **Sweep + CISD model** — sweep-of-prior-high/low setup with CISD confirmation, 6 runtime-toggleable filters, risk profiles, equity tracking. Includes TradingView Pine indicator + strategy. |
 | `TTrades Fractal Model Analysis/` | **TTrades Fractal Model** — T-Spot zone entry backtest based on sweep + zone-touch mechanic |
 
-The root `index.html` is a **hub page** that links to all the dashboards from one place.
+The root `index.html` is a **hub page** that links to the Fractal Sweep dashboard.
 
 ---
 
@@ -124,7 +123,7 @@ Open your web browser (Chrome, Firefox, Safari, Edge — any of them) and go to:
 http://localhost:8001
 ```
 
-You'll see the **Statistic.ally** hub page, which links the Fractal Sweep Fixed Constant dashboard. The TTFM, sweep+CISD, and Legacy dashboards open from their respective folders via direct URL.
+You'll see the **Statistic.ally** hub page, which links the Fractal Sweep dashboard. Other dashboards (e.g. TTrades) open from their respective folders via direct URL.
 
 > **Tip:** Bookmark `http://localhost:8001` so you can come back to it easily.
 
@@ -132,12 +131,9 @@ You'll see the **Statistic.ally** hub page, which links the Fractal Sweep Fixed 
 
 ## About the Data
 
-Most dashboards load from pre-computed JSON files that are included in this repo (`ttfm_results.json`, `model_stats.json`, etc.). Two exceptions:
+The TTrades dashboard loads from a pre-computed `ttfm_results.json` that's committed to the repo. Fractal Sweep's `model_stats.json` is large (~140 MB) and **gitignored** — run `python3 Fractal\ Sweep/model_stats.py` once locally to generate it. The dashboard shows a "Run the engine" fallback if it's missing.
 
-- **`Fractal Sweep/model_stats_fixed_constant.json`** — the Fixed Constant results file exceeds GitHub's 100 MB per-file limit, so it's gitignored. Run `python3 Fractal\ Sweep/model_stats_fixed_constant.py` once locally to generate it (~20 seconds). The dashboard shows a "Run the engine" fallback if it's missing.
-- **`Fractal Sweep Legacy/model_stats.json`** — same story. Run `python3 Fractal\ Sweep\ Legacy/model_stats.py` once to generate.
-
-If you want to re-run the other backtests to update with newer data, see the README inside each project folder.
+Re-run any backtest with newer data — see the README inside each project folder.
 
 ---
 
@@ -146,19 +142,15 @@ If you want to re-run the other backtests to update with newer data, see the REA
 ```
 Statistic.ally/
 ├── index.html                                ← Hub page (open this in browser)
-├── Fractal Sweep/                            [Fixed Constant · TTFM · sweep+CISD]
-│   ├── model_dashboard_fixed_constant.html   ← Fixed Constant dashboard (primary)
-│   ├── model_dashboard_ttfm.html             ← TTFM dashboard
-│   ├── model_stats_fixed_constant.py         ← Fixed Constant engine
-│   ├── model_stats_ttfm.py                   ← TTFM engine
-│   ├── model_stats.py                        ← Original sweep+CISD engine
+├── Fractal Sweep/                            [Sweep + CISD]
+│   ├── model_dashboard.html                  ← Dashboard with 6 runtime filter chips
+│   ├── model_stats.py                        ← Backtest engine (F1 removed)
+│   ├── daily_update.py                       ← Fetches new bars from Databento
+│   ├── fractal_sweep.pine                    ← TradingView indicator
+│   ├── fractal_sweep_strategy.pine           ← TradingView strategy
+│   ├── ttfm+fadi.pine                        ← TTFM+Fadi indicator
 │   ├── candle_science.duckdb                 ← Shared DB (gitignored, ~550 MB)
-│   └── daily_update.py                       ← Fetches new bar data
-├── Fractal Sweep Legacy/                     [Sweep + CISD]
-│   ├── model_dashboard.html                  ← Legacy sweep+CISD dashboard
-│   ├── model_stats.py                        ← Legacy engine (F1 filter removed)
-│   ├── candle_science.duckdb                 ← Symlink to ../Fractal Sweep/candle_science.duckdb
-│   ├── LEGACY_NOTE.md                        ← Change history since snapshot
+│   ├── LEGACY_NOTE.md                        ← Earlier-era history
 │   └── tests/                                ← pytest suite
 └── TTrades Fractal Model Analysis/
     ├── index.html                            ← TTrades dashboard
