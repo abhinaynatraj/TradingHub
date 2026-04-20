@@ -7,7 +7,7 @@ indicator("Fractal Sweep", overlay=true, max_labels_count=500, max_lines_count=5
 var string G2 = "Filters"
 min_risk      = input.float(3.0,   "Min Risk (pts)", group=G2)
 max_risk      = input.float(112.5, "Max Risk (pts)", group=G2, tooltip="MNQ: $225 risk ÷ $2.00/pt = 112.5 pts")
-cisd_lookback = input.int(100,    "CISD Lookback Bars", group=G2, tooltip="Max bars to scan for CISD delivery run. 100 = effectively unlimited.")
+cisd_lookback = input.int(100,    "CISD Lookback Bars", group=G2, tooltip="Max bars to scan backward from the return bar for the CISD delivery run. Default 100 is effectively unlimited for real setups.")
 sl_mode       = input.string("Sweep Extreme", "Stop-Loss At", options=["Sweep Extreme", "CISD Level"], group=G2, tooltip="Sweep Extreme = structural SL at the wick. CISD Level = tighter SL at the CISD line.")
 
 // Setup-quality filters (default OFF — the Python backtest engine does not
@@ -578,7 +578,7 @@ f_cisd_long(int ret_bar) =>
     if not na(ret_bar)
         offset = bar_index - ret_bar
         nearest_k = 0
-        for step = 1 to cisd_lookback * 4
+        for step = 1 to cisd_lookback
             k = offset + step
             if k >= bar_index
                 break
@@ -589,7 +589,7 @@ f_cisd_long(int ret_bar) =>
                 break
         if nearest_k > 0
             run_start_k = nearest_k
-            for step2 = nearest_k + 1 to cisd_lookback * 4
+            for step2 = nearest_k + 1 to cisd_lookback
                 if step2 >= bar_index
                     break
                 if close[step2] == open[step2]
@@ -611,7 +611,7 @@ f_cisd_short(int ret_bar) =>
     if not na(ret_bar)
         offset = bar_index - ret_bar
         nearest_k = 0
-        for step = 1 to cisd_lookback * 4
+        for step = 1 to cisd_lookback
             k = offset + step
             if k >= bar_index
                 break
@@ -622,7 +622,7 @@ f_cisd_short(int ret_bar) =>
                 break
         if nearest_k > 0
             run_start_k = nearest_k
-            for step2 = nearest_k + 1 to cisd_lookback * 4
+            for step2 = nearest_k + 1 to cisd_lookback
                 if step2 >= bar_index
                     break
                 if close[step2] == open[step2]
@@ -718,7 +718,8 @@ long_over   = long_base  and long_risk  > max_risk
 short_over  = short_base and short_risk > max_risk
 
 // ── DEBUG ─────────────────────────────────────────────────────────────────────
-if show_debug and tf_supported and barstate.islast
+// Perf: only rebuild debug text once per bar close, not every tick.
+if show_debug and tf_supported and barstate.islast and barstate.isconfirmed
     dbg = "elapsed=" + str.tostring(elapsed)
          + "\nSWP_L=" + str.tostring(swept_long) + " RET_L=" + str.tostring(ret_long) + " ALT_L=" + str.tostring(alerted_long)
          + "\nSWP_S=" + str.tostring(swept_short) + " RET_S=" + str.tostring(ret_short) + " ALT_S=" + str.tostring(alerted_short)
@@ -738,7 +739,15 @@ if show_debug and tf_supported and barstate.islast
     dbg_lbl := label.new(bar_index + 3, high, dbg, color=color.new(c_dbg, 20), textcolor=color.white, style=label.style_label_left, size=size.small, textalign=text.align_left)
 
 // ── SCOREBOARD — top-right table, scope = Today / Last N / All Time ─────────
-if show_scoreboard and barstate.islast
+// Perf: the scoreboard block runs on every tick of the last bar. Rather than
+// rebuild the table on each tick, track a hash of the counter state and only
+// re-render when it changes (or on first render). Hash covers every input
+// that affects the displayed numbers — counters, scope, risk/pt-value inputs.
+var float _sb_state_hash = na
+_sb_new_hash = score_all_long_wins + score_all_long_losses * 31 + score_all_short_wins * 961 + score_all_short_losses * 29791 + score_all_long_pnl + score_all_short_pnl + risk_usd * 97 + point_value_usd * 103 + (scoreboard_scope == "Today" ? 1 : scoreboard_scope == "Last N Trades" ? 2 : 3) * 1000 + max_setups * 7 + array.size(active_dir) * 13
+_sb_dirty = na(scoreboard_tbl) or _sb_new_hash != _sb_state_hash
+if show_scoreboard and barstate.islast and _sb_dirty
+    _sb_state_hash := _sb_new_hash
     // Pick counter source based on the scope dropdown. For "Last N Trades"
     // we re-aggregate the tail of the trades ring buffer; the other two
     // modes read pre-accumulated counters directly.
