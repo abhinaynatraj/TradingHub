@@ -428,6 +428,15 @@ if tf_supported and not na(anc_lo)
             period_max_high := high
             period_max_bar  := bar_index
 
+// After sweep detection, keep SL = period's true extreme until CISD fires.
+// Matches Python engine (sweep_extreme = max/min over all sweeping bars in period).
+if swept_long and not alerted_long and not na(period_min_low)
+    sweep_ext_long := period_min_low
+    sweep_bar_long := period_min_bar
+if swept_short and not alerted_short and not na(period_max_high)
+    sweep_ext_short := period_max_high
+    sweep_bar_short := period_max_bar
+
 // ── PHASE 1: SWEEP ────────────────────────────────────────────────────────────
 // Detects sweeps anywhere within the HTF period.
 // Sweep extreme uses running min/max — no retrospective loop needed.
