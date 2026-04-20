@@ -35,10 +35,10 @@ show_outcome_markers = input.bool(true, "Show Outcome Markers", group=G8, toolti
 var string G3 = "R:R Box"
 rr_extend      = input.int(20,    "Box Width (bars)", group=G3, minval=5, maxval=100)
 rr_ratio       = input.float(1.0, "R:R Target", group=G3, step=0.5, minval=0.5, tooltip="e.g. 2 = TP at 2R. Default 1R matches the backtest simple_1r profile.")
-rr_risk_col    = input.color(color.new(#ef4444, 85), "Risk Zone Fill",    group=G3)
-rr_risk_border = input.color(color.new(#ef4444, 40), "Risk Zone Border",  group=G3)
-rr_rew_col     = input.color(color.new(#06b6d4, 85), "Reward Zone Fill",  group=G3, tooltip="Cyan by default — separates from bullish green candles")
-rr_rew_border  = input.color(color.new(#06b6d4, 40), "Reward Zone Border", group=G3)
+rr_risk_col_c    = input.color(color.new(#ef4444, 85), "Risk Zone Fill (Custom)",    group=G3, tooltip="Used only when Color Mode = Custom. Light/Dark presets override.")
+rr_risk_border_c = input.color(color.new(#ef4444, 40), "Risk Zone Border (Custom)",  group=G3)
+rr_rew_col_c     = input.color(color.new(#06b6d4, 85), "Reward Zone Fill (Custom)",  group=G3, tooltip="Used only when Color Mode = Custom. Light/Dark presets override.")
+rr_rew_border_c  = input.color(color.new(#06b6d4, 40), "Reward Zone Border (Custom)", group=G3)
 rr_entry_col   = input.color(color.new(#e2e8f0, 0),   "Entry Line Color",  group=G3)
 
 var string G4 = "Sweep Line"
@@ -67,18 +67,40 @@ rr_lbl_sl_col = input.color(color.new(#ef4444, 20), "SL Label Color",    group=G
 rr_lbl_en_col = input.color(color.new(#64748b, 40), "Entry Label Color", group=G6)
 
 // ── COLOR PALETTE ─────────────────────────────────────────────────────────────
-// All indicator markup colors in one place. Defaults chosen to stay clear of
-// candle green/red so markup reads cleanly on any theme.
+// Color Mode picks a preset palette. "Custom" uses the individual color inputs
+// below. Light/Dark overrides the R:R box transparencies too (red/cyan boxes
+// with 85% transparency vanish on a dark chart background).
 var string G11 = "Colors"
-c_sweep        = input.color(#f59e0b, "Sweep Level", group=G11, tooltip="Amber — swept HTF high/low. Avoids red/green candle collision.")
-c_cisd         = input.color(#3b82f6, "CISD Level",  group=G11, tooltip="Blue — CISD confirmation line. Unaffected by candle colors.")
-c_sl           = input.color(#ef4444, "Stop Loss",   group=G11, tooltip="Red — the loss line. Universal.")
-c_tp           = input.color(#06b6d4, "Take Profit", group=G11, tooltip="Cyan — separates from bullish green candles.")
-c_tspot        = input.color(#8b5cf6, "T-Spot Zone", group=G11, tooltip="Violet — structural zone. Distinct from TP teal/cyan.")
-c_mid          = input.color(#94a3b8, "Midpoint (BE / Partial)", group=G11, tooltip="Slate — neutral management line (not a loss).")
-c_overrisk     = input.color(#ff6600, "Over-Risk Warning", group=G11, tooltip="Orange — unambiguous risk-too-large flag.")
-c_proj         = input.color(#64748b, "CISD Projection", group=G11, tooltip="Slate — ghost lines for projection levels.")
-c_dbg          = input.color(#0f172a, "Debug Label BG", group=G11)
+color_mode = input.string("Light", "Color Mode", options=["Light", "Dark", "Custom"], group=G11, tooltip="Light: default palette. Dark: brighter hues + more opaque R:R fills. Custom: use the per-element colors below.")
+c_sweep_c      = input.color(#f59e0b, "Sweep Level (Custom)", group=G11, tooltip="Amber — swept HTF high/low. Avoids red/green candle collision.")
+c_cisd_c       = input.color(#3b82f6, "CISD Level (Custom)",  group=G11, tooltip="Blue — CISD confirmation line. Unaffected by candle colors.")
+c_sl_c         = input.color(#ef4444, "Stop Loss (Custom)",   group=G11, tooltip="Red — the loss line. Universal.")
+c_tp_c         = input.color(#06b6d4, "Take Profit (Custom)", group=G11, tooltip="Cyan — separates from bullish green candles.")
+c_tspot_c      = input.color(#8b5cf6, "T-Spot Zone (Custom)", group=G11, tooltip="Violet — structural zone. Distinct from TP teal/cyan.")
+c_mid_c        = input.color(#94a3b8, "Midpoint (Custom)", group=G11, tooltip="Slate — neutral management line (not a loss).")
+c_overrisk_c   = input.color(#ff6600, "Over-Risk Warning (Custom)", group=G11, tooltip="Orange — unambiguous risk-too-large flag.")
+c_proj_c       = input.color(#64748b, "CISD Projection (Custom)", group=G11, tooltip="Slate — ghost lines for projection levels.")
+c_dbg_c        = input.color(#0f172a, "Debug Label BG (Custom)", group=G11)
+
+// Resolve active palette. Light = current defaults; Dark = brighter hues.
+_light = color_mode == "Light"
+_dark  = color_mode == "Dark"
+c_sweep    = _light ? #f59e0b : _dark ? #fbbf24 : c_sweep_c
+c_cisd     = _light ? #3b82f6 : _dark ? #60a5fa : c_cisd_c
+c_sl       = _light ? #ef4444 : _dark ? #f87171 : c_sl_c
+c_tp       = _light ? #06b6d4 : _dark ? #22d3ee : c_tp_c
+c_tspot    = _light ? #8b5cf6 : _dark ? #a78bfa : c_tspot_c
+c_mid      = _light ? #94a3b8 : _dark ? #cbd5e1 : c_mid_c
+c_overrisk = _light ? #ff6600 : _dark ? #fb923c : c_overrisk_c
+c_proj     = _light ? #64748b : _dark ? #94a3b8 : c_proj_c
+c_dbg      = _light ? #0f172a : _dark ? #1e293b : c_dbg_c
+
+// R:R box fills/borders. Dark mode drops transparency from 85 → 70 so the
+// red/cyan zones remain visible against a black background.
+rr_risk_col    = _light ? color.new(#ef4444, 85) : _dark ? color.new(c_sl, 70) : rr_risk_col_c
+rr_risk_border = _light ? color.new(#ef4444, 40) : _dark ? color.new(c_sl, 30) : rr_risk_border_c
+rr_rew_col     = _light ? color.new(#06b6d4, 85) : _dark ? color.new(c_tp, 70) : rr_rew_col_c
+rr_rew_border  = _light ? color.new(#06b6d4, 40) : _dark ? color.new(c_tp, 30) : rr_rew_border_c
 
 // ── STYLE HELPERS ─────────────────────────────────────────────────────────────
 // "Right" → anchor at END of line, text flows right → style_label_left
