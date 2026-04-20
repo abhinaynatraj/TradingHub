@@ -4,93 +4,89 @@
 indicator("Fractal Sweep", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=500)
 
 // ── INPUTS ────────────────────────────────────────────────────────────────────
-var string G2 = "Filters"
-min_risk      = input.float(3.0,   "Min Risk (pts)", group=G2)
-max_risk      = input.float(112.5, "Max Risk (pts)", group=G2, tooltip="MNQ: $225 risk ÷ $2.00/pt = 112.5 pts")
-cisd_lookback = input.int(100,    "CISD Lookback Bars", group=G2, tooltip="Max bars to scan backward from the return bar for the CISD delivery run. Default 100 is effectively unlimited for real setups.")
-sl_mode       = input.string("Sweep Extreme", "Stop-Loss At", options=["Sweep Extreme", "CISD Level"], group=G2, tooltip="Sweep Extreme = structural SL at the wick. CISD Level = tighter SL at the CISD line.")
+// Five top-level groups organized by signal flow:
+//   1. Setup  — detection + filter rules (what counts as a setup)
+//   2. Trade  — SL/TP/R:R + position sizing (what to do once it fires)
+//   3. Chart  — which visual elements to render + scoreboard
+//   4. SMT    — ES divergence flag + source symbol (opt-in)
+//   5. Style  — colors, line styles, label positions (appearance)
 
-// Setup-quality filters (default OFF — the Python backtest engine does not
-// actually apply these filters when computing headline stats, so leaving them
-// off here keeps Pine's scoreboard comparable to the dashboard numbers.
-// Turn on for stricter quality; expect fewer setups and higher WR.
-var string G2Q = "Setup Quality Filters"
-req_shallow_sweep    = input.bool(false, "Shallow Sweep (F3)", group=G2Q, tooltip="Hide setups where sweep extent > 50% of prior candle's range. Default OFF to match backtest dashboard.")
-req_closed_back      = input.bool(false, "Closed Back Inside (F4)", group=G2Q, tooltip="Hide setups where the return bar did not close back inside the prior candle's range. Default OFF to match backtest dashboard.")
+// ── 1. SETUP ──────────────────────────────────────────────────────────────────
+var string G_SETUP = "Setup Detection"
+min_risk      = input.float(3.0,   "Min Risk (pts)",       group=G_SETUP, tooltip="Reject setups where |entry - SL| is below this threshold.")
+max_risk      = input.float(112.5, "Max Risk (pts)",       group=G_SETUP, tooltip="Reject setups where |entry - SL| exceeds this. MNQ default: $225 ÷ $2/pt = 112.5 pts.")
+cisd_lookback = input.int(100,     "CISD Lookback Bars",   group=G_SETUP, tooltip="Max bars to scan backward from the return bar for the CISD delivery run. 100 is effectively unlimited.")
+// Setup-quality filters default OFF — the Python backtest engine does not
+// actually apply these, so leaving them off keeps Pine's scoreboard
+// comparable to the dashboard. Turn on for stricter quality / higher WR.
+req_shallow_sweep  = input.bool(false, "Shallow Sweep (F3)",         group=G_SETUP, tooltip="Require sweep extent ≤ 50% of prior candle's range. Default OFF to match backtest dashboard.")
+req_closed_back    = input.bool(false, "Closed Back Inside (F4)",    group=G_SETUP, tooltip="Require the return bar to close back inside prior range. Default OFF to match backtest dashboard.")
+// Confirmation filters — all default OFF. Opt-in narrowing.
+req_hour_aligned   = input.bool(false, "Hour Open Aligned",          group=G_SETUP, tooltip="LONG: CISD close > current hour's open. SHORT: CISD close < current hour's open.")
+req_prior_counter  = input.bool(false, "Prior Bar Counters",         group=G_SETUP, tooltip="LONG needs prior sweep-TF candle closed bearish; SHORT needs bullish.")
+req_prior_engulf   = input.bool(false, "Prior Bar Engulfs",          group=G_SETUP, tooltip="Prior sweep-TF candle's wick-inclusive range contains the one before it.")
 
-// Confirmation filters (default OFF — opt-in narrowing)
-var string G2C = "Confirmation Filters"
-req_hour_aligned     = input.bool(false, "Hour Open Aligned", group=G2C, tooltip="LONG: CISD close > current hour's open. SHORT: CISD close < current hour's open.")
-req_prior_counter    = input.bool(false, "Prior Bar Counters", group=G2C, tooltip="LONG: prior sweep-TF candle closed bearish. SHORT: prior closed bullish.")
-req_prior_engulf     = input.bool(false, "Prior Bar Engulfs",  group=G2C, tooltip="Prior sweep-TF candle's wick-inclusive range contains the one before it.")
+// ── 2. TRADE ──────────────────────────────────────────────────────────────────
+var string G_TRADE = "Trade Management"
+sl_mode         = input.string("Sweep Extreme", "Stop-Loss At", options=["Sweep Extreme", "CISD Level"], group=G_TRADE, tooltip="Sweep Extreme = structural SL at the wick. CISD Level = tighter SL at the CISD line.")
+rr_ratio        = input.float(1.0,   "R:R Target",            group=G_TRADE, step=0.5, minval=0.5, tooltip="TP = entry + risk × R:R. Default 1R matches the simple_1r backtest profile.")
+risk_usd        = input.float(225.0, "Risk per Trade ($)",    group=G_TRADE, minval=1.0, step=25,   tooltip="Dollar risk per trade. Default $225 = 1 MNQ at max stop (112.5 pts × $2/pt).")
+point_value_usd = input.float(2.0,   "$ per Point",           group=G_TRADE, minval=0.01, step=0.5,  tooltip="MNQ = $2.00/pt · NQ = $20.00/pt · MES = $1.25/pt · ES = $12.50/pt")
+truncate_on_hit = input.bool(true,   "Truncate on TP/SL Hit", group=G_TRADE, tooltip="Shrink R:R box + entry/SL/TP lines when price resolves. Sweep & CISD lines stay for context.")
 
-var string G10 = "SMT Divergence"
-show_smt      = input.bool(true,    "Show SMT Labels", group=G10, tooltip="Check ES for divergence when NQ sweeps")
-smt_symbol    = input.string("ES1!", "ES Symbol", group=G10, tooltip="Continuous ES contract for SMT comparison")
+// ── 3. CHART DISPLAY ─────────────────────────────────────────────────────────
+var string G_CHART = "Chart Display"
+max_setups           = input.int(5,  "Max Setups on Chart",   group=G_CHART, minval=1, maxval=20, tooltip="How many past setups stay drawn. Older ones get pruned.")
+show_outcome_markers = input.bool(true,  "Show Outcome Markers (✓/✗)", group=G_CHART, tooltip="Drop ✓ at TP hit or ✗ at SL hit under each resolved R:R box.")
+show_rr_pills        = input.bool(false, "Show Entry/SL/TP Pills",     group=G_CHART, tooltip="Price-tagged pill labels at the right edge of each R:R box. Off by default to reduce clutter — hover the lines to see the values.")
+show_size_badge      = input.bool(true,  "Show Position Size",         group=G_CHART, tooltip="Muted label above each R:R box showing recommended contract count.")
+show_midlines        = input.bool(false, "Show 50% Midpoints",         group=G_CHART, tooltip="Dashed BE (risk midpoint) and Take-Partial (reward midpoint) lines.")
+show_scoreboard      = input.bool(true,  "Show Scoreboard",            group=G_CHART, tooltip="Top-right table tracking resolved setups.")
+scoreboard_scope     = input.string("Today", "Scorecard Scope", options=["Today", "Last N Trades", "All Time"], group=G_CHART, tooltip="Today = resets at 18:00 ET session open. Last N Trades = rolling window sized by Max Setups. All Time = every resolved trade in loaded history.")
+show_debug           = input.bool(false, "Show Debug Label",           group=G_CHART, tooltip="Developer-only state panel; leave off.")
+// T-Spot sub-group — advanced structural overlays, all default off
+show_tspot           = input.bool(false,       "T-Spot Zone",             group=G_CHART, tooltip="Violet box around the sweep bar's log-midpoint / close range.")
+show_c_labels        = input.bool(false,       "T-Spot C2/C3 Labels",     group=G_CHART)
+show_tspot_type      = input.bool(false,       "T-Spot Type Label",       group=G_CHART, tooltip="Tags setup as ProTrend / Normal / Expansive based on sweep depth.")
+show_proj            = input.bool(false,       "CISD Projections",        group=G_CHART, tooltip="Dotted lines at multiples of the CISD series range above/below the CISD level.")
+proj_levels_str      = input.string("0.5,1.0,1.5,2.0", "Projection Levels", group=G_CHART, tooltip="Comma-separated multiples of the CISD series range.")
+tspot_transp         = input.int(85,           "T-Spot Transparency",     group=G_CHART, minval=0, maxval=100)
 
-var string G8 = "Display"
-show_debug    = input.bool(false, "Show Debug Labels", group=G8)
-max_setups    = input.int(5, "Max Setups to Show", group=G8, minval=1, maxval=20, tooltip="How many past setups stay visible on the chart. Increase for journaling/review.")
-show_midlines = input.bool(false, "Show 50% Midpoint Lines", group=G8, tooltip="Dashed lines at 50% of risk zone (Move to BE) and 50% of reward zone (Take Partial)")
-truncate_on_hit = input.bool(true, "Truncate on TP/SL Hit", group=G8, tooltip="Shrink R:R boxes + entry/SL/TP lines when price hits TP or SL. Sweep & CISD lines stay for context.")
-show_outcome_markers = input.bool(true, "Show Outcome Markers", group=G8, tooltip="Drop ✓ at TP hit or ✗ at SL hit. Requires Truncate on TP/SL Hit.")
-show_scoreboard      = input.bool(true, "Show Scoreboard", group=G8, tooltip="Top-right table tracking resolved setups: Wins/Losses/WR split by LONG/SHORT.")
-scoreboard_scope     = input.string("Today", "Scorecard Scope", options=["Today", "Last N Trades", "All Time"], group=G8, tooltip="Today = resets at 18:00 ET session open. Last N Trades = rolling window sized by Max Setups to Show. All Time = every resolved trade in loaded history.")
+// ── 4. SMT DIVERGENCE (opt-in confirmation) ──────────────────────────────────
+var string G_SMT = "SMT Divergence"
+show_smt   = input.bool(true,    "Show SMT Labels",           group=G_SMT, tooltip="Tag each setup with SMT / NO SMT. Triggers a second security() call on the comparison symbol.")
+smt_symbol = input.string("ES1!", "Comparison Symbol",        group=G_SMT, tooltip="Typically ES1! for NQ charts. SMT = NQ swept but ES didn't.")
 
-// ── POSITION SIZING ──────────────────────────────────────────────────────────
-var string G12 = "Position Sizing"
-risk_usd        = input.float(225.0, "Risk per Trade ($)", group=G12, minval=1.0, step=25, tooltip="Dollar risk per trade. Default $225 = 1 MNQ at max stop (112.5 pts × $2.00/pt).")
-point_value_usd = input.float(2.0,   "$ per Point (1 contract)", group=G12, minval=0.01, step=0.5, tooltip="MNQ = $2.00/pt · NQ = $20.00/pt · MES = $1.25/pt · ES = $12.50/pt")
-
-var string G3 = "R:R Box"
-rr_extend      = input.int(20,    "Box Width (bars)", group=G3, minval=5, maxval=100)
-rr_ratio       = input.float(1.0, "R:R Target", group=G3, step=0.5, minval=0.5, tooltip="e.g. 2 = TP at 2R. Default 1R matches the backtest simple_1r profile.")
-rr_risk_col_c    = input.color(color.new(#ef4444, 85), "Risk Zone Fill (Custom)",    group=G3, tooltip="Used only when Color Mode = Custom. Light/Dark presets override.")
-rr_risk_border_c = input.color(color.new(#ef4444, 40), "Risk Zone Border (Custom)",  group=G3)
-rr_rew_col_c     = input.color(color.new(#06b6d4, 85), "Reward Zone Fill (Custom)",  group=G3, tooltip="Used only when Color Mode = Custom. Light/Dark presets override.")
-rr_rew_border_c  = input.color(color.new(#06b6d4, 40), "Reward Zone Border (Custom)", group=G3)
-rr_entry_col   = input.color(color.new(#e2e8f0, 0),   "Entry Line Color",  group=G3)
-
-var string G4 = "Sweep Line"
-sweep_style_inp = input.string("Dotted",   "Line Style",     options=["Dotted", "Dashed", "Solid"], group=G4)
-sweep_text      = input.string("Sweep of", "Label Text",     group=G4, tooltip="TF is appended automatically")
-sweep_lbl_pos   = input.string("Right",    "Label Position", options=["Left", "Right"], group=G4)
-
-var string G5 = "CISD Line"
-cisd_style_inp  = input.string("Dotted", "Line Style",     options=["Dotted", "Dashed", "Solid"], group=G5)
-cisd_text       = input.string("CISD",   "Label Text",     group=G5, tooltip="TF is appended automatically")
-cisd_lbl_pos    = input.string("Right",  "Label Position", options=["Left", "Right"], group=G5)
-
-var string G7 = "T-Spot Zone"
-show_tspot      = input.bool(false,       "Show T-Spot Zone",     group=G7)
-tspot_transp    = input.int(85,           "Zone Transparency",    group=G7, minval=0, maxval=100)
-show_c_labels   = input.bool(false,       "Show C2/C3 Labels",   group=G7)
-show_tspot_type = input.bool(false,       "Show T-Spot Type",    group=G7)
-show_proj       = input.bool(false,       "Show CISD Projections", group=G7)
-proj_levels_str = input.string("0.5,1.0,1.5,2.0", "Projection Levels", group=G7, tooltip="Comma-separated multiples of CISD series range")
-proj_color      = input.color(color.gray, "Projection Color",    group=G7)
-
-var string G6 = "R:R Labels"
-rr_lbl_pos    = input.string("Right",                        "Label Position", options=["Left", "Right"], group=G6)
-rr_lbl_tp_col = input.color(color.new(#06b6d4, 20), "TP Label Color",    group=G6)
-rr_lbl_sl_col = input.color(color.new(#ef4444, 20), "SL Label Color",    group=G6)
-rr_lbl_en_col = input.color(color.new(#64748b, 40), "Entry Label Color", group=G6)
-
-// ── COLOR PALETTE ─────────────────────────────────────────────────────────────
-// Color Mode picks a preset palette. "Custom" uses the individual color inputs
-// below. Light/Dark overrides the R:R box transparencies too (red/cyan boxes
-// with 85% transparency vanish on a dark chart background).
-var string G11 = "Colors"
-color_mode = input.string("Light", "Color Mode", options=["Light", "Dark", "Custom"], group=G11, tooltip="Light: default palette. Dark: brighter hues + more opaque R:R fills. Custom: use the per-element colors below.")
-c_sweep_c      = input.color(#f59e0b, "Sweep Level (Custom)", group=G11, tooltip="Amber — swept HTF high/low. Avoids red/green candle collision.")
-c_cisd_c       = input.color(#3b82f6, "CISD Level (Custom)",  group=G11, tooltip="Blue — CISD confirmation line. Unaffected by candle colors.")
-c_sl_c         = input.color(#ef4444, "Stop Loss (Custom)",   group=G11, tooltip="Red — the loss line. Universal.")
-c_tp_c         = input.color(#06b6d4, "Take Profit (Custom)", group=G11, tooltip="Cyan — separates from bullish green candles.")
-c_tspot_c      = input.color(#8b5cf6, "T-Spot Zone (Custom)", group=G11, tooltip="Violet — structural zone. Distinct from TP teal/cyan.")
-c_mid_c        = input.color(#94a3b8, "Midpoint (Custom)", group=G11, tooltip="Slate — neutral management line (not a loss).")
-c_overrisk_c   = input.color(#ff6600, "Over-Risk Warning (Custom)", group=G11, tooltip="Orange — unambiguous risk-too-large flag.")
-c_proj_c       = input.color(#64748b, "CISD Projection (Custom)", group=G11, tooltip="Slate — ghost lines for projection levels.")
-c_dbg_c        = input.color(#0f172a, "Debug Label BG (Custom)", group=G11)
+// ── 5. STYLE ──────────────────────────────────────────────────────────────────
+var string G_STYLE = "Style"
+color_mode      = input.string("Light", "Color Mode",         options=["Light", "Dark", "Custom"],    group=G_STYLE, tooltip="Light: default palette. Dark: brighter hues + opaque R:R fills. Custom: uses the per-element color inputs below.")
+rr_extend       = input.int(20,    "R:R Box Width (bars)",    group=G_STYLE, minval=5, maxval=100)
+sweep_style_inp = input.string("Dotted", "Sweep Line Style",  options=["Dotted", "Dashed", "Solid"],  group=G_STYLE)
+cisd_style_inp  = input.string("Dotted", "CISD Line Style",   options=["Dotted", "Dashed", "Solid"],  group=G_STYLE)
+sweep_text      = input.string("Sweep of", "Sweep Label Text",group=G_STYLE, tooltip="TF is appended automatically.")
+cisd_text       = input.string("CISD",     "CISD Label Text", group=G_STYLE, tooltip="TF is appended automatically.")
+sweep_lbl_pos   = input.string("Right", "Sweep Label Position", options=["Left", "Right"],  group=G_STYLE)
+cisd_lbl_pos    = input.string("Right", "CISD Label Position",  options=["Left", "Right"],  group=G_STYLE)
+rr_lbl_pos      = input.string("Right", "R:R Pill Position",    options=["Left", "Right"],  group=G_STYLE)
+// Custom palette — only active when Color Mode = "Custom".
+c_sweep_c        = input.color(#f59e0b, "Sweep Level (Custom)",    group=G_STYLE, tooltip="Amber — swept HTF high/low.")
+c_cisd_c         = input.color(#3b82f6, "CISD Level (Custom)",     group=G_STYLE, tooltip="Blue — CISD confirmation line.")
+c_sl_c           = input.color(#ef4444, "Stop Loss (Custom)",      group=G_STYLE)
+c_tp_c           = input.color(#06b6d4, "Take Profit (Custom)",    group=G_STYLE)
+c_tspot_c        = input.color(#8b5cf6, "T-Spot Zone (Custom)",    group=G_STYLE)
+c_mid_c          = input.color(#94a3b8, "Midpoint (Custom)",       group=G_STYLE)
+c_overrisk_c     = input.color(#ff6600, "Over-Risk Warning (Custom)", group=G_STYLE)
+c_proj_c         = input.color(#64748b, "CISD Projection (Custom)", group=G_STYLE)
+c_dbg_c          = input.color(#0f172a, "Debug/Scoreboard BG (Custom)", group=G_STYLE)
+proj_color       = input.color(color.gray, "CISD Projection Line (Custom)", group=G_STYLE)
+rr_entry_col     = input.color(color.new(#e2e8f0, 0),   "Entry Line (Custom)",   group=G_STYLE)
+rr_risk_col_c    = input.color(color.new(#ef4444, 85),  "Risk Zone Fill (Custom)",   group=G_STYLE)
+rr_risk_border_c = input.color(color.new(#ef4444, 40),  "Risk Zone Border (Custom)", group=G_STYLE)
+rr_rew_col_c     = input.color(color.new(#06b6d4, 85),  "Reward Zone Fill (Custom)", group=G_STYLE)
+rr_rew_border_c  = input.color(color.new(#06b6d4, 40),  "Reward Zone Border (Custom)", group=G_STYLE)
+rr_lbl_tp_col    = input.color(color.new(#06b6d4, 20),  "TP Pill Color (Custom)",    group=G_STYLE)
+rr_lbl_sl_col    = input.color(color.new(#ef4444, 20),  "SL Pill Color (Custom)",    group=G_STYLE)
+rr_lbl_en_col    = input.color(color.new(#64748b, 40),  "Entry Pill Color (Custom)", group=G_STYLE)
 
 // Resolve active palette. Light = current defaults; Dark = brighter hues.
 _light = color_mode == "Light"
@@ -1159,12 +1155,18 @@ if draw_long[1]
     _entry_ln_L = line.new(bar_index, entry, r_end, entry, color=rr_entry_col, width=1, style=line.style_solid)
     _contracts_L = risk > 0 ? math.floor(risk_usd / (risk * point_value_usd)) : 0
     _tp_lbl = "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R"
-    _tp_lbl_L    = label.new(bar_index + rr_lbl_x, tp, _tp_lbl, color=rr_lbl_tp_col, textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small)
-    _entry_lbl_L = label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=rr_lbl_en_col, textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small)
-    _sl_lbl_L    = label.new(bar_index + rr_lbl_x, sl,    "SL  -" + str.tostring(risk, "#.##") + " pts", color=rr_lbl_sl_col, textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small)
+    // Pills are invisible when show_rr_pills=false — still created so the
+    // truncate/resolve paths can set_x on them without na guards.
+    _pill_bg_tp  = show_rr_pills ? rr_lbl_tp_col : color.new(color.black, 100)
+    _pill_bg_sl  = show_rr_pills ? rr_lbl_sl_col : color.new(color.black, 100)
+    _pill_bg_en  = show_rr_pills ? rr_lbl_en_col : color.new(color.black, 100)
+    _pill_fg     = show_rr_pills ? c_rr_lbl_text : color.new(color.black, 100)
+    _tp_lbl_L    = label.new(bar_index + rr_lbl_x, tp, _tp_lbl, color=_pill_bg_tp, textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
+    _entry_lbl_L = label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=_pill_bg_en, textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
+    _sl_lbl_L    = label.new(bar_index + rr_lbl_x, sl,    "SL  -" + str.tostring(risk, "#.##") + " pts", color=_pill_bg_sl, textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
     // Contract size badge — compact, centered above the R:R box.
-    _size_lbl_L = label.new(math.round((bar_index + r_end) / 2), math.max(tp, sl), str.tostring(_contracts_L) + " contracts", color=c_size_bg, textcolor=c_rr_lbl_text, style=label.style_label_down, size=size.small, tooltip="Recommended contracts to keep dollar risk at $" + str.tostring(risk_usd, "#") + " given SL distance")
-    f_reg_label(_size_lbl_L)
+    if show_size_badge
+        f_reg_label(label.new(math.round((bar_index + r_end) / 2), math.max(tp, sl), str.tostring(_contracts_L) + " contracts", color=c_size_bg, textcolor=c_rr_lbl_text, style=label.style_label_down, size=size.small, tooltip="Recommended contracts to keep dollar risk at $" + str.tostring(risk_usd, "#") + " given SL distance"))
     f_reg_line(_sl_ln_L)
     f_reg_box(_risk_box_L)
     f_reg_box(_rew_box_L)
@@ -1303,12 +1305,16 @@ if draw_short[1]
     _entry_ln_S = line.new(bar_index, entry, r_end, entry, color=rr_entry_col, width=1, style=line.style_solid)
     _contracts_S = risk > 0 ? math.floor(risk_usd / (risk * point_value_usd)) : 0
     _tp_lbl = "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R"
-    _tp_lbl_S    = label.new(bar_index + rr_lbl_x, tp, _tp_lbl, color=rr_lbl_tp_col, textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small)
-    _entry_lbl_S = label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=rr_lbl_en_col, textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small)
-    _sl_lbl_S    = label.new(bar_index + rr_lbl_x, sl,    "SL  -" + str.tostring(risk, "#.##") + " pts", color=rr_lbl_sl_col, textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small)
+    _pill_bg_tp  = show_rr_pills ? rr_lbl_tp_col : color.new(color.black, 100)
+    _pill_bg_sl  = show_rr_pills ? rr_lbl_sl_col : color.new(color.black, 100)
+    _pill_bg_en  = show_rr_pills ? rr_lbl_en_col : color.new(color.black, 100)
+    _pill_fg     = show_rr_pills ? c_rr_lbl_text : color.new(color.black, 100)
+    _tp_lbl_S    = label.new(bar_index + rr_lbl_x, tp, _tp_lbl, color=_pill_bg_tp, textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
+    _entry_lbl_S = label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=_pill_bg_en, textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
+    _sl_lbl_S    = label.new(bar_index + rr_lbl_x, sl,    "SL  -" + str.tostring(risk, "#.##") + " pts", color=_pill_bg_sl, textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
     // Contract size badge — compact, centered above the R:R box.
-    _size_lbl_S = label.new(math.round((bar_index + r_end) / 2), math.max(sl, tp), str.tostring(_contracts_S) + " contracts", color=c_size_bg, textcolor=c_rr_lbl_text, style=label.style_label_down, size=size.small, tooltip="Recommended contracts to keep dollar risk at $" + str.tostring(risk_usd, "#") + " given SL distance")
-    f_reg_label(_size_lbl_S)
+    if show_size_badge
+        f_reg_label(label.new(math.round((bar_index + r_end) / 2), math.max(sl, tp), str.tostring(_contracts_S) + " contracts", color=c_size_bg, textcolor=c_rr_lbl_text, style=label.style_label_down, size=size.small, tooltip="Recommended contracts to keep dollar risk at $" + str.tostring(risk_usd, "#") + " given SL distance"))
     f_reg_line(_sl_ln_S)
     f_reg_box(_risk_box_S)
     f_reg_box(_rew_box_S)
@@ -1457,9 +1463,10 @@ if long_over
     f_reg_line(line.new(bar_index, entry, r_end, entry, color=_ov_col, width=1, style=line.style_dashed))
     f_reg_box(box.new(bar_index, entry, r_end, sl, border_color=color.new(c_sl, 60), bgcolor=color.new(c_sl, 92)))
     f_reg_box(box.new(bar_index, tp, r_end, entry, border_color=color.new(c_tp, 60), bgcolor=color.new(c_tp, 92)))
-    f_reg_label(label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=color.new(c_overrisk, 40), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
-    f_reg_label(label.new(bar_index + rr_lbl_x, sl, "SL  -" + str.tostring(risk, "#.##") + " pts", color=color.new(c_sl, 30), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
-    f_reg_label(label.new(bar_index + rr_lbl_x, tp, "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=color.new(c_tp, 30), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
+    if show_rr_pills
+        f_reg_label(label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=color.new(c_overrisk, 40), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
+        f_reg_label(label.new(bar_index + rr_lbl_x, sl, "SL  -" + str.tostring(risk, "#.##") + " pts", color=color.new(c_sl, 30), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
+        f_reg_label(label.new(bar_index + rr_lbl_x, tp, "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=color.new(c_tp, 30), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
     f_reg_label(label.new(bar_index, tp + (tp - entry) * 0.1, "OVER RISK  " + str.tostring(risk, "#.#") + " pts", color=color.new(c_overrisk, 10), textcolor=color.white, style=label.style_label_down, size=size.small))
     array.push(setup_line_counts,  array.size(fired_lines)  - _snap_lines)
     array.push(setup_label_counts, array.size(fired_labels) - _snap_labels)
@@ -1532,9 +1539,10 @@ if short_over
     f_reg_line(line.new(bar_index, entry, r_end, entry, color=_ov_col, width=1, style=line.style_dashed))
     f_reg_box(box.new(bar_index, sl, r_end, entry, border_color=color.new(c_sl, 60), bgcolor=color.new(c_sl, 92)))
     f_reg_box(box.new(bar_index, entry, r_end, tp, border_color=color.new(c_tp, 60), bgcolor=color.new(c_tp, 92)))
-    f_reg_label(label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=color.new(c_overrisk, 40), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
-    f_reg_label(label.new(bar_index + rr_lbl_x, sl, "SL  -" + str.tostring(risk, "#.##") + " pts", color=color.new(c_sl, 30), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
-    f_reg_label(label.new(bar_index + rr_lbl_x, tp, "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=color.new(c_tp, 30), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
+    if show_rr_pills
+        f_reg_label(label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=color.new(c_overrisk, 40), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
+        f_reg_label(label.new(bar_index + rr_lbl_x, sl, "SL  -" + str.tostring(risk, "#.##") + " pts", color=color.new(c_sl, 30), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
+        f_reg_label(label.new(bar_index + rr_lbl_x, tp, "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=color.new(c_tp, 30), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
     f_reg_label(label.new(bar_index, tp - (entry - tp) * 0.1, "OVER RISK  " + str.tostring(risk, "#.#") + " pts", color=color.new(c_overrisk, 10), textcolor=color.white, style=label.style_label_up, size=size.small))
     array.push(setup_line_counts,  array.size(fired_lines)  - _snap_lines)
     array.push(setup_label_counts, array.size(fired_labels) - _snap_labels)
