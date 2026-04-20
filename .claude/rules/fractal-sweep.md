@@ -103,6 +103,7 @@ Used in: `by_hour`, `by_session`, `by_dow`, `dir_summary`, `by_year`, `tspot_bre
 - `fractal_sweep.pine` — indicator
 - `fractal_sweep_strategy.pine` — strategy
 - `fractal-sweep-indicator-apr16` — older snapshot (Pine v5 source, no extension)
+- `fractal-sweep-indicator-apr19` — snapshot after fixing same-bar return-to-range (F4 lockout) and same-bar DRAW (entry mis-placement) bugs
 - `ttfm+fadi.pine` — TTFM+Fadi experimental indicator
 
 ## Database
