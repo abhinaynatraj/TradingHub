@@ -114,6 +114,9 @@ rr_rew_border  = _light ? color.new(#06b6d4, 40) : _dark ? color.new(c_tp, 30) :
 // R:R label text color: dark in light mode for readability, light in dark mode.
 // Custom mode keeps color.white for backward compat with existing setups.
 c_rr_lbl_text  = _light ? #0f172a : _dark ? #f1f5f9 : color.white
+// SIZE badge background — muted slate so it's informative without shouting.
+// Keeps the label readable but visually secondary to entry/SL/TP.
+c_size_bg      = _light ? color.new(#94a3b8, 60) : _dark ? color.new(#64748b, 50) : color.new(c_mid, 60)
 
 // ── STYLE HELPERS ─────────────────────────────────────────────────────────────
 // "Right" → anchor at END of line, text flows right → style_label_left
@@ -288,12 +291,16 @@ var outcome_parent_bar = array.new_int()
 var setup_entry_bars = array.new_int()
 // Scoreboard counters — today's resolved trade tallies (reset each session day),
 // split by direction. Session day = chart's exchange-local day.
-var int score_long_wins    = 0
-var int score_long_losses  = 0
-var int score_short_wins   = 0
-var int score_short_losses = 0
-var int score_day          = na
-var table scoreboard_tbl   = na
+var int   score_long_wins    = 0
+var int   score_long_losses  = 0
+var int   score_short_wins   = 0
+var int   score_short_losses = 0
+var float score_long_pts     = 0.0
+var float score_short_pts    = 0.0
+var float score_long_pnl     = 0.0
+var float score_short_pnl    = 0.0
+var int   score_day          = na
+var table scoreboard_tbl     = na
 
 // Reset the scoreboard at each new futures session (18:00 ET open).
 // Bars at or after 18:00 exchange time belong to the NEXT trading day;
@@ -308,6 +315,10 @@ if na(score_day) or _sess_day != score_day
     score_long_losses  := 0
     score_short_wins   := 0
     score_short_losses := 0
+    score_long_pts     := 0.0
+    score_short_pts    := 0.0
+    score_long_pnl     := 0.0
+    score_short_pnl    := 0.0
 // Active (unresolved) setups — parallel arrays. Resolve to TP/SL hits post-fire.
 var active_dir        = array.new_int()     //  1 = long, -1 = short
 var active_tp         = array.new_float()
@@ -719,56 +730,92 @@ if show_scoreboard and barstate.islast
     _long_wr      = _long_n   > 0 ? score_long_wins  / _long_n   * 100 : 0.0
     _short_wr     = _short_n  > 0 ? score_short_wins / _short_n  * 100 : 0.0
     _total_wr     = _total_n  > 0 ? _total_wins      / _total_n  * 100 : 0.0
+    _total_pts    = score_long_pts + score_short_pts
+    _total_pnl    = score_long_pnl + score_short_pnl
     _active_n     = array.size(active_dir)
     // Date label — MM/DD of the futures session day (rolls at 18:00 ET open)
     _hdr_hr  = hour(time, syminfo.timezone)
     _hdr_ts  = time + (_hdr_hr >= 18 ? 6 * 3600 * 1000 : 0)
     _date_str = str.tostring(month(_hdr_ts, syminfo.timezone)) + "/" + str.tostring(dayofmonth(_hdr_ts, syminfo.timezone))
+    // Theme-aware scoreboard palette. Light mode uses deep slate bg; dark mode
+    // uses a lighter slate so rows stand out against a pure-black chart bg.
+    _sb_bg    = _dark ? color.new(#0f172a, 0) : color.new(c_dbg, 0)
+    _sb_alt   = _dark ? color.new(#334155, 0) : color.new(#1e293b, 0)
+    _sb_text  = color.white
+    _sb_muted = _dark ? #e2e8f0 : #cbd5e1
+    _sb_tp    = _dark ? #34d399 : #10b981
+    _sb_sl    = _dark ? #f87171 : #ef4444
+    _sb_frame = _dark ? #64748b : #475569
+    // Helpers for signed color — green when positive, red when negative, neutral when zero.
+    _long_pts_col  = score_long_pts  > 0 ? _sb_tp : score_long_pts  < 0 ? _sb_sl : _sb_muted
+    _short_pts_col = score_short_pts > 0 ? _sb_tp : score_short_pts < 0 ? _sb_sl : _sb_muted
+    _total_pts_col = _total_pts      > 0 ? _sb_tp : _total_pts      < 0 ? _sb_sl : _sb_muted
+    _long_pnl_col  = score_long_pnl  > 0 ? _sb_tp : score_long_pnl  < 0 ? _sb_sl : _sb_muted
+    _short_pnl_col = score_short_pnl > 0 ? _sb_tp : score_short_pnl < 0 ? _sb_sl : _sb_muted
+    _total_pnl_col = _total_pnl      > 0 ? _sb_tp : _total_pnl      < 0 ? _sb_sl : _sb_muted
+    // Signed formatters — compute pre-built strings rather than nested functions.
+    _long_pts_str  = (score_long_pts  >= 0 ? "+" : "")  + str.tostring(score_long_pts, "#.##")
+    _short_pts_str = (score_short_pts >= 0 ? "+" : "")  + str.tostring(score_short_pts, "#.##")
+    _total_pts_str = (_total_pts      >= 0 ? "+" : "")  + str.tostring(_total_pts, "#.##")
+    _long_pnl_str  = (score_long_pnl  >= 0 ? "+$" : "-$") + str.tostring(math.abs(score_long_pnl), "#,###.##")
+    _short_pnl_str = (score_short_pnl >= 0 ? "+$" : "-$") + str.tostring(math.abs(score_short_pnl), "#,###.##")
+    _total_pnl_str = (_total_pnl      >= 0 ? "+$" : "-$") + str.tostring(math.abs(_total_pnl), "#,###.##")
+    // Uniform font size across every cell. WR strings fall back to "–" for
+    // empty directions to keep alignment clean.
+    _wr_long_str  = _long_n  > 0 ? str.tostring(_long_wr,  "#.#") + "%" : "–"
+    _wr_short_str = _short_n > 0 ? str.tostring(_short_wr, "#.#") + "%" : "–"
+    _wr_total_str = _total_n > 0 ? str.tostring(_total_wr, "#.#") + "%" : "–"
+    _meta_str     = combo + "  ·  $" + str.tostring(risk_usd, "#") + "/trade"
+    _footer_str   = _date_str + (_active_n > 0 ? "  ·  " + str.tostring(_active_n) + " pending" : "")
     table.delete(scoreboard_tbl)
-    scoreboard_tbl := table.new(position.top_right, 5, 7, bgcolor=color.new(c_dbg, 15), border_color=color.new(c_dbg, 50), border_width=1, frame_color=color.new(c_dbg, 50), frame_width=1)
-    // Title row (merged look via matching bg)
-    table.cell(scoreboard_tbl, 0, 0, "Today's Scorecard", text_color=color.white, bgcolor=color.new(c_dbg, 0), text_size=size.small)
-    table.cell(scoreboard_tbl, 1, 0, "",                  bgcolor=color.new(c_dbg, 0))
-    table.cell(scoreboard_tbl, 2, 0, "",                  bgcolor=color.new(c_dbg, 0))
-    table.cell(scoreboard_tbl, 3, 0, "",                  bgcolor=color.new(c_dbg, 0))
-    table.cell(scoreboard_tbl, 4, 0, _date_str,           text_color=color.new(color.white, 30), bgcolor=color.new(c_dbg, 0), text_size=size.tiny)
-    // Header row
-    table.cell(scoreboard_tbl, 0, 1, "",        text_color=color.white, bgcolor=color.new(c_dbg, 5))
-    table.cell(scoreboard_tbl, 1, 1, "Setups",  text_color=color.white, bgcolor=color.new(c_dbg, 5), text_size=size.small)
-    table.cell(scoreboard_tbl, 2, 1, "Wins",    text_color=color.white, bgcolor=color.new(c_dbg, 5), text_size=size.small)
-    table.cell(scoreboard_tbl, 3, 1, "Losses",  text_color=color.white, bgcolor=color.new(c_dbg, 5), text_size=size.small)
-    table.cell(scoreboard_tbl, 4, 1, "WR",      text_color=color.white, bgcolor=color.new(c_dbg, 5), text_size=size.small)
-    // LONG row
-    table.cell(scoreboard_tbl, 0, 2, "LONG",                                  text_color=c_tp,    text_size=size.small)
-    table.cell(scoreboard_tbl, 1, 2, str.tostring(_long_n),                   text_color=color.white, text_size=size.small)
-    table.cell(scoreboard_tbl, 2, 2, str.tostring(score_long_wins),           text_color=c_tp,    text_size=size.small)
-    table.cell(scoreboard_tbl, 3, 2, str.tostring(score_long_losses),         text_color=c_sl,    text_size=size.small)
-    table.cell(scoreboard_tbl, 4, 2, _long_n > 0 ? str.tostring(_long_wr, "#.#") + "%" : "–", text_color=color.white, text_size=size.small)
-    // SHORT row
-    table.cell(scoreboard_tbl, 0, 3, "SHORT",                                 text_color=c_sl,    text_size=size.small)
-    table.cell(scoreboard_tbl, 1, 3, str.tostring(_short_n),                  text_color=color.white, text_size=size.small)
-    table.cell(scoreboard_tbl, 2, 3, str.tostring(score_short_wins),          text_color=c_tp,    text_size=size.small)
-    table.cell(scoreboard_tbl, 3, 3, str.tostring(score_short_losses),        text_color=c_sl,    text_size=size.small)
-    table.cell(scoreboard_tbl, 4, 3, _short_n > 0 ? str.tostring(_short_wr, "#.#") + "%" : "–", text_color=color.white, text_size=size.small)
-    // TOTAL row
-    table.cell(scoreboard_tbl, 0, 4, "TOTAL",                                 text_color=color.white, bgcolor=color.new(c_dbg, 5), text_size=size.small)
-    table.cell(scoreboard_tbl, 1, 4, str.tostring(_total_n),                  text_color=color.white, bgcolor=color.new(c_dbg, 5), text_size=size.small)
-    table.cell(scoreboard_tbl, 2, 4, str.tostring(_total_wins),               text_color=c_tp,    bgcolor=color.new(c_dbg, 5), text_size=size.small)
-    table.cell(scoreboard_tbl, 3, 4, str.tostring(_total_losses),             text_color=c_sl,    bgcolor=color.new(c_dbg, 5), text_size=size.small)
-    table.cell(scoreboard_tbl, 4, 4, _total_n > 0 ? str.tostring(_total_wr, "#.#") + "%" : "–", text_color=color.white, bgcolor=color.new(c_dbg, 5), text_size=size.small)
-    // PENDING row (unresolved active setups)
+    // 4 columns (Metric / LONG / SHORT / TOTAL) × 9 rows (title + header + 6 metrics + footer).
+    scoreboard_tbl := table.new(position.top_right, 4, 9, bgcolor=_sb_bg, border_color=color.new(_sb_frame, 0), border_width=1, frame_color=color.new(_sb_frame, 0), frame_width=1)
+    // Title row — combo/risk info lives here between title and date.
+    table.cell(scoreboard_tbl, 0, 0, "Today's Scorecard", text_color=_sb_text,  bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 0, _meta_str,           text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 0, "",                  bgcolor=_sb_alt)
+    table.cell(scoreboard_tbl, 3, 0, _date_str,           text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
+    // Column header row — LONG / SHORT / TOTAL
+    table.cell(scoreboard_tbl, 0, 1, "",      text_color=_sb_text, bgcolor=_sb_alt)
+    table.cell(scoreboard_tbl, 1, 1, "LONG",  text_color=_sb_tp,   bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 1, "SHORT", text_color=_sb_sl,   bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 3, 1, "TOTAL", text_color=_sb_text, bgcolor=_sb_alt, text_size=size.small)
+    // Setups
+    table.cell(scoreboard_tbl, 0, 2, "Setups", text_color=_sb_muted, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 2, str.tostring(_long_n),   text_color=_sb_text, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 2, str.tostring(_short_n),  text_color=_sb_text, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 3, 2, str.tostring(_total_n),  text_color=_sb_text, bgcolor=_sb_bg, text_size=size.small)
+    // Wins
+    table.cell(scoreboard_tbl, 0, 3, "Wins",   text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 3, str.tostring(score_long_wins),   text_color=_sb_tp, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 3, str.tostring(score_short_wins),  text_color=_sb_tp, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 3, 3, str.tostring(_total_wins),       text_color=_sb_tp, bgcolor=_sb_alt, text_size=size.small)
+    // Losses
+    table.cell(scoreboard_tbl, 0, 4, "Losses", text_color=_sb_muted, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 4, str.tostring(score_long_losses),   text_color=_sb_sl, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 4, str.tostring(score_short_losses),  text_color=_sb_sl, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 3, 4, str.tostring(_total_losses),       text_color=_sb_sl, bgcolor=_sb_bg, text_size=size.small)
+    // Win Rate
+    table.cell(scoreboard_tbl, 0, 5, "WR",     text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 5, _wr_long_str,  text_color=_sb_text, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 5, _wr_short_str, text_color=_sb_text, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 3, 5, _wr_total_str, text_color=_sb_text, bgcolor=_sb_alt, text_size=size.small)
+    // Points
+    table.cell(scoreboard_tbl, 0, 6, "Points", text_color=_sb_muted, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 6, _long_pts_str,  text_color=_long_pts_col,  bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 6, _short_pts_str, text_color=_short_pts_col, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 3, 6, _total_pts_str, text_color=_total_pts_col, bgcolor=_sb_bg, text_size=size.small)
+    // P&L
+    table.cell(scoreboard_tbl, 0, 7, "PnL",    text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 7, _long_pnl_str,  text_color=_long_pnl_col,  bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 7, _short_pnl_str, text_color=_short_pnl_col, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 3, 7, _total_pnl_str, text_color=_total_pnl_col, bgcolor=_sb_alt, text_size=size.small)
+    // Footer — only rendered when there are pending setups to announce.
     if _active_n > 0
-        table.cell(scoreboard_tbl, 0, 5, "Pending",             text_color=color.new(color.white, 40), text_size=size.tiny)
-        table.cell(scoreboard_tbl, 1, 5, str.tostring(_active_n), text_color=color.new(color.white, 40), text_size=size.tiny)
-        table.cell(scoreboard_tbl, 2, 5, "", bgcolor=color.new(c_dbg, 30))
-        table.cell(scoreboard_tbl, 3, 5, "", bgcolor=color.new(c_dbg, 30))
-        table.cell(scoreboard_tbl, 4, 5, "", bgcolor=color.new(c_dbg, 30))
-    // Combo footer
-    table.cell(scoreboard_tbl, 0, 6, combo, text_color=color.new(color.white, 50), text_size=size.tiny)
-    table.cell(scoreboard_tbl, 1, 6, "", bgcolor=color.new(c_dbg, 30))
-    table.cell(scoreboard_tbl, 2, 6, "", bgcolor=color.new(c_dbg, 30))
-    table.cell(scoreboard_tbl, 3, 6, "", bgcolor=color.new(c_dbg, 30))
-    table.cell(scoreboard_tbl, 4, 6, "$" + str.tostring(risk_usd, "#") + "/trade", text_color=color.new(color.white, 30), bgcolor=color.new(c_dbg, 30), text_size=size.tiny)
+        table.cell(scoreboard_tbl, 0, 8, str.tostring(_active_n) + " pending", text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
+        table.cell(scoreboard_tbl, 1, 8, "", bgcolor=_sb_alt)
+        table.cell(scoreboard_tbl, 2, 8, "", bgcolor=_sb_alt)
+        table.cell(scoreboard_tbl, 3, 8, "", bgcolor=_sb_alt)
 
 // ── RESOLVE ACTIVE SETUPS — truncate R:R drawings on TP/SL hit ───────────────
 // Walk from tail to head so we can pop resolved rows without index drift.
@@ -852,16 +899,25 @@ if truncate_on_hit and array.size(active_dir) > 0
                 array.remove(active_extra_lbl_count, _i)
                 array.remove(active_extra_bx_count,  _i)
             // Scoreboard: tally every resolved trade, split by direction.
+            // Win = +risk × rr; Loss = -risk. Points are signed; PnL = pts × contracts × $/pt.
+            _trade_risk_pts = math.abs(_en - _sl)
+            _trade_pts      = _resolved_sl ? -_trade_risk_pts : _trade_risk_pts * rr_ratio
+            _trade_n        = _trade_risk_pts > 0 ? math.floor(risk_usd / (_trade_risk_pts * point_value_usd)) : 0
+            _trade_pnl      = _trade_pts * _trade_n * point_value_usd
             if _d == 1
                 if _resolved_sl
                     score_long_losses += 1
                 else
                     score_long_wins += 1
+                score_long_pts += _trade_pts
+                score_long_pnl += _trade_pnl
             else
                 if _resolved_sl
                     score_short_losses += 1
                 else
                     score_short_wins += 1
+                score_short_pts += _trade_pts
+                score_short_pnl += _trade_pnl
             if show_outcome_markers
                 // Anchor below the R:R box at its horizontal midpoint.
                 // Bottom edge = min(sl, tp): for LONG this is sl, for SHORT this is tp.
@@ -1004,10 +1060,12 @@ if draw_long[1]
     _entry_ln_L = line.new(bar_index, entry, r_end, entry, color=rr_entry_col, width=1, style=line.style_solid)
     _contracts_L = risk > 0 ? math.floor(risk_usd / (risk * point_value_usd)) : 0
     _tp_lbl = "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R"
-    _sl_txt_L = "SL  -" + str.tostring(risk, "#.##") + " pts  ·  " + str.tostring(_contracts_L) + "x"
     _tp_lbl_L    = label.new(bar_index + rr_lbl_x, tp, _tp_lbl, color=rr_lbl_tp_col, textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small)
     _entry_lbl_L = label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=rr_lbl_en_col, textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small)
-    _sl_lbl_L    = label.new(bar_index + rr_lbl_x, sl,    _sl_txt_L, color=rr_lbl_sl_col, textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small)
+    _sl_lbl_L    = label.new(bar_index + rr_lbl_x, sl,    "SL  -" + str.tostring(risk, "#.##") + " pts", color=rr_lbl_sl_col, textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small)
+    // Contract size badge — compact, centered above the R:R box.
+    _size_lbl_L = label.new(math.round((bar_index + r_end) / 2), math.max(tp, sl), str.tostring(_contracts_L) + " contracts", color=c_size_bg, textcolor=c_rr_lbl_text, style=label.style_label_down, size=size.small, tooltip="Recommended contracts to keep dollar risk at $" + str.tostring(risk_usd, "#") + " given SL distance")
+    f_reg_label(_size_lbl_L)
     f_reg_line(_sl_ln_L)
     f_reg_box(_risk_box_L)
     f_reg_box(_rew_box_L)
@@ -1079,9 +1137,9 @@ if draw_long[1]
                         f_reg_label_active(label.new(r_end, proj_price, str.tostring(lv), color=color.new(proj_color, 100), textcolor=proj_color, style=label.style_label_left, size=size.tiny))
     if show_smt
         if draw_smt_long
-            f_reg_label(label.new(bar_index, sl - (entry - sl) * 0.15, "SMT", color=color.new(color.green, 10), textcolor=color.white, style=label.style_label_up, size=size.small))
+            f_reg_label(label.new(bar_index, sl - (entry - sl) * 0.15, "SMT", color=color.new(color.green, 10), textcolor=c_rr_lbl_text, style=label.style_label_up, size=size.small))
         else
-            f_reg_label(label.new(bar_index, sl - (entry - sl) * 0.15, "NO SMT", color=color.new(color.gray, 40), textcolor=color.white, style=label.style_label_up, size=size.small))
+            f_reg_label(label.new(bar_index, sl - (entry - sl) * 0.15, "NO SMT", color=color.new(color.gray, 40), textcolor=c_rr_lbl_text, style=label.style_label_up, size=size.small))
     // Record how many extras this setup owns so resolution can truncate them
     if truncate_on_hit
         array.push(active_extra_ln_count,  array.size(active_extra_lines)  - _ex_ln_start)
@@ -1146,10 +1204,12 @@ if draw_short[1]
     _entry_ln_S = line.new(bar_index, entry, r_end, entry, color=rr_entry_col, width=1, style=line.style_solid)
     _contracts_S = risk > 0 ? math.floor(risk_usd / (risk * point_value_usd)) : 0
     _tp_lbl = "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R"
-    _sl_txt_S = "SL  -" + str.tostring(risk, "#.##") + " pts  ·  " + str.tostring(_contracts_S) + "x"
     _tp_lbl_S    = label.new(bar_index + rr_lbl_x, tp, _tp_lbl, color=rr_lbl_tp_col, textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small)
     _entry_lbl_S = label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=rr_lbl_en_col, textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small)
-    _sl_lbl_S    = label.new(bar_index + rr_lbl_x, sl,    _sl_txt_S, color=rr_lbl_sl_col, textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small)
+    _sl_lbl_S    = label.new(bar_index + rr_lbl_x, sl,    "SL  -" + str.tostring(risk, "#.##") + " pts", color=rr_lbl_sl_col, textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small)
+    // Contract size badge — compact, centered above the R:R box.
+    _size_lbl_S = label.new(math.round((bar_index + r_end) / 2), math.max(sl, tp), str.tostring(_contracts_S) + " contracts", color=c_size_bg, textcolor=c_rr_lbl_text, style=label.style_label_down, size=size.small, tooltip="Recommended contracts to keep dollar risk at $" + str.tostring(risk_usd, "#") + " given SL distance")
+    f_reg_label(_size_lbl_S)
     f_reg_line(_sl_ln_S)
     f_reg_box(_risk_box_S)
     f_reg_box(_rew_box_S)
@@ -1219,9 +1279,9 @@ if draw_short[1]
                         f_reg_label_active(label.new(r_end, proj_price, str.tostring(lv), color=color.new(proj_color, 100), textcolor=proj_color, style=label.style_label_left, size=size.tiny))
     if show_smt
         if draw_smt_short
-            f_reg_label(label.new(bar_index, sl + (sl - entry) * 0.15, "SMT", color=color.new(color.red, 10), textcolor=color.white, style=label.style_label_down, size=size.small))
+            f_reg_label(label.new(bar_index, sl + (sl - entry) * 0.15, "SMT", color=color.new(color.red, 10), textcolor=c_rr_lbl_text, style=label.style_label_down, size=size.small))
         else
-            f_reg_label(label.new(bar_index, sl + (sl - entry) * 0.15, "NO SMT", color=color.new(color.gray, 40), textcolor=color.white, style=label.style_label_down, size=size.small))
+            f_reg_label(label.new(bar_index, sl + (sl - entry) * 0.15, "NO SMT", color=color.new(color.gray, 40), textcolor=c_rr_lbl_text, style=label.style_label_down, size=size.small))
     if truncate_on_hit
         array.push(active_extra_ln_count,  array.size(active_extra_lines)  - _ex_ln_start)
         array.push(active_extra_lbl_count, array.size(active_extra_labels) - _ex_lbl_start)
