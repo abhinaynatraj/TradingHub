@@ -281,6 +281,16 @@ var active_cisd_ln    = array.new_line()
 var active_sweep_ln   = array.new_line()
 var active_cisd_lbl   = array.new_label()
 var active_sweep_lbl  = array.new_label()
+// Variable-count per-setup extras (midlines, projections, T-Spot zone+line).
+// Flat pools hold all extras; each setup records how many it owns. To find
+// setup _i's slice we sum the counts of setups [0.._i-1] → that's the start
+// offset, and the count tells us the length.
+var active_extra_lines   = array.new_line()
+var active_extra_labels  = array.new_label()
+var active_extra_boxes   = array.new_box()
+var active_extra_ln_count  = array.new_int()
+var active_extra_lbl_count = array.new_int()
+var active_extra_bx_count  = array.new_int()
 // snapshot sizes before registering a new setup's drawings
 var int _snap_lines  = 0
 var int _snap_labels = 0
@@ -290,6 +300,16 @@ var int _snap_boxes  = 0
 f_reg_line(line l)   => array.push(fired_lines, l)
 f_reg_label(label l) => array.push(fired_labels, l)
 f_reg_box(box b)     => array.push(fired_boxes, b)
+// helpers: register drawing AND push it into the active-extras pool (for truncation)
+f_reg_line_active(line l)   =>
+    array.push(fired_lines, l)
+    array.push(active_extra_lines, l)
+f_reg_label_active(label l) =>
+    array.push(fired_labels, l)
+    array.push(active_extra_labels, l)
+f_reg_box_active(box b)     =>
+    array.push(fired_boxes, b)
+    array.push(active_extra_boxes, b)
 
 // ── ANCHOR RESET ──────────────────────────────────────────────────────────────
 if is_new_anchor and tf_supported
@@ -669,6 +689,40 @@ if truncate_on_hit and array.size(active_dir) > 0
                 label.set_x(_cll, bar_index + 1)
             if sweep_lbl_pos == "Right"
                 label.set_x(_wll, bar_index + 1)
+            // Truncate extras (midlines, projections, T-Spot). Find this setup's
+            // slice by summing counts of preceding setups in the active lists.
+            _ln_off  = 0
+            _lbl_off = 0
+            _bx_off  = 0
+            for _j = 0 to _i - 1
+                _ln_off  += array.get(active_extra_ln_count,  _j)
+                _lbl_off += array.get(active_extra_lbl_count, _j)
+                _bx_off  += array.get(active_extra_bx_count,  _j)
+            _ln_n  = array.get(active_extra_ln_count,  _i)
+            _lbl_n = array.get(active_extra_lbl_count, _i)
+            _bx_n  = array.get(active_extra_bx_count,  _i)
+            if _ln_n > 0
+                for _k = 0 to _ln_n - 1
+                    line.set_x2(array.get(active_extra_lines, _ln_off + _k), bar_index)
+            if _lbl_n > 0
+                for _k = 0 to _lbl_n - 1
+                    label.set_x(array.get(active_extra_labels, _lbl_off + _k), bar_index + 1)
+            if _bx_n > 0
+                for _k = 0 to _bx_n - 1
+                    box.set_right(array.get(active_extra_boxes, _bx_off + _k), bar_index)
+            // Remove this setup's extras from the pool (from tail of slice to head)
+            if _ln_n > 0
+                for _k = 1 to _ln_n
+                    array.remove(active_extra_lines, _ln_off)
+            if _lbl_n > 0
+                for _k = 1 to _lbl_n
+                    array.remove(active_extra_labels, _lbl_off)
+            if _bx_n > 0
+                for _k = 1 to _bx_n
+                    array.remove(active_extra_boxes, _bx_off)
+            array.remove(active_extra_ln_count,  _i)
+            array.remove(active_extra_lbl_count, _i)
+            array.remove(active_extra_bx_count,  _i)
             if show_outcome_markers
                 _mark_price = _resolved_sl ? _sl : _tp
                 _mark_text  = _resolved_sl ? "✗" : "✓"
@@ -828,20 +882,24 @@ if draw_long[1]
         array.push(active_sweep_ln, _sweep_ln_L)
         array.push(active_cisd_lbl, _cisd_lbl_draw_L)
         array.push(active_sweep_lbl, _sweep_lbl_draw_L)
+    // Snapshot extras pool sizes so we know how many this setup adds
+    _ex_ln_start  = array.size(active_extra_lines)
+    _ex_lbl_start = array.size(active_extra_labels)
+    _ex_bx_start  = array.size(active_extra_boxes)
     if show_midlines and risk > 0
         _be_level      = entry - risk * 0.5
         _partial_level = entry + risk * 0.5
         _mid_col = color.new(c_mid, 30)
-        f_reg_line(line.new(bar_index, _be_level,      r_end, _be_level,      color=_mid_col, width=1, style=line.style_dashed))
-        f_reg_line(line.new(bar_index, _partial_level, r_end, _partial_level, color=_mid_col, width=1, style=line.style_dashed))
-        f_reg_label(label.new(bar_index + rr_lbl_x, _be_level,      "Move to BE", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
-        f_reg_label(label.new(bar_index + rr_lbl_x, _partial_level, "Take Partial", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
+        f_reg_line_active(line.new(bar_index, _be_level,      r_end, _be_level,      color=_mid_col, width=1, style=line.style_dashed))
+        f_reg_line_active(line.new(bar_index, _partial_level, r_end, _partial_level, color=_mid_col, width=1, style=line.style_dashed))
+        f_reg_label_active(label.new(bar_index + rr_lbl_x, _be_level,      "Move to BE", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
+        f_reg_label_active(label.new(bar_index + rr_lbl_x, _partial_level, "Take Partial", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
     if show_tspot and not na(draw_sweep_logmid_long) and not na(draw_sweep_close_long)
         tspot_top  = math.max(draw_sweep_logmid_long, draw_sweep_close_long)
         tspot_bot  = math.min(draw_sweep_logmid_long, draw_sweep_close_long)
         sb = not na(draw_sweep_bar_long) ? draw_sweep_bar_long : bar_index
-        f_reg_box(box.new(sb, tspot_top, r_end, tspot_bot, bgcolor=color.new(c_tspot, tspot_transp), border_color=color.new(c_tspot, tspot_transp + 5)))
-        f_reg_line(line.new(sb, draw_sweep_logmid_long, r_end, draw_sweep_logmid_long, color=c_tspot, width=1, style=line.style_dotted))
+        f_reg_box_active(box.new(sb, tspot_top, r_end, tspot_bot, bgcolor=color.new(c_tspot, tspot_transp), border_color=color.new(c_tspot, tspot_transp + 5)))
+        f_reg_line_active(line.new(sb, draw_sweep_logmid_long, r_end, draw_sweep_logmid_long, color=c_tspot, width=1, style=line.style_dotted))
     if show_c_labels
         f_reg_label(label.new(draw_anc_lo_bar, draw_anc_lo, "C2", color=color.new(c_tspot, 100), textcolor=c_tspot, style=label.style_label_up, size=size.small))
         f_reg_label(label.new(bar_index, draw_cisd_lvl_long, "C3", color=color.new(c_tspot, 100), textcolor=c_tspot, style=label.style_label_up, size=size.small))
@@ -866,13 +924,18 @@ if draw_long[1]
                     lv = str.tonumber(lv_str)
                     if not na(lv)
                         proj_price = draw_cisd_lvl_long + s_range * lv
-                        f_reg_line(line.new(bar_index, proj_price, r_end, proj_price, color=proj_color, width=1, style=line.style_dotted))
-                        f_reg_label(label.new(r_end, proj_price, str.tostring(lv), color=color.new(proj_color, 100), textcolor=proj_color, style=label.style_label_left, size=size.tiny))
+                        f_reg_line_active(line.new(bar_index, proj_price, r_end, proj_price, color=proj_color, width=1, style=line.style_dotted))
+                        f_reg_label_active(label.new(r_end, proj_price, str.tostring(lv), color=color.new(proj_color, 100), textcolor=proj_color, style=label.style_label_left, size=size.tiny))
     if show_smt
         if draw_smt_long
             f_reg_label(label.new(bar_index, sl - (entry - sl) * 0.15, "SMT", color=color.new(color.green, 10), textcolor=color.white, style=label.style_label_up, size=size.small))
         else
             f_reg_label(label.new(bar_index, sl - (entry - sl) * 0.15, "NO SMT", color=color.new(color.gray, 40), textcolor=color.white, style=label.style_label_up, size=size.small))
+    // Record how many extras this setup owns so resolution can truncate them
+    if truncate_on_hit
+        array.push(active_extra_ln_count,  array.size(active_extra_lines)  - _ex_ln_start)
+        array.push(active_extra_lbl_count, array.size(active_extra_labels) - _ex_lbl_start)
+        array.push(active_extra_bx_count,  array.size(active_extra_boxes)  - _ex_bx_start)
     array.push(setup_line_counts,  array.size(fired_lines)  - _snap_lines)
     array.push(setup_label_counts, array.size(fired_labels) - _snap_labels)
     array.push(setup_box_counts,   array.size(fired_boxes)  - _snap_boxes)
@@ -947,20 +1010,23 @@ if draw_short[1]
         array.push(active_sweep_ln, _sweep_ln_S)
         array.push(active_cisd_lbl, _cisd_lbl_draw_S)
         array.push(active_sweep_lbl, _sweep_lbl_draw_S)
+    _ex_ln_start  = array.size(active_extra_lines)
+    _ex_lbl_start = array.size(active_extra_labels)
+    _ex_bx_start  = array.size(active_extra_boxes)
     if show_midlines and risk > 0
         _be_level      = entry + risk * 0.5
         _partial_level = entry - risk * 0.5
         _mid_col = color.new(c_mid, 30)
-        f_reg_line(line.new(bar_index, _be_level,      r_end, _be_level,      color=_mid_col, width=1, style=line.style_dashed))
-        f_reg_line(line.new(bar_index, _partial_level, r_end, _partial_level, color=_mid_col, width=1, style=line.style_dashed))
-        f_reg_label(label.new(bar_index + rr_lbl_x, _be_level,      "Move to BE", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
-        f_reg_label(label.new(bar_index + rr_lbl_x, _partial_level, "Take Partial", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
+        f_reg_line_active(line.new(bar_index, _be_level,      r_end, _be_level,      color=_mid_col, width=1, style=line.style_dashed))
+        f_reg_line_active(line.new(bar_index, _partial_level, r_end, _partial_level, color=_mid_col, width=1, style=line.style_dashed))
+        f_reg_label_active(label.new(bar_index + rr_lbl_x, _be_level,      "Move to BE", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
+        f_reg_label_active(label.new(bar_index + rr_lbl_x, _partial_level, "Take Partial", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
     if show_tspot and not na(draw_sweep_logmid_short) and not na(draw_sweep_close_short)
         tspot_top  = math.max(draw_sweep_logmid_short, draw_sweep_close_short)
         tspot_bot  = math.min(draw_sweep_logmid_short, draw_sweep_close_short)
         sb = not na(draw_sweep_bar_short) ? draw_sweep_bar_short : bar_index
-        f_reg_box(box.new(sb, tspot_top, r_end, tspot_bot, bgcolor=color.new(c_tspot, tspot_transp), border_color=color.new(c_tspot, tspot_transp + 5)))
-        f_reg_line(line.new(sb, draw_sweep_logmid_short, r_end, draw_sweep_logmid_short, color=c_tspot, width=1, style=line.style_dotted))
+        f_reg_box_active(box.new(sb, tspot_top, r_end, tspot_bot, bgcolor=color.new(c_tspot, tspot_transp), border_color=color.new(c_tspot, tspot_transp + 5)))
+        f_reg_line_active(line.new(sb, draw_sweep_logmid_short, r_end, draw_sweep_logmid_short, color=c_tspot, width=1, style=line.style_dotted))
     if show_c_labels
         f_reg_label(label.new(draw_anc_hi_bar, draw_anc_hi, "C2", color=color.new(c_tspot, 100), textcolor=c_tspot, style=label.style_label_down, size=size.small))
         f_reg_label(label.new(bar_index, draw_cisd_lvl_short, "C3", color=color.new(c_tspot, 100), textcolor=c_tspot, style=label.style_label_down, size=size.small))
@@ -985,13 +1051,17 @@ if draw_short[1]
                     lv = str.tonumber(lv_str)
                     if not na(lv)
                         proj_price = draw_cisd_lvl_short - s_range * lv
-                        f_reg_line(line.new(bar_index, proj_price, r_end, proj_price, color=proj_color, width=1, style=line.style_dotted))
-                        f_reg_label(label.new(r_end, proj_price, str.tostring(lv), color=color.new(proj_color, 100), textcolor=proj_color, style=label.style_label_left, size=size.tiny))
+                        f_reg_line_active(line.new(bar_index, proj_price, r_end, proj_price, color=proj_color, width=1, style=line.style_dotted))
+                        f_reg_label_active(label.new(r_end, proj_price, str.tostring(lv), color=color.new(proj_color, 100), textcolor=proj_color, style=label.style_label_left, size=size.tiny))
     if show_smt
         if draw_smt_short
             f_reg_label(label.new(bar_index, sl + (sl - entry) * 0.15, "SMT", color=color.new(color.red, 10), textcolor=color.white, style=label.style_label_down, size=size.small))
         else
             f_reg_label(label.new(bar_index, sl + (sl - entry) * 0.15, "NO SMT", color=color.new(color.gray, 40), textcolor=color.white, style=label.style_label_down, size=size.small))
+    if truncate_on_hit
+        array.push(active_extra_ln_count,  array.size(active_extra_lines)  - _ex_ln_start)
+        array.push(active_extra_lbl_count, array.size(active_extra_labels) - _ex_lbl_start)
+        array.push(active_extra_bx_count,  array.size(active_extra_boxes)  - _ex_bx_start)
     array.push(setup_line_counts,  array.size(fired_lines)  - _snap_lines)
     array.push(setup_label_counts, array.size(fired_labels) - _snap_labels)
     array.push(setup_box_counts,   array.size(fired_boxes)  - _snap_boxes)
