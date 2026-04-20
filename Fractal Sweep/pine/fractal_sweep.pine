@@ -300,16 +300,21 @@ var int _snap_boxes  = 0
 f_reg_line(line l)   => array.push(fired_lines, l)
 f_reg_label(label l) => array.push(fired_labels, l)
 f_reg_box(box b)     => array.push(fired_boxes, b)
-// helpers: register drawing AND push it into the active-extras pool (for truncation)
+// helpers: register drawing AND push it into the active-extras pool (for truncation).
+// The push into active_extra_* is gated on truncate_on_hit so the pool stays in
+// sync with the per-setup count arrays (which are also gated on truncate_on_hit).
 f_reg_line_active(line l)   =>
     array.push(fired_lines, l)
-    array.push(active_extra_lines, l)
+    if truncate_on_hit
+        array.push(active_extra_lines, l)
 f_reg_label_active(label l) =>
     array.push(fired_labels, l)
-    array.push(active_extra_labels, l)
+    if truncate_on_hit
+        array.push(active_extra_labels, l)
 f_reg_box_active(box b)     =>
     array.push(fired_boxes, b)
-    array.push(active_extra_boxes, b)
+    if truncate_on_hit
+        array.push(active_extra_boxes, b)
 
 // ── ANCHOR RESET ──────────────────────────────────────────────────────────────
 if is_new_anchor and tf_supported
@@ -691,16 +696,19 @@ if truncate_on_hit and array.size(active_dir) > 0
                 label.set_x(_wll, bar_index + 1)
             // Truncate extras (midlines, projections, T-Spot). Find this setup's
             // slice by summing counts of preceding setups in the active lists.
+            // Guard against array-size mismatches (e.g. truncate_on_hit toggled).
+            _has_extras = _i < array.size(active_extra_ln_count)
             _ln_off  = 0
             _lbl_off = 0
             _bx_off  = 0
-            for _j = 0 to _i - 1
-                _ln_off  += array.get(active_extra_ln_count,  _j)
-                _lbl_off += array.get(active_extra_lbl_count, _j)
-                _bx_off  += array.get(active_extra_bx_count,  _j)
-            _ln_n  = array.get(active_extra_ln_count,  _i)
-            _lbl_n = array.get(active_extra_lbl_count, _i)
-            _bx_n  = array.get(active_extra_bx_count,  _i)
+            if _has_extras and _i > 0
+                for _j = 0 to _i - 1
+                    _ln_off  += array.get(active_extra_ln_count,  _j)
+                    _lbl_off += array.get(active_extra_lbl_count, _j)
+                    _bx_off  += array.get(active_extra_bx_count,  _j)
+            _ln_n  = _has_extras ? array.get(active_extra_ln_count,  _i) : 0
+            _lbl_n = _has_extras ? array.get(active_extra_lbl_count, _i) : 0
+            _bx_n  = _has_extras ? array.get(active_extra_bx_count,  _i) : 0
             if _ln_n > 0
                 for _k = 0 to _ln_n - 1
                     line.set_x2(array.get(active_extra_lines, _ln_off + _k), bar_index)
@@ -713,16 +721,20 @@ if truncate_on_hit and array.size(active_dir) > 0
             // Remove this setup's extras from the pool (from tail of slice to head)
             if _ln_n > 0
                 for _k = 1 to _ln_n
-                    array.remove(active_extra_lines, _ln_off)
+                    if array.size(active_extra_lines) > _ln_off
+                        array.remove(active_extra_lines, _ln_off)
             if _lbl_n > 0
                 for _k = 1 to _lbl_n
-                    array.remove(active_extra_labels, _lbl_off)
+                    if array.size(active_extra_labels) > _lbl_off
+                        array.remove(active_extra_labels, _lbl_off)
             if _bx_n > 0
                 for _k = 1 to _bx_n
-                    array.remove(active_extra_boxes, _bx_off)
-            array.remove(active_extra_ln_count,  _i)
-            array.remove(active_extra_lbl_count, _i)
-            array.remove(active_extra_bx_count,  _i)
+                    if array.size(active_extra_boxes) > _bx_off
+                        array.remove(active_extra_boxes, _bx_off)
+            if _has_extras
+                array.remove(active_extra_ln_count,  _i)
+                array.remove(active_extra_lbl_count, _i)
+                array.remove(active_extra_bx_count,  _i)
             if show_outcome_markers
                 _mark_price = _resolved_sl ? _sl : _tp
                 _mark_text  = _resolved_sl ? "✗" : "✓"
