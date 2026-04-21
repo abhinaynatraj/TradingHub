@@ -403,8 +403,11 @@ def resolve_outcomes_vectorised(m1_arrs, pending):
         else:
             t_idx = int(np.argmax(t_hit))
             s_idx = int(np.argmax(s_hit))
-            outcome, r_val = ('WIN', actual_rr) if t_idx <= s_idx else ('LOSS', -1.0)
-            trade_end = (t_idx if t_idx <= s_idx else s_idx) + 1
+            # Same-bar tie: SL wins (Pine calls it LOSS; aligns live execution
+            # with backtest semantics). Was `t_idx <= s_idx → WIN`, which gave
+            # the backtest an optimistic edge vs what Pine / your broker see.
+            outcome, r_val = ('WIN', actual_rr) if t_idx < s_idx else ('LOSS', -1.0)
+            trade_end = (t_idx if t_idx < s_idx else s_idx) + 1
 
         # MAE/MFE as % of entry price over the trade window
         h_w = h[:trade_end]
@@ -493,8 +496,9 @@ def resolve_outcomes_structural(m1_arrs, pending):
             results.append(('EXPIRED', round(float(last_r), 2), mae_pct, mfe_pct, False, 0.0))
             continue
 
-        if sl_any and (not tp1_any or sl_idx < tp1_idx):
-            # SL hit before TP1 → full LOSS
+        if sl_any and (not tp1_any or sl_idx <= tp1_idx):
+            # SL hit before TP1 → full LOSS. Same-bar ties go to LOSS
+            # (matches Pine's intrabar resolver — SL takes priority on ties).
             trade_end = sl_idx + 1
             h_w, l_w = h[:trade_end], l[:trade_end]
             if direction == 'LONG':
@@ -619,7 +623,8 @@ def resolve_outcomes_split_tp(m1_arrs, pending,
             results.append(('EXPIRED', round(float(last_r), 2), mae_pct, mfe_pct, False, 0.0))
             continue
 
-        if sl_any and (not tp1_any or sl_idx < tp1_idx):
+        if sl_any and (not tp1_any or sl_idx <= tp1_idx):
+            # Same-bar tie → SL wins (matches Pine intrabar priority).
             trade_end = sl_idx + 1
             h_w, l_w = h[:trade_end], l[:trade_end]
             if direction == 'LONG':
@@ -1214,6 +1219,29 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
             else:
                 prior_engulfing = None  # no prev-prev candle available
 
+            # F3 / F4 setup-quality filters (Pine indicator defaults match
+            # these). Computed here so compute_filter_variants() and
+            # _compute_by_tf() can toggle them at aggregation time.
+            _sweep_pct_row = (sweep_ext / ref_range) if ref_range > 0 else 0.0
+            passes_f3 = bool(_sweep_pct_row <= SWEEP_MAX_PCT)
+            # F4: return bar's close sits back inside the prior HTF range.
+            #   LONG  → ret_close >= prior low  (above the swept low)
+            #   SHORT → ret_close <= prior high (below the swept high)
+            if direction == 'LONG':
+                passes_f4 = bool(ret_close >= float(s_low[i - 1]))
+            else:
+                passes_f4 = bool(ret_close <= float(s_high[i - 1]))
+
+            # Prior Bar Counters: prior sweep-TF candle closed AGAINST trade direction.
+            #   LONG  → prior close < open (bearish prior → reversal)
+            #   SHORT → prior close > open (bullish prior → reversal)
+            _prior_o = float(s_open[i - 1])
+            _prior_c = float(s_close[i - 1])
+            if direction == 'LONG':
+                prior_counter_close = bool(_prior_c < _prior_o)
+            else:
+                prior_counter_close = bool(_prior_c > _prior_o)
+
             base_row = dict(
                 date          = str(s_arrs['trade_date'][i]),
                 yr            = int(s_arrs['yr'][i]),
@@ -1221,10 +1249,13 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                 direction     = direction,
                 ref_range     = round(float(ref_range), 2),
                 sweep_ext     = round(float(sweep_ext), 2),
-                sweep_pct     = round(sweep_ext / ref_range, 3) if ref_range > 0 else 0,
+                sweep_pct     = round(_sweep_pct_row, 3),
                 sweep_extreme = round(float(sweep_extreme), 2),
                 sweep_mode    = 'PREV',
                 prior_engulfing     = prior_engulfing,
+                prior_counter_close = prior_counter_close,
+                passes_f3     = passes_f3,
+                passes_f4     = passes_f4,
                 cisd_mode     = 'CISD',
                 ref_lookback  = ref_lookback,
                 smt           = smt_divergence,
@@ -2269,13 +2300,16 @@ def compute_filter_variants(df_all):
       - cumulative_additive: adding filters one at a time in optimal order
       - best_combo: the filter combination that maximizes EV
     """
-    FILTERS = ['SMT', 'HOUR_ALIGNED', 'PRIOR_ENGULFING']
+    FILTERS = ['F3', 'F4', 'SMT', 'HOUR_ALIGNED', 'PRIOR_COUNTER', 'PRIOR_ENGULFING']
     FILTER_LABELS = {
+        'F3':                'Shallow Sweep (F3)',
+        'F4':                'Closed Back Inside (F4)',
         'SMT':               'NQ-ES Divergence',
         'HOUR_ALIGNED':      'Hour Open Aligned',
+        'PRIOR_COUNTER':     'Prior Bar Counters',
         'PRIOR_ENGULFING':   'Prior Bar Engulfs',
     }
-    POSITIVE_FILTERS = {'SMT', 'HOUR_ALIGNED', 'PRIOR_ENGULFING'}
+    POSITIVE_FILTERS = {'F3', 'F4', 'SMT', 'HOUR_ALIGNED', 'PRIOR_COUNTER', 'PRIOR_ENGULFING'}
 
     def stats_of(df):
         wl = df[df['outcome'].isin(['WIN', 'LOSS'])].copy()
@@ -2320,8 +2354,11 @@ def compute_filter_variants(df_all):
 
     # Base: all valid trades (no rejected_by filters — SKIP/INVALID already excluded)
     all_valid = df_all[~df_all['outcome'].isin(['SKIP', 'INVALID'])].copy()
+    has_f3 = 'passes_f3' in all_valid.columns
+    has_f4 = 'passes_f4' in all_valid.columns
     has_smt = 'smt' in all_valid.columns
     has_hour_aligned = 'cisd_aligned' in all_valid.columns
+    has_prior_counter = 'prior_counter_close' in all_valid.columns
     has_prior_engulfing = 'prior_engulfing' in all_valid.columns
 
     # Helper: apply a set of filters to all_valid
@@ -2329,17 +2366,29 @@ def compute_filter_variants(df_all):
         """Return trades that pass all filters in active_set."""
         mask = pd.Series(True, index=all_valid.index)
         for f in active_set:
-            if f == 'SMT':
+            if f == 'F3':
+                if has_f3:
+                    mask &= all_valid['passes_f3'] == True
+            elif f == 'F4':
+                if has_f4:
+                    mask &= all_valid['passes_f4'] == True
+            elif f == 'SMT':
                 if has_smt:
                     mask &= all_valid['smt'] == True
             elif f == 'HOUR_ALIGNED':
                 if has_hour_aligned:
                     mask &= all_valid['cisd_aligned'] == True
+            elif f == 'PRIOR_COUNTER':
+                if has_prior_counter:
+                    mask &= all_valid['prior_counter_close'] == True
             elif f == 'PRIOR_ENGULFING':
                 if has_prior_engulfing:
                     mask &= all_valid['prior_engulfing'] == True
         return all_valid[mask]
 
+    # Baseline = unfiltered. F3/F4 are now also enumerable filters
+    # (previously they were defined but not applied anywhere). Users
+    # toggle them in the dashboard like any other filter.
     STD_FILTERS = []
 
     fully_filtered = apply_filters(STD_FILTERS)
