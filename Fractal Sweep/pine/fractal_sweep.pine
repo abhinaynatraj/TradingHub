@@ -1083,8 +1083,25 @@ if long_valid
     if not na(sweep_lbl_long)
         label.delete(sweep_lbl_long)
         sweep_lbl_long := na
-    _smt_str_f = show_smt ? (smt_long ? " | SMT" : " | NO SMT") : ""
-    alert("LONG " + syminfo.ticker + " | Enter @ next open | SL " + str.tostring(sweep_ext_long, "#.##") + " | " + combo + _smt_str_f, alert.freq_once_per_bar_close)
+    // Emit webhook-ready JSON payload. Entry = close-of-CISD-bar as a
+    // proxy for the actual next-bar open (small slippage accepted; see
+    // Tradovate Bridge/PAYLOAD.md). Contracts recomputed from current
+    // risk/point-value inputs. Schema version = 1.
+    _ent_L     = close
+    _tp_L      = close + long_risk * rr_ratio
+    _n_long    = long_risk > 0 ? math.floor(risk_usd / (long_risk * point_value_usd)) : 0
+    alert('{"v":1,"id":"FS-' + syminfo.ticker + '-' + str.tostring(time) + '-LONG",' +
+          '"source":"fractal_sweep","ticker":"' + syminfo.ticker + '",' +
+          '"combo":"' + combo + '","direction":"LONG",' +
+          '"entry":' + str.tostring(_ent_L, "#.########") + ',' +
+          '"sl":' + str.tostring(sweep_ext_long, "#.########") + ',' +
+          '"tp":' + str.tostring(_tp_L, "#.########") + ',' +
+          '"risk_pts":' + str.tostring(long_risk, "#.##") + ',' +
+          '"rr":' + str.tostring(rr_ratio, "#.##") + ',' +
+          '"contracts":' + str.tostring(_n_long) + ',' +
+          '"smt":' + (smt_long ? "true" : "false") + ',' +
+          '"fired_at_ms":' + str.tostring(timenow) + '}',
+          alert.freq_once_per_bar_close)
 
 // ── FIRE: SHORT — store draw state; R:R box drawn next bar at open ───────────
 if short_valid
@@ -1123,8 +1140,21 @@ if short_valid
     if not na(sweep_lbl_short)
         label.delete(sweep_lbl_short)
         sweep_lbl_short := na
-    _smt_str_f = show_smt ? (smt_short ? " | SMT" : " | NO SMT") : ""
-    alert("SHORT " + syminfo.ticker + " | Enter @ next open | SL " + str.tostring(sweep_ext_short, "#.##") + " | " + combo + _smt_str_f, alert.freq_once_per_bar_close)
+    _ent_S     = close
+    _tp_S      = close - short_risk * rr_ratio
+    _n_short   = short_risk > 0 ? math.floor(risk_usd / (short_risk * point_value_usd)) : 0
+    alert('{"v":1,"id":"FS-' + syminfo.ticker + '-' + str.tostring(time) + '-SHORT",' +
+          '"source":"fractal_sweep","ticker":"' + syminfo.ticker + '",' +
+          '"combo":"' + combo + '","direction":"SHORT",' +
+          '"entry":' + str.tostring(_ent_S, "#.########") + ',' +
+          '"sl":' + str.tostring(sweep_ext_short, "#.########") + ',' +
+          '"tp":' + str.tostring(_tp_S, "#.########") + ',' +
+          '"risk_pts":' + str.tostring(short_risk, "#.##") + ',' +
+          '"rr":' + str.tostring(rr_ratio, "#.##") + ',' +
+          '"contracts":' + str.tostring(_n_short) + ',' +
+          '"smt":' + (smt_short ? "true" : "false") + ',' +
+          '"fired_at_ms":' + str.tostring(timenow) + '}',
+          alert.freq_once_per_bar_close)
 
 // ── DRAW: LONG — runs on bar after FIRE; entry = open of this bar ─────────────
 // Gate on draw_long[1]: FIRE on bar N flags the state, DRAW runs on bar N+1
