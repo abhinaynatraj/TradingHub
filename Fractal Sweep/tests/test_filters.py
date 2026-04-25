@@ -15,7 +15,9 @@ class TestFilterConstants:
         assert ms.MAX_RISK_PTS == 112.5
 
     def test_outcome_max_bars(self):
-        assert ms.OUTCOME_MAX_BARS == 360
+        # Bumped from 360 (6h) to 1440 (24h) to match indicator's
+        # no-hard-lifetime-cap behavior on resolved trades.
+        assert ms.OUTCOME_MAX_BARS == 1440
 
 
 class TestFilterLogic:

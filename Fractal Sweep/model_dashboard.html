@@ -623,15 +623,13 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 
           <!-- Column 3: 4 TF Combinations -->
           <div>
-            <div class="model-col-head">4 Timeframe Combinations</div>
+            <div class="model-col-head">2 Timeframe Combinations</div>
             <table class="model-tf-table">
               <thead>
                 <tr><th>Model</th><th>Sweep TF</th><th>CISD TF</th></tr>
               </thead>
               <tbody>
-                <tr><td>4H_15M</td><td>4 Hour</td><td>15 Min</td></tr>
                 <tr><td>1H_5M</td><td>1 Hour</td><td>5 Min</td></tr>
-                <tr><td>1H_3M</td><td>1 Hour</td><td>3 Min</td></tr>
                 <tr><td>30M_3M</td><td>30 Min</td><td>3 Min</td></tr>
               </tbody>
             </table>
@@ -1037,15 +1035,13 @@ function makeDemoModel(key, label, mode, cisd, wrBase, evBase, pfBase, riskMed, 
   };
 }
 
-// Demo: 4 variants (4 models × PREV sweep × CISD)
+// Demo: 2 variants (2 models × PREV sweep × CISD)
 const DEMO = {
-  '30M_3M_PREV_CISD':  makeDemoModel('30M_3M','30M Sweep · 3M CISD','PREV','CISD',0.551,0.652,1.78,10,2.80),
-  '4H_15M_PREV_CISD':  makeDemoModel('4H_15M','4H Sweep · 15M CISD','PREV','CISD',0.561,0.683,1.84,32,0.88),
   '1H_5M_PREV_CISD':   makeDemoModel('1H_5M','1H Sweep · 5M CISD','PREV','CISD',0.557,0.671,1.82,18,1.82),
-  '1H_3M_PREV_CISD':   makeDemoModel('1H_3M','1H Sweep · 3M CISD','PREV','CISD',0.551,0.652,1.78,14,2.24),
+  '30M_3M_PREV_CISD':  makeDemoModel('30M_3M','30M Sweep · 3M CISD','PREV','CISD',0.551,0.652,1.78,10,2.80),
 };
-const MODEL_KEYS  = ['4H_15M','1H_5M','1H_3M','30M_3M'];
-const MODEL_LABELS= {'4H_15M':'4H · 15M CISD','1H_5M':'1H · 5M CISD','1H_3M':'1H · 3M CISD','30M_3M':'30M · 3M CISD'};
+const MODEL_KEYS  = ['1H_5M','30M_3M'];
+const MODEL_LABELS= {'1H_5M':'1H · 5M CISD','30M_3M':'30M · 3M CISD'};
 
 let DATA          = DEMO;
 let isDemo        = true;

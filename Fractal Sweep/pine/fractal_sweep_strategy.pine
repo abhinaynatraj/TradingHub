@@ -73,17 +73,7 @@ var string sweep_tf_lbl = ""
 var string cisd_tf_lbl  = ""
 var string combo        = ""
 var bool   tf_supported = false
-if timeframe.period == "60"
-    sweep_tf_lbl := "1D"
-    cisd_tf_lbl  := "1H"
-    combo        := "1D/1H"
-    tf_supported := true
-else if timeframe.period == "15"
-    sweep_tf_lbl := "4H"
-    cisd_tf_lbl  := "15M"
-    combo        := "4H/15M"
-    tf_supported := true
-else if timeframe.period == "5"
+if timeframe.period == "5"
     sweep_tf_lbl := "1H"
     cisd_tf_lbl  := "5M"
     combo        := "1H/5M"
@@ -95,17 +85,13 @@ else if timeframe.period == "3"
     tf_supported := true
 
 // ── ANCHOR CANDLE — batched tuple fetches ────────────────────────────────────
-[ph_1D,  pl_1D,  pc_1D,  at_1D,  ph2_1D,  pl2_1D,  po_1D]  = request.security(syminfo.tickerid, "1D",  [high[1], low[1], close[1], time, high[2], low[2], open[1]], lookahead=barmerge.lookahead_on)
-[ph_240, pl_240, pc_240, at_240, ph2_240, pl2_240, po_240] = request.security(syminfo.tickerid, "240", [high[1], low[1], close[1], time, high[2], low[2], open[1]], lookahead=barmerge.lookahead_on)
-[ph_60,  pl_60,  pc_60,  at_60,  ph2_60,  pl2_60,  po_60]  = request.security(syminfo.tickerid, "60",  [high[1], low[1], close[1], time, high[2], low[2], open[1]], lookahead=barmerge.lookahead_on)
-[ph_30,  pl_30,  pc_30,  at_30,  ph2_30,  pl2_30,  po_30]  = request.security(syminfo.tickerid, "30",  [high[1], low[1], close[1], time, high[2], low[2], open[1]], lookahead=barmerge.lookahead_on)
+[ph_60, pl_60, pc_60, at_60, ph2_60, pl2_60, po_60] = request.security(syminfo.tickerid, "60", [high[1], low[1], close[1], time, high[2], low[2], open[1]], lookahead=barmerge.lookahead_on)
+[ph_30, pl_30, pc_30, at_30, ph2_30, pl2_30, po_30] = request.security(syminfo.tickerid, "30", [high[1], low[1], close[1], time, high[2], low[2], open[1]], lookahead=barmerge.lookahead_on)
 
 // ── ES ANCHOR (for SMT) ──────────────────────────────────────────────────────
 _smt_src = use_smt ? smt_symbol : syminfo.tickerid
-[es_ph_1D,  es_pl_1D]  = request.security(_smt_src, "1D",  [high[1], low[1]], lookahead=barmerge.lookahead_on)
-[es_ph_240, es_pl_240] = request.security(_smt_src, "240", [high[1], low[1]], lookahead=barmerge.lookahead_on)
-[es_ph_60,  es_pl_60]  = request.security(_smt_src, "60",  [high[1], low[1]], lookahead=barmerge.lookahead_on)
-[es_ph_30,  es_pl_30]  = request.security(_smt_src, "30",  [high[1], low[1]], lookahead=barmerge.lookahead_on)
+[es_ph_60, es_pl_60] = request.security(_smt_src, "60", [high[1], low[1]], lookahead=barmerge.lookahead_on)
+[es_ph_30, es_pl_30] = request.security(_smt_src, "30", [high[1], low[1]], lookahead=barmerge.lookahead_on)
 [es_ltf_high, es_ltf_low] = request.security(_smt_src, timeframe.period, [high, low])
 
 // ── HOUR-OPEN BAR — always fetch so HOUR_ALIGNED works without extra toggles ──
@@ -113,15 +99,15 @@ _smt_src = use_smt ? smt_symbol : syminfo.tickerid
 [hour_open_price] = request.security(syminfo.tickerid, "60", [open], lookahead=barmerge.lookahead_on)
 
 // ── TF SELECTORS ─────────────────────────────────────────────────────────────
-prior_high    = timeframe.period == "60" ? ph_1D  : timeframe.period == "15" ? ph_240  : timeframe.period == "5" ? ph_60  : ph_30
-prior_low     = timeframe.period == "60" ? pl_1D  : timeframe.period == "15" ? pl_240  : timeframe.period == "5" ? pl_60  : pl_30
-prior_close   = timeframe.period == "60" ? pc_1D  : timeframe.period == "15" ? pc_240  : timeframe.period == "5" ? pc_60  : pc_30
-prior_open    = timeframe.period == "60" ? po_1D  : timeframe.period == "15" ? po_240  : timeframe.period == "5" ? po_60  : po_30
-prev2_high    = timeframe.period == "60" ? ph2_1D : timeframe.period == "15" ? ph2_240 : timeframe.period == "5" ? ph2_60 : ph2_30
-prev2_low     = timeframe.period == "60" ? pl2_1D : timeframe.period == "15" ? pl2_240 : timeframe.period == "5" ? pl2_60 : pl2_30
-anchor_time   = timeframe.period == "60" ? at_1D  : timeframe.period == "15" ? at_240  : timeframe.period == "5" ? at_60  : at_30
-es_prior_high = timeframe.period == "60" ? es_ph_1D : timeframe.period == "15" ? es_ph_240 : timeframe.period == "5" ? es_ph_60 : es_ph_30
-es_prior_low  = timeframe.period == "60" ? es_pl_1D : timeframe.period == "15" ? es_pl_240 : timeframe.period == "5" ? es_pl_60 : es_pl_30
+prior_high    = timeframe.period == "5" ? ph_60  : ph_30
+prior_low     = timeframe.period == "5" ? pl_60  : pl_30
+prior_close   = timeframe.period == "5" ? pc_60  : pc_30
+prior_open    = timeframe.period == "5" ? po_60  : po_30
+prev2_high    = timeframe.period == "5" ? ph2_60 : ph2_30
+prev2_low     = timeframe.period == "5" ? pl2_60 : pl2_30
+anchor_time   = timeframe.period == "5" ? at_60  : at_30
+es_prior_high = timeframe.period == "5" ? es_ph_60 : es_ph_30
+es_prior_low  = timeframe.period == "5" ? es_pl_60 : es_pl_30
 is_new_anchor = ta.change(anchor_time) != 0
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
@@ -186,7 +172,7 @@ if is_new_anchor
     smt_short_ok    := false
     // find the FIRST (earliest) LTF bar within the prior HTF period that reached the high/low
     _tol = syminfo.mintick * 2
-    _htf_bars = timeframe.period == "60" ? 24 : timeframe.period == "15" ? 16 : timeframe.period == "5" ? 12 : 10
+    _htf_bars = timeframe.period == "5" ? 12 : 10
     anc_hi_bar := bar_index - 1
     anc_lo_bar := bar_index - 1
     for k = 1 to _htf_bars

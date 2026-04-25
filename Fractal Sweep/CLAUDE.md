@@ -29,15 +29,15 @@ Fractal Sweep/
 ├── data/                       raw Databento dumps (gitignored)
 ├── docs/                       standalone notes (indicator description, analysis write-ups)
 ├── assets/                     images used by the dashboard/hub
-└── tests/                      pytest suite — 195 pass · 20 skip as of 2026-04-19
+└── tests/                      pytest suite — 195 pass · 20 skip as of 2026-04-24
 ```
 
 ## Running
 All engine scripts self-locate — run them from the `Fractal Sweep/` folder (they resolve `candle_science.duckdb` and `model_stats.json` via `Path(__file__).parent.parent`).
 
 ```bash
-python3 engine/model_stats.py                         # all 4 sweep models
-python3 engine/model_stats.py --models 1H_5M 1H_3M   # subset
+python3 engine/model_stats.py                         # all 2 sweep models
+python3 engine/model_stats.py --models 1H_5M          # subset
 python3 engine/model_stats.py --table es_1m           # ES instead of NQ
 python3 -m pytest tests/ -q                           # test suite
 python3 engine/daily_update.py                        # fetch new bars from Databento
@@ -46,30 +46,50 @@ python3 engine/daily_update.py                        # fetch new bars from Data
 Dashboard served from the repo root: `python3 -m http.server 8001`, then open `http://localhost:8001/Fractal Sweep/model_dashboard.html`.
 
 ## Trading Model
-- 4 timeframe pairs: `4H_15M`, `1H_5M`, `1H_3M`, `30M_3M`
+- 2 timeframe pairs: `1H_5M`, `30M_3M`
 - Setup: prior candle swept → price returns inside range → CISD confirms
 - Entry: next candle open · Stop: sweep extreme · Target: 1R (`simple_1r`)
-- Sweep detection runs across the **full HTF period** — no Q1 window gate
-- CISD has no bar limit — can form anytime after sweep returns
-- Baseline filters (always on): `SWEEP_MAX_PCT = 0.50` (reference only — now a runtime toggle), `MIN_RISK_PTS = 3.0`, `MAX_RISK_PTS = 112.5`
-- `long_base`/`short_base` separated from `max_risk` check — enables over-risk detection
-- **F1 (min prior range) is removed.** Data showed it rejected above-average trades on all 4 TFs (2026-04-15).
+- Sweep, return-to-range, and CISD-fire must all occur within the **same anchor HTF window**. Setups that don't complete before the next anchor are discarded — matches the indicator's `is_new_anchor` reset semantics.
+- Baseline gates (always on, not toggleable): `MIN_RISK_PTS = 3.0`, `MAX_RISK_PTS = 112.5` (= $225 / $2/pt for MNQ). Setups outside this range are rejected.
+- Outcome resolution scans up to `OUTCOME_MAX_BARS = 1440` (24h of 1m bars). Same-bar TP/SL ties resolve to **SL** (matches indicator's intrabar tie-break).
+
+## Engine ↔ Indicator alignment
+
+The engine and Pine indicator implement the same model. Aligned 2026-04-24:
+- CISD must fire within the same anchor's HTF window (no cross-anchor lookahead)
+- Same-bar tie-break: SL wins (was TP in earlier engine versions)
+- `OUTCOME_MAX_BARS` bumped 360 → 1440 to match indicator's effectively-unlimited resolution lifetime
+- Removed `gap_limit` weekend filter (indicator doesn't filter gaps)
+- Forced `[ns]` resolution on timestamp arrays — pandas 2.0+ defaults to `[us]`, which silently inflated anchor windows from 1h to 41 days. **This was the root cause of inflated baseline WR (~70%) in older outputs.** Post-fix baseline WR is ~50%, matching live indicator behavior.
 
 ## Runtime Filters (6, dashboard-toggleable)
 
 Two groups below the Period/TF/Profile dropdowns. Each chip shows a live `±N` badge before you click.
 
 **Setup Quality** (default ON, uncheck to relax)
-- **Shallow Sweep** (`F3_SWEEP_TOO_LARGE`) — sweep pierced ≤ 50% of prior range
-- **Closed Back Inside** (`F4_NO_CLOSE_BACK`) — price returned inside prior range
+- **Shallow Sweep** (`F3_SWEEP_TOO_LARGE`) — `sweep_ext / ref_range ≤ 0.50`
+- **Closed Back Inside** (`F4_NO_CLOSE_BACK`) — `ret_close` inside prior range
 
 **Add Confirmation** (default OFF, check to narrow)
 - **NQ-ES Divergence** (`SMT`) — NQ swept but ES did not
 - **Hour Open Aligned** (`HOUR_ALIGNED`) — CISD close on correct side of current hour open
-- **Prior Bar Counters** (`PRIOR_COUNTER_CLOSE`) — prior sweep-TF candle closed against trade direction
+- **Prior Bar Counters** (`PRIOR_COUNTER`) — prior sweep-TF candle closed against trade direction
 - **Prior Bar Engulfs** (`PRIOR_ENGULFING`) — prior sweep-TF candle engulfs its predecessor wick-inclusive
 
 `2⁶ = 64` combinations are precomputed in `filter_variants.all_combinations` for the Filters tab.
+
+### Filter edge (post-alignment, both models)
+
+Standalone marginal edge over the ~50% baseline:
+- **SMT** — strongest single edge (+7-8% WR, +0.15R EV)
+- **F3 Shallow Sweep** — moderate (+3-4% WR, +0.05-0.06R EV)
+- **Prior Bar Engulfs** — small but positive (+0.5-1.3% WR)
+- **F4, Hour Aligned, Prior Counter** — noise on their own
+
+Best multi-filter combos (per-model, by EV):
+- **1H_5M:** F3 + F4 + SMT + HOUR_ALIGNED + PRIOR_COUNTER → 60.1% WR, +0.202R EV (N=1015)
+- **30M_3M:** F3 + F4 + SMT + HOUR_ALIGNED + PRIOR_ENGULFING → 61.6% WR, +0.232R EV (N=151)
+- **Practical high-N:** F3 + F4 + SMT → 59.1% WR, +0.182R EV (N=1711) on 1H_5M
 
 Filters work on **every Period** (All Time, 2y, 1y, 6m, 3m, 1m). `_compute_by_tf` builds `recent_trades` per sub-slice from `wl_full` (which includes F3/F4-rejected trades), so runtime toggles can bring rejected trades back in.
 
@@ -111,7 +131,6 @@ Custom date ranges view pairs consecutive ranges into train→test walk-forward 
 
 ## Analysis Scripts Convention
 - Reference point for candle analysis: `close` of the anchor candle
-- Scan window: anchor+1 bar through 16:00 ET same day
 - Group results by day of week (0=Mon … 4=Fri)
 
 ## Date Classification

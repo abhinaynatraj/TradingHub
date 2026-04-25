@@ -32,8 +32,8 @@ Performance:
   • All TF arrays built once, reused across all 8 model/mode combos
 
 Usage:
-    python3 model_stats.py                              # all 4 models
-    python3 model_stats.py --models 1H_5M 1H_3M
+    python3 model_stats.py                              # all 2 models
+    python3 model_stats.py --models 1H_5M
     python3 model_stats.py --cisd-fast-bars 12
     python3 model_stats.py --table es_1m
 """
@@ -63,7 +63,7 @@ RISK_PER_TRADE   = 225    # $ risk per trade
 POINT_VALUE      = 2.0    # $ per point for MNQ (Micro NQ); NQ = 20.0
 MIN_RISK_PTS     = 3.0
 MAX_RISK_PTS     = RISK_PER_TRADE / POINT_VALUE  # 112.5 pts for MNQ @ $225 risk
-OUTCOME_MAX_BARS = 360
+OUTCOME_MAX_BARS = 1440  # 24h of 1m bars; matches indicator (no hard lifetime cap)
 SWEEP_MAX_PCT    = 0.50
 CISD_FAST_BARS   = None  # None = no limit; CISD can form any time before session end
 SESSION_FILTER_ENABLED = False  # default: all 24h (Globex/ETH included); --rth-only restricts to 07:00-16:00 ET
@@ -90,22 +90,10 @@ HR_LABELS = {h: f"{h:02d}:00" for h in range(0, 24)}
 
 # ── MODEL DEFINITIONS ─────────────────────────────────────────────────────────
 MODELS = {
-    '4H_15M': dict(
-        label        = '4H Sweep · 15M CISD',
-        sweep_tf_min = 4 * 60,
-        cisd_tf_min  = 15,
-        session_hrs  = None,
-    ),
     '1H_5M': dict(
         label        = '1H Sweep · 5M CISD',
         sweep_tf_min = 60,
         cisd_tf_min  = 5,
-        session_hrs  = None,
-    ),
-    '1H_3M': dict(
-        label        = '1H Sweep · 3M CISD',
-        sweep_tf_min = 60,
-        cisd_tf_min  = 3,
         session_hrs  = None,
     ),
     '30M_3M': dict(
@@ -173,9 +161,11 @@ def df_to_arrays(df):
     Convert a time-indexed resampled OHLC dataframe to numpy arrays.
     ts_ns is int64 nanoseconds — used with np.searchsorted for fast lookups.
     Called ONCE per timeframe; results reused across all model/mode combos.
+    Force [ns] resolution: pandas 2.0+ defaults to [us] which silently breaks
+    the ns-based math elsewhere in the engine (full_tf_ns / NS_PER_MIN).
     """
     return dict(
-        ts_ns      = df.index.view('int64').copy(),
+        ts_ns      = df.index.values.astype('datetime64[ns]').view('int64').copy(),
         open       = df['open_tf'].values.astype('float64'),
         high       = df['high_tf'].values.astype('float64'),
         low        = df['low_tf'].values.astype('float64'),
@@ -190,7 +180,7 @@ def df_to_arrays(df):
 def df_1m_to_arrays(df):
     """Convert 1m dataframe to numpy arrays for vectorised outcome resolution."""
     return dict(
-        ts_ns      = df.index.view('int64').copy(),
+        ts_ns      = df.index.values.astype('datetime64[ns]').view('int64').copy(),
         open       = df['open'].values.astype('float64'),
         high       = df['high'].values.astype('float64'),
         low        = df['low'].values.astype('float64'),
@@ -1052,7 +1042,6 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
 
     NS_PER_MIN   = np.int64(60_000_000_000)
     full_tf_ns   = np.int64(sweep_tf_min) * NS_PER_MIN
-    gap_limit    = full_tf_ns * 3
 
     s_ts    = s_arrs['ts_ns']
     s_open  = s_arrs['open']
@@ -1108,8 +1097,9 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
     for i in range(1, s_n):
         curr_ts_ns = s_ts[i]
 
-        if curr_ts_ns - s_ts[i - 1] > gap_limit:
-            continue
+        # Note: no gap_limit filter — indicator doesn't skip weekend gaps,
+        # so neither does the engine. The first new HTF candle after a gap
+        # uses the latest prior HTF candle as anchor, matching TradingView.
         refs = {
             'SHORT': (s_high[i - 1], s_high[i - 1] - s_low[i - 1], 1),
             'LONG':  (s_low[i - 1],  s_high[i - 1] - s_low[i - 1], 1),
@@ -1207,6 +1197,12 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
             cisd_ts_ns, cisd_level = find_cisd(
                 c_arrs, ret_ts_ns, direction, cisd_fast_bars, 'CISD'
             )
+
+            # CISD must fire within the same anchor's HTF window. Indicator
+            # resets state at each new HTF candle (is_new_anchor), so any
+            # setup that doesn't fire before the next anchor is discarded.
+            if cisd_ts_ns is not None and cisd_ts_ns > q1_end_ns:
+                cisd_ts_ns, cisd_level = None, None
 
             # prior_engulfing: the prior sweep-TF candle engulfs the candle
             #   before it (s_arrs[i-2]), using extremes (wick-inclusive).

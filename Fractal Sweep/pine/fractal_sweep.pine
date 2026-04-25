@@ -37,13 +37,14 @@ truncate_on_hit = input.bool(true,   "Truncate on TP/SL Hit", group=G_TRADE, too
 // ── 3. CHART DISPLAY ─────────────────────────────────────────────────────────
 var string G_CHART = "Chart Display"
 show_trade_setup     = input.bool(true,  "Show Trade Setup",            group=G_CHART, tooltip="Master toggle for the R:R trade setup drawings (risk/reward boxes, entry/SL/TP lines, pills, size badge, midlines, outcome markers, over-risk boxes). Sweep and CISD lines remain visible regardless.")
-max_setups           = input.int(5,  "Max Setups on Chart",   group=G_CHART, minval=1, maxval=20, tooltip="How many past setups stay drawn. Older ones get pruned.")
+max_setups           = input.int(5,  "Max Setups on Chart",   group=G_CHART, minval=1, maxval=20, tooltip="How many past setups stay drawn on the chart. Older ones get pruned. Independent of Scorecard Last-N.")
 show_outcome_markers = input.bool(true,  "Show Outcome Markers (✓/✗)", group=G_CHART, tooltip="Drop ✓ at TP hit or ✗ at SL hit under each resolved R:R box.")
 show_rr_pills        = input.bool(false, "Show Entry/SL/TP Pills",     group=G_CHART, tooltip="Price-tagged pill labels at the right edge of each R:R box. Off by default to reduce clutter — hover the lines to see the values.")
 show_size_badge      = input.bool(true,  "Show Position Size",         group=G_CHART, tooltip="Muted label above each R:R box showing recommended contract count.")
 show_midlines        = input.bool(false, "Show 50% Midpoints",         group=G_CHART, tooltip="Dashed BE (risk midpoint) and Take-Partial (reward midpoint) lines.")
 show_scoreboard      = input.bool(true,  "Show Scoreboard",            group=G_CHART, tooltip="Top-right table tracking resolved setups.")
-scoreboard_scope     = input.string("Today", "Scorecard Scope", options=["Today", "Last N Trades", "All Time"], group=G_CHART, tooltip="Today = resets at 18:00 ET session open. Last N Trades = rolling window sized by Max Setups. All Time = every resolved trade in loaded history.")
+scoreboard_scope     = input.string("Today", "Scorecard Scope", options=["Today", "Last N Trades", "All Time"], group=G_CHART, tooltip="Today = resets at 18:00 ET session open. Last N Trades = rolling window sized by Scorecard Last-N. All Time = every resolved trade in the loaded chart history (note: TradingView limits how many bars are loaded per chart — older trades fall off the back).")
+scoreboard_n         = input.int(20, "Scorecard Last-N",       group=G_CHART, minval=1, maxval=500, tooltip="Window size used when Scorecard Scope = Last N Trades. Independent of Max Setups on Chart.")
 show_debug           = input.bool(false, "Show Debug Label",           group=G_CHART, tooltip="Developer-only state panel; leave off.")
 // T-Spot sub-group — advanced structural overlays, all default off
 show_tspot           = input.bool(false,       "T-Spot Zone",             group=G_CHART, tooltip="Violet box around the sweep bar's log-midpoint / close range.")
@@ -130,23 +131,13 @@ cisd_lbl_x   = cisd_lbl_pos  == "Right" ? rr_extend      : 0
 rr_lbl_x     = rr_lbl_pos    == "Right" ? rr_extend      : 0
 
 // ── AUTO COMBO FROM CHART TIMEFRAME ──────────────────────────────────────────
-// 1H → 1D/1H | 15M → 4H/15M | 5M → 1H/5M | 3M → 30M/3M | other → inactive
+// 5M → 1H/5M | 3M → 30M/3M | other → inactive
 var string sweep_tf_lbl = ""
 var string cisd_tf_lbl  = ""
 var string combo        = ""
 var bool   tf_supported = false
 
-if timeframe.period == "60"
-    sweep_tf_lbl := "1D"
-    cisd_tf_lbl  := "1H"
-    combo        := "1D/1H"
-    tf_supported := true
-else if timeframe.period == "15"
-    sweep_tf_lbl := "4H"
-    cisd_tf_lbl  := "15M"
-    combo        := "4H/15M"
-    tf_supported := true
-else if timeframe.period == "5"
+if timeframe.period == "5"
     sweep_tf_lbl := "1H"
     cisd_tf_lbl  := "5M"
     combo        := "1H/5M"
@@ -173,33 +164,29 @@ f_log_mid(float _h, float _l, float _o, float _c) =>
 // ── ANCHOR CANDLE — batched tuple fetches (1 call per TF instead of 6) ────────
 // Pine v5 requires literal strings in request.security timeframe arg.
 // Each tuple packs [high[1], low[1], close[1], time, high[2], low[2]] into one call.
-[ph_1D,  pl_1D,  pc_1D,  at_1D,  ph2_1D,  pl2_1D,  po_1D]  = request.security(syminfo.tickerid, "1D",  [high[1], low[1], close[1], time, high[2], low[2], open[1]], lookahead=barmerge.lookahead_on)
-[ph_240, pl_240, pc_240, at_240, ph2_240, pl2_240, po_240] = request.security(syminfo.tickerid, "240", [high[1], low[1], close[1], time, high[2], low[2], open[1]], lookahead=barmerge.lookahead_on)
-[ph_60,  pl_60,  pc_60,  at_60,  ph2_60,  pl2_60,  po_60]  = request.security(syminfo.tickerid, "60",  [high[1], low[1], close[1], time, high[2], low[2], open[1]], lookahead=barmerge.lookahead_on)
-[ph_30,  pl_30,  pc_30,  at_30,  ph2_30,  pl2_30,  po_30]  = request.security(syminfo.tickerid, "30",  [high[1], low[1], close[1], time, high[2], low[2], open[1]], lookahead=barmerge.lookahead_on)
+[ph_60, pl_60, pc_60, at_60, ph2_60, pl2_60, po_60] = request.security(syminfo.tickerid, "60", [high[1], low[1], close[1], time, high[2], low[2], open[1]], lookahead=barmerge.lookahead_on)
+[ph_30, pl_30, pc_30, at_30, ph2_30, pl2_30, po_30] = request.security(syminfo.tickerid, "30", [high[1], low[1], close[1], time, high[2], low[2], open[1]], lookahead=barmerge.lookahead_on)
 
 // ── ES ANCHOR CANDLE — only fetched when SMT is enabled ──────────────────────
 // request.security must be at global scope; use syminfo.tickerid as no-op when SMT off.
 _smt_src = show_smt ? smt_symbol : syminfo.tickerid
-[es_ph_1D,  es_pl_1D]  = request.security(_smt_src, "1D",  [high[1], low[1]], lookahead=barmerge.lookahead_on)
-[es_ph_240, es_pl_240] = request.security(_smt_src, "240", [high[1], low[1]], lookahead=barmerge.lookahead_on)
-[es_ph_60,  es_pl_60]  = request.security(_smt_src, "60",  [high[1], low[1]], lookahead=barmerge.lookahead_on)
-[es_ph_30,  es_pl_30]  = request.security(_smt_src, "30",  [high[1], low[1]], lookahead=barmerge.lookahead_on)
+[es_ph_60, es_pl_60] = request.security(_smt_src, "60", [high[1], low[1]], lookahead=barmerge.lookahead_on)
+[es_ph_30, es_pl_30] = request.security(_smt_src, "30", [high[1], low[1]], lookahead=barmerge.lookahead_on)
 [es_ltf_high, es_ltf_low] = request.security(_smt_src, timeframe.period, [high, low])
 
 // Hour's opening price (used by Hour Open Aligned filter on every bar).
 _hour_open = request.security(syminfo.tickerid, "60", open, lookahead=barmerge.lookahead_on)
 
 // ── TF SELECTORS — single ternary per value, aliased for readability ──────────
-prior_high    = timeframe.period == "60" ? ph_1D  : timeframe.period == "15" ? ph_240  : timeframe.period == "5" ? ph_60  : ph_30
-prior_low     = timeframe.period == "60" ? pl_1D  : timeframe.period == "15" ? pl_240  : timeframe.period == "5" ? pl_60  : pl_30
-prior_close   = timeframe.period == "60" ? pc_1D  : timeframe.period == "15" ? pc_240  : timeframe.period == "5" ? pc_60  : pc_30
-prior_open    = timeframe.period == "60" ? po_1D  : timeframe.period == "15" ? po_240  : timeframe.period == "5" ? po_60  : po_30
-prev2_high    = timeframe.period == "60" ? ph2_1D : timeframe.period == "15" ? ph2_240 : timeframe.period == "5" ? ph2_60 : ph2_30
-prev2_low     = timeframe.period == "60" ? pl2_1D : timeframe.period == "15" ? pl2_240 : timeframe.period == "5" ? pl2_60 : pl2_30
-anchor_time   = timeframe.period == "60" ? at_1D  : timeframe.period == "15" ? at_240  : timeframe.period == "5" ? at_60  : at_30
-es_prior_high = timeframe.period == "60" ? es_ph_1D : timeframe.period == "15" ? es_ph_240 : timeframe.period == "5" ? es_ph_60 : es_ph_30
-es_prior_low  = timeframe.period == "60" ? es_pl_1D : timeframe.period == "15" ? es_pl_240 : timeframe.period == "5" ? es_pl_60 : es_pl_30
+prior_high    = timeframe.period == "5" ? ph_60  : ph_30
+prior_low     = timeframe.period == "5" ? pl_60  : pl_30
+prior_close   = timeframe.period == "5" ? pc_60  : pc_30
+prior_open    = timeframe.period == "5" ? po_60  : po_30
+prev2_high    = timeframe.period == "5" ? ph2_60 : ph2_30
+prev2_low     = timeframe.period == "5" ? pl2_60 : pl2_30
+anchor_time   = timeframe.period == "5" ? at_60  : at_30
+es_prior_high = timeframe.period == "5" ? es_ph_60 : es_ph_30
+es_prior_low  = timeframe.period == "5" ? es_pl_60 : es_pl_30
 is_new_anchor = ta.change(anchor_time) != 0
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
@@ -308,6 +295,12 @@ var float score_all_long_pts     = 0.0
 var float score_all_short_pts    = 0.0
 var float score_all_long_pnl     = 0.0
 var float score_all_short_pnl    = 0.0
+// Setup counters — count every fired setup (resolved or not, including over-risk).
+// today resets at session boundary; all-time accumulates; n_days tracks the
+// number of distinct session days seen, used to derive setups/day average.
+var int   setups_today      = 0
+var int   setups_all_time   = 0
+var int   n_session_days    = 0
 // Rolling window of recent trades — one entry per resolved trade. Scoreboard
 // "Last N Trades" mode re-aggregates the tail of each array at render time.
 // Pnl is NOT stored (it's re-derived from pts × contracts at render, so live
@@ -333,6 +326,8 @@ if na(score_day) or _sess_day != score_day
     score_short_pts    := 0.0
     score_long_pnl     := 0.0
     score_short_pnl    := 0.0
+    setups_today       := 0
+    n_session_days     += 1
 // Active (unresolved) setups — parallel arrays. Resolve to TP/SL hits post-fire.
 var active_dir        = array.new_int()     //  1 = long, -1 = short
 var active_tp         = array.new_float()
@@ -419,7 +414,7 @@ if is_new_anchor and tf_supported
     // Scan from newest (k=1) outward. Track the last match seen. Stop when we leave the period.
     // This way we find the earliest match within the prior period, not from older periods.
     _tol = syminfo.mintick * 2
-    _htf_bars = timeframe.period == "60" ? 24 : timeframe.period == "15" ? 16 : timeframe.period == "5" ? 12 : 10
+    _htf_bars = timeframe.period == "5" ? 12 : 10
     anc_hi_bar := bar_index - 1
     anc_lo_bar := bar_index - 1
     // Scan newest to oldest: each match overwrites with an older bar.
@@ -741,7 +736,7 @@ if show_debug and tf_supported and barstate.islast and barstate.isconfirmed
 // re-render when it changes (or on first render). Hash covers every input
 // that affects the displayed numbers — counters, scope, risk/pt-value inputs.
 var float _sb_state_hash = na
-_sb_new_hash = score_all_long_wins + score_all_long_losses * 31 + score_all_short_wins * 961 + score_all_short_losses * 29791 + score_all_long_pnl + score_all_short_pnl + risk_usd * 97 + point_value_usd * 103 + (scoreboard_scope == "Today" ? 1 : scoreboard_scope == "Last N Trades" ? 2 : 3) * 1000 + max_setups * 7 + array.size(active_dir) * 13
+_sb_new_hash = score_all_long_wins + score_all_long_losses * 31 + score_all_short_wins * 961 + score_all_short_losses * 29791 + score_all_long_pnl + score_all_short_pnl + risk_usd * 97 + point_value_usd * 103 + (scoreboard_scope == "Today" ? 1 : scoreboard_scope == "Last N Trades" ? 2 : 3) * 1000 + scoreboard_n * 7 + array.size(active_dir) * 13 + setups_all_time * 17 + setups_today * 19 + n_session_days * 23
 _sb_dirty = na(scoreboard_tbl) or _sb_new_hash != _sb_state_hash
 if show_scoreboard and barstate.islast and _sb_dirty
     _sb_state_hash := _sb_new_hash
@@ -767,7 +762,7 @@ if show_scoreboard and barstate.islast and _sb_dirty
         _sb_spnl := score_all_short_pnl
     else if scoreboard_scope == "Last N Trades"
         _n_trades = array.size(trades_dir)
-        _start = math.max(0, _n_trades - max_setups)
+        _start = math.max(0, _n_trades - scoreboard_n)
         if _start < _n_trades
             for _ti = _start to _n_trades - 1
                 _tdir = array.get(trades_dir,  _ti)
@@ -814,7 +809,7 @@ if show_scoreboard and barstate.islast and _sb_dirty
     _hdr_hr  = hour(time, syminfo.timezone)
     _hdr_ts  = time + (_hdr_hr >= 18 ? 6 * 3600 * 1000 : 0)
     _mm_dd_str = str.tostring(month(_hdr_ts, syminfo.timezone)) + "/" + str.tostring(dayofmonth(_hdr_ts, syminfo.timezone))
-    _date_str  = scoreboard_scope == "Today" ? _mm_dd_str : scoreboard_scope == "Last N Trades" ? "Last " + str.tostring(max_setups) : "All Time"
+    _date_str  = scoreboard_scope == "Today" ? _mm_dd_str : scoreboard_scope == "Last N Trades" ? "Last " + str.tostring(scoreboard_n) : "All Time"
     // Theme-aware scoreboard palette. Light mode uses deep slate bg; dark mode
     // uses a lighter slate so rows stand out against a pure-black chart bg.
     _sb_bg    = _dark ? color.new(#0f172a, 0) : color.new(c_dbg, 0)
@@ -845,9 +840,18 @@ if show_scoreboard and barstate.islast and _sb_dirty
     _wr_total_str = _total_n > 0 ? str.tostring(_total_wr, "#.#") + "%" : "–"
     _meta_str     = combo + "  ·  $" + str.tostring(risk_usd, "#") + "/trade"
     _footer_str   = _date_str + (_active_n > 0 ? "  ·  " + str.tostring(_active_n) + " pending" : "")
+    // Setups/Day — scope-aware. Today: today's count. Last N: avg over the
+    // tail window. All Time: total setups / number of session days seen.
+    _setups_per_day_str = ""
+    if scoreboard_scope == "Today"
+        _setups_per_day_str := str.tostring(setups_today)
+    else if scoreboard_scope == "Last N Trades"
+        _setups_per_day_str := n_session_days > 0 ? str.tostring(setups_all_time / n_session_days, "#.#") : "–"
+    else
+        _setups_per_day_str := n_session_days > 0 ? str.tostring(setups_all_time / n_session_days, "#.#") : "–"
     table.delete(scoreboard_tbl)
-    // 4 columns (Metric / LONG / SHORT / TOTAL) × 9 rows (title + header + 6 metrics + footer).
-    scoreboard_tbl := table.new(position.top_right, 4, 9, bgcolor=_sb_bg, border_color=color.new(_sb_frame, 0), border_width=1, frame_color=color.new(_sb_frame, 0), frame_width=1)
+    // 4 columns (Metric / LONG / SHORT / TOTAL) × 10 rows (title + header + 7 metrics + footer).
+    scoreboard_tbl := table.new(position.top_right, 4, 10, bgcolor=_sb_bg, border_color=color.new(_sb_frame, 0), border_width=1, frame_color=color.new(_sb_frame, 0), frame_width=1)
     // Title row — combo/risk info lives here between title and date.
     _title_str = scoreboard_scope == "Today" ? "Today's Scorecard" : scoreboard_scope == "Last N Trades" ? "Recent Scorecard" : "All-Time Scorecard"
     table.cell(scoreboard_tbl, 0, 0, _title_str, text_color=_sb_text,  bgcolor=_sb_alt, text_size=size.small)
@@ -864,37 +868,43 @@ if show_scoreboard and barstate.islast and _sb_dirty
     table.cell(scoreboard_tbl, 1, 2, str.tostring(_long_n),   text_color=_sb_text, bgcolor=_sb_bg, text_size=size.small)
     table.cell(scoreboard_tbl, 2, 2, str.tostring(_short_n),  text_color=_sb_text, bgcolor=_sb_bg, text_size=size.small)
     table.cell(scoreboard_tbl, 3, 2, str.tostring(_total_n),  text_color=_sb_text, bgcolor=_sb_bg, text_size=size.small)
+    // Setups/Day — total only (not split by direction). Today: today's count. Otherwise: avg over session days seen.
+    _setups_per_day_label = scoreboard_scope == "Today" ? "Setups (Today)" : "Setups/Day"
+    table.cell(scoreboard_tbl, 0, 3, _setups_per_day_label, text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 3, "", bgcolor=_sb_alt)
+    table.cell(scoreboard_tbl, 2, 3, "", bgcolor=_sb_alt)
+    table.cell(scoreboard_tbl, 3, 3, _setups_per_day_str, text_color=_sb_text, bgcolor=_sb_alt, text_size=size.small)
     // Wins
-    table.cell(scoreboard_tbl, 0, 3, "Wins",   text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
-    table.cell(scoreboard_tbl, 1, 3, str.tostring(_sb_lw),   text_color=_sb_tp, bgcolor=_sb_alt, text_size=size.small)
-    table.cell(scoreboard_tbl, 2, 3, str.tostring(_sb_sw),   text_color=_sb_tp, bgcolor=_sb_alt, text_size=size.small)
-    table.cell(scoreboard_tbl, 3, 3, str.tostring(_total_wins),       text_color=_sb_tp, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 0, 4, "Wins",   text_color=_sb_muted, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 4, str.tostring(_sb_lw),   text_color=_sb_tp, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 4, str.tostring(_sb_sw),   text_color=_sb_tp, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 3, 4, str.tostring(_total_wins),       text_color=_sb_tp, bgcolor=_sb_bg, text_size=size.small)
     // Losses
-    table.cell(scoreboard_tbl, 0, 4, "Losses", text_color=_sb_muted, bgcolor=_sb_bg, text_size=size.small)
-    table.cell(scoreboard_tbl, 1, 4, str.tostring(_sb_ll),   text_color=_sb_sl, bgcolor=_sb_bg, text_size=size.small)
-    table.cell(scoreboard_tbl, 2, 4, str.tostring(_sb_slo),  text_color=_sb_sl, bgcolor=_sb_bg, text_size=size.small)
-    table.cell(scoreboard_tbl, 3, 4, str.tostring(_total_losses),       text_color=_sb_sl, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 0, 5, "Losses", text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 5, str.tostring(_sb_ll),   text_color=_sb_sl, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 5, str.tostring(_sb_slo),  text_color=_sb_sl, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 3, 5, str.tostring(_total_losses),       text_color=_sb_sl, bgcolor=_sb_alt, text_size=size.small)
     // Win Rate
-    table.cell(scoreboard_tbl, 0, 5, "WR",     text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
-    table.cell(scoreboard_tbl, 1, 5, _wr_long_str,  text_color=_sb_text, bgcolor=_sb_alt, text_size=size.small)
-    table.cell(scoreboard_tbl, 2, 5, _wr_short_str, text_color=_sb_text, bgcolor=_sb_alt, text_size=size.small)
-    table.cell(scoreboard_tbl, 3, 5, _wr_total_str, text_color=_sb_text, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 0, 6, "WR",     text_color=_sb_muted, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 6, _wr_long_str,  text_color=_sb_text, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 6, _wr_short_str, text_color=_sb_text, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 3, 6, _wr_total_str, text_color=_sb_text, bgcolor=_sb_bg, text_size=size.small)
     // Points
-    table.cell(scoreboard_tbl, 0, 6, "Points", text_color=_sb_muted, bgcolor=_sb_bg, text_size=size.small)
-    table.cell(scoreboard_tbl, 1, 6, _long_pts_str,  text_color=_long_pts_col,  bgcolor=_sb_bg, text_size=size.small)
-    table.cell(scoreboard_tbl, 2, 6, _short_pts_str, text_color=_short_pts_col, bgcolor=_sb_bg, text_size=size.small)
-    table.cell(scoreboard_tbl, 3, 6, _total_pts_str, text_color=_total_pts_col, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 0, 7, "Points", text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 7, _long_pts_str,  text_color=_long_pts_col,  bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 7, _short_pts_str, text_color=_short_pts_col, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 3, 7, _total_pts_str, text_color=_total_pts_col, bgcolor=_sb_alt, text_size=size.small)
     // P&L
-    table.cell(scoreboard_tbl, 0, 7, "PnL",    text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
-    table.cell(scoreboard_tbl, 1, 7, _long_pnl_str,  text_color=_long_pnl_col,  bgcolor=_sb_alt, text_size=size.small)
-    table.cell(scoreboard_tbl, 2, 7, _short_pnl_str, text_color=_short_pnl_col, bgcolor=_sb_alt, text_size=size.small)
-    table.cell(scoreboard_tbl, 3, 7, _total_pnl_str, text_color=_total_pnl_col, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 0, 8, "PnL",    text_color=_sb_muted, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 8, _long_pnl_str,  text_color=_long_pnl_col,  bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 8, _short_pnl_str, text_color=_short_pnl_col, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 3, 8, _total_pnl_str, text_color=_total_pnl_col, bgcolor=_sb_bg, text_size=size.small)
     // Footer — only rendered when there are pending setups to announce.
     if _active_n > 0
-        table.cell(scoreboard_tbl, 0, 8, str.tostring(_active_n) + " pending", text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
-        table.cell(scoreboard_tbl, 1, 8, "", bgcolor=_sb_alt)
-        table.cell(scoreboard_tbl, 2, 8, "", bgcolor=_sb_alt)
-        table.cell(scoreboard_tbl, 3, 8, "", bgcolor=_sb_alt)
+        table.cell(scoreboard_tbl, 0, 9, str.tostring(_active_n) + " pending", text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
+        table.cell(scoreboard_tbl, 1, 9, "", bgcolor=_sb_alt)
+        table.cell(scoreboard_tbl, 2, 9, "", bgcolor=_sb_alt)
+        table.cell(scoreboard_tbl, 3, 9, "", bgcolor=_sb_alt)
 
 // ── RESOLVE ACTIVE SETUPS — truncate R:R drawings on TP/SL hit ───────────────
 // Walk from tail to head so we can pop resolved rows without index drift.
@@ -1005,8 +1015,8 @@ if truncate_on_hit and array.size(active_dir) > 0
                 score_short_pnl += _trade_pnl
                 score_all_short_pts += _trade_pts
                 score_all_short_pnl += _trade_pnl
-            // Rolling window: record this trade. Cap at a generous 500 entries
-            // so "Last N" can go up to max_setups=20 × 25 = plenty.
+            // Rolling window: record this trade. Cap at 500 to match
+            // scoreboard_n's maxval — enough headroom for the longest "Last N".
             array.push(trades_dir,  _d)
             array.push(trades_pts,  _trade_pts)
             array.push(trades_risk, _trade_risk_pts)
@@ -1051,6 +1061,8 @@ if truncate_on_hit and array.size(active_dir) > 0
 if long_valid
     alerted_long     := true
     draw_long        := true
+    setups_today    += 1
+    setups_all_time += 1
     draw_sweep_ext_long   := sweep_ext_long
     draw_sl_anchor_long   := not na(sweep_bar_long) ? sweep_bar_long : bar_index
     draw_cisd_lvl_long    := cisd_long_lvl
@@ -1108,6 +1120,8 @@ if long_valid
 if short_valid
     alerted_short    := true
     draw_short       := true
+    setups_today    += 1
+    setups_all_time += 1
     draw_sweep_ext_short  := sweep_ext_short
     draw_sl_anchor_short  := not na(sweep_bar_short) ? sweep_bar_short : bar_index
     draw_cisd_lvl_short   := cisd_short_lvl
@@ -1460,6 +1474,8 @@ if draw_short[1]
 // Setup is valid but risk exceeds max_risk — drawn muted (gray, dashed, no R:R box)
 if long_over
     alerted_long := true
+    setups_today    += 1
+    setups_all_time += 1
     line.delete(cisd_prev_long)
     cisd_prev_long := na
     label.delete(cisd_prev_lbl_long)
@@ -1538,6 +1554,8 @@ if long_over
 // ── FIRE: OVER-RISK SHORT ────────────────────────────────────────────────────
 if short_over
     alerted_short := true
+    setups_today    += 1
+    setups_all_time += 1
     line.delete(cisd_prev_short)
     cisd_prev_short := na
     label.delete(cisd_prev_lbl_short)

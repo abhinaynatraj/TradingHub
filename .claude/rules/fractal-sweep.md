@@ -5,7 +5,7 @@ paths:
 
 # Fractal Sweep Rules
 
-Sweep+CISD backtesting engine. F1 (min prior range) and the Q1 window gate are removed — detection runs over the full HTF period. Setup-quality filters (F3 shallow sweep, F4 close-back) are runtime-toggleable from the dashboard, not baked-in rejections.
+Sweep+CISD backtesting engine. The Python engine and Pine indicator are aligned (2026-04-24): sweep, return-to-range, and CISD-fire must all occur within the same anchor HTF window. Setups that don't complete before the next anchor are discarded.
 
 ## Folder Layout
 
@@ -27,29 +27,27 @@ Engine scripts self-locate via `Path(__file__).parent.parent` — run from the `
 ## Engine
 
 ```bash
-python3 engine/model_stats.py                         # all 4 sweep models → model_stats.json
-python3 engine/model_stats.py --models 1H_5M 1H_3M   # subset
+python3 engine/model_stats.py                         # all 2 sweep models → model_stats.json
+python3 engine/model_stats.py --models 1H_5M          # subset
 python3 engine/model_stats.py --table es_1m           # ES instead of NQ
 python3 engine/daily_update.py                        # fetch new bars from Databento
 python3 -m pytest tests/ -q                           # test suite
 ```
 
-## 4 Sweep Models
+## 2 Sweep Models
 
 | Key | Sweep TF | CISD TF |
 |---|---|---|
-| `4H_15M` | 4 Hour | 15 Min |
 | `1H_5M` | 1 Hour | 5 Min |
-| `1H_3M` | 1 Hour | 3 Min |
 | `30M_3M` | 30 Min | 3 Min |
 
 ## Constants (`engine/model_stats.py`)
 
-- `SWEEP_MAX_PCT = 0.50` — now a runtime-toggleable reference, not a baked rejection
-- `CISD_FAST_BARS = None` — no bar limit, CISD can form anytime after sweep returns
-- `MIN_RISK_PTS = 3.0`, `MAX_RISK_PTS = 112.5` (MNQ $225 ÷ $2.00/pt)
-- `OUTCOME_MAX_BARS = 360`
-- `long_base`/`short_base` separated from `max_risk` check — enables over-risk detection
+- `MIN_RISK_PTS = 3.0`, `MAX_RISK_PTS = 112.5` (MNQ $225 ÷ $2.00/pt) — always-on baseline gates
+- `OUTCOME_MAX_BARS = 1440` (24h of 1m bars; bumped from 360 to match indicator's effectively-unlimited resolution lifetime)
+- `RISK_PER_TRADE = 225`, `POINT_VALUE = 2.0` — MNQ-configured (price action is identical to NQ; only sizing differs)
+- Same-bar TP/SL ties resolve to **SL** (matches indicator)
+- CISD must fire within the same anchor's HTF window — no cross-anchor lookahead
 
 ## Risk Profiles
 
@@ -61,10 +59,10 @@ python3 -m pytest tests/ -q                           # test suite
 ## Runtime Filter Fields on Each Trade Row
 
 Beyond `outcome`/`r`/`mae_pct`/`mfe_pct`/`smt`, each row carries:
-- `cisd_close`, `cisd_hour_open`, `cisd_aligned` — for HOUR_ALIGNED filter
-- `prior_counter_close` — for PRIOR_COUNTER_CLOSE filter
-- `prior_engulfing` — for PRIOR_ENGULFING filter
 - `passes_f3`, `passes_f4` — for Shallow Sweep / Closed Back Inside filters
+- `cisd_close`, `cisd_hour_open`, `cisd_aligned` — for HOUR_ALIGNED filter
+- `prior_counter_close` — for PRIOR_COUNTER filter
+- `prior_engulfing` — for PRIOR_ENGULFING filter
 
 ## Runtime Filters (6, dashboard-toggleable)
 
@@ -75,10 +73,23 @@ Beyond `outcome`/`r`/`mae_pct`/`mfe_pct`/`smt`, each row carries:
 **Add Confirmation** (default OFF)
 - `SMT` (NQ-ES Divergence)
 - `HOUR_ALIGNED` (Hour Open Aligned)
-- `PRIOR_COUNTER_CLOSE` (Prior Bar Counters)
+- `PRIOR_COUNTER` (Prior Bar Counters)
 - `PRIOR_ENGULFING` (Prior Bar Engulfs)
 
 `compute_filter_variants()` enumerates 2⁶ = 64 combinations per model × profile, sorted by EV.
+
+### Filter edge (post-alignment baseline ~50% WR)
+
+Standalone marginal edge:
+- **SMT**: +7-8% WR, +0.15R EV (strongest)
+- **F3 Shallow Sweep**: +3-4% WR, +0.05-0.06R EV
+- **PRIOR_ENGULFING**: +0.5-1.3% WR
+- **F4 / HOUR_ALIGNED / PRIOR_COUNTER**: noise on their own (∼±0% WR)
+
+Best combos (by EV):
+- 1H_5M: `F3 + F4 + SMT + HOUR_ALIGNED + PRIOR_COUNTER` → 60.1% WR, +0.202R EV (N=1015)
+- 30M_3M: `F3 + F4 + SMT + HOUR_ALIGNED + PRIOR_ENGULFING` → 61.6% WR, +0.232R EV (N=151)
+- Practical high-N: `F3 + F4 + SMT` → 59.1% WR, +0.182R EV (N=1711) on 1H_5M
 
 ## MAE/MFE Recommendation Logic
 

@@ -1,6 +1,6 @@
 # Fractal Sweep Pipeline — Complete Architecture
 
-**Last updated:** 2026-04-15
+**Last updated:** 2026-04-24
 
 ---
 
@@ -25,8 +25,8 @@ candle_science.duckdb
     ↓
 model_stats.py
   ├── load_1m()       → RTH + full-day DataFrames
-  ├── resample()      → sweep TF candles (4H/1H/30M)
-  ├── resample()      → CISD TF candles (15M/5M/3M)
+  ├── resample()      → sweep TF candles (1H/30M)
+  ├── resample()      → CISD TF candles (5M/3M)
   ├── df_to_arrays()  → numpy arrays (one pass, reused)
   ├── detect_setups_base() → sweep + CISD + SMT detection
   ├── apply_profile_and_resolve() → exit simulation
@@ -59,33 +59,31 @@ Timestamps stored as `TIMESTAMP WITH TIME ZONE` (America/Toronto). Always conver
 
 ---
 
-## The 4 Sweep Models
+## The 2 Sweep Models
 
 | Key | Sweep TF | CISD TF |
 |-----|----------|---------|
-| `4H_15M` | 4 Hour | 15 Min |
 | `1H_5M` | 1 Hour | 5 Min |
-| `1H_3M` | 1 Hour | 3 Min |
 | `30M_3M` | 30 Min | 3 Min |
 
-**Constants:** `SWEEP_MAX_PCT = 0.50` (now a runtime-toggleable reference) · `MIN_RISK_PTS = 3.0` · `MAX_RISK_PTS = 112.5` · `CISD_FAST_BARS = None` (unlimited)
+**Constants:** `MIN_RISK_PTS = 3.0` · `MAX_RISK_PTS = 112.5` (= MNQ $225 / $2/pt) · `OUTCOME_MAX_BARS = 1440` (24h)
 
-**Removed (2026-04-15):** The `min_range` parameter (F1 filter). Data showed it was rejecting above-average trades on every timeframe. See commit `62eda17`. The `q1_min` window gate was also removed — sweeps are detected across the full HTF period.
+**Engine ↔ Indicator alignment (2026-04-24):** Sweep, return-to-range, and CISD-fire must all occur within the same anchor HTF window. Same-bar TP/SL ties resolve to SL. Outcome window bumped from 360 to 1440 bars to match the indicator's effectively-unlimited resolution lifetime. A pandas resolution bug ([ns] vs [us]) that silently inflated anchor windows from 1h to 41 days was fixed at the same time — that was the root cause of the previously-reported ~70% baseline WR.
 
 ---
 
 ## Setup Detection (3 Phases)
 
 ### Phase 1 — Sweep
-Price breaks beyond the prior HTF candle's high or low at any point within the HTF period (no Q1 gate). Sweep ≤50% of prior range is tagged as F3-passing; deeper sweeps are tagged and kept for runtime filtering. Sweep extreme (lowest low for long, highest high for short) locked at detection.
+Price breaks beyond the prior HTF candle's high or low at any point within the current anchor HTF window. Sweep extreme (lowest low for long, highest high for short) locked at detection.
 
 ### Phase 2 — Return to Range
-Price closes back inside the prior candle's range. No deadline — can happen anytime within the HTF period. Failures are tagged F4 and kept for runtime filtering.
+Price closes back inside the prior candle's range. Must happen within the same anchor HTF window.
 
 ### Phase 3 — CISD
-Backward scan from the return bar finds the consecutive opposing delivery run. CISD level = open of the earliest candle in that run. Fires when current close crosses through CISD level. Dojis skipped, no bar limit.
+Backward scan from the return bar finds the consecutive opposing delivery run. CISD level = open of the earliest candle in that run. Fires when current close crosses through CISD level. Dojis skipped. **CISD must fire within the same anchor HTF window** — setups not completing before the next anchor are discarded.
 
-**Entry:** Next CISD-TF candle open (backtest) · Current bar close (indicator)
+**Entry:** Next CISD-TF candle open (both engine and indicator)
 
 ---
 
@@ -102,31 +100,38 @@ Backward scan from the return bar finds the consecutive opposing delivery run. C
 
 ## Runtime Filters (6, dashboard-toggleable)
 
-Two groups render in a dedicated filter bar below the Period/TF/Profile dropdowns. Each chip shows a live `±N` badge indicating how many trades would be added or removed if that single chip were toggled, so users can see the impact before clicking.
+Two groups render in a dedicated filter bar below the Period/TF/Profile dropdowns. Each chip shows a live `±N` badge indicating how many trades would be added or removed.
 
-**Setup Quality** (default ON, uncheck to relax — amber highlight)
+**Setup Quality** (default ON — uncheck to relax)
 
-| Chip | Code | What it requires |
-|---|---|---|
-| Shallow Sweep | `F3_SWEEP_TOO_LARGE` | `sweep_ext / ref_range ≤ 0.50` |
-| Closed Back Inside | `F4_NO_CLOSE_BACK` | `ret_close` is inside the prior candle's range |
+| Chip | Code | What it requires | Standalone edge |
+|---|---|---|---|
+| Shallow Sweep | `F3_SWEEP_TOO_LARGE` | `sweep_ext / ref_range ≤ 0.50` | +3-4% WR · +0.05-0.06R EV |
+| Closed Back Inside | `F4_NO_CLOSE_BACK` | `ret_close` is inside the prior candle's range | Noise |
 
-**Add Confirmation** (default OFF, check to narrow — purple highlight)
+**Add Confirmation** (default OFF — check to narrow)
 
-| Chip | Column | Condition |
-|---|---|---|
-| NQ-ES Divergence | `smt` | NQ swept its prior level but ES did not sweep its corresponding level |
-| Hour Open Aligned | `cisd_aligned` | LONG: CISD close > current hour open · SHORT: CISD close < current hour open |
-| Prior Bar Counters | `prior_counter_close` | LONG: prior sweep-TF bar closed bearish · SHORT: prior bar closed bullish |
-| Prior Bar Engulfs | `prior_engulfing` | Prior sweep-TF bar's range contains the previous bar's range (wick-inclusive) |
+| Chip | Column | Condition | Standalone edge |
+|---|---|---|---|
+| **NQ-ES Divergence** | `smt` | NQ swept but ES did not sweep its corresponding level | **+7-8% WR · +0.15R EV** (strongest single filter) |
+| Hour Open Aligned | `cisd_aligned` | LONG: CISD close > hour open · SHORT: CISD close < hour open | Noise |
+| Prior Bar Counters | `prior_counter_close` | LONG: prior sweep-TF bar closed bearish · SHORT: bullish | Noise |
+| Prior Bar Engulfs | `prior_engulfing` | Prior sweep-TF bar's range contains the previous bar's range | +0.5-1.3% WR |
 
-**Combinatorics.** `compute_filter_variants()` enumerates 2⁶ = 64 combinations per model × profile, sorted by EV, rendered in the Filters tab.
+**Combinatorics.** `compute_filter_variants()` enumerates 2⁶ = 64 combinations per model × profile, sorted by EV.
 
-**SMT backtest.** Loads `es_1m` alongside `nq_1m`, builds ES sweep-TF candles, checks the ES window at NQ sweep detection time. Pine indicator uses 10 ES security calls.
+**SMT backtest.** Loads `es_1m` alongside `nq_1m`, builds ES sweep-TF candles, checks the ES window at NQ sweep detection time. Pine indicator implements the same logic via `request.security` on the ES symbol.
 
-**Toggle scope.** Filters work on every Period selection (All Time + 2y/1y/6m/3m/1m). `_compute_by_tf` builds `recent_trades` for each sub-slice from `wl_full` (which includes F3/F4-rejected trades), so toggling a rejection filter off on e.g. Last 3 Months restores the F-rejected trades that fell inside that 3-month window.
+**Toggle scope.** Filters work on every Period selection (All Time + 2y/1y/6m/3m/1m). `_compute_by_tf` builds `recent_trades` for each sub-slice from `wl_full` (which includes F3/F4-rejected trades), so toggling a rejection filter off restores the rejected trades that fell inside that period.
 
-**Removed filter.** F1 (min prior range) was removed entirely on 2026-04-15. On every timeframe, removing F1 both increased trade count **and** improved WR — the filter was rejecting above-average trades.
+### Best combos (post-alignment baseline ~50% WR)
+
+| Combo | Model | WR | EV | N |
+|---|---|---|---|---|
+| Best EV | 1H_5M: F3+F4+SMT+HOUR_ALIGNED+PRIOR_COUNTER | 60.1% | +0.202R | 1,015 |
+| Best EV | 30M_3M: F3+F4+SMT+HOUR_ALIGNED+PRIOR_ENGULFING | 61.6% | +0.232R | 151 |
+| High-N practical | 1H_5M: F3+F4+SMT | 59.1% | +0.182R | 1,711 |
+| High-N practical | 30M_3M: F3+F4+SMT | 58.6% | +0.172R | 3,234 |
 
 ---
 
@@ -269,7 +274,7 @@ Applied to: `by_hour`, `by_session`, `by_dow`, `by_year`, `dir_summary`, `tspot_
 python3 engine/model_stats.py
 
 # Run specific models
-python3 engine/model_stats.py --models 1H_5M 1H_3M
+python3 engine/model_stats.py --models 1H_5M
 
 # Run for ES
 python3 engine/model_stats.py --table es_1m

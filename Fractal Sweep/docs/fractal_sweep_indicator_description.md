@@ -24,13 +24,10 @@ The indicator auto-detects your chart TF and applies the correct sweep/CISD pair
 
 | Chart TF | Sweep TF | CISD TF | Validated |
 |---|---|---|---|
-| 1H | 1D | 1H | Visual only |
-| 15M | 4H | 15M | ✓ |
 | 5M | 1H | 5M | ✓ |
 | 3M | 30M | 3M | ✓ |
-| 1M | 30M | 1M | — |
 
-Three of these map directly to the backtested engine variants. The 1H chart combo is provided for context on longer-timeframe liquidity events but is not in the statistical suite.
+Both combos map directly to the backtested engine variants. Other chart timeframes are inactive — the indicator does not draw signals.
 
 ---
 
