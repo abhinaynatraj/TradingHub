@@ -62,36 +62,33 @@ The engine and Pine indicator implement the same model. Aligned 2026-04-24:
 - Removed `gap_limit` weekend filter (indicator doesn't filter gaps)
 - Forced `[ns]` resolution on timestamp arrays — pandas 2.0+ defaults to `[us]`, which silently inflated anchor windows from 1h to 41 days. **This was the root cause of inflated baseline WR (~70%) in older outputs.** Post-fix baseline WR is ~50%, matching live indicator behavior.
 
-## Runtime Filters (6, dashboard-toggleable)
+## Runtime Filters (3, dashboard-toggleable)
 
-Two groups below the Period/TF/Profile dropdowns. Each chip shows a live `±N` badge before you click.
+The dashboard chip bar exposes three filters. Each chip shows a live `±N` badge before you click.
 
-**Setup Quality** (default ON, uncheck to relax)
-- **Shallow Sweep** (`F3_SWEEP_TOO_LARGE`) — `sweep_ext / ref_range ≤ 0.50`
-- **Closed Back Inside** (`F4_NO_CLOSE_BACK`) — `ret_close` inside prior range
+**Setup Quality** (default OFF on dashboard chip; engine row tags `passes_f3`/`passes_f4` always present)
+- **Shallow Sweep** (`F3`) — `sweep_ext / ref_range ≤ 0.50`. Standalone edge: +3.4% WR, +0.061R EV.
+- **Closed Back Inside** (`F4`) — `ret_close` inside prior HTF range. Standalone edge: noise on its own; useful in combination.
 
-**Add Confirmation** (default OFF, check to narrow)
-- **NQ-ES Divergence** (`SMT`) — NQ swept but ES did not
-- **Hour Open Aligned** (`HOUR_ALIGNED`) — CISD close on correct side of current hour open
-- **Prior Bar Counters** (`PRIOR_COUNTER`) — prior sweep-TF candle closed against trade direction
-- **Prior Bar Engulfs** (`PRIOR_ENGULFING`) — prior sweep-TF candle engulfs its predecessor wick-inclusive
+**Add Confirmation** (default OFF)
+- **NQ-ES Divergence** (`SMT`) — NQ swept its HTF level but ES did not. Strongest single edge: +7.8% WR, +0.150R EV.
 
-`2⁶ = 64` combinations are precomputed in `filter_variants.all_combinations` for the Filters tab.
+`2³ = 8` combinations are precomputed in `filter_variants.all_combinations` for the Filters tab.
 
-### Filter edge (post-alignment, both models)
+### Filter edge (over 12y NQ, both models)
 
 Standalone marginal edge over the ~50% baseline:
 - **SMT** — strongest single edge (+7-8% WR, +0.15R EV)
 - **F3 Shallow Sweep** — moderate (+3-4% WR, +0.05-0.06R EV)
-- **Prior Bar Engulfs** — small but positive (+0.5-1.3% WR)
-- **F4, Hour Aligned, Prior Counter** — noise on their own
+- **F4 Closed Back Inside** — noise standalone; helpful in combos
 
-Best multi-filter combos (per-model, by EV):
-- **1H_5M:** F3 + F4 + SMT + HOUR_ALIGNED + PRIOR_COUNTER → 60.1% WR, +0.202R EV (N=1015)
-- **30M_3M:** F3 + F4 + SMT + HOUR_ALIGNED + PRIOR_ENGULFING → 61.6% WR, +0.232R EV (N=151)
-- **Practical high-N:** F3 + F4 + SMT → 59.1% WR, +0.182R EV (N=1711) on 1H_5M
+Best practical combo (both models):
+- **F3 + F4 + SMT** → 59.1% WR, +0.182R EV, N=1,711 over 12y on 1H_5M (~143 trades/yr)
+- 30M_3M: same combo → 58.6% WR, +0.172R EV, N=3,234 (~270/yr)
 
-Filters work on **every Period** (All Time, 2y, 1y, 6m, 3m, 1m). `_compute_by_tf` builds `recent_trades` per sub-slice from `wl_full` (which includes F3/F4-rejected trades), so runtime toggles can bring rejected trades back in.
+History note: prior versions of this engine had additional filters (HOUR_ALIGNED, PRIOR_COUNTER, PRIOR_ENGULFING, plus experimental H4_BIAS, DAILY_BIAS, PD_LIQUIDITY, P12_BIAS). All were tested over the full 12y dataset and removed in 2026-04-24 — they showed no standalone edge or were anti-edge. Only F3, F4, SMT remain.
+
+Filters work on **every Period** (All Time, 2y, 1y, 6m, 3m, 1m). `_compute_by_tf` builds `recent_trades` per sub-slice from `wl_full`, so runtime toggles update stats live without re-running the engine.
 
 ## SMT Divergence
 

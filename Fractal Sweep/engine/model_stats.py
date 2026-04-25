@@ -221,112 +221,6 @@ def compute_hour_open_legacy(m1_ts_ns, m1_opens, entry_ts_ns):
     return float(m1_opens[idx])
 
 
-# ── P12 BIAS BUILDER ──────────────────────────────────────────────────────────
-# P12 (pack/ICT framework) = the 18:00 ET → 06:00 ET overnight window.
-# The first liquidity raid (sweep of prior-day high or prior-day low) within
-# that window establishes the day's bias:
-#   - PDH swept first  → bearish bias (price hunted highs; expect sell-off in NY)
-#   - PDL swept first  → bullish bias
-#   - Both swept       → ambiguous; no bias
-#   - Neither swept    → no bias
-# Returns dict[trade_date_str → bias dict] where bias dict has:
-#   p12_bias_long: True | False | None
-#   p12_window_start_ts_ns, p12_window_end_ts_ns  (for skipping in-window trades)
-def build_p12_bias_lookup(m1_arrs, day_arrs):
-    """
-    Pre-compute P12 bias for each trade_date present in m1_arrs.
-
-    For trade_date D, the relevant P12 window is 18:00 ET on (D-1) → 06:00 ET on D.
-    Liquidity targets are PDH and PDL = high/low of trading day (D-1).
-    """
-    if m1_arrs is None or day_arrs is None:
-        return {}
-
-    NS_PER_HOUR = np.int64(60 * 60 * 10**9)
-    NS_PER_DAY  = np.int64(24) * NS_PER_HOUR
-
-    m1_ts   = m1_arrs['ts_ns']
-    m1_high = m1_arrs['high']
-    m1_low  = m1_arrs['low']
-    m1_date = m1_arrs['trade_date']
-
-    day_ts   = day_arrs['ts_ns']  # midnight-aligned per-day buckets
-    day_high = day_arrs['high']
-    day_low  = day_arrs['low']
-
-    # Iterate over unique trade_dates that have any 1m data.
-    # (numpy unique preserves order via np.unique; we want chronological)
-    unique_dates = np.unique(m1_date)
-    out = {}
-
-    for date_val in unique_dates:
-        date_str = str(date_val)[:10]
-        # Find the day-bucket index for this date (bars where 1m trade_date == date_val)
-        # Use np.searchsorted over day_ts for the day's 00:00 timestamp.
-        # day_ts entries are midnight-of-trading-day. We need PDH/PDL = day BEFORE this date.
-        # Find day_arrs index for this trade_date:
-        day_mask = (day_arrs['trade_date'] == date_val) if 'trade_date' in day_arrs else None
-        if day_mask is not None and day_mask.any():
-            d_idx = int(np.argmax(day_mask))
-        else:
-            # Fallback: searchsorted (assumes midnight alignment of day_ts)
-            # day_ts is per-day midnight; convert date_val to ns midnight
-            d_idx = -1
-        if d_idx < 1:  # need a prior day for PDH/PDL
-            continue
-        pdh = float(day_high[d_idx - 1])
-        pdl = float(day_low[d_idx - 1])
-
-        # P12 window: 18:00 ET (prev calendar day) → 06:00 ET (this date)
-        # day_ts[d_idx] is midnight of `date_val` in NY local
-        # 18:00 of prior day = day_ts[d_idx] - 6h  (= 18:00 prev day)
-        # 06:00 of this day  = day_ts[d_idx] + 6h
-        midnight_ns = int(day_ts[d_idx])
-        p12_start = midnight_ns - 6 * int(NS_PER_HOUR)
-        p12_end   = midnight_ns + 6 * int(NS_PER_HOUR)
-
-        # Find 1m bars within [p12_start, p12_end)
-        s = int(np.searchsorted(m1_ts, p12_start, side='left'))
-        e = int(np.searchsorted(m1_ts, p12_end,   side='left'))
-        if e <= s:
-            continue
-
-        h_slice = m1_high[s:e]
-        l_slice = m1_low[s:e]
-
-        # Mask: which bars swept PDH and PDL respectively
-        _tol = 0.25
-        pdh_swept_mask = h_slice >= pdh - _tol
-        pdl_swept_mask = l_slice <= pdl + _tol
-
-        pdh_swept = bool(pdh_swept_mask.any())
-        pdl_swept = bool(pdl_swept_mask.any())
-
-        bias_long = None
-        if pdh_swept and pdl_swept:
-            # Both swept — first one wins (earliest argmax)
-            pdh_first = int(np.argmax(pdh_swept_mask))
-            pdl_first = int(np.argmax(pdl_swept_mask))
-            if pdh_first < pdl_first:
-                bias_long = False  # PDH first → bearish bias
-            elif pdl_first < pdh_first:
-                bias_long = True   # PDL first → bullish bias
-            # Equal: leave None (same bar — ambiguous)
-        elif pdh_swept:
-            bias_long = False
-        elif pdl_swept:
-            bias_long = True
-
-        out[date_str] = dict(
-            p12_bias_long=bias_long,
-            p12_start_ns=int(p12_start),
-            p12_end_ns=int(p12_end),
-        )
-
-    return out
-
-
-
 # ── CISD DETECTION ────────────────────────────────────────────────────────────
 def _find_cisd(c_opens, c_closes, c_ts_ns, start_idx, n_bars, direction):
     """
@@ -1131,8 +1025,7 @@ def _full_mfe_stats(wl, n_bins=50):
 # ── SETUP DETECTOR  (profile-agnostic — no stop/target computed here) ─────────
 def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                        cisd_fast_bars=CISD_FAST_BARS, es_s_arrs=None,
-                       es_m1_arrs=None, h4_arrs=None, day_arrs=None,
-                       p12_lookup=None):
+                       es_m1_arrs=None):
     """
     Detect all sweep+CISD setups.  Returns (base_rows, base_pending).
 
@@ -1150,10 +1043,8 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
     full_tf_ns   = np.int64(sweep_tf_min) * NS_PER_MIN
 
     s_ts    = s_arrs['ts_ns']
-    s_open  = s_arrs['open']
     s_high  = s_arrs['high']
     s_low   = s_arrs['low']
-    s_close = s_arrs['close']
     s_n     = len(s_ts)
 
     # ES data for SMT divergence
@@ -1263,30 +1154,6 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
 
             sweep_ext = abs(sweep_extreme - ref_level)
 
-            # PDH / PDL liquidity tag: did this sweep also pierce the prior
-            # trading day's high (for SHORT) or low (for LONG)? Sweeps that
-            # take out PD-extreme liquidity target a more significant stop
-            # pool than random hourly sweeps. `_pd_tol` allows for a tick or
-            # two of slop in resampling alignment.
-            swept_pdh = None
-            swept_pdl = None
-            swept_pd_liq = None
-            if day_arrs is not None:
-                _d_idx_now = int(np.searchsorted(day_arrs['ts_ns'], curr_ts_ns, side='right')) - 1
-                # Use prior closed day (curr day might be in progress)
-                _pd_idx = _d_idx_now - 1 if _d_idx_now >= 1 else -1
-                if _pd_idx >= 0:
-                    _pdh = float(day_arrs['high'][_pd_idx])
-                    _pdl = float(day_arrs['low'][_pd_idx])
-                    _pd_tol = 0.25  # NQ tick = 0.25
-                    if direction == 'SHORT':
-                        swept_pdh = bool(sweep_extreme >= _pdh - _pd_tol)
-                        swept_pdl = False
-                    else:
-                        swept_pdl = bool(sweep_extreme <= _pdl + _pd_tol)
-                        swept_pdh = False
-                    swept_pd_liq = bool(swept_pdh or swept_pdl)
-
             # SMT divergence: did ES also sweep its corresponding level?
             # Check ES 1m bars in the same Q1 window as NQ.
             # Divergence = ES did NOT sweep → stronger signal for NQ trade direction
@@ -1334,17 +1201,6 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
             if cisd_ts_ns is not None and cisd_ts_ns > q1_end_ns:
                 cisd_ts_ns, cisd_level = None, None
 
-            # prior_engulfing: the prior sweep-TF candle engulfs the candle
-            #   before it (s_arrs[i-2]), using extremes (wick-inclusive).
-            if i >= 2:
-                _prior_h = float(s_high[i - 1])
-                _prior_l = float(s_low[i - 1])
-                _prev_h  = float(s_high[i - 2])
-                _prev_l  = float(s_low[i - 2])
-                prior_engulfing = bool(_prior_h >= _prev_h and _prior_l <= _prev_l)
-            else:
-                prior_engulfing = None  # no prev-prev candle available
-
             # F3 / F4 setup-quality filters (Pine indicator defaults match
             # these). Computed here so compute_filter_variants() and
             # _compute_by_tf() can toggle them at aggregation time.
@@ -1358,16 +1214,6 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
             else:
                 passes_f4 = bool(ret_close <= float(s_high[i - 1]))
 
-            # Prior Bar Counters: prior sweep-TF candle closed AGAINST trade direction.
-            #   LONG  → prior close < open (bearish prior → reversal)
-            #   SHORT → prior close > open (bullish prior → reversal)
-            _prior_o = float(s_open[i - 1])
-            _prior_c = float(s_close[i - 1])
-            if direction == 'LONG':
-                prior_counter_close = bool(_prior_c < _prior_o)
-            else:
-                prior_counter_close = bool(_prior_c > _prior_o)
-
             base_row = dict(
                 date          = str(s_arrs['trade_date'][i]),
                 yr            = int(s_arrs['yr'][i]),
@@ -1378,8 +1224,6 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                 sweep_pct     = round(_sweep_pct_row, 3),
                 sweep_extreme = round(float(sweep_extreme), 2),
                 sweep_mode    = 'PREV',
-                prior_engulfing     = prior_engulfing,
-                prior_counter_close = prior_counter_close,
                 passes_f3     = passes_f3,
                 passes_f4     = passes_f4,
                 cisd_mode     = 'CISD',
@@ -1426,65 +1270,7 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
             _entry_date = m1_date[entry_start]
             _hr_rng = _hr_range.get((_entry_date, hr_val), 0.0)
 
-            # CISD Hour-Open Alignment confirmation criterion:
-            #   LONG: CISD candle close must be ABOVE the current hour's open
-            #   SHORT: CISD candle close must be BELOW the current hour's open
-            # "Current hour" = the clock hour containing the CISD candle.
-            # Neutral (exact tie) and missing hour_open both resolve to False.
             _cisd_close = float(c_arrs['close'][cisd_c_idx])
-            _cisd_hour_open = compute_hour_open_legacy(m1_ts, m1_open, cisd_ts_ns)
-            if _cisd_hour_open is None:
-                _cisd_aligned = None
-            elif direction == 'LONG':
-                _cisd_aligned = bool(_cisd_close > _cisd_hour_open)
-            else:
-                _cisd_aligned = bool(_cisd_close < _cisd_hour_open)
-
-            # HTF directional bias at entry time. Two flavors:
-            #   - h4_bias_long:    most-recently-CLOSED 4H candle's close > open (bullish 4H)
-            #   - daily_bias_long: prior trading day's close > the day before's close (bullish day)
-            # "Most recently closed" excludes the bar containing entry.
-            # `*_aligned` is the filter-ready flag: True when trade direction matches bias.
-            h4_bias_long       = None
-            daily_bias_long    = None
-            h4_bias_aligned    = None
-            daily_bias_aligned = None
-            if h4_arrs is not None:
-                # Find the 4H bar containing entry, then step back one to get most-recent-closed
-                _h4_idx = int(np.searchsorted(h4_arrs['ts_ns'], entry_ts_ns, side='right')) - 1
-                _h4_idx_closed = _h4_idx - 1 if _h4_idx >= 1 else -1
-                if _h4_idx_closed >= 0:
-                    _h4_o = float(h4_arrs['open'][_h4_idx_closed])
-                    _h4_c = float(h4_arrs['close'][_h4_idx_closed])
-                    h4_bias_long = bool(_h4_c > _h4_o)
-                    h4_bias_aligned = (h4_bias_long if direction == 'LONG' else not h4_bias_long)
-            if day_arrs is not None:
-                _d_idx = int(np.searchsorted(day_arrs['ts_ns'], entry_ts_ns, side='right')) - 1
-                _d_idx_closed = _d_idx - 1 if _d_idx >= 1 else -1
-                if _d_idx_closed >= 1:
-                    _d_c   = float(day_arrs['close'][_d_idx_closed])
-                    _d_c_1 = float(day_arrs['close'][_d_idx_closed - 1])
-                    daily_bias_long = bool(_d_c > _d_c_1)
-                    daily_bias_aligned = (daily_bias_long if direction == 'LONG' else not daily_bias_long)
-
-            # P12 (pack/ICT framework) bias: did the 18:00→06:00 ET overnight
-            # window preceding this trade's date sweep PDH or PDL first?
-            # PDH first → bearish bias; PDL first → bullish; neither/ambiguous → None.
-            # Trades that fall WITHIN their own P12 window are excluded
-            # (no preceding raid to align with). Trade direction must match
-            # the bias for `p12_aligned = True`.
-            p12_bias_long = None
-            p12_aligned   = None
-            if p12_lookup is not None:
-                _date_str = str(_entry_date)[:10]
-                p12_info = p12_lookup.get(_date_str)
-                if p12_info is not None:
-                    # Skip trades that fall within their own P12 window
-                    if not (p12_info['p12_start_ns'] <= entry_ts_ns < p12_info['p12_end_ns']):
-                        p12_bias_long = p12_info['p12_bias_long']
-                        if p12_bias_long is not None:
-                            p12_aligned = (p12_bias_long if direction == 'LONG'
-                                           else not p12_bias_long)
 
             base_row.update(
                 date         = str(_entry_date),
@@ -1497,17 +1283,6 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                 cisd_level   = round(cisd_level, 2) if cisd_level is not None else None,
                 hour_range_pts = round(_hr_rng, 2),
                 cisd_close      = round(_cisd_close, 2),
-                cisd_hour_open  = round(_cisd_hour_open, 2) if _cisd_hour_open is not None else None,
-                cisd_aligned    = _cisd_aligned,
-                h4_bias_long       = h4_bias_long,
-                daily_bias_long    = daily_bias_long,
-                h4_bias_aligned    = h4_bias_aligned,
-                daily_bias_aligned = daily_bias_aligned,
-                swept_pdh          = swept_pdh,
-                swept_pdl          = swept_pdl,
-                swept_pd_liq       = swept_pd_liq,
-                p12_bias_long      = p12_bias_long,
-                p12_aligned        = p12_aligned,
                 rejected_by  = rejected_by,
                 # profile-dependent fields — filled by apply_profile_and_resolve
                 stop_price   = None,
@@ -1907,11 +1682,7 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
     recent_cols = ['date','direction','hr','mn','session','dow','entry_price',
                    'sweep_extreme','target_price','risk_pts','r','outcome',
                    'mae_pct','mfe_pct','mae_pct_hr','mfe_pct_hr','hour_range_pts','smt',
-                   'cisd_close','cisd_hour_open','cisd_aligned',
-                   'prior_engulfing','prior_counter_close','passes_f3','passes_f4',
-                   'h4_bias_long','daily_bias_long','h4_bias_aligned','daily_bias_aligned',
-                   'swept_pdh','swept_pdl','swept_pd_liq',
-                   'p12_bias_long','p12_aligned']
+                   'cisd_close','passes_f3','passes_f4']
     # Only include columns that actually exist in wl_full (defensive against
     # older base_row schemas missing some fields).
     _avail = [c for c in recent_cols if c in wl_full.columns]
@@ -2345,11 +2116,7 @@ def _build_slice_stats(wl_sub, stop_mult, target_mult, agg_fn, hr_labels,
     recent_cols = ['date','direction','hr','mn','session','dow','entry_price',
                    'sweep_extreme','target_price','risk_pts','r','outcome',
                    'mae_pct','mfe_pct','mae_pct_hr','mfe_pct_hr','hour_range_pts','smt',
-                   'cisd_close','cisd_hour_open','cisd_aligned',
-                   'prior_engulfing','prior_counter_close','passes_f3','passes_f4',
-                   'h4_bias_long','daily_bias_long','h4_bias_aligned','daily_bias_aligned',
-                   'swept_pdh','swept_pdl','swept_pd_liq',
-                   'p12_bias_long','p12_aligned']
+                   'cisd_close','passes_f3','passes_f4']
     rt_source = wl_sub_full if wl_sub_full is not None else wl_sub
     available = [c for c in recent_cols if c in rt_source.columns]
     rt = rt_source[available].sort_values('date', ascending=False).copy()
@@ -2487,22 +2254,13 @@ def compute_filter_variants(df_all):
       - cumulative_additive: adding filters one at a time in optimal order
       - best_combo: the filter combination that maximizes EV
     """
-    FILTERS = ['F3', 'F4', 'SMT', 'HOUR_ALIGNED', 'PRIOR_COUNTER', 'PRIOR_ENGULFING',
-               'H4_BIAS', 'DAILY_BIAS', 'PD_LIQUIDITY', 'P12_BIAS']
+    FILTERS = ['F3', 'F4', 'SMT']
     FILTER_LABELS = {
-        'F3':                'Shallow Sweep (F3)',
-        'F4':                'Closed Back Inside (F4)',
-        'SMT':               'NQ-ES Divergence',
-        'HOUR_ALIGNED':      'Hour Open Aligned',
-        'PRIOR_COUNTER':     'Prior Bar Counters',
-        'PRIOR_ENGULFING':   'Prior Bar Engulfs',
-        'H4_BIAS':           '4H Bias Aligned',
-        'DAILY_BIAS':        'Daily Bias Aligned',
-        'PD_LIQUIDITY':      'Prior-Day Liquidity Sweep',
-        'P12_BIAS':          'P12 Aligned',
+        'F3':   'Shallow Sweep (F3)',
+        'F4':   'Closed Back Inside (F4)',
+        'SMT':  'NQ-ES Divergence',
     }
-    POSITIVE_FILTERS = {'F3', 'F4', 'SMT', 'HOUR_ALIGNED', 'PRIOR_COUNTER', 'PRIOR_ENGULFING',
-                        'H4_BIAS', 'DAILY_BIAS', 'PD_LIQUIDITY', 'P12_BIAS'}
+    POSITIVE_FILTERS = {'F3', 'F4', 'SMT'}
 
     def stats_of(df):
         wl = df[df['outcome'].isin(['WIN', 'LOSS'])].copy()
@@ -2550,14 +2308,6 @@ def compute_filter_variants(df_all):
     has_f3 = 'passes_f3' in all_valid.columns
     has_f4 = 'passes_f4' in all_valid.columns
     has_smt = 'smt' in all_valid.columns
-    has_hour_aligned = 'cisd_aligned' in all_valid.columns
-    has_prior_counter = 'prior_counter_close' in all_valid.columns
-    has_prior_engulfing = 'prior_engulfing' in all_valid.columns
-    has_h4_bias    = 'h4_bias_aligned' in all_valid.columns
-    has_daily_bias = 'daily_bias_aligned' in all_valid.columns
-    has_pd_liq     = 'swept_pd_liq' in all_valid.columns
-    has_p12_bias   = 'p12_aligned' in all_valid.columns
-
     # Helper: apply a set of filters to all_valid
     def apply_filters(active_set):
         """Return trades that pass all filters in active_set."""
@@ -2572,27 +2322,6 @@ def compute_filter_variants(df_all):
             elif f == 'SMT':
                 if has_smt:
                     mask &= all_valid['smt'] == True
-            elif f == 'HOUR_ALIGNED':
-                if has_hour_aligned:
-                    mask &= all_valid['cisd_aligned'] == True
-            elif f == 'PRIOR_COUNTER':
-                if has_prior_counter:
-                    mask &= all_valid['prior_counter_close'] == True
-            elif f == 'PRIOR_ENGULFING':
-                if has_prior_engulfing:
-                    mask &= all_valid['prior_engulfing'] == True
-            elif f == 'H4_BIAS':
-                if has_h4_bias:
-                    mask &= all_valid['h4_bias_aligned'] == True
-            elif f == 'DAILY_BIAS':
-                if has_daily_bias:
-                    mask &= all_valid['daily_bias_aligned'] == True
-            elif f == 'PD_LIQUIDITY':
-                if has_pd_liq:
-                    mask &= all_valid['swept_pd_liq'] == True
-            elif f == 'P12_BIAS':
-                if has_p12_bias:
-                    mask &= all_valid['p12_aligned'] == True
         return all_valid[mask]
 
     # Baseline = unfiltered. F3/F4 are now also enumerable filters
@@ -2720,9 +2449,6 @@ def main():
         tf: resample(df_1m_base, tf, f"{tf}min")
         for tf in sorted(needed_cisd_tfs)
     }
-    # HTF bias candles — 4H and 1D, used for DAILY_BIAS / H4_BIAS filters
-    h4_df  = resample(df_1m_full, 240,  "240min")
-    day_df = resample(df_1m_full, 1440, "1D")
     # ES sweep-TF candles for SMT comparison (same timeframes as NQ)
     es_sweep_dfs = {}
     if has_smt:
@@ -2738,10 +2464,6 @@ def main():
     es_m1_base_arrs = df_1m_to_arrays(es_1m_base) if has_smt else None
     m1_full_arrs = df_1m_to_arrays(df_1m_full)
     m1_base_arrs = df_1m_to_arrays(df_1m_base)
-    h4_arrs  = df_to_arrays(h4_df)
-    day_arrs = df_to_arrays(day_df)
-    p12_lookup = build_p12_bias_lookup(m1_full_arrs, day_arrs)
-    print(f"   P12 lookup: {len(p12_lookup):,} trading days indexed.")
     print("   Done.")
 
     all_stats    = {}
@@ -2762,9 +2484,7 @@ def main():
         es_m1 = (es_m1_full_arrs if cfg['sweep_tf_min'] >= 1440 else es_m1_base_arrs) if has_smt else None
         base_rows, base_pending = detect_setups_base(
             m1, s_arrs, c_arrs, mk, cfg, cisd_fast_bars=CISD_FAST_BARS,
-            es_s_arrs=es_s, es_m1_arrs=es_m1,
-            h4_arrs=h4_arrs, day_arrs=day_arrs,
-            p12_lookup=p12_lookup)
+            es_s_arrs=es_s, es_m1_arrs=es_m1)
         if not base_rows:
             print(f"   ⚠  No setups found")
             continue

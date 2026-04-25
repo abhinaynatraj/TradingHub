@@ -510,14 +510,6 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
         <input type="checkbox" id="smt-checkbox" onchange="switchSMT(this.checked)">
         <span>NQ-ES Divergence</span>
       </label>
-      <label class="filter-chk" title="The CISD candle closed on the bullish/bearish side of the current hour's open. LONG: CISD close > hour open. SHORT: CISD close < hour open. Adds a hourly-bias confirmation on top of the CISD.">
-        <input type="checkbox" id="hour-aligned-checkbox" onchange="switchHourAligned(this.checked)">
-        <span>Hour Open Aligned</span>
-      </label>
-      <label class="filter-chk" title="The prior sweep-TF candle fully engulfs the one before it (wick-inclusive): its range contains the previous bar's range. Strong displacement signature from the prior bar.">
-        <input type="checkbox" id="prior-engulf-checkbox" onchange="switchPriorEngulfing(this.checked)">
-        <span>Prior Bar Engulfs</span>
-      </label>
     </div>
   </div>
 </div>
@@ -830,34 +822,16 @@ function switchMFESeg(seg) { switchExcSeg(seg); }
 function getSmtFilteredTrades(trades) {
   if (!trades || !trades.length) return trades;
   let out = trades;
-  if (activeSmt)               out = out.filter(t => t.smt === true);
-  if (activeHourAligned)       out = out.filter(t => t.cisd_aligned === true);
-  if (activePriorEngulfing)    out = out.filter(t => t.prior_engulfing === true);
+  if (activeSmt) out = out.filter(t => t.smt === true);
   return out;
 }
 
 function hasNonBaselineFilters() {
-  return activeSmt || activeHourAligned || activePriorEngulfing;
+  return activeSmt;
 }
 
 function switchSMT(checked) {
   activeSmt = !!checked;
-  _tradesPage = 0;
-  const D = _getActiveD();
-  if (!D) return;
-  renderActive();
-}
-
-function switchHourAligned(checked) {
-  activeHourAligned = !!checked;
-  _tradesPage = 0;
-  const D = _getActiveD();
-  if (!D) return;
-  renderActive();
-}
-
-function switchPriorEngulfing(checked) {
-  activePriorEngulfing = !!checked;
   _tradesPage = 0;
   const D = _getActiveD();
   if (!D) return;
@@ -1051,8 +1025,6 @@ let activeCisd    = 'CISD';
 let activeProfile = 'simple_1r';
 let activeTF      = 'all';  // 'all' | '2y' | '1y' | '6m' | '3m' | '1m'
 let activeSmt               = false;  // filter to smt===true
-let activeHourAligned       = false;  // filter to cisd_aligned===true
-let activePriorEngulfing    = false;  // filter to prior_engulfing===true
 
 const RR_PROFILES = [
   'simple_1r',
@@ -4271,14 +4243,12 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
 //
 // F3 defaults CHECKED (active) — it's the baseline quality filter.
 function getFilteredD(D) {
-  const anyActive = activeSmt || activeHourAligned || activePriorEngulfing;
+  const anyActive = activeSmt;
   if (!anyActive) return D;
   const rawTrades = D?.recent_trades;
   if (!rawTrades || !rawTrades.length) return D;
   let trades = rawTrades;
-  if (activeSmt)               trades = trades.filter(t => t.smt === true);
-  if (activeHourAligned)       trades = trades.filter(t => t.cisd_aligned === true);
-  if (activePriorEngulfing)    trades = trades.filter(t => t.prior_engulfing === true);
+  if (activeSmt) trades = trades.filter(t => t.smt === true);
   if (!trades.length) return D;
 
   const wins = trades.filter(t => t.outcome === 'WIN');
@@ -4456,27 +4426,17 @@ function renderActive(){
 function updateFilterChipDeltas(D){
   const rt = D?.recent_trades || [];
   if (!rt.length){
-    ['smt-checkbox','hour-aligned-checkbox','prior-engulf-checkbox']
-      .forEach(id => _setChipDelta(id, null));
+    _setChipDelta('smt-checkbox', null);
     return;
   }
   function countWith(over){
     let t = rt;
     const sm = over.smt !== undefined ? over.smt : activeSmt;
-    const hr = over.hr  !== undefined ? over.hr  : activeHourAligned;
-    const pe = over.peng!== undefined ? over.peng: activePriorEngulfing;
     if (sm) t = t.filter(x => x.smt === true);
-    if (hr) t = t.filter(x => x.cisd_aligned === true);
-    if (pe) t = t.filter(x => x.prior_engulfing === true);
     return t.length;
   }
   const cur = countWith({});
-  const deltas = [
-    ['smt-checkbox',            countWith({smt: !activeSmt})             - cur],
-    ['hour-aligned-checkbox',   countWith({hr:  !activeHourAligned})     - cur],
-    ['prior-engulf-checkbox',   countWith({peng:!activePriorEngulfing})  - cur],
-  ];
-  deltas.forEach(([id, delta]) => _setChipDelta(id, delta));
+  _setChipDelta('smt-checkbox', countWith({smt: !activeSmt}) - cur);
 }
 
 function _setChipDelta(checkboxId, delta){
@@ -6136,20 +6096,10 @@ function renderFilterVariants(D, targetEl) {
         <th style="padding:8px 10px;text-align:left;color:var(--text-muted)">What it does</th>
         <th style="padding:8px 10px;text-align:left;color:var(--text-muted);width:200px">Parameter</th>
       </tr></thead><tbody>
-      <tr style="border-bottom:1px solid color-mix(in srgb,var(--border) 40%,transparent)">
+      <tr>
         <td style="padding:6px 10px;font-weight:700;color:#ff6600">NQ-ES Divergence</td>
         <td style="padding:6px 10px;color:var(--text-primary)">Only take setups where ES does <em>not</em> confirm the NQ sweep — divergence between correlated instruments signals manipulation, not genuine market direction</td>
         <td style="padding:6px 10px;color:var(--text-muted);font-family:var(--font-data)">ES holds <span style="color:var(--text-primary);font-weight:600">above/below</span> its prior HTF level</td>
-      </tr>
-      <tr>
-        <td style="padding:6px 10px;font-weight:700;color:var(--amber)">Hour Open Aligned</td>
-        <td style="padding:6px 10px;color:var(--text-primary)">Only take setups where the CISD candle closes on the correct side of the current hour open — closes aligned with setup direction confirm the intra-hour shift matches the sweep thesis</td>
-        <td style="padding:6px 10px;color:var(--text-muted);font-family:var(--font-data)">LONG: <span style="color:var(--text-primary);font-weight:600">close &gt; hour_open</span><br>SHORT: <span style="color:var(--text-primary);font-weight:600">close &lt; hour_open</span></td>
-      </tr>
-      <tr style="background:color-mix(in srgb,var(--bg-raised) 60%,transparent)">
-        <td style="padding:6px 10px;font-weight:700;color:var(--amber)">Prior Bar Engulfs</td>
-        <td style="padding:6px 10px;color:var(--text-primary)">Only take setups where the prior sweep-TF candle engulfs the candle before it on wick extremes — an engulfing prior signals that the sweep is happening inside an expansion, not a compression</td>
-        <td style="padding:6px 10px;color:var(--text-muted);font-family:var(--font-data)"><span style="color:var(--text-primary);font-weight:600">prior.high ≥ prev_prev.high</span><br>AND <span style="color:var(--text-primary);font-weight:600">prior.low ≤ prev_prev.low</span></td>
       </tr>
     </tbody></table>
   </div>`;
@@ -6224,12 +6174,8 @@ function renderFilterVariants(D, targetEl) {
   // Determine currently active filter set based on all header toggles
   const activeFilters = [];
   if (activeSmt) activeFilters.push('SMT');
-  if (activeHourAligned) activeFilters.push('HOUR_ALIGNED');
-  if (activePriorEngulfing) activeFilters.push('PRIOR_ENGULFING');
   const activeLabel = activeFilters.map(f => ({
     'SMT': 'NQ-ES Divergence',
-    'HOUR_ALIGNED': 'Hour Open Aligned',
-    'PRIOR_ENGULFING': 'Prior Bar Engulfs',
   }[f])).join(' + ');
 
   const maxEV = Math.max(...combos.map(c => Math.abs(c.ev)));

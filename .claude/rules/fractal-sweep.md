@@ -60,36 +60,21 @@ python3 -m pytest tests/ -q                           # test suite
 
 Beyond `outcome`/`r`/`mae_pct`/`mfe_pct`/`smt`, each row carries:
 - `passes_f3`, `passes_f4` — for Shallow Sweep / Closed Back Inside filters
-- `cisd_close`, `cisd_hour_open`, `cisd_aligned` — for HOUR_ALIGNED filter
-- `prior_counter_close` — for PRIOR_COUNTER filter
-- `prior_engulfing` — for PRIOR_ENGULFING filter
+- `cisd_close` — close of the CISD bar at fire
 
-## Runtime Filters (6, dashboard-toggleable)
+## Runtime Filters (3, dashboard-toggleable, all default OFF)
 
-**Setup Quality** (default ON)
-- `F3_SWEEP_TOO_LARGE` (Shallow Sweep) — `sweep_ext / ref_range ≤ 0.50`
-- `F4_NO_CLOSE_BACK` (Closed Back Inside) — `ret_close` inside prior range
+- `F3` (Shallow Sweep) — `sweep_ext / ref_range ≤ 0.50`. Standalone: +3.4% WR.
+- `F4` (Closed Back Inside) — `ret_close` inside prior HTF range. Standalone: noise; useful in combo.
+- `SMT` (NQ-ES Divergence) — NQ swept its HTF level but ES did not. Standalone: +7.8% WR (strongest).
 
-**Add Confirmation** (default OFF)
-- `SMT` (NQ-ES Divergence)
-- `HOUR_ALIGNED` (Hour Open Aligned)
-- `PRIOR_COUNTER` (Prior Bar Counters)
-- `PRIOR_ENGULFING` (Prior Bar Engulfs)
+`compute_filter_variants()` enumerates 2³ = 8 combinations per model × profile, sorted by EV.
 
-`compute_filter_variants()` enumerates 2⁶ = 64 combinations per model × profile, sorted by EV.
+### Filter edge (over 12y NQ, baseline ~50% WR)
 
-### Filter edge (post-alignment baseline ~50% WR)
+Best practical combo: `F3 + F4 + SMT` → 59.1% WR, +0.182R EV (N=1,711 over 12y) on 1H_5M.
 
-Standalone marginal edge:
-- **SMT**: +7-8% WR, +0.15R EV (strongest)
-- **F3 Shallow Sweep**: +3-4% WR, +0.05-0.06R EV
-- **PRIOR_ENGULFING**: +0.5-1.3% WR
-- **F4 / HOUR_ALIGNED / PRIOR_COUNTER**: noise on their own (∼±0% WR)
-
-Best combos (by EV):
-- 1H_5M: `F3 + F4 + SMT + HOUR_ALIGNED + PRIOR_COUNTER` → 60.1% WR, +0.202R EV (N=1015)
-- 30M_3M: `F3 + F4 + SMT + HOUR_ALIGNED + PRIOR_ENGULFING` → 61.6% WR, +0.232R EV (N=151)
-- Practical high-N: `F3 + F4 + SMT` → 59.1% WR, +0.182R EV (N=1711) on 1H_5M
+History: HOUR_ALIGNED, PRIOR_COUNTER, PRIOR_ENGULFING (and experimental H4_BIAS, DAILY_BIAS, PD_LIQUIDITY, P12_BIAS) were tested over the full dataset and removed in 2026-04-24 — none had standalone edge.
 
 ## MAE/MFE Recommendation Logic
 

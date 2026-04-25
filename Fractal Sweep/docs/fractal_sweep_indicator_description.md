@@ -94,7 +94,7 @@ Example: `LONG NQ1! | Enter @ next open | SL 24012.25 | 1H/5M | SMT`
 
 ## Intended Use
 
-- **Live confirmation** of backtest-validated setups — if it doesn't appear here, the backtest doesn't count it (with the narrow exception of HOUR_ALIGNED / PRIOR_ENGULFING confirmation filters which exist in the dashboard's strategy but not the visual indicator)
+- **Live confirmation** of backtest-validated setups — if it doesn't appear here, the backtest doesn't count it
 - **Journaling** — keep N past setups visible (`Max Setups`) with full annotations
 - **Chart education** — the T-Spot zone, C2/C3 labels, and projection levels make the structural logic visible
 

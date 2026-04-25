@@ -16,15 +16,9 @@ var string G_SETUP = "Setup Detection"
 min_risk      = input.float(3.0,   "Min Risk (pts)",       group=G_SETUP, tooltip="Reject setups where |entry - SL| is below this threshold.")
 max_risk      = input.float(112.5, "Max Risk (pts)",       group=G_SETUP, tooltip="Reject setups where |entry - SL| exceeds this. MNQ default: $225 ÷ $2/pt = 112.5 pts.")
 cisd_lookback = input.int(100,     "CISD Lookback Bars",   group=G_SETUP, tooltip="Max bars to scan backward from the return bar for the CISD delivery run. 100 is effectively unlimited.")
-// Setup-quality filters default OFF — the Python backtest engine does not
-// actually apply these, so leaving them off keeps Pine's scoreboard
-// comparable to the dashboard. Turn on for stricter quality / higher WR.
-req_shallow_sweep  = input.bool(false, "Shallow Sweep (F3)",         group=G_SETUP, tooltip="Require sweep extent ≤ 50% of prior candle's range. Default OFF to match backtest dashboard.")
-req_closed_back    = input.bool(false, "Closed Back Inside (F4)",    group=G_SETUP, tooltip="Require the return bar to close back inside prior range. Default OFF to match backtest dashboard.")
-// Confirmation filters — all default OFF. Opt-in narrowing.
-req_hour_aligned   = input.bool(false, "Hour Open Aligned",          group=G_SETUP, tooltip="LONG: CISD close > current hour's open. SHORT: CISD close < current hour's open.")
-req_prior_counter  = input.bool(false, "Prior Bar Counters",         group=G_SETUP, tooltip="LONG needs prior sweep-TF candle closed bearish; SHORT needs bullish.")
-req_prior_engulf   = input.bool(false, "Prior Bar Engulfs",          group=G_SETUP, tooltip="Prior sweep-TF candle's wick-inclusive range contains the one before it.")
+// Setup-quality filters default OFF. Toggle on for stricter quality.
+req_shallow_sweep  = input.bool(false, "Shallow Sweep (F3)",         group=G_SETUP, tooltip="Require sweep extent ≤ 50% of prior candle's range.")
+req_closed_back    = input.bool(false, "Closed Back Inside (F4)",    group=G_SETUP, tooltip="Require the return bar to close back inside prior range.")
 
 // ── 2. TRADE ──────────────────────────────────────────────────────────────────
 var string G_TRADE = "Trade Management"
@@ -161,11 +155,11 @@ f_log_mid(float _h, float _l, float _o, float _c) =>
     log_mid = math.max(upper_w, lower_w) > body_sz ? (upper_w > lower_w ? log_h - upper_w / 2 : log_l + lower_w / 2) : (log_h + log_l) / 2
     math.exp(log_mid)
 
-// ── ANCHOR CANDLE — batched tuple fetches (1 call per TF instead of 6) ────────
+// ── ANCHOR CANDLE — batched tuple fetches (1 call per TF instead of 3) ────────
 // Pine v5 requires literal strings in request.security timeframe arg.
-// Each tuple packs [high[1], low[1], close[1], time, high[2], low[2]] into one call.
-[ph_60, pl_60, pc_60, at_60, ph2_60, pl2_60, po_60] = request.security(syminfo.tickerid, "60", [high[1], low[1], close[1], time, high[2], low[2], open[1]], lookahead=barmerge.lookahead_on)
-[ph_30, pl_30, pc_30, at_30, ph2_30, pl2_30, po_30] = request.security(syminfo.tickerid, "30", [high[1], low[1], close[1], time, high[2], low[2], open[1]], lookahead=barmerge.lookahead_on)
+// Each tuple packs [high[1], low[1], time] into one call.
+[ph_60, pl_60, at_60] = request.security(syminfo.tickerid, "60", [high[1], low[1], time], lookahead=barmerge.lookahead_on)
+[ph_30, pl_30, at_30] = request.security(syminfo.tickerid, "30", [high[1], low[1], time], lookahead=barmerge.lookahead_on)
 
 // ── ES ANCHOR CANDLE — only fetched when SMT is enabled ──────────────────────
 // request.security must be at global scope; use syminfo.tickerid as no-op when SMT off.
@@ -174,16 +168,9 @@ _smt_src = show_smt ? smt_symbol : syminfo.tickerid
 [es_ph_30, es_pl_30] = request.security(_smt_src, "30", [high[1], low[1]], lookahead=barmerge.lookahead_on)
 [es_ltf_high, es_ltf_low] = request.security(_smt_src, timeframe.period, [high, low])
 
-// Hour's opening price (used by Hour Open Aligned filter on every bar).
-_hour_open = request.security(syminfo.tickerid, "60", open, lookahead=barmerge.lookahead_on)
-
 // ── TF SELECTORS — single ternary per value, aliased for readability ──────────
 prior_high    = timeframe.period == "5" ? ph_60  : ph_30
 prior_low     = timeframe.period == "5" ? pl_60  : pl_30
-prior_close   = timeframe.period == "5" ? pc_60  : pc_30
-prior_open    = timeframe.period == "5" ? po_60  : po_30
-prev2_high    = timeframe.period == "5" ? ph2_60 : ph2_30
-prev2_low     = timeframe.period == "5" ? pl2_60 : pl2_30
 anchor_time   = timeframe.period == "5" ? at_60  : at_30
 es_prior_high = timeframe.period == "5" ? es_ph_60 : es_ph_30
 es_prior_low  = timeframe.period == "5" ? es_pl_60 : es_pl_30
@@ -686,21 +673,9 @@ pass_f3_short = not na(sweep_pct_short) ? sweep_pct_short <= 0.50 : false
 pass_f4_long  = not na(ret_close_long)  ? ret_close_long  >= anc_lo : false
 pass_f4_short = not na(ret_close_short) ? ret_close_short <= anc_hi : false
 
-// Hour Open Aligned: CISD close vs current bar's clock-hour open
-pass_hour_aligned_long  = not na(_hour_open) and close > _hour_open
-pass_hour_aligned_short = not na(_hour_open) and close < _hour_open
-
-// Prior Bar Counters: prior sweep-TF candle closed against trade direction
-// LONG needs prior close < prior open (bearish); SHORT needs prior close > prior open (bullish)
-pass_prior_counter_long  = not na(prior_open) and not na(prior_close) and prior_close < prior_open
-pass_prior_counter_short = not na(prior_open) and not na(prior_close) and prior_close > prior_open
-
-// Prior Bar Engulfs: prior sweep-TF candle's range contains the one before it (wick-inclusive)
-pass_prior_engulf = not na(prev2_high) and not na(prev2_low) and prior_high >= prev2_high and prior_low <= prev2_low
-
 // Combined filter pass (respects user toggles — OFF toggle = pass always)
-filt_pass_long  = (not req_shallow_sweep or pass_f3_long) and (not req_closed_back or pass_f4_long) and (not req_hour_aligned or pass_hour_aligned_long) and (not req_prior_counter or pass_prior_counter_long) and (not req_prior_engulf or pass_prior_engulf)
-filt_pass_short = (not req_shallow_sweep or pass_f3_short) and (not req_closed_back or pass_f4_short) and (not req_hour_aligned or pass_hour_aligned_short) and (not req_prior_counter or pass_prior_counter_short) and (not req_prior_engulf or pass_prior_engulf)
+filt_pass_long  = (not req_shallow_sweep or pass_f3_long) and (not req_closed_back or pass_f4_long)
+filt_pass_short = (not req_shallow_sweep or pass_f3_short) and (not req_closed_back or pass_f4_short)
 
 long_base   = tf_supported and ret_long  and cisd_long_fired  and not alerted_long  and long_risk  >= min_risk and filt_pass_long
 short_base  = tf_supported and ret_short and cisd_short_fired and not alerted_short and short_risk >= min_risk and filt_pass_short

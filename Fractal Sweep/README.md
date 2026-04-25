@@ -1,6 +1,6 @@
 # Fractal Sweep
 
-This folder contains the **Fractal Sweep** backtesting engine — scans 15 years of 1-minute NQ/ES futures data for a sweep-of-prior-candle setup followed by a CISD (Change in State of Delivery) confirmation. Results drive an interactive probability dashboard with 6 runtime-toggleable filters and 64 precomputed filter combinations.
+This folder contains the **Fractal Sweep** backtesting engine — scans 15 years of 1-minute NQ/ES futures data for a sweep-of-prior-candle setup followed by a CISD (Change in State of Delivery) confirmation. Results drive an interactive probability dashboard with 3 runtime-toggleable filters (F3, F4, SMT) and 8 precomputed filter combinations.
 
 > Consolidated from the old `Fractal Sweep Legacy/` folder on 2026-04-19. See `LEGACY_NOTE.md` for the history.
 
@@ -132,38 +132,26 @@ Schedule it via `bash engine/install_cron.sh`.
 
 ## Runtime Filters
 
-The dashboard filter bar (below the dropdowns) toggles 6 filters live — no re-running. Each chip shows a live `±N` count before you click.
-
-**Setup Quality** (default ON — uncheck to relax)
+The dashboard's filter bar toggles 3 filters live — no re-running. All default OFF.
 
 | Chip | What it requires | Standalone edge |
 |---|---|---|
-| Shallow Sweep (`F3`) | Sweep pierced ≤ 50% of the prior candle's range | +3-4% WR · +0.05-0.06R EV |
-| Closed Back Inside (`F4`) | Price closed back inside the prior candle's range after sweeping | Noise |
+| Shallow Sweep (`F3`) | Sweep pierced ≤ 50% of the prior candle's range | +3.4% WR · +0.061R EV |
+| Closed Back Inside (`F4`) | Price closed back inside the prior candle's range after sweeping | Noise standalone; useful in combo |
+| **NQ-ES Divergence** (`SMT`) | NQ swept its prior level but ES did not | **+7.8% WR · +0.150R EV** (strongest single filter) |
 
-**Add Confirmation** (default OFF — check to narrow)
+All 2³ = 8 combinations are pre-computed and sortable by EV in the Filters tab.
 
-| Chip | What it requires | Standalone edge |
-|---|---|---|
-| **NQ-ES Divergence** (`SMT`) | NQ swept its prior level but ES did not | **+7-8% WR · +0.15R EV** (strongest single filter) |
-| Hour Open Aligned (`HOUR_ALIGNED`) | CISD candle closed on the correct side of the current hour's open | Noise |
-| Prior Bar Counters (`PRIOR_COUNTER`) | Prior sweep-TF candle closed against the trade direction | Noise |
-| Prior Bar Engulfs (`PRIOR_ENGULFING`) | Prior sweep-TF candle engulfs the one before it (wick-inclusive) | +0.5-1.3% WR |
+### Baseline & best combo
 
-All 2⁶ = 64 combinations are pre-computed and sortable by EV in the Filters tab.
+Baseline WR (no filters) is ~50% — the model has no standalone edge without filters.
 
-### Baseline & best combos (post-alignment)
-
-After engine ↔ indicator alignment (2026-04-24), baseline WR is ~50% on both models — the model has no standalone edge without filters. The previously-reported ~70% baseline WR was an artifact of a pandas resolution bug ([ns] vs [us]) that silently inflated anchor windows from 1h to 41 days.
-
-| Combo | Model | WR | EV | N |
+| Model | Combo | WR | EV | N (12y) |
 |---|---|---|---|---|
-| Best by EV | 1H_5M: F3+F4+SMT+HOUR_ALIGNED+PRIOR_COUNTER | 60.1% | +0.202R | 1,015 |
-| Best by EV | 30M_3M: F3+F4+SMT+HOUR_ALIGNED+PRIOR_ENGULFING | 61.6% | +0.232R | 151 |
-| Practical high-N | 1H_5M: F3+F4+SMT | 59.1% | +0.182R | 1,711 |
-| Practical high-N | 30M_3M: F3+F4+SMT | 58.6% | +0.172R | 3,234 |
+| 1H_5M | F3 + F4 + SMT | 59.1% | +0.182R | 1,711 (~143/yr) |
+| 30M_3M | F3 + F4 + SMT | 58.6% | +0.172R | 3,234 (~270/yr) |
 
-SMT is the dominant edge — every meaningful combo includes it.
+SMT is the dominant edge — every meaningful combo includes it. HOUR_ALIGNED, PRIOR_COUNTER, PRIOR_ENGULFING and several experimental filters were tested over 12y and removed in 2026-04-24 — none had standalone edge.
 
 ---
 

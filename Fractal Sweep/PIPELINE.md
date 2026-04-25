@@ -98,40 +98,30 @@ Backward scan from the return bar finds the consecutive opposing delivery run. C
 
 ---
 
-## Runtime Filters (6, dashboard-toggleable)
+## Runtime Filters (3, dashboard-toggleable, all default OFF)
 
-Two groups render in a dedicated filter bar below the Period/TF/Profile dropdowns. Each chip shows a live `±N` badge indicating how many trades would be added or removed.
-
-**Setup Quality** (default ON — uncheck to relax)
+The dashboard's filter bar renders three chips. Each chip shows a live `±N` badge indicating how many trades would be added or removed if toggled.
 
 | Chip | Code | What it requires | Standalone edge |
 |---|---|---|---|
-| Shallow Sweep | `F3_SWEEP_TOO_LARGE` | `sweep_ext / ref_range ≤ 0.50` | +3-4% WR · +0.05-0.06R EV |
-| Closed Back Inside | `F4_NO_CLOSE_BACK` | `ret_close` is inside the prior candle's range | Noise |
+| Shallow Sweep | `F3` | `sweep_ext / ref_range ≤ 0.50` | +3.4% WR · +0.061R EV |
+| Closed Back Inside | `F4` | `ret_close` is inside the prior candle's range | Noise (helpful in combo) |
+| **NQ-ES Divergence** | `SMT` | NQ swept but ES did not sweep its corresponding level | **+7.8% WR · +0.150R EV** (strongest single filter) |
 
-**Add Confirmation** (default OFF — check to narrow)
-
-| Chip | Column | Condition | Standalone edge |
-|---|---|---|---|
-| **NQ-ES Divergence** | `smt` | NQ swept but ES did not sweep its corresponding level | **+7-8% WR · +0.15R EV** (strongest single filter) |
-| Hour Open Aligned | `cisd_aligned` | LONG: CISD close > hour open · SHORT: CISD close < hour open | Noise |
-| Prior Bar Counters | `prior_counter_close` | LONG: prior sweep-TF bar closed bearish · SHORT: bullish | Noise |
-| Prior Bar Engulfs | `prior_engulfing` | Prior sweep-TF bar's range contains the previous bar's range | +0.5-1.3% WR |
-
-**Combinatorics.** `compute_filter_variants()` enumerates 2⁶ = 64 combinations per model × profile, sorted by EV.
+**Combinatorics.** `compute_filter_variants()` enumerates 2³ = 8 combinations per model × profile, sorted by EV.
 
 **SMT backtest.** Loads `es_1m` alongside `nq_1m`, builds ES sweep-TF candles, checks the ES window at NQ sweep detection time. Pine indicator implements the same logic via `request.security` on the ES symbol.
 
-**Toggle scope.** Filters work on every Period selection (All Time + 2y/1y/6m/3m/1m). `_compute_by_tf` builds `recent_trades` for each sub-slice from `wl_full` (which includes F3/F4-rejected trades), so toggling a rejection filter off restores the rejected trades that fell inside that period.
+**Toggle scope.** Filters work on every Period selection (All Time + 2y/1y/6m/3m/1m). `_compute_by_tf` builds `recent_trades` for each sub-slice from `wl_full`, so toggling restores rejected trades within that period.
 
-### Best combos (post-alignment baseline ~50% WR)
+### Best practical combo (over 12y NQ, baseline ~50% WR)
 
 | Combo | Model | WR | EV | N |
 |---|---|---|---|---|
-| Best EV | 1H_5M: F3+F4+SMT+HOUR_ALIGNED+PRIOR_COUNTER | 60.1% | +0.202R | 1,015 |
-| Best EV | 30M_3M: F3+F4+SMT+HOUR_ALIGNED+PRIOR_ENGULFING | 61.6% | +0.232R | 151 |
-| High-N practical | 1H_5M: F3+F4+SMT | 59.1% | +0.182R | 1,711 |
-| High-N practical | 30M_3M: F3+F4+SMT | 58.6% | +0.172R | 3,234 |
+| F3 + F4 + SMT | 1H_5M | 59.1% | +0.182R | 1,711 (~143/yr) |
+| F3 + F4 + SMT | 30M_3M | 58.6% | +0.172R | 3,234 (~270/yr) |
+
+**Removed (2026-04-24):** HOUR_ALIGNED, PRIOR_COUNTER, PRIOR_ENGULFING and experimental H4_BIAS / DAILY_BIAS / PD_LIQUIDITY / P12_BIAS were all tested over 12y and removed — none had standalone edge.
 
 ---
 

@@ -10,7 +10,7 @@ A personal trading research hub for NQ and ES futures. Multiple statistical back
 
 | Folder | What it does |
 |---|---|
-| `Fractal Sweep/` | **Sweep + CISD model** — sweep-of-prior-high/low setup with CISD confirmation, 6 runtime-toggleable filters, risk profiles, equity tracking. Engine and Pine indicator are aligned (same setup logic). |
+| `Fractal Sweep/` | **Sweep + CISD model** — sweep-of-prior-high/low setup with CISD confirmation, 3 runtime-toggleable filters (F3, F4, SMT), risk profiles, equity tracking. Engine and Pine indicator are aligned (same setup logic). |
 | `TTrades Fractal Model Analysis/` | **TTrades Fractal Model** — T-Spot zone entry backtest based on sweep + zone-touch mechanic |
 
 The root `index.html` is a **hub page** that links to the Fractal Sweep dashboard.
@@ -143,7 +143,7 @@ Re-run any backtest with newer data — see the README inside each project folde
 Statistic.ally/
 ├── index.html                                ← Hub page (open this in browser)
 ├── Fractal Sweep/                            [Sweep + CISD]
-│   ├── model_dashboard.html                  ← Dashboard with 6 runtime filter chips
+│   ├── model_dashboard.html                  ← Dashboard with 3 runtime filter chips (F3, F4, SMT)
 │   ├── model_stats.json                      ← Engine output (gitignored, ~140 MB)
 │   ├── candle_science.duckdb                 ← Shared DB (gitignored, ~550 MB)
 │   ├── engine/                               ← Python backtest code
