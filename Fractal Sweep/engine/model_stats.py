@@ -1157,6 +1157,30 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
 
             sweep_ext = abs(sweep_extreme - ref_level)
 
+            # PDH / PDL liquidity tag: did this sweep also pierce the prior
+            # trading day's high (for SHORT) or low (for LONG)? Sweeps that
+            # take out PD-extreme liquidity target a more significant stop
+            # pool than random hourly sweeps. `_pd_tol` allows for a tick or
+            # two of slop in resampling alignment.
+            swept_pdh = None
+            swept_pdl = None
+            swept_pd_liq = None
+            if day_arrs is not None:
+                _d_idx_now = int(np.searchsorted(day_arrs['ts_ns'], curr_ts_ns, side='right')) - 1
+                # Use prior closed day (curr day might be in progress)
+                _pd_idx = _d_idx_now - 1 if _d_idx_now >= 1 else -1
+                if _pd_idx >= 0:
+                    _pdh = float(day_arrs['high'][_pd_idx])
+                    _pdl = float(day_arrs['low'][_pd_idx])
+                    _pd_tol = 0.25  # NQ tick = 0.25
+                    if direction == 'SHORT':
+                        swept_pdh = bool(sweep_extreme >= _pdh - _pd_tol)
+                        swept_pdl = False
+                    else:
+                        swept_pdl = bool(sweep_extreme <= _pdl + _pd_tol)
+                        swept_pdh = False
+                    swept_pd_liq = bool(swept_pdh or swept_pdl)
+
             # SMT divergence: did ES also sweep its corresponding level?
             # Check ES 1m bars in the same Q1 window as NQ.
             # Divergence = ES did NOT sweep → stronger signal for NQ trade direction
@@ -1354,6 +1378,9 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                 daily_bias_long    = daily_bias_long,
                 h4_bias_aligned    = h4_bias_aligned,
                 daily_bias_aligned = daily_bias_aligned,
+                swept_pdh          = swept_pdh,
+                swept_pdl          = swept_pdl,
+                swept_pd_liq       = swept_pd_liq,
                 rejected_by  = rejected_by,
                 # profile-dependent fields — filled by apply_profile_and_resolve
                 stop_price   = None,
@@ -1755,7 +1782,8 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
                    'mae_pct','mfe_pct','mae_pct_hr','mfe_pct_hr','hour_range_pts','smt',
                    'cisd_close','cisd_hour_open','cisd_aligned',
                    'prior_engulfing','prior_counter_close','passes_f3','passes_f4',
-                   'h4_bias_long','daily_bias_long','h4_bias_aligned','daily_bias_aligned']
+                   'h4_bias_long','daily_bias_long','h4_bias_aligned','daily_bias_aligned',
+                   'swept_pdh','swept_pdl','swept_pd_liq']
     # Only include columns that actually exist in wl_full (defensive against
     # older base_row schemas missing some fields).
     _avail = [c for c in recent_cols if c in wl_full.columns]
@@ -2191,7 +2219,8 @@ def _build_slice_stats(wl_sub, stop_mult, target_mult, agg_fn, hr_labels,
                    'mae_pct','mfe_pct','mae_pct_hr','mfe_pct_hr','hour_range_pts','smt',
                    'cisd_close','cisd_hour_open','cisd_aligned',
                    'prior_engulfing','prior_counter_close','passes_f3','passes_f4',
-                   'h4_bias_long','daily_bias_long','h4_bias_aligned','daily_bias_aligned']
+                   'h4_bias_long','daily_bias_long','h4_bias_aligned','daily_bias_aligned',
+                   'swept_pdh','swept_pdl','swept_pd_liq']
     rt_source = wl_sub_full if wl_sub_full is not None else wl_sub
     available = [c for c in recent_cols if c in rt_source.columns]
     rt = rt_source[available].sort_values('date', ascending=False).copy()
@@ -2330,7 +2359,7 @@ def compute_filter_variants(df_all):
       - best_combo: the filter combination that maximizes EV
     """
     FILTERS = ['F3', 'F4', 'SMT', 'HOUR_ALIGNED', 'PRIOR_COUNTER', 'PRIOR_ENGULFING',
-               'H4_BIAS', 'DAILY_BIAS']
+               'H4_BIAS', 'DAILY_BIAS', 'PD_LIQUIDITY']
     FILTER_LABELS = {
         'F3':                'Shallow Sweep (F3)',
         'F4':                'Closed Back Inside (F4)',
@@ -2340,9 +2369,10 @@ def compute_filter_variants(df_all):
         'PRIOR_ENGULFING':   'Prior Bar Engulfs',
         'H4_BIAS':           '4H Bias Aligned',
         'DAILY_BIAS':        'Daily Bias Aligned',
+        'PD_LIQUIDITY':      'Prior-Day Liquidity Sweep',
     }
     POSITIVE_FILTERS = {'F3', 'F4', 'SMT', 'HOUR_ALIGNED', 'PRIOR_COUNTER', 'PRIOR_ENGULFING',
-                        'H4_BIAS', 'DAILY_BIAS'}
+                        'H4_BIAS', 'DAILY_BIAS', 'PD_LIQUIDITY'}
 
     def stats_of(df):
         wl = df[df['outcome'].isin(['WIN', 'LOSS'])].copy()
@@ -2395,6 +2425,7 @@ def compute_filter_variants(df_all):
     has_prior_engulfing = 'prior_engulfing' in all_valid.columns
     has_h4_bias    = 'h4_bias_aligned' in all_valid.columns
     has_daily_bias = 'daily_bias_aligned' in all_valid.columns
+    has_pd_liq     = 'swept_pd_liq' in all_valid.columns
 
     # Helper: apply a set of filters to all_valid
     def apply_filters(active_set):
@@ -2425,6 +2456,9 @@ def compute_filter_variants(df_all):
             elif f == 'DAILY_BIAS':
                 if has_daily_bias:
                     mask &= all_valid['daily_bias_aligned'] == True
+            elif f == 'PD_LIQUIDITY':
+                if has_pd_liq:
+                    mask &= all_valid['swept_pd_liq'] == True
         return all_valid[mask]
 
     # Baseline = unfiltered. F3/F4 are now also enumerable filters
