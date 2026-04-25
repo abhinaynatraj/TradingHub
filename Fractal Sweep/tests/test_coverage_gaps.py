@@ -216,10 +216,11 @@ class TestFilterVariantsSmt:
 
         result = ms.compute_filter_variants(df)
         assert 'all_combinations' in result
-        # 9 runtime filter dimensions: F3, F4, SMT, HOUR_ALIGNED,
+        # 10 runtime filter dimensions: F3, F4, SMT, HOUR_ALIGNED,
         # PRIOR_COUNTER, PRIOR_ENGULFING, H4_BIAS, DAILY_BIAS,
-        # PD_LIQUIDITY. Loop includes the empty set, so 2**9 = 512.
-        assert len(result['all_combinations']) == 2**9
+        # PD_LIQUIDITY, P12_BIAS. Loop includes the empty set, so
+        # 2**10 = 1024.
+        assert len(result['all_combinations']) == 2**10
         # SMT combos should exist
         smt_combos = [c for c in result['all_combinations']
                       if 'NQ-ES' in (c.get('label') or '') or 'SMT' in (c.get('label') or '')]
