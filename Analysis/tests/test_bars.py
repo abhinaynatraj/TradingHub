@@ -109,3 +109,44 @@ def test_first_row_has_null_prev_hour():
     hourly = bars.build_hourly(bars._enrich_minutes(h1))
     hourly = bars.attach_prev_hour(hourly)
     assert pd.isna(hourly['prev_hour_high'].iloc[0])
+
+
+def test_quarter_bars_tile_hour_exactly():
+    """Q1.open = hour.open, Q4.close = hour.close, max(Q.high) = hour.high,
+    min(Q.low) = hour.low."""
+    minutes = helpers.make_hour('2024-01-02 10:00', ohlc=(100, 110, 90, 105),
+                                high_at_minute=20, low_at_minute=40)
+    enriched = bars._enrich_minutes(minutes)
+    hourly = bars.build_hourly(enriched)
+    quarters = bars.build_quarters(enriched, hourly)
+    assert len(quarters) == 4
+    qs = quarters.sort_values('quarter').reset_index(drop=True)
+    assert qs['quarter'].tolist() == [1, 2, 3, 4]
+    assert qs['open'].iloc[0] == 100
+    assert qs['close'].iloc[3] == 105
+    assert qs['high'].max() == 110
+    assert qs['low'].min() == 90
+
+
+def test_quarter_high_low_minute_offsets_correct():
+    """Quarter 2 contains minutes 15-29; high at minute 20 → q_high_minute = 20."""
+    minutes = helpers.make_hour('2024-01-02 10:00', ohlc=(100, 110, 90, 105),
+                                high_at_minute=20, low_at_minute=40)
+    enriched = bars._enrich_minutes(minutes)
+    hourly = bars.build_hourly(enriched)
+    quarters = bars.build_quarters(enriched, hourly)
+    q2 = quarters[quarters['quarter'] == 2].iloc[0]
+    q3 = quarters[quarters['quarter'] == 3].iloc[0]
+    assert q2['q_high_minute'] == 20
+    assert q3['q_low_minute'] == 40
+
+
+def test_quarters_only_built_for_valid_hours():
+    """Hour with only 59 minutes is excluded → no quarter rows for it."""
+    h_full = helpers.make_hour('2024-01-02 10:00')
+    h_short = helpers.make_hour('2024-01-02 11:00').iloc[:59]
+    minutes = helpers.concat_hours(h_full, h_short)
+    enriched = bars._enrich_minutes(minutes)
+    hourly = bars.build_hourly(enriched)
+    quarters = bars.build_quarters(enriched, hourly)
+    assert quarters['hour_start_et'].nunique() == 1

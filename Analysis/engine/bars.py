@@ -115,3 +115,42 @@ def attach_prev_hour(hourly: pd.DataFrame) -> pd.DataFrame:
         df[f'prev_hour_{col}'] = df[col].shift(1)
     df['prev_hour_mid'] = (df['prev_hour_high'] + df['prev_hour_low']) / 2
     return df
+
+
+def build_quarters(minutes: pd.DataFrame, hourly: pd.DataFrame) -> pd.DataFrame:
+    """Build 4 quarter rows per valid hour (Q1=:00-14, Q2=:15-29, Q3=:30-44, Q4=:45-59).
+
+    Only generates quarters for hours that exist in `hourly` (already filtered for
+    completeness and the 17:00 gap).
+
+    Output columns: hour_start_et, quarter, open, high, low, close, volume,
+    q_high_minute, q_low_minute (minute-of-hour, 0-59).
+    """
+    valid_hours = set(hourly['hour_start_et'])
+    df = minutes.copy()
+    df['hour_start_et'] = df['ny_ts'].dt.floor('h')
+    df = df[df['hour_start_et'].isin(valid_hours)].copy()
+    df['minute_of_hour'] = df['ny_ts'].dt.minute
+    df['quarter'] = df['minute_of_hour'] // 15 + 1  # 1..4
+
+    # idxmax/idxmin within each (hour, quarter) for the extreme minute
+    grouped = df.groupby(['hour_start_et', 'quarter'])
+    agg = grouped.agg(
+        open=('open', 'first'),
+        high=('high', 'max'),
+        low=('low', 'min'),
+        close=('close', 'last'),
+        volume=('volume', 'sum'),
+    ).reset_index()
+
+    # Extreme-minute attribution: get the minute_of_hour of the max-high and min-low row
+    high_idx = grouped['high'].idxmax()
+    low_idx = grouped['low'].idxmin()
+    high_min = df.loc[high_idx.values, ['hour_start_et', 'quarter', 'minute_of_hour']].rename(
+        columns={'minute_of_hour': 'q_high_minute'}).reset_index(drop=True)
+    low_min = df.loc[low_idx.values, ['hour_start_et', 'quarter', 'minute_of_hour']].rename(
+        columns={'minute_of_hour': 'q_low_minute'}).reset_index(drop=True)
+
+    out = agg.merge(high_min, on=['hour_start_et', 'quarter']).merge(
+        low_min, on=['hour_start_et', 'quarter'])
+    return out.sort_values(['hour_start_et', 'quarter']).reset_index(drop=True)
