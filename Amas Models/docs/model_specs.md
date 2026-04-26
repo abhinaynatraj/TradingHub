@@ -6,7 +6,7 @@ This document is the contract between the Amas mentorship materials and every li
 - Source-by-source summary: [`source_index.md`](source_index.md)
 - Engine design and correctness invariants: [`../../docs/superpowers/specs/2026-04-26-amas-models-design.md`](../../docs/superpowers/specs/2026-04-26-amas-models-design.md)
 
-**Reading status:** Mentorships 1, 2, 3, 4 read (PDFs + summaries). Transcripts (8) and Mentorships 6, 7, 8 still pending.
+**Reading status:** All 24 source files read. 8 PDF pairs (Mentorships 1–4, 6, 7, 8) + 8 transcripts. Transcripts 1, 2, 3, 4, 6, 7, 8 duplicate their corresponding Mentorship long PDFs (verified by spot-check). Transcript 5 is unique — a back-testing walkthrough call with no PDF equivalent. Note: there is no "Mentorship 5" PDF; the numbering jumps from 4 to 6.
 
 ---
 
@@ -85,6 +85,8 @@ Each becomes a `passes_<key>: bool` flag on every trade row.
 - **`passes_aggressive_body` (key: `AGG_BODY`)** — the H1 body (`abs(close - open)`) is at least N% of the candle range (`high - low`). _Initial threshold: body ≥ 60% of range._
 - **`passes_distribution_candle` (key: `DIST`)** — the H1 candle is a *distribution* candle (extreme formed late, ≥:42), not a *pullback* candle (extreme formed early, <:42). Implementation: scan the H1's 1m bars; find the timestamp of the candle's relevant extreme (low for bearish, high for bullish); flag passes if `extreme_minute >= 42`. This is *the same signal* as `passes_target_after_42` for the *self*-candle (the just-closed H1). For the prior H1 (the candle whose draw is being targeted), the analogous flag is `passes_target_after_42` already defined above. **Two separate flags with different semantics:** `T42` is about the prior H1 (the draw); `DIST` is about the just-closed H1 (the source). Both must pass for full A+. (M3 transcript 03:06–05:06, 09:36, 10:36, 14:51)
 - **`passes_smt` (key: `SMT`)** — at the moment of detection, NQ swept its draw level but ES did NOT (for shorts looking for re-test; symmetric for longs). Same primitive used by Fractal Sweep.
+- **`passes_within_5m_structure` (key: `5M_OK`)** — entry distance to the draw is below an "in M5 structure" threshold. Per Transcript 5 (~02:23, ~47:30): when the distance from entry to draw exceeds ~40 NQ points, the mentor calls it "5-minute structure" and explicitly avoids it because stop-loss placement becomes unreliable. _Initial threshold: `abs(entry_price - draw_price) ≤ 40.0`._
+- **`passes_target_after_50` (key: `T50`)** — STRICTER variant of `T42` for Model 3 only. The targeted high/low must have been formed at `≥ :50` of its source candle (last 10 minutes). Mentor (M6 transcript 35:38): "If you want to play the model 3 for the reversal, it needs to be clear. You need the high or low to be put in at 50 and after." Models 1 and 2 still use `T42`; only Model 3 escalates to `T50`.
 
 The first three (`MACRO`, `MACRO_TOP3`, `NO_LUNCH`) are time-of-day based. The next four are H1-feature based. `SMT` requires both instruments loaded.
 
@@ -222,6 +224,8 @@ All cross-cutting filters apply (computed as `passes_<key>` flags on each trade 
 - `passes_no_opposite_struct_h1`
 - `passes_no_htf_rejection`
 - `passes_aggressive_body`
+- `passes_distribution_candle`
+- `passes_within_5m_structure`
 - `passes_smt`
 
 Plus a model-specific flag:
@@ -290,8 +294,229 @@ _(filled in during Phase 4)_
 
 ---
 
-## Phase 3 candidate
-_(to be filled in Task 1.4 after all materials are read; current best guess: H1 Continuation, since Reversal has one more ambiguity (the rare two-sided sweep) and the mentor explicitly says to "master Continuation first.")_
+## Model: H1 Reversal — Model 3 (DCA-aggressive, range-bound markets)
+
+### Source citations
+- Mentorship 6.pdf [summary] p.1–2 (introduces Model 3)
+- Mentorship 6 (1).pdf [transcript] 28:50–32:27 (Model 3 thesis), 41:54–48:53 (DCA mechanics), 50:54 ("first con sweep low, second con DCA"), 35:38 (`:50+` requirement)
+- Mentorship 7.pdf [summary] (Models 3 & 4 in trending markets)
+- Mentorship 8 (1).pdf [transcript] 1:01:46 ("Model 3 and 4 are literally the same in this case")
+
+### Plain-English description
+Same H1 Reversal pattern as Model 2 (sweep prior H1's low/high, close back inside range), but the *entry mechanics* are different. Used in trending market conditions where Models 1/2 don't pick up because price never pulls back. Light initial position inside the OB+FVG zone immediately after the close, then DCA on the first internal pullback ("turtle soup") to reach full size.
+
+### Anchor / setup timeframe
+H1 (NY tz). Setup fires at H1 close at T, same as Models 1 and 2.
+
+### Detection rules (all must be true)
+1. The just-closed H1 is a *Reversal* pattern (per Model 2's Detection rule 1):
+   - Bearish reversal: `H1[T].high > H1[T-1h].high` AND `H1[T].close ≤ H1[T-1h].high`
+   - Bullish reversal: `H1[T].low < H1[T-1h].low` AND `H1[T].close ≥ H1[T-1h].low`
+2. **STRICTER timing:** the prior H1's targeted extreme (the draw) must have been formed at minute `≥ :50` of its source candle. (`passes_target_after_50` flag.) Less-strict `:42+` setups go to Models 1/2.
+3. The new H1 (the one forming after T) shows an Order Block AND a Fair Value Gap aligned in the trade direction within `[T:00, T+0:10]`. Mentor: "you enter inside an order block slash fair value gap. The best thing is when you have both." (M6 transcript 29:28)
+4. Trade direction: opposite the wick direction (bearish reversal → short; bullish reversal → long).
+5. Risk gate (initial entry): `risk_pts ≤ MAX_RISK_PTS`.
+
+### Entry trigger and DCA mechanics
+This model has **two positions**:
+- **First (initial) position:** ~50% of normal size, entered market or limit at the first OB+FVG zone inside the post-close macro `[T:00, T+0:10]`. Mentor: "five micros. Boom. I'm in five micros. That's good." (M6 transcript 43:43)
+- **Second (DCA) position:** ~50% of normal size, limit order at the first internal pullback (the "turtle soup" / sweep of the first internal low for longs, first internal high for shorts) within the same H1 window. If the pullback never comes, the trade rides on the first position only.
+
+Mental stop loss on first position: looser than usual ("wider stop loss because if it goes deeper to soup, the second entry will catch the better price"). Hard stop = below the prior H1's low (for longs) / above the prior H1's high (for shorts) — the *invalidation* level for the whole reversal pattern.
+
+### Stop loss
+- **First position only (no DCA fill):** structural — below the M1 trigger pattern's swing low (long) / above its swing high (short). Same as Model 2.
+- **Combined position (DCA filled):** the prior H1's invalidation extreme (the level whose breach invalidates the reversal pattern entirely). For longs: prior H1's low. For shorts: prior H1's high.
+- Effective combined-position risk = average entry minus invalidation level. Mentor describes this as "around 1:1 RR" once both positions fill (M6 transcript 44:29).
+
+### Take profit / exit
+- **First position:** **0.6R** (mentor: "the first initial position would be around 0.6 RR" — M6 transcript 44:29).
+- **Second position:** **1.0–2.0R** (mentor: "the second one would be around 1 to 2").
+- The model's combined R is roughly **1R** per unit risked when both fill, or **0.6R** when only the first fills.
+
+### Direction logic
+Same as H1 Reversal (Model 2):
+- Bearish reversal (high swept, close back inside) → short
+- Bullish reversal (low swept, close back inside) → long
+
+### Invalidation / discard
+- If neither OB nor FVG forms in the post-close macro, no first position is taken; setup is discarded.
+- If the prior H1's invalidation extreme is breached before either TP, full position is stopped out at 1R combined loss (the invalidation level is the combined stop).
+- Standard `EXPIRED` resolution at `OUTCOME_MAX_BARS`.
+
+### Confluences / filters
+All cross-cutting filters apply, plus:
+- `passes_target_after_50` (REPLACES `passes_target_after_42`; Model 3 requires the stricter `:50+` rule)
+- `passes_within_5m_structure` (entry distance ≤ 40 pts to draw)
+- `passes_pattern_ob_and_fvg_aligned` — Model 3 only fires when *both* an OB AND an FVG form in the trade direction (vs. Model 2 which accepts any of OB/Breaker/Inversion-FVG)
+
+### Open questions / ambiguities
+1. **DCA outcome resolution.** The shared outcome resolver in `engine/outcomes.py` handles single-position trades. Model 3 has TWO positions with different TP levels. Engine v1 will treat the trade row as a single combined position with the average entry and the combined stop, computing R against that. The 0.6R first-position TP becomes a tag on the trade row (`first_pos_resolved: bool`) for analysis, not a separate trade. Each Model 3 setup → ONE trade row.
+2. **Internal pullback definition.** Mentor says "first internal low" but doesn't pin the threshold. Initial: the first M1 bar after entry whose low is below the entry by at least N points (N = trigger pattern's height × 0.5). To be parameter-swept.
+3. **OB+FVG alignment definition.** "Aligned" likely means the OB's zone overlaps the FVG's zone in price space. Initial: OB body intersects FVG body.
+
+### Backtest results
+_(filled in during Phase 4)_
+
+---
+
+## Model: H1 Reversal — Model 4 (below-sweep continuation, trending markets)
+
+### Source citations
+- Mentorship 6.pdf [summary] p.1
+- Mentorship 7.pdf [summary] ("wait for a sweep of the most recent low and enter below that low to capture a rapid rally")
+- Mentorship 7 (1).pdf [transcript] (description of Model 4 mechanics)
+
+### Plain-English description
+Same H1 Reversal pattern as Models 2/3, but enter *below* the most recent internal low (for longs) or *above* the most recent internal high (for shorts). The thesis: in strongly trending markets, price will not pause to form an OB or FVG inside the macro — it will rip from a sweep directly through the draw in a single big M1 candle. Model 4 catches that one-candle rally by positioning *at* the sweep extreme rather than waiting for confirmation.
+
+### Anchor / setup timeframe
+H1 (NY tz). Setup fires at H1 close at T.
+
+### Detection rules (all must be true)
+1. Same Reversal pattern detection as Model 3 (rule 1).
+2. Same `passes_target_after_50` requirement as Model 3.
+3. The **most recent internal extreme** in the new H1's `[T:00, T+0:10]` window has been swept and price is back inside that extreme (for longs: most recent M1 low has been violated then closed back above it).
+4. No OB or FVG required (this is the differentiator from Model 3 — pure stop-hunt entry).
+5. Risk gate: `risk_pts ≤ MAX_RISK_PTS`.
+
+### Entry trigger
+Limit order at the swept extreme — the price level at the moment the M1 swept it. Mentor (M7 summary): "enter below that low to capture a rapid rally by one large candle."
+
+### Stop loss
+Wider than Models 1/2/3 by design: ~`1.0–1.5×` the trigger height below (for longs) the swept extreme. Mentor describes Model 4 as a "stop hunt" entry — the swept extreme is the invalidation; the stop is past it by a buffer.
+
+### Take profit / exit
+**1R**, but the mentor notes Model 4 trades "tend to fly" toward the draw in a single candle, so a trailing-stop overlay (move stop to break-even after `0.5R` reached) is mentioned but not formalized. Engine v1 ships standard `simple_1r`.
+
+### Direction logic
+Same as Reversal: bearish reversal → short, bullish reversal → long.
+
+### Invalidation / discard
+- If no recent internal extreme exists to sweep within `[T:00, T+0:10]`, setup is discarded.
+- Same `EXPIRED` resolution.
+
+### Confluences / filters
+Same as Model 3, except:
+- Mentor specifically mentions Model 4 fires in **trending markets** (sustained directional moves with shallow pullbacks). A `regime_trending: bool` flag could be added by measuring the prior N H1 candles' close-direction streak. Initial: trailing 3 of last 5 H1 candles closed in the same direction. Marked TBD #3.
+
+### Open questions / ambiguities
+1. **"Most recent" internal extreme.** Mentor uses gestural language; engine needs a precise rule. Initial: the lowest low (for longs) of the M1 bars in `[T:00, swept_ts]` where `swept_ts` is the M1 timestamp at which price swept that low.
+2. **Stop buffer.** Mentor says "wider" without specifying. Initial: stop = swept extreme ± 0.25 × prior H1's range.
+3. **Regime-trending detection.** Marked above.
+
+### Backtest results
+_(filled in during Phase 4)_
+
+---
+
+## M15 timeframe variants
+
+Per Mentorship 7 (PDF + transcript) and Mentorship 8 (transcript 1:12:08): "**15 minute models. There is no model one and two. It's only model three and four.**" The M15 timeframe supports Models 3 and 4 *only*; Models 1 and 2 do not transfer to M15.
+
+### M15 anchor unit
+A 15-minute candle, NY tz. Anchors floor to `:00`, `:15`, `:30`, `:45` of each hour.
+
+### M15 timing rule (analogue of `:42+`)
+Per Mentorship 7 summary: M15 highs/lows formed in the **last 6 minutes** of the M15 candle are "unprotected" (the M15 analogue of the H1 `:42+` rule). For each M15 anchor, the equivalent thresholds are:
+- M15 candle covering `:00–:15` → high/low must be formed at `≥ :09`
+- M15 candle covering `:15–:30` → `≥ :24`
+- M15 candle covering `:30–:45` → `≥ :39`
+- M15 candle covering `:45–:00` → **DO NOT TRADE** (mentor: "avoid the last M15 because the hourly close holds more power")
+
+This is `passes_target_after_m15_last_6` flag.
+
+### M15 hourly-trend dominance
+Per M7 summary: "never trade an M15 reversal that opposes the hourly close direction because the hourly candle will likely invalidate the M15 setup." This becomes `passes_h1_aligned: bool` — the H1 candle currently containing the M15 anchor must close in the SAME direction as the M15 trade direction.
+
+### Model 3 — M15 variant
+Same detection logic as H1 Model 3, with:
+- Anchor = M15 candle (instead of H1)
+- Draw = the prior M15's opposite extreme (instead of prior H1's)
+- Timing rule = `:09`/`:24`/`:39` (instead of `:50`)
+- M15 anchor at `:45` is dropped entirely
+- New filter: `passes_h1_aligned`
+
+### Model 4 — M15 variant
+Same as Model 4 with the M15 substitutions above.
+
+### Engine treatment
+Each model is a separate registration in the engine `MODELS` registry:
+- `h1_continuation` (Model 1+2 entry merged for v1)
+- `h1_reversal` (Model 1+2 entry merged for v1)
+- `h1_reversal_m3` (Model 3 H1)
+- `h1_reversal_m4` (Model 4 H1)
+- `m15_reversal_m3` (Model 3 M15)
+- `m15_reversal_m4` (Model 4 M15)
+
+For v1, only `h1_continuation` is implemented (Phase 3 candidate). The other 5 are Phase 4+ work. The cross-cutting concepts and filters are shared so they generalize cleanly.
+
+---
+
+## Empirical timing observations (Transcript 5)
+
+In the back-testing walkthrough call (Transcript 5), the mentor repeatedly observed that highs and lows in the NQ data are concentrated at specific minute marks within H1 candles:
+
+- **`:46`** — most common low/high formation minute; mentor remarks on it across multiple trade examples ("46 again. Oh my god, that's a month. What's happening that the lows are always firmed at 46?")
+- **`:51`** — second most common
+- **`:57`** — frequently appears, especially for opposite-direction extremes
+- **`:42`** — the threshold itself; the rule is `≥ :42`, but `:42` exactly is rarer than `:46`/`:51`/`:57`
+
+These minute marks are *empirical*, not rules. They support the mentor's claim that the `:42+` rule was derived from "5,000 backtested trades" (M3 14:51).
+
+**Engine treatment:** the engine should *measure* these distributions for each model rather than gate on them. A `extreme_minute: int` field on each trade row enables the dashboard to surface these distributions empirically. If the engine confirms `:46`/`:51`/`:57` clustering on the live 12y dataset, that's strong corroboration of the mentor's framework. If it doesn't, that's a real finding (either the framework is data-dependent or the Toronto/NY tz handling has a systemic offset — bug check).
+
+This is an analysis output, not a filter.
+
+---
+
+## Two-contract DCA technique (Transcript 5)
+
+A **risk management tactic** applicable to ALL models, not a model itself. Per Transcript 5 (~3:01, ~5:25, ~6:25):
+
+- Enter the trade in **two halves**: 1 contract at market (immediate fill), 1 contract via limit order at a structural pullback below entry.
+- If the limit fills, average entry is better and combined RR is closer to 1:1.
+- If the limit doesn't fill, the trade rides on 1 contract only (smaller win).
+- This converts setups with marginal RR (~0.6) into effective ~0.95–1.0 RR setups, at the cost of accepting larger drawdown if the trade fails.
+
+**Engine treatment:** v1 ships single-contract `simple_1r` only. The 2-contract DCA can be added as an additional risk profile in a later phase (`split_dca_1r` or similar). It's orthogonal to model selection.
+
+---
+
+## Phase 3 candidate — CONFIRMED
+
+**Phase 3 implements `h1_continuation` (Model 2 entry timing — post-close).**
+
+Justification:
+1. Mentor explicitly says: "I really want you guys to understand everything about the H-1 continuation first because it's a little bit, like, it's the same." (M4 transcript 52:34) and "we will master this continuation setup, and when we're done with that, we'll master the reversal" (M1 PDF 1:19:14).
+2. Continuation has fewer ambiguities than Reversal: no two-sided sweep edge case, no DCA mechanic, no `:50+` stricter timing.
+3. Model 2 (post-close entry) is simpler than Model 1 (pre-close entry) because the H1 candle is fully closed at decision time — no forecasting required.
+4. Model 2 H1 Continuation produces the largest sample size of all variants (mentor notes Continuation is more frequent than Reversal in his lived experience), giving Phase 3 statistical power to validate the architecture.
+5. Once Model 2 H1 Continuation is end-to-end, Reversal is a near-mirror (different direction logic, same machinery), Model 1 adds the pre-close timing dimension, Model 3 adds DCA, Model 4 adds wider stops, and M15 variants are anchor-timeframe substitutions. All Phase 4 work is replication on a proven base.
+
+The full v1 model registration:
+```
+MODELS = {
+    "h1_continuation": ModelDefinition(
+        key="h1_continuation",
+        label="H1 Continuation (Model 2 entry)",
+        detect=h1_continuation.detect_setups,
+        filters=[
+            Filter("MACRO", "Macro window :50–:10", default=True),
+            Filter("MACRO_TOP3", "Top-3 macro hours", default=False),
+            Filter("NO_LUNCH", "Avoid 12:50–13:10", default=False),
+            Filter("T42", "Draw formed after :42", default=False),
+            Filter("NO_OS", "No opposite structure", default=False),
+            Filter("NO_HTF_REJ", "No HTF rejection", default=False),
+            Filter("AGG_BODY", "Aggressive H1 body", default=False),
+            Filter("DIST", "Distribution candle (vs pullback)", default=False),
+            Filter("5M_OK", "Within M5 structure (≤40 pts to draw)", default=False),
+            Filter("SMT", "NQ-ES divergence", default=False),
+        ],
+        spec_anchor="model-h1-continuation",
+    ),
+}
+```
 
 ---
 
