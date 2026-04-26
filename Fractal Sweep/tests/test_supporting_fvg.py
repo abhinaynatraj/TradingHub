@@ -113,3 +113,24 @@ def test_bearish_fvg_does_not_count_for_long():
     )
     assert strict is False
     assert loose is False
+
+
+def test_bearish_strict_fvg_between_entry_and_sl_short():
+    # SHORT trade: sweep_extreme is ABOVE entry (sweep of prior high).
+    # Bearish FVG should sit with body fully inside [entry, sweep_extreme].
+    bars = [
+        (110, 112, 108, 109),  # 0 — low=108 → upper edge of bearish gap
+        (109, 110, 106, 107),  # 1
+        (107, 105, 102, 104),  # 2 — high=105 → lower edge. Bearish gap (105, 108)
+        (104, 107, 102, 103),  # 3 — high=107 < 108 → does not fill
+        (103, 105, 100, 102),  # 4 — entry
+    ]
+    arrs = _arrs(bars)
+    # Short: sweep_extreme=110 (above), entry=102 (below). Gap (105, 108) is
+    # fully inside [102, 110] → strict True, loose True.
+    strict, loose = ms.find_supporting_fvg(
+        arrs, window_start_idx=0, entry_idx=4,
+        sweep_extreme=110.0, entry_price=102.0, direction='SHORT',
+    )
+    assert strict is True
+    assert loose is True
