@@ -300,6 +300,66 @@ main{
   margin-bottom:12px;
 }
 
+/* Collapsible model overview (closed by default) */
+.model-overview-details{
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:12px;
+  margin-bottom:18px;
+  box-shadow:var(--shadow);
+  overflow:hidden;
+}
+.model-overview-summary{
+  padding:14px 22px;
+  font-family:var(--font-display);
+  font-size:13px;
+  font-weight:700;
+  letter-spacing:0.04em;
+  text-transform:uppercase;
+  color:var(--text-secondary);
+  cursor:pointer;
+  list-style:none;
+  user-select:none;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.model-overview-summary::-webkit-details-marker{display:none;}
+.model-overview-summary::before{
+  content:'▸';
+  font-size:11px;
+  color:var(--accent);
+  transition:transform 0.15s ease;
+  display:inline-block;
+}
+.model-overview-details[open] .model-overview-summary::before{
+  transform:rotate(90deg);
+}
+.model-overview-summary:hover{
+  background:var(--bg-hover);
+}
+.model-overview-list{
+  margin:0;
+  padding:0 28px 18px 44px;
+  font-size:13px;
+  line-height:1.55;
+  color:var(--text-primary);
+}
+.model-overview-list li{
+  margin-bottom:8px;
+}
+.model-overview-list li:last-child{margin-bottom:0;}
+.model-overview-list strong{color:var(--text-primary);}
+.model-overview-list em{color:var(--text-secondary); font-style:italic;}
+.model-overview-list code{
+  font-family:var(--font-data);
+  font-size:12px;
+  background:var(--bg-raised);
+  padding:1px 5px;
+  border-radius:3px;
+  color:var(--text-primary);
+}
+
 /* Headline strip / metric tiles */
 .metric-strip{
   display:grid;
@@ -843,6 +903,19 @@ footer{
     }
 
     var html = '';
+
+    // ── Collapsible 5-bullet model overview (closed by default) ─────────
+    html += '<details class="model-overview-details">';
+    html += '<summary class="model-overview-summary">Model overview · ' + esc(model.label || '') + '</summary>';
+    html += '<ul class="model-overview-list">';
+    html += '<li><strong>Setup:</strong> H1 candle closes <em>outside</em> the prior H1\'s range — above prior high (long) or below prior low (short).</li>';
+    html += '<li><strong>Draw:</strong> the prior H1\'s same-side extreme; mentor claim ~80% retest, this engine measures <strong>67% baseline / 76.5% on best filter combo</strong> over 12y NQ.</li>';
+    html += '<li><strong>Entry:</strong> first M1 Order Block or Breaker in the post-close <code>:00–:10</code> window with a clean structural break (body ≥ 50% of range, displacement ≥ 1.0 pt).</li>';
+    html += '<li><strong>Stop · TP:</strong> SL at the M1 trigger\'s invalidation level; TP at <strong>1R</strong> (<code>simple_1r</code> profile). Risk gated to ≤ 20 NQ points (= $400 at $20/pt).</li>';
+    html += '<li><strong>Filters:</strong> 10 toggleable confluences — macro window, top-3 hours, no lunch, draw formed after :42, no opposite structure, no HTF rejection, aggressive body, distribution candle, within-M5 structure, NQ-ES SMT divergence.</li>';
+    html += '</ul>';
+    html += '</details>';
+
     html += '<div class="card">';
     html += '<div class="card-title">Headline · ' + esc(model.label || '') + '</div>';
     html += expiredWarn;
@@ -1316,18 +1389,20 @@ footer{
       '</div>';
 
     var cols = [
-      { k: 'anchor_ts',     label: 'Anchor TS' },
-      { k: 'direction',     label: 'Dir' },
-      { k: 'entry_pattern', label: 'Pattern' },
-      { k: 'entry_price',   label: 'Entry' },
-      { k: 'sl_price',      label: 'SL' },
-      { k: 'tp_price',      label: 'TP' },
-      { k: 'risk_pts',      label: 'Risk Pts' },
-      { k: 'outcome',       label: 'Outcome' },
-      { k: 'r',             label: 'R' },
-      { k: 'mae_pts',       label: 'MAE' },
-      { k: 'mfe_pts',       label: 'MFE' },
-      { k: 'draw_hit',      label: 'Draw' },
+      { k: 'anchor_ts',      label: 'Anchor TS' },
+      { k: 'entry_ts',       label: 'Entry TS' },
+      { k: 'resolution_ts',  label: 'Exit TS' },
+      { k: 'direction',      label: 'Dir' },
+      { k: 'entry_pattern',  label: 'Pattern' },
+      { k: 'entry_price',    label: 'Entry' },
+      { k: 'sl_price',       label: 'SL' },
+      { k: 'tp_price',       label: 'TP' },
+      { k: 'risk_pts',       label: 'Risk Pts' },
+      { k: 'outcome',        label: 'Outcome' },
+      { k: 'r',              label: 'R' },
+      { k: 'mae_pts',        label: 'MAE' },
+      { k: 'mfe_pts',        label: 'MFE' },
+      { k: 'draw_hit',       label: 'Draw' },
     ];
     var headEl = document.getElementById('trades-head');
     cols.forEach(function (c) {
@@ -1415,6 +1490,8 @@ footer{
       var rClass = (t.r > 0) ? 'tp-cell' : (t.r < 0 ? 'sl-cell' : '');
       tr.innerHTML =
         '<td>' + esc(truncTs(t.anchor_ts)) + '</td>' +
+        '<td>' + esc(truncTs(t.entry_ts)) + '</td>' +
+        '<td>' + esc(t.resolution_ts ? truncTs(t.resolution_ts) : '—') + '</td>' +
         dirCell +
         '<td>' + esc(t.entry_pattern || '') + '</td>' +
         '<td>' + fmtNum(t.entry_price, 2) + '</td>' +
