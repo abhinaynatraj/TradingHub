@@ -331,9 +331,11 @@ def find_supporting_fvg(arrs, window_start_idx, entry_idx,
     Bullish FVG at index i: low[i] > high[i-2]. Gap band (high[i-2], low[i]).
     Bearish FVG at index i: high[i] < low[i-2]. Gap band (high[i], low[i-2]).
 
-    Strict: gap body fully between sweep_extreme and entry_price.
-    Loose:  top-of-gap (relative to direction) below/above entry_price.
-    Unfilled at entry: no bar in (i, entry_idx) wicks into the gap.
+    Strict: gap body fully between sweep_extreme and entry_price (inclusive).
+    Loose:  top-of-gap at or below entry_price for LONG; bottom-of-gap at or
+            above entry_price for SHORT.
+    Unfilled at entry: no bar in the half-open interval (i, entry_idx) wicks
+    into the gap. The entry bar itself is excluded from the fill check.
 
     Window: scans formation indices i in [window_start_idx + 2, entry_idx).
     Returns early as soon as a strict FVG is found (strict ⇒ loose).
