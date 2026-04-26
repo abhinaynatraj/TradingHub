@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Breakout Follow-Through · NQ Hourly</title>
+  <link rel="stylesheet" href="shared.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <button class="theme-toggle" onclick="toggleTheme()">theme</button>
+  <div class="container">
+    <nav><a href="index.html">← Hourly Analysis</a></nav>
+    <h1>Breakout Follow-Through</h1>
+
+    <div class="filter-bar">
+      <label>Min sample size <input type="number" id="min-count" value="30" min="0" step="10" /></label>
+      <label>Direction
+        <select id="direction">
+          <option value="both">Both</option>
+          <option value="bullish">Bullish only</option>
+          <option value="bearish">Bearish only</option>
+        </select>
+      </label>
+    </div>
+
+    <h2>Headline rates (aggregate)</h2>
+    <div id="headline" class="card-grid"></div>
+
+    <h2>By year</h2>
+    <div class="card"><table id="t-by-year"></table></div>
+
+    <h2>By hour-of-day (ET)</h2>
+    <div class="card"><table id="t-by-hour"></table></div>
+
+    <h2>By day-of-week</h2>
+    <div class="card"><table id="t-by-dow"></table></div>
+
+    <h2>Quarter-of-H2 takeout attribution</h2>
+    <div class="card"><table id="t-takeout-q"></table></div>
+
+    <h2>Conditioned on H1 open vs prev-mid</h2>
+    <div class="card"><table id="t-prev-mid"></table></div>
+  </div>
+
+  <script src="shared.js"></script>
+  <script>
+    const DOW_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+    function renderTable(rows, columns, getMinCount) {
+      if (!rows.length) return '<thead><tr><th>(no data)</th></tr></thead>';
+      let html = '<thead><tr>' + columns.map(c => `<th>${c.label}</th>`).join('') + '</tr></thead><tbody>';
+      const minC = getMinCount();
+      for (const r of rows) {
+        html += '<tr' + (r.count != null && r.count < minC ? ' class="row-low-count"' : '') + '>';
+        for (const c of columns) {
+          const v = r[c.key];
+          html += `<td>${c.fmt ? c.fmt(v) : v}</td>`;
+        }
+        html += '</tr>';
+      }
+      return html + '</tbody>';
+    }
+
+    async function init() {
+      await loadParquet('../data/breakout/breakouts.parquet', 'events');
+      await loadParquet('../data/breakout/summary_aggregate.parquet', 's_agg');
+      await loadParquet('../data/breakout/summary_by_year.parquet', 's_year');
+      await loadParquet('../data/breakout/summary_by_hour.parquet', 's_hour');
+      await loadParquet('../data/breakout/summary_by_dow.parquet', 's_dow');
+      await render();
+      document.getElementById('min-count').addEventListener('change', render);
+      document.getElementById('direction').addEventListener('change', render);
+    }
+
+    function getMinCount() { return parseInt(document.getElementById('min-count').value, 10) || 0; }
+    function getDirection() { return document.getElementById('direction').value; }
+
+    async function render() {
+      const dir = getDirection();
+      // Headline
+      const agg = (await query('SELECT * FROM s_agg'))[0];
+      const headlineCards = [
+        { label: 'Total hours analyzed', value: fmtNum(agg.n_total) },
+        { label: 'Bullish breakout rate', value: fmtPct(agg.bullish_breakout_rate) },
+        { label: 'Bearish breakout rate', value: fmtPct(agg.bearish_breakout_rate) },
+        { label: 'Bullish follow-through', value: fmtPct(agg.bullish_followthrough_rate) },
+        { label: 'Bearish follow-through', value: fmtPct(agg.bearish_followthrough_rate) },
+        { label: 'Bullish immediate-reversal', value: fmtPct(agg.bullish_immediate_reversal_rate) },
+        { label: 'Bearish immediate-reversal', value: fmtPct(agg.bearish_immediate_reversal_rate) },
+      ];
+      document.getElementById('headline').innerHTML = headlineCards.map(c =>
+        `<div class="card"><div class="metric-label">${c.label}</div><div class="metric-value">${c.value}</div></div>`).join('');
+
+      const cols = (keyLabel) => [
+        { key: keyLabel.key, label: keyLabel.label },
+        { key: 'count', label: 'n', fmt: fmtNum },
+        ...(dir !== 'bearish' ? [
+          { key: 'bullish_breakout_rate', label: 'Bull rate', fmt: fmtPct },
+          { key: 'bullish_followthrough_rate', label: 'Bull FT', fmt: fmtPct },
+        ] : []),
+        ...(dir !== 'bullish' ? [
+          { key: 'bearish_breakout_rate', label: 'Bear rate', fmt: fmtPct },
+          { key: 'bearish_followthrough_rate', label: 'Bear FT', fmt: fmtPct },
+        ] : []),
+      ];
+
+      document.getElementById('t-by-year').innerHTML = renderTable(
+        await query('SELECT * FROM s_year ORDER BY year'),
+        cols({ key: 'year', label: 'Year' }), getMinCount);
+
+      document.getElementById('t-by-hour').innerHTML = renderTable(
+        await query('SELECT * FROM s_hour ORDER BY hour_of_day_et'),
+        cols({ key: 'hour_of_day_et', label: 'Hour ET' }), getMinCount);
+
+      const dowRows = await query('SELECT * FROM s_dow ORDER BY dow');
+      dowRows.forEach(r => r.dow_name = DOW_NAMES[r.dow]);
+      document.getElementById('t-by-dow').innerHTML = renderTable(
+        dowRows, cols({ key: 'dow_name', label: 'DOW' }), getMinCount);
+
+      // Quarter-of-H2 takeout attribution
+      const dirFilter = dir === 'both' ? "breakout IN ('bullish','bearish')"
+        : dir === 'bullish' ? "breakout = 'bullish'" : "breakout = 'bearish'";
+      const tq = await query(`
+        SELECT takeout_quarter_of_h2 AS q, COUNT(*) AS n
+        FROM events
+        WHERE ${dirFilter} AND followthrough = TRUE
+        GROUP BY q ORDER BY q
+      `);
+      const totalQ = tq.reduce((s, r) => s + r.n, 0);
+      document.getElementById('t-takeout-q').innerHTML =
+        '<thead><tr><th>Quarter of H2</th><th>n</th><th>%</th></tr></thead><tbody>' +
+        tq.map(r => `<tr><td>Q${r.q}</td><td>${fmtNum(r.n)}</td><td>${fmtPct(r.n / totalQ)}</td></tr>`).join('') +
+        '</tbody>';
+
+      // Prev-mid conditioning
+      const pm = await query(`
+        SELECT breakout, h1_open_vs_prev_mid AS side,
+               COUNT(*) AS n,
+               AVG(CASE WHEN followthrough THEN 1.0 ELSE 0.0 END) AS ft_rate
+        FROM events
+        WHERE ${dirFilter} AND h1_open_vs_prev_mid IS NOT NULL
+        GROUP BY breakout, side ORDER BY breakout, side
+      `);
+      document.getElementById('t-prev-mid').innerHTML =
+        '<thead><tr><th>Direction</th><th>H1 open vs prev-mid</th><th>n</th><th>Follow-through</th></tr></thead><tbody>' +
+        pm.map(r => `<tr${r.n < getMinCount() ? ' class="row-low-count"' : ''}>` +
+          `<td>${r.breakout}</td><td>${r.side}</td><td>${fmtNum(r.n)}</td><td>${fmtPct(r.ft_rate)}</td></tr>`).join('') +
+        '</tbody>';
+    }
+
+    init().catch(e => alert('Failed to load: ' + e.message));
+  </script>
+</body>
+</html>
