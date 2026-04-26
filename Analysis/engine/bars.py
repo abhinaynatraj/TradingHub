@@ -101,3 +101,17 @@ def build_hourly(minutes: pd.DataFrame) -> pd.DataFrame:
     grouped['dow'] = grouped['hour_start_et'].dt.dayofweek
     grouped['hour_of_day_et'] = grouped['hour_start_et'].dt.hour
     return grouped.sort_values('hour_start_et').reset_index(drop=True)
+
+
+def attach_prev_hour(hourly: pd.DataFrame) -> pd.DataFrame:
+    """Attach prev_hour_open/high/low/close/mid columns by shifting one row.
+
+    Because build_hourly() already drops incomplete hours and the 17:00 settlement
+    hour, "previous row" naturally means "previous valid trading hour." This also
+    handles the 49h Fri 16:00 → Sun 18:00 gap correctly without special casing.
+    """
+    df = hourly.sort_values('hour_start_et').reset_index(drop=True).copy()
+    for col in ('open', 'high', 'low', 'close'):
+        df[f'prev_hour_{col}'] = df[col].shift(1)
+    df['prev_hour_mid'] = (df['prev_hour_high'] + df['prev_hour_low']) / 2
+    return df
