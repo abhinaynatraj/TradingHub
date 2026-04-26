@@ -8,12 +8,6 @@ import pandas as pd
 import numpy as np
 
 
-def _sign(x: float) -> int:
-    if x > 0: return 1
-    if x < 0: return -1
-    return 0
-
-
 def build_features(hourly: pd.DataFrame, quarters: pd.DataFrame) -> pd.DataFrame:
     """One row per valid hour with quarter OHLC, location of extremes,
     directions, ranges, bodies."""
@@ -25,6 +19,10 @@ def build_features(hourly: pd.DataFrame, quarters: pd.DataFrame) -> pd.DataFrame
     qp = qp.reset_index()
 
     df = hourly.merge(qp, on='hour_start_et', how='inner')
+
+    if df.empty:
+        # Empty input — return early before idxmax/apply would crash on missing columns.
+        return df
 
     # Hour-level extreme location
     high_cols = ['q1_high', 'q2_high', 'q3_high', 'q4_high']
@@ -46,13 +44,13 @@ def build_features(hourly: pd.DataFrame, quarters: pd.DataFrame) -> pd.DataFrame
 
     # Per-quarter directions, ranges, bodies
     for q in (1, 2, 3, 4):
-        df[f'q{q}_dir'] = (df[f'q{q}_close'] - df[f'q{q}_open']).apply(_sign)
+        df[f'q{q}_dir'] = np.sign(df[f'q{q}_close'] - df[f'q{q}_open']).astype(int)
         df[f'q{q}_range'] = df[f'q{q}_high'] - df[f'q{q}_low']
         df[f'q{q}_body'] = (df[f'q{q}_close'] - df[f'q{q}_open']).abs()
 
     # Hour-level
     df['hour_range'] = df['high'] - df['low']
-    df['hour_dir'] = (df['close'] - df['open']).apply(_sign)
+    df['hour_dir'] = np.sign(df['close'] - df['open']).astype(int)
 
     # Drop helper cols
     df = df.drop(columns=['_high_abs_min', '_low_abs_min'])
