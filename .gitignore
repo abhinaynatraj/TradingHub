@@ -4,6 +4,9 @@
 *.parquet
 *.csv
 *.xlsx
+# Forward-test workflow assets are committed, not data
+!Fractal Sweep/forward_test/trade_log_template.csv
+!Fractal Sweep/forward_test/forward_test_tracker.xlsx
 
 # Logs
 *.log
