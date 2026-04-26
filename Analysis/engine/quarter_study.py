@@ -50,8 +50,11 @@ def build_features(hourly: pd.DataFrame, quarters: pd.DataFrame) -> pd.DataFrame
         df[f'q{q}_range'] = df[f'q{q}_high'] - df[f'q{q}_low']
         df[f'q{q}_body'] = (df[f'q{q}_close'] - df[f'q{q}_open']).abs()
 
-    # Hour-level
-    df['hour_range'] = df['high'] - df['low']
+    # Hour-level — alias 'high'/'low' as hour_high/hour_low so consumers
+    # can use semantically clear names (study E uses these for overshoot calc).
+    df['hour_high'] = df['high']
+    df['hour_low'] = df['low']
+    df['hour_range'] = df['hour_high'] - df['hour_low']
     df['hour_dir'] = np.sign(df['close'] - df['open']).astype(int)
 
     # Drop helper cols

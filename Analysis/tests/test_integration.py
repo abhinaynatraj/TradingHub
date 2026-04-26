@@ -64,3 +64,26 @@ def test_breakout_summary_aggregate_has_expected_columns(tmp_path, monkeypatch):
                      'bullish_breakout_rate', 'bearish_breakout_rate',
                      'bullish_followthrough_rate', 'bearish_followthrough_rate'}
     assert expected_cols.issubset(s.columns)
+
+
+def test_study_e_overshoot_metrics_are_populated(tmp_path, monkeypatch):
+    """Regression test: study_e_metric overshoot was silently NaN due to a
+    column-name mismatch (looked for 'hour_high', engine produced 'high').
+    This test reads the production parquet and asserts the metric is populated.
+    """
+    fake_engine = tmp_path / 'engine'
+    fake_engine.mkdir()
+    monkeypatch.setattr(run_all, 'HERE', fake_engine)
+    run_all.main(start='2025-09-01', end='2025-10-01')
+
+    import pandas as pd
+    s = pd.read_parquet(tmp_path / 'data' / 'quarters' / 'study_e_aggregate.parquet')
+    # Both metrics should be populated (not NaN)
+    assert s['q1_high_fail_overshoot_mean'].notna().all(), (
+        "q1_high_fail_overshoot_mean is NaN — likely the column-name mismatch "
+        "between build_features (which produces 'high') and study_e_metric "
+        "(which reads 'hour_high') has reappeared.")
+    assert s['q1_high_fail_overshoot_median'].notna().all()
+    # And positive (overshoot must be > 0 by definition)
+    assert (s['q1_high_fail_overshoot_mean'] > 0).all()
+    assert (s['q1_high_fail_overshoot_median'] > 0).all()
