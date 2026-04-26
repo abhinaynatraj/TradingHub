@@ -76,3 +76,22 @@ def test_bullish_fvg_above_entry_both_false():
     )
     assert strict is False
     assert loose is False
+
+
+def test_bullish_fvg_filled_before_entry_both_false():
+    # FVG forms at bar 2, but bar 3 wicks into bottom of gap (low <= 100).
+    # Should be treated as filled → both False.
+    bars = [
+        (95, 100, 92, 99),
+        (99, 103, 98, 102),
+        (102, 108, 105, 107),  # FVG (100, 105]
+        (107, 110, 99, 109),   # low=99 <= 100 → fills the gap
+        (109, 112, 108, 111),  # entry
+    ]
+    arrs = _arrs(bars)
+    strict, loose = ms.find_supporting_fvg(
+        arrs, window_start_idx=0, entry_idx=4,
+        sweep_extreme=98.0, entry_price=111.0, direction='LONG',
+    )
+    assert strict is False
+    assert loose is False
