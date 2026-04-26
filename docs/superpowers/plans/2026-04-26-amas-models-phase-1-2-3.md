@@ -783,12 +783,18 @@ def test_assert_load_invariants_rejects_invalid_ohlc():
 
 
 def test_check_gaps_flags_intra_session_gap():
-    """A 10-minute gap during RTH is reported."""
+    """A gap with 10 missing minutes during RTH is reported.
+
+    `gap_minutes` is wall-clock minutes between consecutive retained bars
+    (i.e., `next.ts - prev.ts` in minutes), so 10 missing minutes between bars
+    at :09 and :20 reports as 11.0 minutes wall-clock.
+    """
     rows = []
     base = pd.Timestamp("2024-01-02 09:30", tz="America/New_York")
     for i in range(10):
         rows.append({"ts": base + pd.Timedelta(minutes=i), "open": 100.0, "high": 100.1, "low": 99.9, "close": 100.0, "volume": 10})
-    # gap: skip minutes 10..19, resume at minute 20
+    # gap: skip minutes 10..19, resume at minute 20 → 10 missing minutes,
+    # 11 minutes wall-clock between bar at :09 and bar at :20.
     for i in range(20, 30):
         rows.append({"ts": base + pd.Timedelta(minutes=i), "open": 100.0, "high": 100.1, "low": 99.9, "close": 100.0, "volume": 10})
     df = pd.DataFrame(rows)
@@ -796,7 +802,7 @@ def test_check_gaps_flags_intra_session_gap():
     df["volume"] = df["volume"].astype("int64")
     gaps = db.check_gaps(df)
     assert len(gaps) == 1
-    assert gaps[0]["gap_minutes"] == 10
+    assert gaps[0]["gap_minutes"] == 11.0
 ```
 
 - [ ] **Step 3: Run tests to verify they fail**
