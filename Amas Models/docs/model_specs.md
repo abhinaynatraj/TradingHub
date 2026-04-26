@@ -6,7 +6,7 @@ This document is the contract between the Amas mentorship materials and every li
 - Source-by-source summary: [`source_index.md`](source_index.md)
 - Engine design and correctness invariants: [`../../docs/superpowers/specs/2026-04-26-amas-models-design.md`](../../docs/superpowers/specs/2026-04-26-amas-models-design.md)
 
-**Reading status:** Mentorships 1, 2, 3 read (PDFs + summaries). Transcripts and Mentorships 4–8 still pending.
+**Reading status:** Mentorships 1, 2, 3, 4 read (PDFs + summaries). Transcripts (8) and Mentorships 6, 7, 8 still pending.
 
 ---
 
@@ -114,15 +114,32 @@ The setup that fires after H1 close (or pre-positions before close) is identical
 9. **Take profit:** **1R** (`simple_1r` profile) — fixed at `entry + 1 * abs(entry - SL)` for longs, mirrored for shorts.
 10. **Invalidation:** if the draw is hit before the 1R, that's a TP. If SL is hit, SL. If neither resolves within `OUTCOME_MAX_BARS` (1440 minutes), `EXPIRED`.
 
-### Pre-close vs post-close entries
+### Pre-close vs post-close entries — Model 1 vs Model 2
 
-The mentor describes **two distinct entry modes**:
-- **Pre-close (positioning before T):** during `T-0:10–T:00` (last-10 macro), if M1 already shows the OB/Breaker/Inversion pattern AND we project the H1 will close in the right pattern, enter early. This is the "premature" entry.
-- **Post-close (positioning after T):** during `T:00–T+0:10` (first-10 macro), wait for the H1 to actually close in the pattern, then look for the M1 trigger.
+The mentor (M4 transcript 08:17–11:21) labels these explicitly:
+
+- **Model 1 (positioning *before* H1 close):** during `T-0:10–T:00` (last-10 macro, minutes :50–:59), if M1 already shows the OB/Breaker/Inversion pattern AND we project the H1 will close in the right pattern, enter early. The H1 candle is "still fluctuating" at entry.
+- **Model 2 (positioning *after* H1 close):** during `T:00–T+0:10` (first-10 macro), wait for the H1 to actually close in the pattern, then look for the M1 trigger on the *new* H1 candle (which is forming). Mentor: "Model 2 is you wait. So open low, high right here formed after 42... And this candle will close. So most likely the high is going to be formed at like 55, 56-ish." (M4 transcript 10:19–10:32) — ambiguous read; he means *the next candle's* high forms at :55–:56 of *its* hour, which is Model 1 of the *next* hour. So Model 1 and Model 2 are essentially the same pattern at offset hours.
+
+**Mentor's explicit guidance on choosing:** when there is opposite structure on the H1, prefer Model 2 ("safer"). When the H1 setup is clean (no opposite structure, big body, late extreme), Model 1 is acceptable — the front-running entry captures more R. (M4 transcript 12:19–13:31)
 
 Mentor on safety: "the closer you are from the close, the more chances you have to win. That's 100%." (M2 PDF 09:15) "My trades, the time that I would take a trade basically, the most premature is like 52, 53." (M2 PDF 03:29)
 
-**Engine treatment:** for v1, fire the setup at H1 close (post-close entry only). Pre-close entry adds complexity (forecasting H1 close from incomplete bar) that's better deferred. Captured as TBD #2 in Open Questions.
+**Engine treatment:** for v1, fire the setup at the H1 close as a Model-2-equivalent post-close entry. Adding Model 1 (pre-close entry) requires forecasting the H1 close from an incomplete bar, which is complex and pattern-dependent — defer to a later phase or as an explicit `entry_mode: 'model_1' | 'model_2'` parameter once Model 2 baseline is measured. (Open Questions #2)
+
+### Power of Three (M4)
+
+**Power of Three** is the mentor's framing of the 3-phase H1 candle structure (M4 transcript 22:11–27:09):
+
+1. **Setup phase (`:00–:42` of H1):** the candle establishes its initial direction, often opposite the eventual close direction (the "fake" move).
+2. **Manipulation phase (`:42–:55` of H1):** the candle reaches its extreme on the side that *will be swept*. This is when the `:42` rule says the high/low forms.
+3. **Distribution phase (`:55–:59:59` of H1):** the candle resolves toward its close direction, often closing strongly outside its first-half range (Continuation) or closing back inside the prior H1's range (Reversal).
+
+The :42 rule formalizes the boundary between phases 1 and 2. Distribution candles (per M3) are candles where the extreme falls in phase 2. Pullback candles are those where the extreme falls in phase 1.
+
+**Power of Three on the new H1 (M4 22:11–27:09):** the same logic applies to the next candle. After T (the close of the prior H1), the new H1 forms its own 3-phase structure. The mentor uses an M1 IFVG/OB/Breaker pattern *on the new H1* targeting the prior H1's draw as a high-probability entry. He calls this confirmation "the flip" — when the new H1's price closes back above its own opening price after a fake move down (for a long setup), the low of the new H1 is "officially formed" and can be used as the stop level.
+
+**Engine treatment:** Power of Three is a meta-concept that doesn't add a new filter; it confirms the existing :42 rule and Distribution-vs-Pullback flag. The "flip" pattern (M4 24:36) — new H1 closes back above its open after a fake move — is a candidate for a `passes_h1_flip` confluence flag in a later iteration; deferred for v1.
 
 ---
 
