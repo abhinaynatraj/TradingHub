@@ -63,3 +63,75 @@ def test_classify_first_row_excluded():
     assert result.iloc[0]['breakout'] == 'no_prev'
     # Also verify h1_open_vs_prev_mid is null for no_prev rows
     assert pd.isna(result.iloc[0]['h1_open_vs_prev_mid'])
+
+
+def test_followthrough_bullish_takeout_in_q1_of_h2():
+    """H1 close > H0 high (bullish). H2 prints higher high at minute 7 (Q1)."""
+    # H0 high=105, H1 high=115/close=110, H2 high=120 at minute 7
+    h0 = helpers.make_hour('2024-01-02 09:00', ohlc=(100, 105, 95, 100),
+                           high_at_minute=20, low_at_minute=40)
+    h1 = helpers.make_hour('2024-01-02 10:00', ohlc=(100, 115, 95, 110),
+                           high_at_minute=30, low_at_minute=40)
+    h2 = helpers.make_hour('2024-01-02 11:00', ohlc=(110, 120, 105, 115),
+                           high_at_minute=7, low_at_minute=40)
+    minutes = helpers.concat_hours(h0, h1, h2)
+    enriched = bars._enrich_minutes(minutes)
+    hourly, _ = bars.build_all_from_minutes(enriched)
+    classified = bs.classify(hourly)
+    events = bs.attach_followthrough(classified, enriched)
+    # H1 (row 1) is bullish breakout; followthrough should be True; q = 1
+    h1_row = events.iloc[1]
+    assert h1_row['breakout'] == 'bullish'
+    assert h1_row['followthrough'] == True
+    assert h1_row['takeout_quarter_of_h2'] == 1
+
+
+def test_followthrough_bullish_takeout_in_q2():
+    """Higher high in H2 first occurs at minute 16 → Q2."""
+    h0 = helpers.make_hour('2024-01-02 09:00', ohlc=(100, 105, 95, 100),
+                           high_at_minute=20, low_at_minute=40)
+    h1 = helpers.make_hour('2024-01-02 10:00', ohlc=(100, 115, 95, 110),
+                           high_at_minute=30, low_at_minute=40)
+    h2 = helpers.make_hour('2024-01-02 11:00', ohlc=(110, 120, 105, 115),
+                           high_at_minute=16, low_at_minute=40)
+    minutes = helpers.concat_hours(h0, h1, h2)
+    enriched = bars._enrich_minutes(minutes)
+    hourly, _ = bars.build_all_from_minutes(enriched)
+    events = bs.attach_followthrough(bs.classify(hourly), enriched)
+    assert events.iloc[1]['takeout_quarter_of_h2'] == 2
+
+
+def test_followthrough_strict_no_takeout_when_equal():
+    """H2.high == H1.high (no strict break) → not a takeout."""
+    h0 = helpers.make_hour('2024-01-02 09:00', ohlc=(100, 105, 95, 100),
+                           high_at_minute=20, low_at_minute=40)
+    h1 = helpers.make_hour('2024-01-02 10:00', ohlc=(100, 115, 95, 110),
+                           high_at_minute=30, low_at_minute=40)
+    # H2 high equals H1 high (115) — exactly, no strict break
+    h2 = helpers.make_hour('2024-01-02 11:00', ohlc=(110, 115, 105, 112),
+                           high_at_minute=10, low_at_minute=40)
+    minutes = helpers.concat_hours(h0, h1, h2)
+    enriched = bars._enrich_minutes(minutes)
+    hourly, _ = bars.build_all_from_minutes(enriched)
+    events = bs.attach_followthrough(bs.classify(hourly), enriched)
+    assert events.iloc[1]['followthrough'] == False
+    assert pd.isna(events.iloc[1]['takeout_quarter_of_h2'])
+
+
+def test_immediate_reversal_bullish_breakout_takes_out_h1_low():
+    """Bullish H1 breakout, but H2 takes out H1's low → immediate_reversal=True."""
+    h0 = helpers.make_hour('2024-01-02 09:00', ohlc=(100, 105, 95, 100),
+                           high_at_minute=20, low_at_minute=40)
+    # H1 bullish breakout: H1 close 110 > H0 high 105
+    h1 = helpers.make_hour('2024-01-02 10:00', ohlc=(100, 115, 95, 110),
+                           high_at_minute=30, low_at_minute=40)
+    # H2 prints below H1.low (95) at some minute — H2 low = 90
+    h2 = helpers.make_hour('2024-01-02 11:00', ohlc=(110, 112, 90, 100),
+                           high_at_minute=5, low_at_minute=20)
+    minutes = helpers.concat_hours(h0, h1, h2)
+    enriched = bars._enrich_minutes(minutes)
+    hourly, _ = bars.build_all_from_minutes(enriched)
+    events = bs.attach_followthrough(bs.classify(hourly), enriched)
+    h1_row = events.iloc[1]
+    assert h1_row['breakout'] == 'bullish'
+    assert h1_row['immediate_reversal'] == True
