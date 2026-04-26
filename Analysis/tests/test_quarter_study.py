@@ -77,6 +77,14 @@ def test_build_features_handles_empty_input():
 def _synthetic_features(n=20):
     """Build a small synthetic feature df with known structure for metric tests."""
     rng = np.random.default_rng(42)
+    q1_high = rng.uniform(100, 110, n)
+    q1_low = rng.uniform(90, 100, n)
+    q4_high = rng.uniform(100, 110, n)
+    q4_low = rng.uniform(90, 100, n)
+    # Hour extremes must enclose all quarter extremes (real-data invariant).
+    # Add a small positive overshoot so the failed-hold cases produce strictly positive overshoot.
+    hour_high = np.maximum.reduce([q1_high, q4_high]) + rng.uniform(0.1, 5, n)
+    hour_low = np.minimum.reduce([q1_low, q4_low]) - rng.uniform(0.1, 5, n)
     df = pd.DataFrame({
         'q_of_high': rng.integers(1, 5, n),
         'q_of_low': rng.integers(1, 5, n),
@@ -93,14 +101,14 @@ def _synthetic_features(n=20):
         'q2_body': rng.uniform(0, 5, n),
         'q3_body': rng.uniform(0, 5, n),
         'q4_body': rng.uniform(0, 5, n),
-        'q1_high': rng.uniform(100, 110, n),
-        'q1_low': rng.uniform(90, 100, n),
-        'q4_high': rng.uniform(100, 110, n),
-        'q4_low': rng.uniform(90, 100, n),
-        'hour_range': rng.uniform(5, 20, n),
+        'q1_high': q1_high,
+        'q1_low': q1_low,
+        'q4_high': q4_high,
+        'q4_low': q4_low,
+        'hour_range': hour_high - hour_low,  # derived; was uniform(5,20)
         'hour_dir': rng.choice([-1, 0, 1], n),
-        'hour_high': rng.uniform(105, 115, n),
-        'hour_low': rng.uniform(85, 95, n),
+        'hour_high': hour_high,
+        'hour_low': hour_low,
         'year': 2024,
         'dow': 1,
         'hour_of_day_et': 10,
@@ -146,6 +154,9 @@ def test_study_e_q1_high_hold_rate():
     rec = qs.study_e_metric(df)
     assert 'q1_high_hold_rate' in rec
     assert 'q4_high_hold_rate' in rec
+    # When Q1 high failed to hold, hour_high > q1_high so overshoot is strictly positive.
+    # If formula is ever inverted (q1_high - hour_high), this assert will catch it.
+    assert rec['q1_high_fail_overshoot_mean'] >= 0
 
 
 def test_study_f_quintile_table_returns_5_rows():

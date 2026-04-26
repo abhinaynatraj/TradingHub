@@ -6,6 +6,7 @@ direction signs, range/body stats, and runs the A-F sub-studies.
 from __future__ import annotations
 import pandas as pd
 import numpy as np
+import warnings
 import slicers
 
 
@@ -160,7 +161,11 @@ def study_f_table(df: pd.DataFrame) -> pd.DataFrame:
         df['q1_range_quintile'] = pd.qcut(df['q1_range'], 5, labels=[1, 2, 3, 4, 5],
                                           duplicates='drop')
     except ValueError:
-        # Fewer than 5 distinct bins possible (too many ties or too few rows)
+        warnings.warn(
+            f"study_f_table: pd.qcut could not form 5 bins (got {len(df)} rows, "
+            f"likely too many ties in q1_range). Returning empty DataFrame.",
+            stacklevel=2,
+        )
         return pd.DataFrame()
     rows = []
     for quintile, sub in df.groupby('q1_range_quintile', observed=True):
