@@ -34,8 +34,9 @@ Match Statistic.ally / Fractal Sweep exactly:
 - Theme via shared `localStorage.getItem('hub-theme')`
 - DB read-only from this folder; write path stays in `Fractal Sweep/engine/daily_update.py`
 - Timestamps in DB are `America/Toronto` — always convert: `timezone('America/New_York', timestamp)`
-- Same baseline gates as Fractal Sweep: `MIN_RISK_PTS = 3.0`, `MAX_RISK_PTS = 112.5`
-- Same outcome scanner: `OUTCOME_MAX_BARS = 1440`, same-bar TP/SL → SL
+- Risk gates: `MIN_RISK_PTS = None` (no floor), `MAX_RISK_PTS = 20.0` (= $400 / $20-per-NQ-point)
+- Sizing: `RISK_PER_TRADE_USD = 400`, NQ point value = $20/pt (mini, default), ES point value = $50/pt (mini)
+- Same outcome scanner as Fractal Sweep: `OUTCOME_MAX_BARS = 1440`, same-bar TP/SL → SL
 - Same risk profiles: `simple_1r` (default) and `raw_measure`
 - Tests via pytest, fixture-based per model
 
@@ -382,15 +383,15 @@ Required invariants:
 
 ### Category F: Risk profile and sizing arithmetic
 
-Fractal Sweep's R math depends on `MIN_RISK_PTS = 3.0`, `MAX_RISK_PTS = 112.5`, `RISK_PER_TRADE = $225`, `POINT_VALUE = $2`. A bug in any one silently shifts EV.
+The Amas engine's R math depends on `MAX_RISK_PTS = 20.0`, `MIN_RISK_PTS = None`, `RISK_PER_TRADE_USD = 400`, NQ point value $20/pt, ES point value $50/pt. A bug in any one silently shifts EV.
 
 Required invariants:
 
-1. **Single source of truth for constants** — `engine/constants.py` holds them; no model file redefines them. If a model's spec needs different sizing (different point value for ES vs NQ), the override is explicit and tested.
-2. **NQ vs ES point values are different** — NQ = $2/pt for MNQ; ES = $5/pt for MES. The engine must use the right one per `--table` argument. Default-NQ assumptions that leak into ES results are a silent-edge category.
+1. **Single source of truth for constants** — `engine/constants.py` holds them; no model file redefines them. If a model's spec needs different sizing, the override is explicit and tested.
+2. **NQ vs ES point values are different** — NQ = $20/pt (mini); ES = $50/pt (mini). The engine must use the right one per `--table` argument. Default-NQ assumptions that leak into ES results are a silent-edge category.
 3. **R is computed in points, not dollars, then converted** — `r = (exit_price - entry_price) / risk_pts` for longs, mirrored for shorts. Stops in dollar terms are derived, not stored. Fewer places to drift.
-4. **MIN_RISK / MAX_RISK gates are applied symmetrically per direction** — gate uses `abs(entry - sl)`, never signed.
-5. **Equity tracking ships both R and USD** — `min_equity_R`/`max_dd_R` are the canonical, instrument-comparable metrics; `min_equity_usd`/`max_dd_usd` (matching Fractal Sweep) are derived from R × point-value × risk for display. If the two disagree (R says drawdown, USD doesn't), that's a bug — covered by a test.
+4. **MAX_RISK gate is applied symmetrically per direction** — gate uses `abs(entry - sl)`, never signed. With `MIN_RISK_PTS = None` there is no lower floor; setups with arbitrarily tight stops pass.
+5. **Equity tracking ships both R and USD** — `min_equity_R`/`max_dd_R` are the canonical, instrument-comparable metrics; `min_equity_usd`/`max_dd_usd` are derived from R × `RISK_PER_TRADE_USD` for display. If the two disagree (R says drawdown, USD doesn't), that's a bug — covered by a test.
 6. **Test: known-fixture R math** — given a synthetic trade with entry=100, SL=95, exit=110, the resolver returns `r = 2.0`. Mirror for shorts. Failing this test means the basic arithmetic is wrong, full stop.
 
 ### Category G: Statistical hygiene

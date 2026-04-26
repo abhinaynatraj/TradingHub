@@ -13,7 +13,7 @@ Amas Models/
 ├── model_dashboard.html        single-file dashboard
 ├── model_stats.json            engine output (gitignored)
 ├── engine/                     Python backtest code
-│   ├── constants.py            single source of truth: MIN_RISK_PTS=3.0, MAX_RISK_PTS=112.5, OUTCOME_MAX_BARS=1440, point values
+│   ├── constants.py            single source of truth: MAX_RISK_PTS=20.0, RISK_PER_TRADE_USD=400, point values, OUTCOME_MAX_BARS=1440
 │   ├── db.py                   DB load, TZ conversion, data-quality assertions
 │   ├── outcomes.py             SL/TP scanner, MAE/MFE, equity tracking
 │   ├── filters.py              filter primitives (SMT, etc.)

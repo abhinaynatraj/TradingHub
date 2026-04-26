@@ -368,7 +368,7 @@ Amas Models/
 ├── model_dashboard.html        single-file dashboard
 ├── model_stats.json            engine output (gitignored)
 ├── engine/                     Python backtest code
-│   ├── constants.py            single source of truth: MIN_RISK_PTS=3.0, MAX_RISK_PTS=112.5, OUTCOME_MAX_BARS=1440, point values
+│   ├── constants.py            single source of truth: MAX_RISK_PTS=20.0, RISK_PER_TRADE_USD=400, point values, OUTCOME_MAX_BARS=1440
 │   ├── db.py                   DB load, TZ conversion, data-quality assertions
 │   ├── outcomes.py             SL/TP scanner, MAE/MFE, equity tracking
 │   ├── filters.py              filter primitives (SMT, etc.)
@@ -509,12 +509,14 @@ Create `Statistic.ally/Amas Models/tests/test_constants.py`:
 from engine import constants
 
 
-def test_min_risk_pts_matches_fractal_sweep():
-    assert constants.MIN_RISK_PTS == 3.0
+def test_min_risk_pts_is_none():
+    """No lower floor on risk; arbitrarily tight stops pass."""
+    assert constants.MIN_RISK_PTS is None
 
 
-def test_max_risk_pts_matches_fractal_sweep():
-    assert constants.MAX_RISK_PTS == 112.5
+def test_max_risk_pts_is_twenty():
+    """20-point cap on NQ at $20/pt = $400 risk."""
+    assert constants.MAX_RISK_PTS == 20.0
 
 
 def test_outcome_max_bars_matches_fractal_sweep():
@@ -522,17 +524,17 @@ def test_outcome_max_bars_matches_fractal_sweep():
 
 
 def test_point_values_per_instrument():
-    assert constants.POINT_VALUES["nq_1m"] == 2.0
-    assert constants.POINT_VALUES["es_1m"] == 5.0
+    assert constants.POINT_VALUES["nq_1m"] == 20.0
+    assert constants.POINT_VALUES["es_1m"] == 50.0
 
 
 def test_risk_per_trade_usd():
-    assert constants.RISK_PER_TRADE_USD == 225.0
+    assert constants.RISK_PER_TRADE_USD == 400.0
 
 
 def test_max_risk_dollars_consistent():
-    # MAX_RISK_PTS = RISK_PER_TRADE_USD / POINT_VALUE_NQ → 112.5 = 225 / 2
-    assert constants.MAX_RISK_PTS == constants.RISK_PER_TRADE_USD / constants.POINT_VALUES["nq_1m"]
+    """MAX_RISK_PTS × NQ point value = RISK_PER_TRADE_USD; 20 × $20 = $400."""
+    assert constants.MAX_RISK_PTS * constants.POINT_VALUES["nq_1m"] == constants.RISK_PER_TRADE_USD
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -554,26 +556,29 @@ Create `Statistic.ally/Amas Models/engine/constants.py`:
 """Single source of truth for risk, sizing, and outcome-resolver constants.
 
 Per the Amas Models design spec, Category F (Risk arithmetic): no model file
-redefines these values. If a model needs different sizing (e.g. ES vs NQ point
-values), it consults POINT_VALUES[table_name].
+redefines these values. If a model needs different sizing, it consults
+POINT_VALUES[table_name].
 """
+from typing import Optional
 
 # Risk gates — applied to every setup before the outcome resolver runs.
-# Setups outside [MIN_RISK_PTS, MAX_RISK_PTS] are rejected.
-MIN_RISK_PTS: float = 3.0
-MAX_RISK_PTS: float = 112.5  # = 225 / 2 (MNQ $225 risk ÷ $2/pt)
+# Setups with risk_pts > MAX_RISK_PTS are rejected. With MIN_RISK_PTS = None
+# there is no lower floor; arbitrarily tight stops pass.
+MIN_RISK_PTS: Optional[float] = None
+MAX_RISK_PTS: float = 20.0  # = $400 / $20-per-NQ-point (NQ mini)
 
 # Outcome resolver lookback. A trade unresolved within this many 1m bars is EXPIRED
-# (excluded from WR/EV but counted in N). Bumped from 360 in Fractal Sweep history.
+# (excluded from WR/EV but counted in N). Matches Fractal Sweep.
 OUTCOME_MAX_BARS: int = 1440  # 24h of 1m bars
 
-# Per-trade risk in USD. NQ default; ES uses RISK_PER_TRADE_USD with its own POINT_VALUE.
-RISK_PER_TRADE_USD: float = 225.0
+# Per-trade risk in USD. Drives sizing for both NQ and ES via POINT_VALUES.
+RISK_PER_TRADE_USD: float = 400.0
 
-# Per-instrument point values. Mapped by DuckDB table name (matches --table CLI arg).
+# Per-instrument point values (mini contracts). Mapped by DuckDB table name
+# (matches the --table CLI arg).
 POINT_VALUES: dict[str, float] = {
-    "nq_1m": 2.0,  # MNQ
-    "es_1m": 5.0,  # MES
+    "nq_1m": 20.0,  # NQ mini, $20/pt
+    "es_1m": 50.0,  # ES mini, $50/pt
 }
 ```
 
@@ -2186,14 +2191,14 @@ def detect_setups(bars: pd.DataFrame) -> list[Setup]:
     Per spec invariants:
     - Causal: only reads bars where bar.ts <= anchor_ts (Category C.1)
     - At most one setup per (anchor_ts, direction) (Category B.1)
-    - Risk gated by [MIN_RISK_PTS, MAX_RISK_PTS] (Category F)
+    - Risk gated by MAX_RISK_PTS (Category F); MIN_RISK_PTS is None so no lower floor
     """
     # 1. Build anchor candles from 1m bars (e.g., resample to H1 closed in NY tz)
     # 2. Iterate anchor by anchor; for each:
     #    - Apply detection rules using bars up to and including this anchor close
     #    - If pass: derive entry/SL/TP, build _<ChosenModel>Setup
     #    - Compute passes_<filter> flags using same causal slice
-    #    - Apply MIN_RISK / MAX_RISK gates from constants
+    #    - Apply MAX_RISK gate from constants (MIN_RISK_PTS is None — skip lower-bound check)
     # 3. Return the list (deduped per spec — implementation should not produce duplicates,
     #    but if it could, dedup BEFORE return with a documented tie-break)
     setups: list[Setup] = []
@@ -2339,13 +2344,13 @@ def test_direction_symmetry():
 
 
 def test_risk_gates_applied():
-    """Setups outside [MIN_RISK_PTS, MAX_RISK_PTS] must not be returned."""
+    """Setups with risk_pts > MAX_RISK_PTS must not be returned. No lower floor (MIN_RISK_PTS is None)."""
     bars = _bars([
-        # ... fixture that without gating would produce a setup with risk_pts < 3.0 ...
+        # ... fixture that without gating would produce a setup with risk_pts > 20.0 ...
     ])
     setups = <chosen_model>.detect_setups(bars)
     for s in setups:
-        assert 3.0 <= s.risk_pts <= 112.5, f"setup with risk_pts={s.risk_pts} leaked through gates"
+        assert s.risk_pts <= 20.0, f"setup with risk_pts={s.risk_pts} exceeded MAX_RISK_PTS"
 ```
 
 - [ ] **Step 2: Run tests and iterate on the detector**
@@ -2416,7 +2421,7 @@ Sanity checks:
 If any of these is wildly off, STOP. Apply the edge-inflation checklist from the spec's "Cross-cutting review discipline" section before trusting any number. Common culprits:
 - TZ or dtype: re-run `tests/test_db.py`
 - Lookahead: re-run the `_audit` test
-- Risk gates: spot-check that no setup has risk < 3 or > 112.5
+- Risk gates: spot-check that no setup has risk_pts > 20.0 (no lower floor)
 - Same-bar tie-break: spot-check that any winners aren't actually same-bar SL hits
 
 - [ ] **Step 3: Run on ES too**
