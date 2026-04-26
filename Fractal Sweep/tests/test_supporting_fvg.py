@@ -172,3 +172,61 @@ def test_bearish_fvg_filled_before_entry_short():
     )
     assert strict is False
     assert loose is False
+
+
+def test_no_gap_in_window_both_false():
+    # All consecutive bars overlap — no 3-bar gap exists.
+    bars = [
+        (100, 102,  99, 101),
+        (101, 103, 100, 102),
+        (102, 104, 101, 103),
+        (103, 105, 102, 104),
+        (104, 106, 103, 105),
+    ]
+    arrs = _arrs(bars)
+    strict, loose = ms.find_supporting_fvg(
+        arrs, window_start_idx=0, entry_idx=4,
+        sweep_extreme=99.0, entry_price=105.0, direction='LONG',
+    )
+    assert strict is False
+    assert loose is False
+
+
+def test_window_too_small_returns_false():
+    # entry_idx=2 means scan range [2, 2) — empty. Both False.
+    bars = [
+        (95, 100, 92, 99),
+        (99, 103, 98, 102),
+        (102, 108, 105, 107),
+    ]
+    arrs = _arrs(bars)
+    strict, loose = ms.find_supporting_fvg(
+        arrs, window_start_idx=0, entry_idx=2,
+        sweep_extreme=98.0, entry_price=109.0, direction='LONG',
+    )
+    assert strict is False
+    assert loose is False
+
+
+def test_strict_implies_loose_invariant_random():
+    # Property test: for any inputs the helper accepts, strict ⇒ loose.
+    rng = np.random.RandomState(7)
+    for _ in range(50):
+        n = 8
+        opens  = rng.uniform(95, 110, n)
+        closes = opens + rng.uniform(-2, 2, n)
+        highs  = np.maximum(opens, closes) + rng.uniform(0, 2, n)
+        lows   = np.minimum(opens, closes) - rng.uniform(0, 2, n)
+        arrs = dict(open=opens, high=highs, low=lows, close=closes)
+        sweep = float(lows.min()) - 1.0
+        entry = float(highs.max()) + 1.0
+        s, l = ms.find_supporting_fvg(
+            arrs, 0, n, sweep, entry, 'LONG',
+        )
+        if s:
+            assert l, "strict ⇒ loose violated for LONG"
+        s, l = ms.find_supporting_fvg(
+            arrs, 0, n, entry + 5.0, sweep - 5.0, 'SHORT',
+        )
+        if s:
+            assert l, "strict ⇒ loose violated for SHORT"
