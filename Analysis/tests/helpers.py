@@ -5,8 +5,7 @@ hitting the real DuckDB. Timestamps are tz-aware in America/New_York.
 """
 from __future__ import annotations
 import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
+from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 NY = ZoneInfo('America/New_York')
@@ -48,6 +47,18 @@ def make_hour(hour_start: str, *, ohlc=(100, 105, 95, 102), volume_per_min: int 
     l_min = 59 if low_at_minute is None else low_at_minute
     if h_min == l_min:
         raise ValueError("high and low minute must differ")
+
+    # Validate OHLC internal consistency
+    if not (l <= o and l <= c and h >= o and h >= c):
+        raise ValueError(
+            f"Malformed ohlc: must satisfy l<=o,c and h>=o,c — got {ohlc}"
+        )
+
+    # Validate minute indices are in [0, 59]
+    if not (0 <= h_min <= 59):
+        raise ValueError(f"high_at_minute must be in [0, 59], got {h_min}")
+    if not (0 <= l_min <= 59):
+        raise ValueError(f"low_at_minute must be in [0, 59], got {l_min}")
 
     rows = []
     base_ts = pd.Timestamp(hour_start, tz=NY)
