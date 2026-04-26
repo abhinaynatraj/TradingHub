@@ -1342,13 +1342,21 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
             # base_risk = |entry − sweep_extreme| = 1 full R-unit
             base_risk = abs(entry_price - sweep_extreme)
 
+            # Entry must be on the correct side of the sweep extreme
+            if direction == 'LONG'  and entry_price <= sweep_extreme:
+                continue
+            if direction == 'SHORT' and entry_price >= sweep_extreme:
+                continue
+
             # ── Supporting FVG flags (computed at entry, scoped to anchor window) ──
             # Scan CISD-TF candles for an unfilled same-side FVG between
             # window start and entry. Then scan 1M bars over the same window.
+            # entry_ts_ns is exactly c_arrs['ts_ns'][next_c_idx], so the entry
+            # index on the CISD-TF axis IS next_c_idx — skip the redundant
+            # searchsorted.
             cisd_window_start = int(np.searchsorted(c_arrs['ts_ns'], q1_start_ns, side='left'))
-            cisd_entry_idx    = int(np.searchsorted(c_arrs['ts_ns'], entry_ts_ns, side='left'))
             passes_fvg_cisd_strict, passes_fvg_cisd_loose = find_supporting_fvg(
-                c_arrs, cisd_window_start, cisd_entry_idx,
+                c_arrs, cisd_window_start, next_c_idx,
                 sweep_extreme=float(sweep_extreme),
                 entry_price=entry_price,
                 direction=direction,
@@ -1359,12 +1367,6 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                 entry_price=entry_price,
                 direction=direction,
             )
-
-            # Entry must be on the correct side of the sweep extreme
-            if direction == 'LONG'  and entry_price <= sweep_extreme:
-                continue
-            if direction == 'SHORT' and entry_price >= sweep_extreme:
-                continue
 
             hr_val = int(m1_hr[entry_start])
             mn_val = int(m1_mn[entry_start])
