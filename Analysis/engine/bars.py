@@ -71,3 +71,33 @@ def load_minutes(con: duckdb.DuckDBPyConnection | None = None,
         if close_when_done:
             con.close()
     return _enrich_minutes(df)
+
+
+def build_hourly(minutes: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate enriched 1-min bars into hourly bars.
+
+    Rules:
+    - Each hour requires all 60 of its 1-min bars; otherwise dropped.
+    - The 17:00 ET hour is always dropped (settlement gap).
+    - Output columns: hour_start_et, open, high, low, close, volume,
+      year, dow, hour_of_day_et.
+    """
+    df = minutes.copy()
+    df['hour_start_et'] = df['ny_ts'].dt.floor('h')
+    grouped = df.groupby('hour_start_et').agg(
+        open=('open', 'first'),
+        high=('high', 'max'),
+        low=('low', 'min'),
+        close=('close', 'last'),
+        volume=('volume', 'sum'),
+        n_minutes=('open', 'size'),
+    ).reset_index()
+    # Completeness
+    grouped = grouped[grouped['n_minutes'] == 60].drop(columns='n_minutes')
+    # Drop 17:00 ET hour (settlement gap)
+    grouped = grouped[grouped['hour_start_et'].dt.hour != 17]
+    # Slicing columns
+    grouped['year'] = grouped['hour_start_et'].dt.year
+    grouped['dow'] = grouped['hour_start_et'].dt.dayofweek
+    grouped['hour_of_day_et'] = grouped['hour_start_et'].dt.hour
+    return grouped.sort_values('hour_start_et').reset_index(drop=True)
