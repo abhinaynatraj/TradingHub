@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Amas Models · Probability Engine</title>
+<script>
+  // Early-paint theme: read shared hub-theme key BEFORE any pixels render.
+  // Avoids a flash of wrong theme on load.
+  (function () {
+    var theme = localStorage.getItem('hub-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --green:#10b981;--red:#ef4444;--amber:#f59e0b;--blue:#3b82f6;--purple:#8b5cf6;--cyan:#06b6d4;
+  --font-display:'Plus Jakarta Sans',system-ui,sans-serif;
+  --font-data:'IBM Plex Mono','DM Mono','Fira Code',monospace;
+  --font-body:'Inter',system-ui,sans-serif;
+  --ease:cubic-bezier(0.16,1,0.3,1);
+}
+/* CSS variable names mirror Fractal Sweep's dashboard so future migrations are easy. */
+[data-theme="dark"]{
+  --bg:#0a0e17;--bg-card:#111827;--bg-raised:#1a2235;--bg-hover:#1e2d42;
+  --border:#1e2d42;--border-mid:#243447;--border-hi:#2e4460;
+  --text-primary:#e2eaf4;--text-secondary:#8ba4bc;--text-muted:#4a6480;--text-faint:#2a3f55;
+  --shadow:0 1px 3px rgba(0,0,0,.5),0 4px 16px rgba(0,0,0,.3);
+  --shadow-lg:0 8px 32px rgba(0,0,0,.5);
+  --green-tint:rgba(16,185,129,.1);--green-border:rgba(16,185,129,.25);
+  --red-tint:rgba(239,68,68,.1);--red-border:rgba(239,68,68,.25);
+  --amber-tint:rgba(245,158,11,.1);--amber-border:rgba(245,158,11,.25);
+  --accent:#06b6d4; /* cyan to distinguish Amas from Fractal Sweep's green, but same family */
+  --accent-glow:0 0 24px rgba(6,182,212,.18);
+  --glass-bg:rgba(17,24,39,.55);
+  --glass-bg-strong:rgba(26,34,53,.7);
+  --glass-border:rgba(255,255,255,.06);
+  --glass-border-hi:rgba(255,255,255,.1);
+  --glass-blur:saturate(160%) blur(18px);
+}
+[data-theme="light"]{
+  --bg:#f8fafc;--bg-card:#ffffff;--bg-raised:#f1f5f9;--bg-hover:#e2e8f0;
+  --border:#e2e8f0;--border-mid:#cbd5e1;--border-hi:#94a3b8;
+  --text-primary:#0f172a;--text-secondary:#334155;--text-muted:#64748b;--text-faint:#94a3b8;
+  --shadow:0 1px 3px rgba(15,23,42,.06),0 4px 12px rgba(15,23,42,.04);
+  --shadow-lg:0 8px 32px rgba(15,23,42,.1);
+  --green-tint:rgba(16,185,129,.1);--green-border:rgba(16,185,129,.35);
+  --red-tint:rgba(239,68,68,.1);--red-border:rgba(239,68,68,.35);
+  --amber-tint:rgba(245,158,11,.12);--amber-border:rgba(245,158,11,.35);
+  --accent:#0891b2;
+  --accent-glow:0 0 24px rgba(8,145,178,.1);
+  --glass-bg:rgba(255,255,255,.65);
+  --glass-bg-strong:rgba(255,255,255,.85);
+  --glass-border:rgba(15,23,42,.08);
+  --glass-border-hi:rgba(15,23,42,.14);
+  --glass-blur:saturate(180%) blur(20px);
+}
+
+html,body{
+  background:var(--bg);
+  color:var(--text-primary);
+  font-family:var(--font-body);
+  font-size:14px;
+  line-height:1.6;
+  min-height:100vh;
+  overflow-x:hidden;
+  transition:background .25s var(--ease),color .25s var(--ease);
+}
+
+/* ── HEADER ─────────────────────────────────────────────────────────────── */
+.hdr{
+  background:var(--glass-bg);
+  backdrop-filter:var(--glass-blur);
+  -webkit-backdrop-filter:var(--glass-blur);
+  border-bottom:1px solid var(--glass-border);
+  padding:0 28px;
+  height:60px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  position:sticky;
+  top:0;
+  z-index:100;
+  box-shadow:var(--shadow);
+}
+@supports not (backdrop-filter:blur(10px)){.hdr{background:var(--bg-card)}}
+
+.hdr-left{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.hdr-right{display:flex;align-items:center;gap:10px}
+
+.hub-back{
+  display:flex;align-items:center;gap:6px;
+  text-decoration:none;
+  padding:6px 10px;
+  border-radius:8px;
+  color:var(--text-muted);
+  font-size:13px;
+  transition:background .15s,color .15s;
+}
+.hub-back:hover{background:var(--bg-raised);color:var(--text-primary)}
+.hub-back-glyph{font-size:14px;line-height:1}
+
+.hdr-wordmark{
+  font-family:var(--font-display);
+  font-size:18px;
+  font-weight:800;
+  letter-spacing:-0.02em;
+  color:var(--text-primary);
+  line-height:1;
+}
+.hdr-wordmark em{color:var(--accent);font-style:normal}
+
+.hdr-divider{width:1px;height:24px;background:var(--border-mid)}
+
+.hdr-select{
+  font-family:var(--font-data);
+  font-size:11px;
+  font-weight:500;
+  letter-spacing:0.04em;
+  padding:6px 28px 6px 12px;
+  border-radius:8px;
+  border:1px solid var(--border-mid);
+  background:var(--bg-raised);
+  color:var(--text-secondary);
+  cursor:pointer;
+  appearance:none;
+  -webkit-appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--text-muted) 50%),linear-gradient(135deg,var(--text-muted) 50%,transparent 50%);
+  background-position:right 12px top 50%,right 8px top 50%;
+  background-size:4px 4px,4px 4px;
+  background-repeat:no-repeat;
+  transition:border-color .15s,color .15s,background-color .15s;
+  max-width:280px;
+}
+.hdr-select:hover{border-color:var(--border-hi);color:var(--text-primary)}
+.hdr-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--green-tint)}
+.hdr-select:disabled{opacity:.6;cursor:not-allowed}
+
+.hdr-select-label{
+  font-family:var(--font-data);
+  font-size:10px;
+  letter-spacing:0.08em;
+  color:var(--text-muted);
+  text-transform:uppercase;
+  margin-right:-6px;
+}
+
+.theme-btn{
+  background:var(--bg-raised);
+  border:1px solid var(--border-mid);
+  border-radius:8px;
+  color:var(--text-secondary);
+  cursor:pointer;
+  font-size:14px;
+  width:36px;
+  height:32px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  transition:all .15s var(--ease);
+}
+.theme-btn:hover{background:var(--bg-hover);color:var(--text-primary);border-color:var(--border-hi)}
+
+/* ── TAB BAR ────────────────────────────────────────────────────────────── */
+.tab-bar{
+  background:var(--bg-card);
+  border-bottom:1px solid var(--border);
+  padding:0 28px;
+  display:flex;
+  gap:2px;
+  overflow-x:auto;
+  position:sticky;
+  top:60px;
+  z-index:90;
+}
+.tab{
+  font-family:var(--font-body);
+  font-size:13px;
+  font-weight:500;
+  padding:14px 18px 13px;
+  color:var(--text-muted);
+  cursor:pointer;
+  border-bottom:2px solid transparent;
+  transition:color .15s,border-color .15s;
+  white-space:nowrap;
+  user-select:none;
+  background:none;
+  border-left:none;
+  border-right:none;
+  border-top:none;
+}
+.tab:hover{color:var(--text-secondary)}
+.tab.active{color:var(--text-primary);border-bottom-color:var(--accent)}
+
+/* ── MAIN ───────────────────────────────────────────────────────────────── */
+main{
+  max-width:1400px;
+  margin:0 auto;
+  padding:32px 28px 80px;
+}
+
+.placeholder{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  min-height:50vh;
+  padding:48px 24px;
+}
+.placeholder-icon{
+  font-size:42px;
+  margin-bottom:18px;
+  opacity:.4;
+}
+.placeholder-title{
+  font-family:var(--font-display);
+  font-size:18px;
+  font-weight:700;
+  color:var(--text-primary);
+  margin-bottom:10px;
+  letter-spacing:-0.01em;
+}
+.placeholder-body{
+  font-size:13.5px;
+  color:var(--text-secondary);
+  max-width:520px;
+  line-height:1.65;
+  margin-bottom:6px;
+}
+.placeholder-body code{
+  font-family:var(--font-data);
+  font-size:12px;
+  background:var(--bg-raised);
+  border:1px solid var(--border);
+  padding:1px 6px;
+  border-radius:4px;
+  color:var(--text-primary);
+}
+
+.error-card{
+  max-width:560px;
+  margin:60px auto;
+  padding:20px 24px;
+  background:var(--red-tint);
+  border:1px solid var(--red-border);
+  border-radius:12px;
+  display:flex;
+  gap:14px;
+  align-items:flex-start;
+}
+.error-card-icon{font-size:20px;line-height:1.4;flex-shrink:0}
+.error-card-title{
+  font-weight:700;
+  color:var(--red);
+  margin-bottom:4px;
+  font-size:13px;
+}
+.error-card-body{
+  color:var(--text-secondary);
+  font-size:13px;
+  line-height:1.55;
+}
+.error-card-body code{
+  font-family:var(--font-data);
+  font-size:12px;
+  background:var(--bg-raised);
+  border:1px solid var(--border-mid);
+  padding:1px 6px;
+  border-radius:4px;
+  color:var(--text-primary);
+}
+
+#model-content{display:none}
+
+footer{
+  text-align:center;
+  padding:24px;
+  font-size:11px;
+  color:var(--text-muted);
+  border-top:1px solid var(--border);
+  font-family:var(--font-data);
+  letter-spacing:0.02em;
+}
+
+/* Responsive */
+@media (max-width: 720px){
+  .hdr{padding:0 14px;height:auto;min-height:60px;flex-wrap:wrap;gap:8px;padding-top:8px;padding-bottom:8px}
+  .hdr-left{gap:8px;width:100%}
+  .hdr-divider{display:none}
+  .hdr-select{font-size:11px;max-width:160px}
+  .tab-bar{padding:0 14px}
+  main{padding:24px 16px 60px}
+}
+</style>
+</head>
+<body>
+
+<header class="hdr" role="banner">
+  <div class="hdr-left">
+    <a class="hub-back" href="../index.html" title="Back to hub">
+      <span class="hub-back-glyph">⌂</span>
+    </a>
+    <h1 class="hdr-wordmark">Amas<em> Models</em></h1>
+    <div class="hdr-divider"></div>
+
+    <span class="hdr-select-label">Inst</span>
+    <select id="instrument-select" class="hdr-select" aria-label="Instrument">
+      <option value="NQ">NQ</option>
+      <option value="ES">ES</option>
+    </select>
+
+    <span class="hdr-select-label">Model</span>
+    <select id="model-select" class="hdr-select" aria-label="Model" disabled>
+      <option disabled selected>Loading…</option>
+    </select>
+  </div>
+
+  <div class="hdr-right">
+    <button class="theme-btn" id="theme-btn" type="button" aria-label="Toggle theme" title="Toggle theme">☀️</button>
+  </div>
+</header>
+
+<nav class="tab-bar" role="tablist" aria-label="Sections">
+  <button class="tab active" role="tab" data-tab="overview">Overview</button>
+  <button class="tab" role="tab" data-tab="breakdowns">Breakdowns</button>
+  <button class="tab" role="tab" data-tab="filters">Filters</button>
+  <button class="tab" role="tab" data-tab="trades">Trades</button>
+  <button class="tab" role="tab" data-tab="walkforward">Walk-Forward</button>
+  <button class="tab" role="tab" data-tab="spec">Spec</button>
+</nav>
+
+<main id="main">
+
+  <div id="placeholder" class="placeholder">
+    <div class="placeholder-icon">📐</div>
+    <div class="placeholder-title">No model selected.</div>
+    <p class="placeholder-body">
+      Register a model in <code>engine/models/__init__.py</code> and re-run the engine.
+    </p>
+  </div>
+
+  <div id="model-content"></div>
+
+</main>
+
+<footer>
+  Amas Models · NQ &amp; ES Futures · Phase 2 chrome (no models registered yet)
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── Theme toggle ────────────────────────────────────────────────────────
+  // Shared key with hub + Fractal Sweep dashboards.
+  var THEME_KEY = 'hub-theme';
+  var INSTRUMENT_KEY = 'amas-instrument';
+
+  function currentTheme() {
+    return document.documentElement.getAttribute('data-theme') || 'dark';
+  }
+
+  function setTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    localStorage.setItem(THEME_KEY, t);
+    var btn = document.getElementById('theme-btn');
+    if (btn) btn.textContent = (t === 'dark') ? '☀️' : '🌙';
+  }
+
+  function toggleTheme() {
+    setTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+  }
+
+  // Initial paint of the toggle glyph (theme already applied by early-paint script).
+  (function syncThemeBtn() {
+    var btn = document.getElementById('theme-btn');
+    if (btn) btn.textContent = (currentTheme() === 'dark') ? '☀️' : '🌙';
+  })();
+
+  document.getElementById('theme-btn').addEventListener('click', toggleTheme);
+
+  // ── Instrument selector (cosmetic for now; persists for Phase 3+) ───────
+  var instSel = document.getElementById('instrument-select');
+  var savedInst = localStorage.getItem(INSTRUMENT_KEY);
+  if (savedInst === 'NQ' || savedInst === 'ES') {
+    instSel.value = savedInst;
+  }
+  instSel.addEventListener('change', function () {
+    localStorage.setItem(INSTRUMENT_KEY, instSel.value);
+  });
+
+  // ── Tab switching (visual only) ─────────────────────────────────────────
+  var tabs = document.querySelectorAll('.tab');
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () {
+      tabs.forEach(function (x) { x.classList.remove('active'); });
+      t.classList.add('active');
+    });
+  });
+
+  // ── Data load ───────────────────────────────────────────────────────────
+  function showError(msg) {
+    var ph = document.getElementById('placeholder');
+    var content = document.getElementById('model-content');
+    content.style.display = 'none';
+    ph.innerHTML =
+      '<div class="error-card">' +
+        '<div class="error-card-icon">⚠️</div>' +
+        '<div>' +
+          '<div class="error-card-title">Could not load model_stats.json</div>' +
+          '<div class="error-card-body">' + msg + '</div>' +
+        '</div>' +
+      '</div>';
+    ph.style.display = 'block';
+  }
+
+  function populateModelSelector(models) {
+    var sel = document.getElementById('model-select');
+    sel.innerHTML = '';
+    var keys = Object.keys(models || {});
+
+    if (keys.length === 0) {
+      var opt = document.createElement('option');
+      opt.disabled = true;
+      opt.selected = true;
+      opt.textContent = 'No models registered yet';
+      sel.appendChild(opt);
+      sel.disabled = true;
+      return;
+    }
+
+    sel.disabled = false;
+    keys.forEach(function (k, i) {
+      var o = document.createElement('option');
+      o.value = k;
+      o.textContent = k;
+      if (i === 0) o.selected = true;
+      sel.appendChild(o);
+    });
+  }
+
+  function showPlaceholder(empty) {
+    var ph = document.getElementById('placeholder');
+    var content = document.getElementById('model-content');
+    if (empty) {
+      ph.style.display = 'flex';
+      content.style.display = 'none';
+    } else {
+      // Phase 3 will fill #model-content. For now the chrome remains
+      // visible but no model rendering occurs.
+      ph.style.display = 'flex';
+      content.style.display = 'none';
+    }
+  }
+
+  function loadStats() {
+    fetch('./model_stats.json', { cache: 'no-store' })
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error('HTTP ' + res.status);
+        }
+        return res.json();
+      })
+      .then(function (stats) {
+        window.__stats = stats;
+        var models = (stats && stats.models) || {};
+        populateModelSelector(models);
+        showPlaceholder(Object.keys(models).length === 0);
+      })
+      .catch(function (err) {
+        // Network error or parse error.
+        showError(
+          'has the engine run yet? Try ' +
+          '<code>python3 engine/model_stats.py</code> from the ' +
+          '<code>Amas Models/</code> folder.'
+        );
+        // Keep the model selector in a sensible "no models" state.
+        populateModelSelector({});
+        // Surface the error to the console for debugging.
+        if (window.console) console.error('[amas-dashboard] fetch failed:', err);
+      });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadStats);
+  } else {
+    loadStats();
+  }
+})();
+</script>
+
+</body>
+</html>
