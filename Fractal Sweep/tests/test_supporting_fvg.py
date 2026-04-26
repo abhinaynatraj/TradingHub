@@ -1,5 +1,6 @@
 """Tests for find_supporting_fvg — supporting FVG confluence detection."""
 import numpy as np
+import pandas as pd
 import pytest
 
 import model_stats as ms
@@ -324,3 +325,113 @@ def test_detect_setups_base_writes_four_fvg_flags():
         # strict ⇒ loose invariant per TF
         assert (not row['passes_fvg_cisd_strict']) or row['passes_fvg_cisd_loose']
         assert (not row['passes_fvg_1m_strict'])   or row['passes_fvg_1m_loose']
+
+
+def _wl_fixture_for_fvg_summary():
+    """Hand-built minimal trade DataFrame mimicking what detect+resolve produces.
+    Six trades with varied flag combinations to verify aggregation cells.
+
+    Note: build_model_stats does many other aggregations (heatmaps, recent_trades,
+    etc.) that need typical column shapes. This fixture extends _make_resolved_df's
+    style with the four FVG columns added.
+    """
+    rng = np.random.RandomState(7)
+    n = 30
+    outcomes = rng.choice(['WIN', 'LOSS'], n, p=[0.5, 0.5])
+    r_vals = np.where(outcomes == 'WIN', 1.0, -1.0)
+
+    df = pd.DataFrame({
+        'date': [f'2023-{((i % 12) + 1):02d}-{((i % 28) + 1):02d}' for i in range(n)],
+        'yr': 2023,
+        'dow': rng.choice(range(1, 6), n),
+        'direction': rng.choice(['LONG', 'SHORT'], n),
+        'ref_range': rng.uniform(15, 60, n),
+        'sweep_ext': rng.uniform(3, 20, n),
+        'sweep_pct': rng.uniform(0.05, 0.49, n),
+        'sweep_extreme': rng.uniform(23900, 24100, n),
+        'sweep_mode': 'PREV',
+        'cisd_mode': 'CISD',
+        'ref_lookback': 1,
+        'smt':                     rng.choice([True, False], n, p=[0.5, 0.5]),
+        'passes_fvg_cisd_strict':  rng.choice([True, False], n, p=[0.4, 0.6]),
+        'passes_fvg_cisd_loose':   rng.choice([True, False], n, p=[0.6, 0.4]),
+        'passes_fvg_1m_strict':    rng.choice([True, False], n, p=[0.4, 0.6]),
+        'passes_fvg_1m_loose':     rng.choice([True, False], n, p=[0.7, 0.3]),
+        'hr': rng.choice(range(8, 16), n),
+        'mn': rng.choice(range(0, 60, 5), n),
+        'session': 'NY1',
+        'entry_price': rng.uniform(23900, 24100, n).round(2),
+        'base_risk': rng.uniform(10, 80, n).round(2),
+        'cisd_level': rng.uniform(23900, 24100, n).round(2),
+        'hour_range_pts': rng.uniform(20, 100, n).round(2),
+        'rejected_by': '',
+        'stop_price': rng.uniform(23850, 24050, n).round(2),
+        'target_price': rng.uniform(23950, 24150, n).round(2),
+        'risk_pts': rng.uniform(10, 80, n).round(2),
+        'outcome': outcomes,
+        'r': r_vals,
+        'mae_pct': rng.uniform(0.01, 0.5, n).round(4),
+        'mfe_pct': rng.uniform(0.05, 2.0, n).round(4),
+        'mae_pct_hr': rng.uniform(1, 80, n).round(4),
+        'mfe_pct_hr': rng.uniform(5, 300, n).round(4),
+    })
+    # Enforce strict ⇒ loose per TF (matches engine invariant)
+    df.loc[df['passes_fvg_cisd_strict'], 'passes_fvg_cisd_loose'] = True
+    df.loc[df['passes_fvg_1m_strict'],   'passes_fvg_1m_loose']   = True
+    return df
+
+
+def test_fvg_summary_block_exists_with_expected_keys():
+    df = _wl_fixture_for_fvg_summary()
+    cfg = dict(label='Test', sweep_tf_min=60, cisd_tf_min=5,
+               min_range=12, session_hrs=(7.0, 16.0))
+    stats = ms.build_model_stats(df, trading_days=100, model_key='1H_5M',
+                                  model_cfg=cfg,
+                                  stop_mult=1.0, target_mult=1.0,
+                                  profile_key='simple_1r', profile_type='mult')
+    assert 'fvg_summary' in stats
+    fs = stats['fvg_summary']
+    expected = ['cisd_strict', 'cisd_loose', 'no_cisd_fvg',
+                'm1_strict',   'm1_loose',   'no_m1_fvg',
+                'any_strict',  'any_loose',
+                'cisd_strict_smt', 'm1_strict_smt', 'any_strict_smt']
+    for key in expected:
+        assert key in fs, f"fvg_summary missing key: {key}"
+        leaf = fs[key]
+        for leaf_key in ('n', 'wins', 'wr', 'ev', 'pf'):
+            assert leaf_key in leaf, f"fvg_summary[{key!r}] missing {leaf_key}"
+
+
+def test_fvg_summary_counts_match_masks():
+    """Verify each cell's `n` matches the count of rows satisfying its mask."""
+    df = _wl_fixture_for_fvg_summary()
+    cfg = dict(label='Test', sweep_tf_min=60, cisd_tf_min=5,
+               min_range=12, session_hrs=(7.0, 16.0))
+    stats = ms.build_model_stats(df, trading_days=100, model_key='1H_5M',
+                                  model_cfg=cfg,
+                                  stop_mult=1.0, target_mult=1.0,
+                                  profile_key='simple_1r', profile_type='mult')
+    fs = stats['fvg_summary']
+
+    # build_model_stats filters df to wl (only WIN/LOSS rows). For our fixture,
+    # all rows have outcome WIN or LOSS so wl == df.
+    wl = df  # since rejected_by is '' and all outcomes are WIN/LOSS
+
+    cs  = wl['passes_fvg_cisd_strict']
+    cl  = wl['passes_fvg_cisd_loose']
+    m1s = wl['passes_fvg_1m_strict']
+    m1l = wl['passes_fvg_1m_loose']
+    smt = wl['smt']
+    any_strict = cs | m1s
+
+    assert fs['cisd_strict']['n']     == int(cs.sum())
+    assert fs['cisd_loose']['n']      == int(cl.sum())
+    assert fs['no_cisd_fvg']['n']     == int((~cl).sum())
+    assert fs['m1_strict']['n']       == int(m1s.sum())
+    assert fs['m1_loose']['n']        == int(m1l.sum())
+    assert fs['no_m1_fvg']['n']       == int((~m1l).sum())
+    assert fs['any_strict']['n']      == int(any_strict.sum())
+    assert fs['any_loose']['n']       == int((cl | m1l).sum())
+    assert fs['cisd_strict_smt']['n'] == int((cs & smt).sum())
+    assert fs['m1_strict_smt']['n']   == int((m1s & smt).sum())
+    assert fs['any_strict_smt']['n']  == int((any_strict & smt).sum())

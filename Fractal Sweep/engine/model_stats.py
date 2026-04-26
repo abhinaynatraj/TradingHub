@@ -1698,6 +1698,39 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
             s = agg(g); s.update(smt=bool(smt_val))
             smt_summary.append(s)
 
+    # ── Supporting FVG breakdown ─────────────────────────────────────────────
+    # Each leaf is the result of agg() on a boolean-mask slice of wl.
+    # Cells: per-TF (cisd / m1 / any) × geometry (strict / loose / none) +
+    # confluence with SMT for the strict cells (since SMT is the strongest
+    # known filter).
+    fvg_summary = {}
+    if {'passes_fvg_cisd_strict', 'passes_fvg_cisd_loose',
+        'passes_fvg_1m_strict',   'passes_fvg_1m_loose'} <= set(wl.columns):
+        cs = wl['passes_fvg_cisd_strict'].astype(bool)
+        cl = wl['passes_fvg_cisd_loose'].astype(bool)
+        m1s = wl['passes_fvg_1m_strict'].astype(bool)
+        m1l = wl['passes_fvg_1m_loose'].astype(bool)
+        smt_mask = wl['smt'].astype(bool) if 'smt' in wl.columns else pd.Series(False, index=wl.index)
+
+        any_strict = cs | m1s
+        any_loose  = cl | m1l
+
+        cells = {
+            'cisd_strict':     cs,
+            'cisd_loose':      cl,
+            'no_cisd_fvg':     ~cl,
+            'm1_strict':       m1s,
+            'm1_loose':        m1l,
+            'no_m1_fvg':       ~m1l,
+            'any_strict':      any_strict,
+            'any_loose':       any_loose,
+            'cisd_strict_smt': cs & smt_mask,
+            'm1_strict_smt':   m1s & smt_mask,
+            'any_strict_smt':  any_strict & smt_mask,
+        }
+        for key, mask in cells.items():
+            fvg_summary[key] = agg(wl[mask])
+
     mae = wl['mae_pct'].dropna()
     mfe = wl['mfe_pct'].dropna()
     wins_wl2 = wl[wl['win'] == 1]
@@ -2021,6 +2054,7 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         'r_hist':        r_hist,
         'dir_summary':   dir_summary,
         'smt_summary':   smt_summary,
+        'fvg_summary':   fvg_summary,
         'risk_dist':     risk_dist,
         'filter_impact': filter_impact,
         'filter_variants': filter_variants,
