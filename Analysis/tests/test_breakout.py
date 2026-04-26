@@ -185,8 +185,12 @@ def test_breakout_metric_returns_rates():
     })
     rec = bs.breakout_metric(events)
     assert rec['n_total'] == 5
+    assert rec['n_classifiable'] == 4  # excludes the one no_prev row
     assert rec['n_bullish'] == 2
     assert rec['n_bearish'] == 1
+    # Rates use n_classifiable as denominator
+    assert rec['bullish_breakout_rate'] == 0.5  # 2/4
+    assert rec['bearish_breakout_rate'] == 0.25  # 1/4
     assert rec['bullish_followthrough_rate'] == 0.5
     assert rec['bearish_followthrough_rate'] == 1.0
     assert rec['bullish_immediate_reversal_rate'] == 0.5
