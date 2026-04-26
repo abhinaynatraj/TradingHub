@@ -1,0 +1,164 @@
+# Forward-Test Trade Log — Setup Guide
+
+A self-contained tracker for the Fractal Sweep model's forward test. One trade per row; rolling stats auto-computed in a separate summary tab.
+
+---
+
+## What you're tracking
+
+The forward test validates whether the in-sample backtest numbers (1H_5M model, F3+F4+SMT filters: **59.1% WR · +0.182R EV · ~143 trades/year**) hold up out-of-sample. At ~12 trades/month, you need 100+ trades (~9 months) for a statistically meaningful answer, 200+ (~17 months) for a robust one.
+
+**Decision rules to commit to BEFORE you start:**
+
+| Trigger | Action |
+|---|---|
+| Cumulative drawdown > 15R ($3,375 at $225/trade) | Stop trading. Edge has decayed. |
+| WR < 45% on any 50-trade rolling window | Stop trading. |
+| EV < 0R on any 100-trade window | Stop trading. |
+| 5-trade losing streak | **Continue.** Math says streaks of 5+ are common at 59% WR. |
+| WR 50–65% on rolling 50-trade window | **Continue.** Within expected variance. |
+
+---
+
+## Step 1 — Import the trade log into Google Sheets
+
+1. Open [sheets.new](https://sheets.new) → blank spreadsheet.
+2. **File → Import → Upload** → drag `trade_log_template.csv` into the dialog.
+3. Choose **Replace spreadsheet** and **Detect automatically** as the separator type.
+4. Rename the tab from "trade_log_template" to **`Trades`**.
+5. Freeze the header row: **View → Freeze → 1 row**.
+
+(Or: use Excel and just open the CSV directly. The formulas below work in both.)
+
+---
+
+## Step 2 — Column reference
+
+Each row = one fired setup that you took (or chose to skip — log skipped ones too with `outcome = SKIPPED` and a note explaining why).
+
+| Column | What goes here | Source |
+|---|---|---|
+| `trade_no` | 1, 2, 3… (just sequence number) | Manual |
+| `date` | YYYY-MM-DD | Indicator alert / chart |
+| `time_et` | HH:MM in ET (e.g. `09:35`) | Indicator alert / chart |
+| `combo` | `1H/5M` or `30M/3M` | Indicator alert payload |
+| `direction` | `LONG` or `SHORT` | Indicator alert payload |
+| `smt` | `TRUE` or `FALSE` | Indicator alert payload (must be TRUE if you're filtering on SMT) |
+| `planned_entry` | Price level the indicator gave | Indicator alert payload |
+| `planned_sl` | Stop-loss price (sweep extreme) | Indicator alert payload |
+| `planned_tp` | Take-profit price (1R from entry) | Indicator alert payload |
+| `planned_risk_pts` | `\|planned_entry − planned_sl\|` | Indicator alert payload |
+| `actual_entry` | Price you actually filled at | Broker fill report |
+| `actual_sl_or_tp` | Price the trade exited at | Broker fill report |
+| `outcome` | `WIN` / `LOSS` / `SKIPPED` / `BE` / `MANUAL_EXIT` | You |
+| `r_realized` | Actual R captured (e.g. `+1.0`, `-1.0`, `0` for BE, `+0.6` for partial) | You |
+| `mae_R` | Deepest adverse excursion as a fraction of risk (e.g. `0.6` = went 60% of the way to SL) | Eyeball from chart after the trade |
+| `mfe_R` | Furthest favorable excursion (capped at +1.0R if hit TP) | Eyeball from chart |
+| `slippage_pts` | `actual_entry − planned_entry` (signed; negative = adverse for you) | Broker fill report |
+| `contracts` | Number of MNQ contracts you traded | Manual |
+| `pnl_usd` | Dollar P&L for the trade | `r_realized × contracts × planned_risk_pts × $2/pt` |
+| `notes` | Anything subjective — news, regime, emotional state, fill quality | Free text |
+
+**Critical fields:** `outcome`, `r_realized`, and `notes`. The summary formulas key off `outcome` to filter `WIN`/`LOSS` for stats.
+
+---
+
+## Step 3 — Add a Summary tab
+
+In your Google Sheet:
+
+1. Right-click the `Trades` tab → **Duplicate** → no wait, just **New sheet** → name it **`Summary`**.
+2. Paste these formulas into Summary, starting at A1.
+
+**Headline stats (cells A1:B12):**
+
+| Cell | Label | Formula | What it shows |
+|---|---|---|---|
+| `A1` | `Total trades` | (just the label) | |
+| `B1` | | `=COUNTA(Trades!A2:A) - COUNTIF(Trades!M2:M, "SKIPPED")` | All non-skipped trades |
+| `A2` | `Wins` | | |
+| `B2` | | `=COUNTIF(Trades!M2:M, "WIN")` | |
+| `A3` | `Losses` | | |
+| `B3` | | `=COUNTIF(Trades!M2:M, "LOSS")` | |
+| `A4` | `Breakevens` | | |
+| `B4` | | `=COUNTIF(Trades!M2:M, "BE")` | |
+| `A5` | `Win rate` | | |
+| `B5` | | `=IFERROR(B2/(B2+B3+B4), 0)` (format as %) | |
+| `A6` | `Total R` | | |
+| `B6` | | `=SUM(Trades!N2:N)` | Sum of `r_realized` |
+| `A7` | `Average R per trade (EV)` | | |
+| `B7` | | `=IFERROR(B6/(B2+B3+B4), 0)` | |
+| `A8` | `Profit factor` | | |
+| `B8` | | `=IFERROR(SUMIF(Trades!N2:N, ">0") / ABS(SUMIF(Trades!N2:N, "<0")), 0)` | |
+| `A9` | `Total P&L ($)` | | |
+| `B9` | | `=SUM(Trades!S2:S)` (S = `pnl_usd` column) | |
+| `A10` | `Max drawdown (R)` | | |
+| `B10` | | (see Step 4 below) | |
+| `A11` | `Trades to date` | | |
+| `B11` | | `=B1` | mirror |
+| `A12` | `Forward-test status` | | |
+| `B12` | | `=IF(B1<30, "Noise — keep tracking", IF(B1<100, "Trend — too early to call", IF(B5<0.45, "🛑 STOP — WR below 45%", IF(B7<0, "🛑 STOP — EV negative", "✓ On track"))))` | Quick health check |
+
+**Rolling stats (the meaningful ones):**
+
+| Cell | Label | Formula | Window |
+|---|---|---|---|
+| `D1` | `Last 30 trades — WR` | `=IFERROR(COUNTIFS(Trades!M2:M, "WIN", Trades!A2:A, ">"&MAX(0, COUNTA(Trades!A2:A)-30)) / 30, 0)` | last 30 |
+| `D2` | `Last 30 — EV` | `=IFERROR(SUMIFS(Trades!N2:N, Trades!A2:A, ">"&MAX(0, COUNTA(Trades!A2:A)-30)) / 30, 0)` | last 30 |
+| `D3` | `Last 50 — WR` | (same pattern, swap `30` for `50`) | last 50 |
+| `D4` | `Last 50 — EV` | | |
+| `D5` | `Last 100 — WR` | | last 100 |
+| `D6` | `Last 100 — EV` | | |
+
+(If the precise rolling-window formulas trip you up, just pull up the last N trades manually with a filter view — Google Sheets / Excel both have built-in filtering.)
+
+---
+
+## Step 4 — Optional: equity curve chart
+
+1. In the Summary tab, add a column `H` titled `running_R`. In `H2`, formula: `=Trades!N2`. In `H3`, formula: `=H2 + Trades!N3`. Drag down.
+2. Select the running_R column → **Insert → Chart → Line chart**.
+3. Title: "Equity curve (R)".
+
+This gives you a visual of cumulative R over time. A healthy edge looks like a noisy upward slope; a decayed edge looks flat or sloping down.
+
+For **Max drawdown (R)** in `B10`: add column `I` in Summary with formula `=MAX($H$2:H2)` (running peak), and column `J` with formula `=H2-I2` (current drawdown). Then `B10` = `=MIN(J2:J)` (most negative value = worst drawdown).
+
+---
+
+## Step 5 — Workflow
+
+Each time the indicator fires a setup you take:
+
+1. **Within 1 hour of entry**, log the planned values from the alert payload (`planned_entry`, `planned_sl`, `planned_tp`, `planned_risk_pts`, `direction`, `combo`, `smt`).
+2. **After the trade closes**, fill in actuals (`actual_entry`, `actual_sl_or_tp`, `outcome`, `r_realized`, `slippage_pts`, `contracts`, `pnl_usd`).
+3. **Before market close that day**, eyeball the chart and fill `mae_R` and `mfe_R`. Don't be exact — 0.1R precision is fine.
+4. **Notes:** at minimum mark unusual context — news event, FOMC day, low liquidity, fat finger.
+
+**Skipped setups also matter.** If the indicator fired but you didn't take it, log `outcome = SKIPPED` and explain in `notes`. Patterns of skipped trades reveal discipline issues.
+
+---
+
+## Step 6 — Monthly review
+
+Once a month, look at:
+
+1. **Realized WR vs expected.** Backtest says ~59%; live should be 55-62% over a meaningful window.
+2. **Realized EV.** Backtest: +0.18R. Live target after slippage: +0.10 to +0.15R.
+3. **Slippage column.** If `slippage_pts` averages worse than -0.5 pts, your fills are eating edge. Look at order type / liquidity at entry time.
+4. **Skipped count.** If you're skipping >20% of signals, you're not actually testing the system.
+
+If after **30+ days** anything in `B12` (forward-test status) is a 🛑, stop and rethink. Otherwise keep going.
+
+---
+
+## What "validated" looks like
+
+After ~200 trades (roughly 17 months at 1H/5M model frequency):
+
+- WR consistently in **55–62%** range
+- EV per trade: **+0.10R to +0.18R**
+- Max drawdown: didn't exceed **15R**
+- Profit factor: **1.4+**
+
+If those hold, you have a real edge worth scaling up. If they don't, the in-sample backtest was likely overfit and the model needs to go back to the research bench.

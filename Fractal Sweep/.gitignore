@@ -3,6 +3,8 @@
 *.dbn
 *.parquet
 *.csv
+# Forward-test trade-log template is committed (it's a workflow asset, not data)
+!forward_test/trade_log_template.csv
 
 # Logs
 *.log
