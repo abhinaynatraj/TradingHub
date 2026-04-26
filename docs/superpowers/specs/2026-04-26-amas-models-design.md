@@ -58,7 +58,8 @@ Statistic.ally/Amas Models/
 │   │   └── tf_15m_h1.py        (etc.)
 │   ├── outcomes.py             shared SL/TP scanner (ported from Fractal Sweep)
 │   ├── filters.py              shared filter primitives (SMT, shallow sweep, etc.)
-│   ├── db.py                   DB path resolution + TZ conversion helpers
+│   ├── db.py                   DB path resolution + TZ conversion + data-quality checks
+│   ├── constants.py            single source of truth: MIN_RISK_PTS, MAX_RISK_PTS, point values, OUTCOME_MAX_BARS
 │   └── daily_update.py         (Phase 7) hook into Fractal Sweep's cron
 ├── pine/                       (Phase 6) one .pine per validated model
 ├── docs/
@@ -67,10 +68,11 @@ Statistic.ally/Amas Models/
 ├── data/                       cached intermediates (gitignored)
 ├── assets/                     dashboard images
 └── tests/
-    ├── test_db.py              smoke test: DB connects, tables exist
-    ├── test_outcomes.py        SL/TP scanner unit tests
+    ├── test_db.py              smoke test: DB connects, tables exist, TZ sentinel
+    ├── test_outcomes.py        SL/TP scanner unit tests + idempotency
     ├── test_filters.py         filter primitives unit tests
-    └── test_<model>.py         per-model fixture tests
+    ├── test_reproducibility.py byte-for-byte JSON reproducibility
+    └── test_<model>.py         per-model fixture tests (trade-count, lookahead audit, direction symmetry)
 ```
 
 DB resolves to `Path(__file__).parent.parent.parent / 'Fractal Sweep' / 'candle_science.duckdb'`. The DB is **not** copied or moved.
@@ -206,7 +208,7 @@ Adding a model = adding one file in `engine/models/` and registering it. `model_
         ...
       ],
       "trades": [ /* one row per trade, with passes_* flags */ ],
-      "summary": {"n": 1234, "wr": 0.51, "ev": 0.04, "pf": 1.12, ...},
+      "summary": {"n": 1234, "n_resolved": 1198, "n_expired": 36, "wr": 0.51, "wr_ci_low": 0.48, "wr_ci_high": 0.54, "ev": 0.04, "pf": 1.12, ...},
       "by_year": {...},
       "by_session": {...},
       "by_dow": {...},
@@ -302,6 +304,128 @@ The hard milestone is **Phase 3** — one model fully end-to-end. Phases 4+ are 
 
 Rationale: for personal research the rules and their measured edge belong in one place. Two-file separation (rules + results) is cleaner archivally but adds friction every time you want to know "does this model work, and what are its rules?"
 
+## Correctness invariants (non-negotiable)
+
+A backtest's most dangerous failure mode is producing a *plausible but inflated* edge. Fractal Sweep shipped at 72% baseline WR for months before the team discovered it should have been ~50% — a 22-point fake edge driven by a single dtype mismatch. The cost wasn't the bug; the cost was *believing* the bug.
+
+These invariants exist to make every category of "silent edge" bug fail loudly, ideally at engine startup or first test run, never in production-but-quietly-wrong.
+
+The categories below are based on Fractal Sweep's actual incident history plus the standard backtester pitfall taxonomy. Every one is a class of bug, not a single instance.
+
+### Category A: Timestamp / timezone correctness
+
+The Fractal Sweep engine had a real incident where pandas 2.0+ defaulted timestamp arrays to `[us]` resolution while the engine assumed `[ns]`, silently inflating 1h anchor windows into ~41 days. Baseline WR appeared as ~70% when the true figure was ~50%. The Amas engine must not be allowed to repeat any version of this.
+
+Required invariants:
+
+1. **DB read** — every query that pulls bars `SELECT timezone('America/New_York', timestamp) AS ts, ...`. The DB stores `America/Toronto`; we never use raw timestamps in detection logic.
+2. **pandas dtype lock** — immediately after pulling bars: (a) assert `df['ts'].dt.tz is not None` (timestamp must be tz-aware), (b) assert resolution is `[ns]` not `[us]` via `df['ts'].dtype.unit == 'ns'`, (c) if not, force `df['ts'] = df['ts'].astype('datetime64[ns, UTC]').dt.tz_convert('America/New_York')`. Both checks run on every load, not just in tests. Naive timestamps and `[us]` resolution are both fail-fast errors.
+3. **Window math is duration-based, not row-count-based** — when defining "the H1 window for this anchor," compute as `anchor_ts ≤ ts < anchor_ts + Timedelta('1h')`. Never as `bars_df.iloc[i:i+60]`. Row counts are fragile under data gaps (weekends, holidays, missing minutes); duration math is robust.
+4. **Anchor floor is explicit** — `anchor_ts = ts.dt.floor('1h')` and similar floors are applied in the timezone we're using for analysis (`America/New_York`), not the DB-stored zone. Floor in the analysis tz, never floor first then convert.
+5. **No epoch math anywhere** — never convert to int64 nanoseconds for window comparisons. Use `pd.Timestamp` and `pd.Timedelta` exclusively.
+6. **Sentinel test** — `tests/test_db.py` includes a sanity test: load a known historical day (e.g., a known NFP release minute), assert the bar's wall-clock timestamp matches expectation in NY tz. This test catches ANY regression in the load path.
+7. **Cross-instrument alignment** — when computing SMT (NQ + ES jointly), both instruments must be loaded through the same code path with the same dtype lock. Misaligned tz on one side silently produces phantom SMT.
+
+The detection layer assumes timestamps are correct. If the load layer is wrong, every model is wrong. Therefore the load layer is the most heavily tested module in the engine.
+
+### Category B: Trade deduplication
+
+A trade row must be uniquely identified by `(model_key, instrument, anchor_ts, direction)`. Duplicate trade rows (same model firing twice on the same anchor, or the same setup logged from two code paths) are a correctness bug, not a curiosity.
+
+Required invariants:
+
+1. **Per-anchor cap** — each model's `detect_setups` returns AT MOST ONE setup per anchor_ts (per direction, if the model is bidirectional). If a model can theoretically generate multiple in one anchor, the spec must explicitly say so and define the tie-break rule.
+2. **Post-detect dedup pass** — after detection, `model_stats.py` runs a dedup check per model+instrument: `keys = [(s.anchor_ts, s.direction) for s in setups]; assert len(keys) == len(set(keys)), f"{model_key}/{instrument}: duplicate setups at {<diff>}"`. Hard fail on duplicates, never silently dedupe. The error message names which anchors collided so we can debug the detector that produced them.
+3. **Same-anchor opposite-direction is allowed but logged** — if a model can fire long AND short on the same anchor (rare, but possible), the engine must log a warning and the spec must document why.
+4. **Outcome resolution is deterministic and idempotent** — given the same setup and same bars, `resolve_outcome` must produce the same trade row every time. No randomness, no time-of-day dependency in the resolver.
+5. **Idempotency test** — `tests/test_outcomes.py` runs the engine twice on the same input fixture and asserts the trade lists are identical (`==`, not just same length). Catches accidental nondeterminism.
+6. **Per-model trade-count test** — each model's test suite asserts an exact trade count on a small fixed fixture (e.g., "30 days of synthetic OHLC produces exactly N setups"). Drift in this number is a regression signal even if the dashboard summary still looks plausible.
+
+### Category C: Lookahead / future-leak
+
+The single most common silent-edge bug. The detector or outcome resolver accidentally uses information that wouldn't be available at the trade's decision time.
+
+Required invariants:
+
+1. **Detection is causal** — a setup at `anchor_ts` can only use bars where `bar.ts ≤ anchor_ts`. The detector function takes `(bars_up_to_now, anchor_ts)` or operates on a windowed slice. No `bars.iloc[i+1:]` reads in the detection path. Period.
+2. **Cross-anchor lookahead is forbidden** — Fractal Sweep had this bug: the CISD confirmation could fire from a future anchor's window, inflating WR. The fix was "sweep, return-to-range, and CISD-fire must all occur within the same anchor HTF window." Every Amas model with a multi-stage trigger inherits the same rule: every condition must be satisfied within the anchor's own window unless the spec explicitly defines a permitted lookahead.
+3. **Outcome resolution starts strictly after entry** — `resolve_outcome` scans bars where `bar.ts > entry_ts`. Bars with `bar.ts == entry_ts` (the entry bar itself) do NOT contribute to TP/SL resolution. They contribute to entry price only.
+4. **No closing-price-of-current-bar in entry logic** — if the model's entry is "next bar open after anchor close," then we must NOT use the next bar's high/low/close to decide whether to enter. This is a subtle bug — easy to write `if next_bar.close > X: enter at next_bar.open`, which uses next bar's close for a decision applied at next bar's open. Decisions made at time T use only bars closed before T.
+5. **Lookahead audit per model** — for every model, a structural review (in code review) confirms that detection only reads bars at indices `≤ anchor_ts`. Where feasible, supplement with a sanity test that runs the detector on `bars[:anchor_idx+1]` slices and confirms the same setup is produced as when running on the full DataFrame. (A full streaming implementation is overkill for a personal research engine; the targeted slice test catches the common cases.)
+6. **Future-information filters** — confluences computed across the whole dataset (e.g., "trade only on days where the daily range is in the top quartile") are anti-edge: at decision time we don't know that day's range yet. Every filter must declare which bars it reads (`reads_up_to_anchor` or `reads_session_close` or similar) and the engine asserts the filter only reads up to its declared horizon.
+
+### Category D: Outcome resolver fidelity
+
+The SL/TP scanner is the second most error-prone component. Fractal Sweep had two outcome-resolver bugs that flipped baseline WR: same-bar tie-break (was TP, should be SL) and `OUTCOME_MAX_BARS` set too low (360 vs 1440), which silently truncated trades that would have hit TP.
+
+Required invariants:
+
+1. **Same-bar tie-break is SL** — if a single bar's high ≥ TP and low ≤ SL, the trade is a loss. Documented in spec, asserted in test, never overridable per model unless the model's spec explicitly justifies it.
+2. **`OUTCOME_MAX_BARS = 1440` is the default** — a trade that hasn't resolved within 1440 bars (24h of 1m data) is marked `EXPIRED`. Expired trades are EXCLUDED from WR/EV but counted in the trade total (matching Fractal Sweep convention). Lowering this number on a per-model basis requires explicit justification in the spec.
+3. **Expired trades are visible** — `summary` reports `n_expired` separately. If `n_expired / n_total > 5%`, the dashboard flashes a warning. Expired trades hide losses (a trade going to MFE then reversing past SL but past the bar limit becomes "expired" instead of "loss"), so they need eyes on them.
+4. **MAE/MFE measured to resolution, not to MAX_BARS** — MAE/MFE for resolved trades stop at the resolution bar. For expired trades they extend to MAX_BARS. Never the reverse.
+5. **Direction symmetry test** — for every model, feed it a synthetic upward-trending fixture and assert long setups produce expected outcomes; then mirror the fixture and assert short setups behave symmetrically. Catches sign errors.
+6. **No survivorship in resolution** — a trade that "would have hit TP eventually" but is cut off by EOD or weekend is not retroactively a winner. The resolver scans the bars it has and reports what happened in those bars.
+
+### Category E: Data quality
+
+Bars themselves can be wrong. Garbage in, fake edge out.
+
+Required invariants:
+
+1. **Gap detection** — `engine/db.py` includes a `check_gaps(bars_df)` helper that reports any intra-session gap > 5 minutes (RTH = Regular Trading Hours, 09:30–16:00 ET). The engine logs gaps but does not abort; large gaps are tagged on affected setups (`has_data_gap: bool`) so the dashboard can filter them out. Cross-session gaps (e.g., overnight, weekend) are expected and not flagged.
+2. **Duplicate bar detection** — `assert bars_df['ts'].is_unique` immediately after load. Duplicate bars from a botched Databento merge would silently double-count.
+3. **Monotonic timestamps** — `assert bars_df['ts'].is_monotonic_increasing` after load. Out-of-order bars break every windowing operation.
+4. **OHLC sanity** — `assert (bars_df['low'] <= bars_df[['open','close','high']].min(axis=1)).all()` and `assert (bars_df['high'] >= bars_df[['open','close','low']].max(axis=1)).all()`. Bad bars from data feed errors must be caught.
+5. **Nonzero volume on regular bars** — most bars during RTH should have volume > 0. A long run of zero-volume bars usually means a data feed gap that was filled with last-price, which corrupts MAE/MFE. Tagged but not aborted.
+6. **Stable schema** — DB schema (`timestamp TIMESTAMPTZ, o/h/l/c/v`) is asserted at load. If a schema change creeps in via Databento, fail fast.
+
+### Category F: Risk profile and sizing arithmetic
+
+Fractal Sweep's R math depends on `MIN_RISK_PTS = 3.0`, `MAX_RISK_PTS = 112.5`, `RISK_PER_TRADE = $225`, `POINT_VALUE = $2`. A bug in any one silently shifts EV.
+
+Required invariants:
+
+1. **Single source of truth for constants** — `engine/constants.py` holds them; no model file redefines them. If a model's spec needs different sizing (different point value for ES vs NQ), the override is explicit and tested.
+2. **NQ vs ES point values are different** — NQ = $2/pt for MNQ; ES = $5/pt for MES. The engine must use the right one per `--table` argument. Default-NQ assumptions that leak into ES results are a silent-edge category.
+3. **R is computed in points, not dollars, then converted** — `r = (exit_price - entry_price) / risk_pts` for longs, mirrored for shorts. Stops in dollar terms are derived, not stored. Fewer places to drift.
+4. **MIN_RISK / MAX_RISK gates are applied symmetrically per direction** — gate uses `abs(entry - sl)`, never signed.
+5. **Equity tracking ships both R and USD** — `min_equity_R`/`max_dd_R` are the canonical, instrument-comparable metrics; `min_equity_usd`/`max_dd_usd` (matching Fractal Sweep) are derived from R × point-value × risk for display. If the two disagree (R says drawdown, USD doesn't), that's a bug — covered by a test.
+6. **Test: known-fixture R math** — given a synthetic trade with entry=100, SL=95, exit=110, the resolver returns `r = 2.0`. Mirror for shorts. Failing this test means the basic arithmetic is wrong, full stop.
+
+### Category G: Statistical hygiene
+
+Even with a correct engine, statistical reporting bugs can fake an edge.
+
+Required invariants:
+
+1. **EV is mean R, not median R** — `ev = sum(r) / n_resolved`. Median R is reported separately but never as headline EV.
+2. **PF is gross profit / gross loss, computed from R values** — `pf = sum(r where r>0) / abs(sum(r where r<0))`. Bug-prone if computed from dollar amounts with mixed point values.
+3. **Sample size visible everywhere** — every WR/EV/PF cell in the dashboard shows N alongside. A 65% WR over 12 trades is not the same finding as 65% over 1,200; suppressing N hides this.
+4. **Confidence intervals on WR** — for every breakdown cell, compute Wilson 95% CI on WR. Cells with N < 30 are flagged. Prevents reading edge into noise.
+5. **No look-ahead in filters' edge measurement** — when computing "F1 standalone edge: +3.4% WR," the comparison uses the SAME period for filtered and unfiltered, not "F1 trades from 2018-2026 vs all trades from 2010-2026." Period-mismatched comparisons are a silent-edge classic.
+6. **Walk-forward overfitting reporting** — train EV vs test EV ratio is shown explicitly; if `test_ev / train_ev < 0.5` the dashboard flags it as likely overfit.
+7. **Filter combos use AND semantics, not "best single filter applied"** — when computing "F1+F2+F3" combo edge, every filter must pass. Bug: accidentally OR-ing filter passage.
+
+### Category H: Determinism and reproducibility
+
+Backtests must be exactly reproducible. Same code + same DB + same date range = same JSON byte-for-byte (modulo the `generated_at` field).
+
+Required invariants:
+
+1. **No randomness** — no `np.random` calls in detection or resolution paths. Tied bars resolved deterministically (same-bar TP/SL → SL, documented above).
+2. **Stable iteration order** — pandas operations preserve order; dict-of-models is iterated in registration order. JSON output uses sorted keys.
+3. **No wall-clock time in logic** — `datetime.now()` appears only in the `meta.generated_at` field. Never in detection (e.g., "if this anchor is from this year").
+4. **Reproducibility test** — `tests/test_reproducibility.py` runs the engine twice on a fixed-date subset and diffs the resulting JSON (excluding `meta.generated_at`). Must be byte-identical.
+
+### Cross-cutting review discipline
+
+- Every PR / commit that touches `engine/db.py`, `engine/outcomes.py`, `engine/constants.py`, or any model's `detect_setups` requires re-running the full test suite. No exceptions.
+- All assertions above run in production, not gated on `DEBUG`. The cost is nanoseconds; the value is loud failure.
+- Every reported finding (in the dashboard, in `model_specs.md`'s Backtest Results) is reviewed against this invariant list before being trusted. The "edge inflation checklist": did we read TZ correctly? are trades deduped? is detection causal? are expired trades excluded? are point values right per instrument? does the dashboard show N and CIs? is the test suite green? Until every box is checked, the number is provisional.
+- When porting Fractal Sweep code, line-by-line review the timestamp math, lookahead boundaries, and tie-break semantics; do not trust that "it worked in Fractal Sweep" — Fractal Sweep itself shipped multiple silent-edge bugs and only caught them after months of trusting bad numbers.
+- New invariants are added to this section any time we discover a new bug class. The list grows; it never shrinks.
+
 ## Risks & mitigations
 
 - **Materials are imprecise.** Many trading rules in mentorship-style content use words like "strong" or "clear" without thresholds. Mitigation: every vague term gets translated to a numeric threshold OR flagged as TBD with the source quote. Ambiguities become parameter sweeps later.
@@ -309,6 +433,7 @@ Rationale: for personal research the rules and their measured edge belong in one
 - **Same-bar tie semantics.** Fractal Sweep tie-breaks SL on same-bar TP/SL. If an Amas model's source dictates differently, override in that model's spec — don't silently inherit.
 - **JSON size.** With ~5 models × 14y of trades, JSON should be tens of MB, not hundreds (no per-trade bars). If a model produces >50K trades, revisit.
 - **Spec drift.** If the engine's behavior diverges from `model_specs.md`, which is canonical? Canonical = the spec. Engine should fail loudly if a TBD is hit. Add a CI check (Phase 5) that engine constants are documented in the spec.
+- **Trust drift on ported code.** Fractal Sweep's `outcomes.py` and `filters.py` are ported, not blindly reused. Each ported function gets a fresh test suite in the Amas project, not just a smoke test.
 
 ## Open items
 
