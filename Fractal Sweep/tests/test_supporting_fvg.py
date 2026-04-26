@@ -210,23 +210,37 @@ def test_window_too_small_returns_false():
 
 def test_strict_implies_loose_invariant_random():
     # Property test: for any inputs the helper accepts, strict ⇒ loose.
+    # Place sweep and entry INSIDE the bar range so that some candidate FVGs
+    # satisfy loose but not strict — otherwise the strict band is so wide
+    # that strict ≡ loose and the property is trivially true.
     rng = np.random.RandomState(7)
-    for _ in range(50):
+    long_loose_only_seen = False
+    short_loose_only_seen = False
+    for _ in range(200):
         n = 8
         opens  = rng.uniform(95, 110, n)
         closes = opens + rng.uniform(-2, 2, n)
         highs  = np.maximum(opens, closes) + rng.uniform(0, 2, n)
         lows   = np.minimum(opens, closes) - rng.uniform(0, 2, n)
         arrs = dict(open=opens, high=highs, low=lows, close=closes)
-        sweep = float(lows.min()) - 1.0
-        entry = float(highs.max()) + 1.0
-        s, l = ms.find_supporting_fvg(
-            arrs, 0, n, sweep, entry, 'LONG',
-        )
-        if s:
-            assert l, "strict ⇒ loose violated for LONG"
-        s, l = ms.find_supporting_fvg(
-            arrs, 0, n, entry + 5.0, sweep - 5.0, 'SHORT',
-        )
-        if s:
-            assert l, "strict ⇒ loose violated for SHORT"
+
+        # Random sweep / entry inside the range. For LONG, sweep < entry.
+        a, b = sorted([float(rng.uniform(lows.min(), highs.max())),
+                       float(rng.uniform(lows.min(), highs.max()))])
+        long_sweep, long_entry = a, b
+        s, l = ms.find_supporting_fvg(arrs, 0, n, long_sweep, long_entry, 'LONG')
+        assert (not s) or l, "strict ⇒ loose violated for LONG"
+        if l and not s:
+            long_loose_only_seen = True
+
+        # For SHORT, sweep > entry (sweep above price, entry below).
+        short_sweep, short_entry = b, a
+        s, l = ms.find_supporting_fvg(arrs, 0, n, short_sweep, short_entry, 'SHORT')
+        assert (not s) or l, "strict ⇒ loose violated for SHORT"
+        if l and not s:
+            short_loose_only_seen = True
+
+    # Coverage guards: if the construction never exercises the loose-but-not-
+    # strict case, the property test is degenerate and should fail loudly.
+    assert long_loose_only_seen,  "LONG: strict-false/loose-true case never exercised"
+    assert short_loose_only_seen, "SHORT: strict-false/loose-true case never exercised"
