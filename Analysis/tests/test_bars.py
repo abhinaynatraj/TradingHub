@@ -152,6 +152,20 @@ def test_quarters_only_built_for_valid_hours():
     assert quarters['hour_start_et'].nunique() == 1
 
 
+def test_build_hourly_handles_shuffled_input():
+    """Shuffled minute input must still produce correct OHLC."""
+    minutes = helpers.make_hour('2024-01-02 10:00', ohlc=(100, 110, 90, 105),
+                                high_at_minute=20, low_at_minute=40)
+    enriched = bars._enrich_minutes(minutes)
+    shuffled = enriched.sample(frac=1.0, random_state=42).reset_index(drop=True)
+    hourly = bars.build_hourly(shuffled)
+    row = hourly.iloc[0]
+    assert row['open'] == 100, f"open got {row['open']}"
+    assert row['close'] == 105, f"close got {row['close']}"
+    assert row['high'] == 110
+    assert row['low'] == 90
+
+
 def test_build_all_from_minutes_returns_both_dataframes():
     h1 = helpers.make_hour('2024-01-02 10:00', ohlc=(100, 110, 90, 105),
                            high_at_minute=20, low_at_minute=40)

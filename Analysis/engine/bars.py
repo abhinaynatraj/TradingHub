@@ -24,7 +24,9 @@ def db_path() -> Path:
 
 def _enrich_minutes(df: pd.DataFrame) -> pd.DataFrame:
     """Add ny_ts, year, dow, hour_of_day_et columns. Input timestamp may be
-    naive, UTC, or tz-aware; output ny_ts is always America/New_York."""
+    naive (assumed America/New_York; raises on DST ambiguous/nonexistent times,
+    which never occur during NQ trading hours), UTC, or tz-aware; output ny_ts
+    is always America/New_York."""
     out = df.copy()
     ts = pd.to_datetime(out['timestamp'])
     if ts.dt.tz is None:
@@ -82,7 +84,7 @@ def build_hourly(minutes: pd.DataFrame) -> pd.DataFrame:
     - Output columns: hour_start_et, open, high, low, close, volume,
       year, dow, hour_of_day_et.
     """
-    df = minutes.copy()
+    df = minutes.sort_values('ny_ts').copy()
     df['hour_start_et'] = df['ny_ts'].dt.floor('h')
     grouped = df.groupby('hour_start_et').agg(
         open=('open', 'first'),
@@ -127,7 +129,7 @@ def build_quarters(minutes: pd.DataFrame, hourly: pd.DataFrame) -> pd.DataFrame:
     q_high_minute, q_low_minute (minute-of-hour, 0-59).
     """
     valid_hours = set(hourly['hour_start_et'])
-    df = minutes.copy()
+    df = minutes.sort_values('ny_ts').copy()
     df['hour_start_et'] = df['ny_ts'].dt.floor('h')
     df = df[df['hour_start_et'].isin(valid_hours)].copy()
     df['minute_of_hour'] = df['ny_ts'].dt.minute
