@@ -57,3 +57,22 @@ def test_bullish_loose_only_fvg_extends_below_sl():
     )
     assert strict is False  # all candidate gap bottoms (97) < sweep_extreme (98)
     assert loose is True    # gap tops (101, 102) <= entry (109)
+
+
+def test_bullish_fvg_above_entry_both_false():
+    # Gap forms ABOVE entry — not supporting. Both False.
+    bars = [
+        (95, 100, 92, 99),
+        (99, 103, 98, 102),
+        (102, 108, 105, 107),  # FVG (100, 105]
+        (107, 110, 106, 109),
+        (109, 112, 108, 111),  # entry
+    ]
+    arrs = _arrs(bars)
+    # Entry below the gap → top (105) > entry (104) → loose False.
+    strict, loose = ms.find_supporting_fvg(
+        arrs, window_start_idx=0, entry_idx=4,
+        sweep_extreme=98.0, entry_price=104.0, direction='LONG',
+    )
+    assert strict is False
+    assert loose is False
