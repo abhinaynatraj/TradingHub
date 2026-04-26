@@ -150,3 +150,16 @@ def test_quarters_only_built_for_valid_hours():
     hourly = bars.build_hourly(enriched)
     quarters = bars.build_quarters(enriched, hourly)
     assert quarters['hour_start_et'].nunique() == 1
+
+
+def test_build_all_from_minutes_returns_both_dataframes():
+    h1 = helpers.make_hour('2024-01-02 10:00', ohlc=(100, 110, 90, 105),
+                           high_at_minute=20, low_at_minute=40)
+    h2 = helpers.make_hour('2024-01-02 11:00', ohlc=(105, 115, 95, 110),
+                           high_at_minute=10, low_at_minute=30)
+    minutes = helpers.concat_hours(h1, h2)
+    enriched = bars._enrich_minutes(minutes)
+    hourly, quarters = bars.build_all_from_minutes(enriched)
+    assert len(hourly) == 2
+    assert len(quarters) == 8
+    assert 'prev_hour_high' in hourly.columns

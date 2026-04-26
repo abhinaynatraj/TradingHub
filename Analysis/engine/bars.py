@@ -154,3 +154,18 @@ def build_quarters(minutes: pd.DataFrame, hourly: pd.DataFrame) -> pd.DataFrame:
     out = agg.merge(high_min, on=['hour_start_et', 'quarter']).merge(
         low_min, on=['hour_start_et', 'quarter'])
     return out.sort_values(['hour_start_et', 'quarter']).reset_index(drop=True)
+
+
+def build_all_from_minutes(minutes: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Build (hourly_with_prev, quarters) from already-enriched 1-min bars."""
+    hourly = build_hourly(minutes)
+    hourly = attach_prev_hour(hourly)
+    quarters = build_quarters(minutes, hourly)
+    return hourly, quarters
+
+
+def build_all(start: str | None = None, end: str | None = None
+              ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Connect to the shared DB, load minutes in [start, end), build both dataframes."""
+    minutes = load_minutes(start=start, end=end)
+    return build_all_from_minutes(minutes)
