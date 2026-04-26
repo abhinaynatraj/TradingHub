@@ -108,7 +108,9 @@ def attach_followthrough(classified: pd.DataFrame, minutes: pd.DataFrame) -> pd.
                 takeout_q.append(np.nan)
             reversal.append(bool((h2['high'] > h1_high).any()))
 
-    df['followthrough'] = followthrough
-    df['takeout_quarter_of_h2'] = takeout_q
-    df['immediate_reversal'] = reversal
+    # Use nullable boolean / Int dtypes so NaN is represented as pd.NA
+    # and parquet round-trips with proper typing for the dashboard.
+    df['followthrough'] = pd.array(followthrough, dtype='boolean')
+    df['takeout_quarter_of_h2'] = pd.array(takeout_q, dtype='Int64')
+    df['immediate_reversal'] = pd.array(reversal, dtype='boolean')
     return df

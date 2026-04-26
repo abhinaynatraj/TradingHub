@@ -135,3 +135,41 @@ def test_immediate_reversal_bullish_breakout_takes_out_h1_low():
     h1_row = events.iloc[1]
     assert h1_row['breakout'] == 'bullish'
     assert h1_row['immediate_reversal'] == True
+
+
+def test_followthrough_bearish_takeout_in_q3():
+    """Bearish breakout: H1.close < H0.low. H2 prints lower low at minute 32 (Q3)."""
+    # H0 low=95, H1 low=85/close=88 (< 95), H2 low=80 at minute 32
+    h0 = helpers.make_hour('2024-01-02 09:00', ohlc=(100, 105, 95, 100),
+                           high_at_minute=20, low_at_minute=40)
+    h1 = helpers.make_hour('2024-01-02 10:00', ohlc=(100, 105, 85, 88),
+                           high_at_minute=10, low_at_minute=50)
+    h2 = helpers.make_hour('2024-01-02 11:00', ohlc=(88, 92, 80, 85),
+                           high_at_minute=5, low_at_minute=32)
+    minutes = helpers.concat_hours(h0, h1, h2)
+    enriched = bars._enrich_minutes(minutes)
+    hourly, _ = bars.build_all_from_minutes(enriched)
+    events = bs.attach_followthrough(bs.classify(hourly), enriched)
+    h1_row = events.iloc[1]
+    assert h1_row['breakout'] == 'bearish'
+    assert h1_row['followthrough'] == True
+    assert h1_row['takeout_quarter_of_h2'] == 3
+
+
+def test_followthrough_no_takeout_returns_pd_na():
+    """When followthrough=False, takeout_quarter_of_h2 should be pd.NA (not python None)."""
+    h0 = helpers.make_hour('2024-01-02 09:00', ohlc=(100, 105, 95, 100),
+                           high_at_minute=20, low_at_minute=40)
+    h1 = helpers.make_hour('2024-01-02 10:00', ohlc=(100, 115, 95, 110),
+                           high_at_minute=30, low_at_minute=40)
+    # H2 doesn't break above H1.high (115)
+    h2 = helpers.make_hour('2024-01-02 11:00', ohlc=(110, 113, 105, 112),
+                           high_at_minute=5, low_at_minute=20)
+    minutes = helpers.concat_hours(h0, h1, h2)
+    enriched = bars._enrich_minutes(minutes)
+    hourly, _ = bars.build_all_from_minutes(enriched)
+    events = bs.attach_followthrough(bs.classify(hourly), enriched)
+    h1_row = events.iloc[1]
+    assert h1_row['breakout'] == 'bullish'
+    assert h1_row['followthrough'] == False
+    assert pd.isna(h1_row['takeout_quarter_of_h2'])
