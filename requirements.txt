@@ -6,3 +6,5 @@ openpyxl
 scipy
 pytest
 databento
+streamlit
+plotly

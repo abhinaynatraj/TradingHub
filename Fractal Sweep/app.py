@@ -1,9 +1,12 @@
 """
-Fractal Sweep — Streamlit Dashboard
-=====================================
-Mirrors the data in model_dashboard.html so results can be verified side-by-side.
-Run from repo root:
-    streamlit run "Fractal Sweep/app.py"
+Fractal Sweep — Streamlit Dashboard (MOVED)
+=============================================
+This file is kept for historical reference.
+The unified dashboard has moved to the repo root:
+
+    streamlit run app.py          ← run this instead
+
+from the TradingHub/ root directory.
 """
 
 import json
