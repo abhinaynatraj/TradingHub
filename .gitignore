@@ -34,3 +34,4 @@ Fractal Sweep/model_stats.json
 
 # Analysis engine derived data (parquet files, gitignored build artifact)
 Analysis/data/
+.superpowers/
