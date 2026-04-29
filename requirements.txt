@@ -8,3 +8,4 @@ pytest
 databento
 streamlit
 plotly
+python-dotenv

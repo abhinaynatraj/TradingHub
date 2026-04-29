@@ -22,14 +22,19 @@ import argparse
 import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
+from dotenv import load_dotenv
 
 import duckdb
 import pandas as pd
 import pytz
 
+load_dotenv()
+
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
 DB_PATH    = Path(__file__).parent.parent / "candle_science.duckdb"
-API_KEY    = os.environ.get("DATABENTO_API_KEY", "")
+API_KEY    = os.environ.get("DATABENTO_API_KEY")
+if not API_KEY:
+    raise ValueError("DATABENTO_API_KEY environment variable is not set!")
 DATASET    = "GLBX.MDP3"
 SCHEMA     = "ohlcv-1m"
 STYPE      = "continuous"

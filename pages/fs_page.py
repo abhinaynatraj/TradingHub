@@ -180,6 +180,115 @@ def _heatmap_fig(z, x_labels, y_labels, title="", zmid=0.5, height=240,
 # MAIN ENTRY
 # ══════════════════════════════════════════════════════════════════════════════
 
+EXEC_MODELS = {
+    "market_1acc":   "Market Breakout (1 Acc)",
+    "cisd_1acc":     "CISD Pullback (1 Acc)",
+    "cascade_2tier": "2-Tier Cascade (2 Accs)",
+    "cascade_3tier": "3-Tier Cascade (3 Accs)",
+}
+
+
+def _cascade_pnl(trades, exec_model, total_risk_usd):
+    """
+    Vectorised cascade PnL calculation.
+
+    For each trade we know:
+      direction, outcome (WIN/LOSS/EXPIRED), r (original R),
+      entry_price, cisd_level, sl_price, level_33, level_50, level_66,
+      target_price, deepest_adverse_price.
+
+    Fill check  (LONG): deepest_adverse_price <= entry_level
+    Stop check  (LONG): deepest_adverse_price <= stop_level  (→ LOSS)
+    Target hit         : original outcome == 'WIN' and stop not hit
+    Expired            : original outcome == 'EXPIRED', scale original r
+
+    Returns list of per-trade dicts {r_total, filled, pnl_usd} in trade order.
+    """
+    results = []
+    for t in trades:
+        d          = t.get("direction")
+        outcome    = t.get("outcome", "")
+        base_r     = t.get("r", 0.0) or 0.0
+        entry      = t.get("entry_price")
+        cisd       = t.get("cisd_level")
+        sl         = t.get("sl_price")
+        l33        = t.get("level_33")
+        l50        = t.get("level_50")
+        l66        = t.get("level_66")
+        target     = t.get("target_price")
+        dap        = t.get("deepest_adverse_price")  # lowest low (L) or highest high (S)
+
+        # helper: did price reach level X adversely?
+        def _reached(level):
+            if dap is None or level is None:
+                return False
+            return dap <= level if d == "LONG" else dap >= level
+
+        def _stopped(stop_level):
+            return _reached(stop_level)
+
+        def _leg_r(entry_lvl, stop_lvl):
+            """R for one leg given entry and stop, accounting for outcome."""
+            if not _reached(entry_lvl):
+                return 0.0, False  # no fill
+            if entry_lvl is None or stop_lvl is None or target is None:
+                return 0.0, True
+            risk = abs(entry_lvl - stop_lvl)
+            if risk <= 0:
+                return 0.0, True
+            if _stopped(stop_lvl):
+                return -1.0, True
+            if outcome == "WIN":
+                reward = abs(target - entry_lvl)
+                return round(reward / risk, 3), True
+            if outcome == "LOSS":
+                return -1.0, True
+            # EXPIRED: no SL or TP hit — scale the original r by new risk ratio
+            if entry is not None and abs(entry - sl) > 0 if sl is not None else False:
+                scale = risk / abs(entry - sl)
+                return round(base_r * scale, 3), True
+            return round(base_r, 3), True
+
+        if exec_model == "market_1acc":
+            results.append({"r_total": base_r, "filled": True, "pnl_usd": base_r * total_risk_usd})
+
+        elif exec_model == "cisd_1acc":
+            r, filled = _leg_r(cisd, sl)
+            results.append({"r_total": r, "filled": filled, "pnl_usd": r * total_risk_usd})
+
+        elif exec_model == "cascade_2tier":
+            # Acc1: entry=cisd, stop=level_50
+            # Acc2: entry=level_50, stop=sl
+            per_acc_risk = total_risk_usd / 2.0
+            r1, f1 = _leg_r(cisd,  l50)
+            r2, f2 = _leg_r(l50,   sl)
+            r_total = r1 + r2
+            pnl     = r1 * per_acc_risk + r2 * per_acc_risk
+            results.append({"r_total": round(r_total, 3), "filled": f1 or f2,
+                            "r_acc1": r1, "r_acc2": r2,
+                            "filled_acc1": f1, "filled_acc2": f2,
+                            "pnl_usd": round(pnl, 2)})
+
+        elif exec_model == "cascade_3tier":
+            # Acc1: entry=cisd,  stop=level_33
+            # Acc2: entry=level_33, stop=level_66
+            # Acc3: entry=level_66, stop=sl
+            per_acc_risk = total_risk_usd / 3.0
+            r1, f1 = _leg_r(cisd, l33)
+            r2, f2 = _leg_r(l33,  l66)
+            r3, f3 = _leg_r(l66,  sl)
+            r_total = r1 + r2 + r3
+            pnl     = r1 * per_acc_risk + r2 * per_acc_risk + r3 * per_acc_risk
+            results.append({"r_total": round(r_total, 3), "filled": f1 or f2 or f3,
+                            "r_acc1": r1, "r_acc2": r2, "r_acc3": r3,
+                            "filled_acc1": f1, "filled_acc2": f2, "filled_acc3": f3,
+                            "pnl_usd": round(pnl, 2)})
+        else:
+            results.append({"r_total": 0.0, "filled": False, "pnl_usd": 0.0})
+
+    return results
+
+
 def render():
     # ── Sidebar controls ──────────────────────────────────────────────────────
     with st.sidebar:
@@ -208,6 +317,17 @@ def render():
         st.subheader("Account")
         account_size   = st.number_input("Account size ($)",   value=4500, step=500)
         risk_per_trade = st.number_input("Risk per trade ($)", value=225,  step=25)
+        st.divider()
+        st.subheader("Execution Model")
+        exec_model = st.selectbox(
+            "Model",
+            options=list(EXEC_MODELS.keys()),
+            format_func=lambda k: EXEC_MODELS[k],
+            key="exec_model_select",
+        )
+        total_capital  = st.number_input("Total Capital ($)",  value=float(account_size), step=500.0, key="exec_capital")
+        total_risk_pct = st.number_input("Total Risk (%)",     value=5.0, step=0.5, min_value=0.1, max_value=50.0, key="exec_risk_pct")
+        total_risk_usd = total_capital * total_risk_pct / 100.0
 
     profile    = data[model_key]["profiles"][profile_key]
     meta       = profile["meta"]
@@ -235,8 +355,8 @@ def render():
     k6.metric("Date range",    meta["date_range"].replace(" to ", "→").split("→")[0][:7] + "…")
 
     # ── Tabs ──────────────────────────────────────────────────────────────────
-    tab_ov, tab_edge, tab_filt, tab_risk, tab_exc, tab_trades = st.tabs(
-        ["Overview", "Edge", "Filters", "Risk", "Excursion", "Trades"]
+    tab_ov, tab_edge, tab_filt, tab_risk, tab_exc, tab_trades, tab_cascade = st.tabs(
+        ["Overview", "Edge", "Filters", "Risk", "Excursion", "Trades", "Cascade"]
     )
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -757,3 +877,147 @@ def render():
             rt_df, use_container_width=True, hide_index=True,
             column_config=col_cfg, height=500,
         )
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # TAB 7 — CASCADE EXECUTION MODEL
+    # ══════════════════════════════════════════════════════════════════════════
+    with tab_cascade:
+        model_label = EXEC_MODELS[exec_model]
+        st.subheader(f"Execution Model: {model_label}")
+
+        # Check whether the new columns are present; warn if engine hasn't been re-run
+        _has_cascade_cols = trades and all(
+            k in trades[0]
+            for k in ("cisd_level", "sl_price", "level_33", "level_50", "level_66",
+                      "deepest_adverse_price")
+        )
+
+        if exec_model != "market_1acc" and not _has_cascade_cols:
+            st.warning(
+                "Cascade columns not found in model_stats.json. "
+                "Re-run `python3 engine/model_stats.py` to generate them, "
+                "then reload this page."
+            )
+            st.stop()
+
+        # ── Filter to trades with required data for non-market models ─────────
+        if exec_model == "market_1acc":
+            cascade_trades = trades
+        else:
+            cascade_trades = [
+                t for t in trades
+                if t.get("cisd_level") is not None
+                and t.get("sl_price") is not None
+                and t.get("deepest_adverse_price") is not None
+            ]
+            if len(cascade_trades) < len(trades):
+                st.info(
+                    f"{len(trades) - len(cascade_trades)} trades excluded "
+                    "(missing cisd/sl/deepest_adverse data — usually SKIP/INVALID rows)."
+                )
+
+        if not cascade_trades:
+            st.warning("No eligible trades for this execution model.")
+            st.stop()
+
+        # ── Run cascade PnL ──────────────────────────────────────────────────
+        leg_results = _cascade_pnl(cascade_trades, exec_model, total_risk_usd)
+
+        filled_results = [(t, lr) for t, lr in zip(cascade_trades, leg_results)
+                          if lr["filled"]]
+        n_total   = len(cascade_trades)
+        n_filled  = sum(1 for lr in leg_results if lr["filled"])
+        n_no_fill = n_total - n_filled
+        fill_rate = n_filled / n_total if n_total else 0.0
+
+        total_pnl_usd = sum(lr["pnl_usd"] for lr in leg_results)
+        avg_r_filled  = (sum(lr["r_total"] for lr in leg_results if lr["filled"]) / n_filled
+                         if n_filled else 0.0)
+        wins_filled   = sum(1 for lr in leg_results if lr["filled"] and lr["r_total"] > 0)
+        wr_filled     = wins_filled / n_filled if n_filled else 0.0
+
+        # ── KPI row ──────────────────────────────────────────────────────────
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
+        c1.metric("Trades",       f"{n_total:,}")
+        c2.metric("Filled",       f"{n_filled:,}")
+        c3.metric("Fill Rate",    f"{fill_rate:.1%}")
+        c4.metric("WR (filled)",  f"{wr_filled:.1%}")
+        c5.metric("Avg R (filled)", f"{avg_r_filled:+.3f}R")
+        c6.metric("Total PnL",    f"${total_pnl_usd:,.0f}")
+
+        # ── Equity curve ──────────────────────────────────────────────────────
+        st.divider()
+        eq_rows = []
+        eq = float(total_capital)
+        for t, lr in zip(cascade_trades, leg_results):
+            eq += lr["pnl_usd"]
+            eq_rows.append({"date": t["date"], "equity": round(eq, 2)})
+        eq_df = pd.DataFrame(eq_rows)
+        if not eq_df.empty:
+            fig_eq = _line(eq_df, "date", "equity",
+                           hline=float(total_capital),
+                           height=300, y_label="Equity ($)")
+            st.plotly_chart(fig_eq, use_container_width=True)
+
+        # ── Fill rate by model tier explanation ───────────────────────────────
+        if exec_model in ("cascade_2tier", "cascade_3tier"):
+            st.divider()
+            st.subheader("Per-Account Fill & Performance")
+            n_accs = 2 if exec_model == "cascade_2tier" else 3
+            acc_data = []
+            for acc_i in range(1, n_accs + 1):
+                key_f = f"filled_acc{acc_i}"
+                key_r = f"r_acc{acc_i}"
+                n_f   = sum(1 for lr in leg_results if lr.get(key_f))
+                n_w   = sum(1 for lr in leg_results if lr.get(key_f) and lr.get(key_r, 0) > 0)
+                avg_r = (sum(lr.get(key_r, 0.0) for lr in leg_results if lr.get(key_f)) / n_f
+                         if n_f else 0.0)
+                per_risk = total_risk_usd / n_accs
+                pnl_acc  = sum(lr.get(key_r, 0.0) * per_risk for lr in leg_results
+                               if lr.get(key_f))
+                acc_data.append({
+                    "Account": f"Acc {acc_i}",
+                    "Fills":  n_f,
+                    "Fill %": f"{n_f / n_total:.1%}",
+                    "WR":     f"{n_w / n_f:.1%}" if n_f else "—",
+                    "Avg R":  f"{avg_r:+.3f}",
+                    "PnL $":  f"${pnl_acc:,.0f}",
+                })
+            st.dataframe(pd.DataFrame(acc_data), use_container_width=True, hide_index=True)
+
+        # ── Trade-level detail table ──────────────────────────────────────────
+        st.divider()
+        st.subheader("Trade Detail")
+        detail_rows = []
+        for t, lr in zip(cascade_trades, leg_results):
+            row = {
+                "Date":      t.get("date", ""),
+                "Dir":       t.get("direction", ""),
+                "Entry":     t.get("entry_price"),
+                "CISD":      t.get("cisd_level"),
+                "L33":       t.get("level_33"),
+                "L50":       t.get("level_50"),
+                "L66":       t.get("level_66"),
+                "SL":        t.get("sl_price"),
+                "DAP":       t.get("deepest_adverse_price"),
+                "Orig":      t.get("outcome", ""),
+                "Filled":    lr["filled"],
+                "R total":   lr["r_total"],
+                "PnL $":     lr["pnl_usd"],
+            }
+            detail_rows.append(row)
+        detail_df = pd.DataFrame(detail_rows)
+        detail_cfg = {
+            "Entry":   st.column_config.NumberColumn(format="%.2f"),
+            "CISD":    st.column_config.NumberColumn(format="%.2f"),
+            "L33":     st.column_config.NumberColumn(format="%.2f"),
+            "L50":     st.column_config.NumberColumn(format="%.2f"),
+            "L66":     st.column_config.NumberColumn(format="%.2f"),
+            "SL":      st.column_config.NumberColumn(format="%.2f"),
+            "DAP":     st.column_config.NumberColumn("Deepest Adv", format="%.2f"),
+            "Filled":  st.column_config.CheckboxColumn(),
+            "R total": st.column_config.NumberColumn(format="%.3f"),
+            "PnL $":   st.column_config.NumberColumn(format="%.2f"),
+        }
+        st.dataframe(detail_df, use_container_width=True, hide_index=True,
+                     column_config=detail_cfg, height=500)

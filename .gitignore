@@ -31,3 +31,4 @@ __pycache__/
 # Treat as a build artifact — regenerate locally via
 # `python3 Fractal\ Sweep/model_stats.py`.
 Fractal Sweep/model_stats.json
+Fractal Sweep/engine/.env

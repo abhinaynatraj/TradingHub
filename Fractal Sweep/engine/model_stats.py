@@ -336,7 +336,9 @@ def resolve_outcomes_vectorised(m1_arrs, pending):
 
     pending: list of dicts with keys:
         idx, entry_ts_ns, entry_price, stop_price, target_price, direction
-    Returns list of (outcome, r) in the same order as pending.
+    Returns list of (outcome, r, mae_pct, mfe_pct, deepest_adverse_price).
+    deepest_adverse_price: lowest low (LONG) or highest high (SHORT) over the
+    trade window — used by the Streamlit cascade model to verify limit fills.
     """
     ts_ns  = m1_arrs['ts_ns']
     highs  = m1_arrs['high']
@@ -354,7 +356,7 @@ def resolve_outcomes_vectorised(m1_arrs, pending):
 
         risk = abs(entry_price - stop_price)
         if risk < MIN_RISK_PTS or risk > MAX_RISK_PTS:
-            results.append(('INVALID', 0.0, 0.0, 0.0))
+            results.append(('INVALID', 0.0, 0.0, 0.0, None))
             continue
 
         # Target from the manipulation-range projection (2× manip range from sweep extreme)
@@ -365,7 +367,7 @@ def resolve_outcomes_vectorised(m1_arrs, pending):
         end   = min(start + OUTCOME_MAX_BARS, N)
 
         if start >= N:
-            results.append(('EXPIRED', 0.0, 0.0, 0.0))
+            results.append(('EXPIRED', 0.0, 0.0, 0.0, None))
             continue
 
         h = highs[start:end]
@@ -411,11 +413,13 @@ def resolve_outcomes_vectorised(m1_arrs, pending):
         if direction == 'LONG':
             mae_pct = round(float(max(0.0, entry_price - l_w.min()) / entry_price * 100), 4)
             mfe_pct = round(float(max(0.0, h_w.max() - entry_price) / entry_price * 100), 4)
+            deepest_adverse = round(float(l_w.min()), 2)
         else:
             mae_pct = round(float(max(0.0, h_w.max() - entry_price) / entry_price * 100), 4)
             mfe_pct = round(float(max(0.0, entry_price - l_w.min()) / entry_price * 100), 4)
+            deepest_adverse = round(float(h_w.max()), 2)
 
-        results.append((outcome, r_val, mae_pct, mfe_pct))
+        results.append((outcome, r_val, mae_pct, mfe_pct, deepest_adverse))
 
     return results
 
@@ -1446,12 +1450,13 @@ def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
                 rows[idx]['rejected_by'] = rows[idx]['rejected_by'] or 'INVALID_RISK'
     else:
         outcomes = resolve_outcomes_vectorised(m1_arrs, profile_pending)
-        for po, (outcome, r_val, mae_pct, mfe_pct) in zip(profile_pending, outcomes):
+        for po, (outcome, r_val, mae_pct, mfe_pct, deepest_adverse) in zip(profile_pending, outcomes):
             idx = po['idx']
-            rows[idx]['outcome']  = outcome
-            rows[idx]['r']        = r_val
-            rows[idx]['mae_pct']  = mae_pct
-            rows[idx]['mfe_pct']  = mfe_pct
+            rows[idx]['outcome']               = outcome
+            rows[idx]['r']                     = r_val
+            rows[idx]['mae_pct']               = mae_pct
+            rows[idx]['mfe_pct']               = mfe_pct
+            rows[idx]['deepest_adverse_price'] = deepest_adverse
             hr_rng = po.get('hour_range_pts', 0.0)
             if hr_rng > 0 and mae_pct is not None:
                 mae_pts = mae_pct / 100.0 * po['entry_price']
@@ -1686,10 +1691,25 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         tspot_breakdown[tk] = dict(
             overall=agg(grp), heatmap=hm, by_hour=bh, by_dow=bd, top_combos=tc[:10])
 
+    # ── Cascade-model price levels ────────────────────────────────────────────
+    # sl_price = sweep_extreme (the actual stop under simple_1r profile).
+    # Fractional levels sit between cisd_level and sl_price; the span sign
+    # handles direction automatically (negative for LONG, positive for SHORT).
+    if 'cisd_level' in wl_full.columns and 'stop_price' in wl_full.columns:
+        _cl  = wl_full['cisd_level']
+        _sl  = wl_full['stop_price']
+        _span = _sl - _cl
+        wl_full['sl_price']  = _sl
+        wl_full['level_33']  = (_cl + 0.3333 * _span).round(2)
+        wl_full['level_50']  = (_cl + 0.5000 * _span).round(2)
+        wl_full['level_66']  = (_cl + 0.6667 * _span).round(2)
+
     recent_cols = ['date','direction','hr','mn','session','dow','entry_price',
                    'sweep_extreme','target_price','risk_pts','r','outcome',
                    'mae_pct','mfe_pct','mae_pct_hr','mfe_pct_hr','hour_range_pts','smt',
-                   'cisd_close','passes_f3','passes_f4']
+                   'cisd_close','passes_f3','passes_f4',
+                   'cisd_level','sl_price','level_33','level_50','level_66',
+                   'deepest_adverse_price']
     # Only include columns that actually exist in wl_full (defensive against
     # older base_row schemas missing some fields).
     _avail = [c for c in recent_cols if c in wl_full.columns]
@@ -1706,11 +1726,15 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         t['hr']   = int(t['hr'])
         t['mn']   = int(t['mn'])
         for k in ('entry_price','sweep_extreme','target_price','risk_pts','r'):
-            if t[k] is not None:
+            if k in t and t[k] is not None:
                 t[k] = round(float(t[k]), 2)
         for k in ('mae_pct','mfe_pct','mae_pct_hr','mfe_pct_hr','hour_range_pts'):
             if k in t and t[k] is not None:
                 t[k] = round(float(t[k]), 4)
+        for k in ('cisd_level','sl_price','level_33','level_50','level_66',
+                  'deepest_adverse_price'):
+            if k in t and t[k] is not None:
+                t[k] = round(float(t[k]), 2)
 
     # ── Risk stats for hero tiles ─────────────────────────────────────────────
     wl_sorted   = wl.sort_values('date')
