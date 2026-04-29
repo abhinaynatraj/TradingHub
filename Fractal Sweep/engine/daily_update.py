@@ -136,8 +136,10 @@ def fetch_new_bars(con, key: str, force: bool = False) -> int:
                 .reset_index(drop=True))
 
         min_ts = df["timestamp"].min()
+        con.execute("BEGIN TRANSACTION")
         con.execute(f"DELETE FROM {table} WHERE timestamp >= ?", [min_ts])
         con.execute(f"INSERT INTO {table} SELECT * FROM df")
+        con.execute("COMMIT")
         log(f"[{key}] Inserted {len(df):,} new rows")
         return len(df)
 
