@@ -1,0 +1,8 @@
+duckdb
+pandas
+numpy
+pytz
+openpyxl
+scipy
+pytest
+databento
