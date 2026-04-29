@@ -129,7 +129,7 @@ class TestSweepDetection:
 
 class TestSweepFilters:
     def test_small_range_rejected(self):
-        """Prior range < min_range → F1_SMALL_RANGE."""
+        """Prior range < min_range → setup is rejected (no valid trades produced)."""
         prior = (24000, 24005, 23998, 24002)  # range=7 < min_range=12
         m1_bars = [
             (23996, 24000, 23993, 23997),  # sweeps below
@@ -141,28 +141,27 @@ class TestSweepFilters:
         m1, s_arrs, c_arrs, cfg = _build_detection_scenario(prior, m1_bars)
         rows, pending = ms.detect_setups_base(m1, s_arrs, c_arrs, '1H_5M', cfg)
 
-        rejected = [r for r in rows if r.get('rejected_by') == 'F1_SMALL_RANGE']
-        assert len(rejected) >= 0  # may not produce rows if range check prevents detection
+        valid = [r for r in rows if r.get('rejected_by', '') == '']
+        assert len(valid) == 0, "Small-range anchor should produce no valid (non-rejected) setups"
 
-    def test_sweep_too_large_rejected(self):
-        """Sweep > 50% of range → F3_SWEEP_TOO_LARGE."""
+    def test_shallow_sweep_flag(self):
+        """Sweep ≤ 50% of range → passes_f3 is True."""
         prior = (24000, 24020, 23980, 24000)  # range=40
         m1_bars = [
-            (23975, 23980, 23950, 23955),  # sweep = 30pts = 75% > 50%
-            (23955, 23985, 23953, 23982),  # returns
+            (23975, 23980, 23962, 23968),  # sweep = 18pts = 45% ≤ 50%
+            (23968, 23985, 23966, 23982),  # returns above low
+            (23985, 23988, 23978, 23980),  # bearish for CISD
+            (23980, 23992, 23978, 23988),  # crosses above CISD level
         ]
-        for _ in range(20):
-            m1_bars.append((23982, 23990, 23980, 23985))
+        for _ in range(50):
+            m1_bars.append((23988, 23995, 23985, 23990))
 
         m1, s_arrs, c_arrs, cfg = _build_detection_scenario(prior, m1_bars)
         rows, pending = ms.detect_setups_base(m1, s_arrs, c_arrs, '1H_5M', cfg)
 
-        rejected = [r for r in rows if r.get('rejected_by') == 'F3_SWEEP_TOO_LARGE']
-        # If detected, should be rejected
-        if len(rows) > 0:
-            long_rows = [r for r in rows if r['direction'] == 'LONG']
-            if long_rows:
-                assert long_rows[0].get('rejected_by') in ('', 'F3_SWEEP_TOO_LARGE')
+        long_rows = [r for r in rows if r['direction'] == 'LONG' and r.get('rejected_by', '') == '']
+        if long_rows:
+            assert long_rows[0].get('passes_f3') is True
 
 
 class TestSweepExtLocking:

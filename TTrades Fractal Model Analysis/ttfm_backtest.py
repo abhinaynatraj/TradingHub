@@ -30,7 +30,17 @@ import duckdb
 import numpy as np
 import pandas as pd
 
-# ── Paths & constants ─────────────────────────────────────────────────────────
+# ── Shared constants ──────────────────────────────────────────────────────────
+_CORE = Path(__file__).parent.parent / 'core'
+if str(_CORE) not in sys.path:
+    sys.path.insert(0, str(_CORE))
+from constants import (  # noqa: E402
+    RTH_START_HOUR as RTH_START,
+    RTH_END_HOUR   as RTH_END,
+    DOW_NAMES_PANDAS as DOW_NAMES,
+)
+
+# ── Paths & local constants ────────────────────────────────────────────────────
 DB_PATH    = Path(__file__).parent.parent / 'Fractal Sweep' / 'candle_science.duckdb'
 OUT_JSON   = Path(__file__).parent / 'ttfm_results.json'
 
@@ -38,11 +48,6 @@ DEFAULT_HTF      = 60      # minutes  (1-hour HTF)
 DEFAULT_RR       = 2.0     # risk-reward ratio
 DEFAULT_MIN_RISK = 5.0     # minimum risk in points (filters tiny setups)
 DEFAULT_MAX_HOLD = 240     # max 1m bars to hold before recording OPEN
-
-RTH_START = 7              # 07:00 ET — zone-touch scan window start
-RTH_END   = 16             # 16:00 ET — zone-touch scan window end
-
-DOW_NAMES = {0: 'Mon', 1: 'Tue', 2: 'Wed', 3: 'Thu', 4: 'Fri'}
 
 VARIANTS = [
     'Normal_BEAR', 'Normal_BULL',
@@ -238,8 +243,8 @@ def simulate(setups: list[dict], df_rth: pd.DataFrame,
     Stop / target computed from entry and risk = abs(entry - stop).
     """
     # Pre-extract numpy arrays for fast inner loop.
-    # pandas stores tz-aware timestamps as datetime64[us]; cast to int64 → microseconds.
-    ts_np   = df_rth['ts_et'].values.astype('datetime64[us]').astype('int64')
+    # Cast to datetime64[ns] so the unit matches zone_ts_ns (nanoseconds).
+    ts_np   = df_rth['ts_et'].values.astype('datetime64[ns]').view('int64')
     hi_np   = df_rth['high'].values
     lo_np   = df_rth['low'].values
     hr_np   = df_rth['hr'].values
@@ -269,11 +274,11 @@ def simulate(setups: list[dict], df_rth: pd.DataFrame,
             if target <= entry_price:
                 continue
 
-        # Timestamp as microseconds (pandas .value is nanoseconds → divide by 1000)
-        zone_ts_ns = int(s['zone_ts'].value) // 1000
+        # pandas Timestamp.value is already nanoseconds — matches ts_np units.
+        zone_ts_ns = int(s['zone_ts'].value)
 
         # Find first 1m bar at or after zone activation
-        scan_start = int(np.searchsorted(ts_np, zone_ts_ns, side='left'))  # zone_ts_ns = microseconds
+        scan_start = int(np.searchsorted(ts_np, zone_ts_ns, side='left'))
         scan_end   = min(scan_start + max_hold, n_bars)
 
         # ── Step 1: find zone touch (limit fill) ──────────────────────

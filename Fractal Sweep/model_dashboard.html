@@ -467,6 +467,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
   </div>
   <div class="hdr-right">
     <div class="demo-badge" id="demo-badge" style="display:none">⚠ Demo Data</div>
+    <div id="data-freshness" style="display:none;font-size:10px;color:var(--text-muted);font-family:var(--font-data);white-space:nowrap"></div>
     <button class="load-btn" onclick="document.getElementById('json-loader').click()">↑ Load model_stats.json</button>
     <div class="theme-picker" role="radiogroup" aria-label="Theme">
       <button class="theme-opt" data-theme="dark"   title="Dark"   aria-label="Dark theme">☀</button>
@@ -503,6 +504,19 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 
 <!-- Filter bar: runtime-toggleable filters, dedicated row below the dropdowns -->
 <div class="filter-bar">
+  <div class="filter-group">
+    <label class="sel-label">Setup Quality &nbsp;<span class="sel-label-hint">— check to narrow</span></label>
+    <div class="filter-row">
+      <label class="filter-chk" title="Sweep depth ≤ 50% of prior range. Moderate +3-4% WR standalone edge.">
+        <input type="checkbox" id="f3-checkbox" onchange="switchF3(this.checked)">
+        <span>Shallow Sweep</span>
+      </label>
+      <label class="filter-chk" title="Price closed back inside the prior HTF range on the return bar. Useful in combination.">
+        <input type="checkbox" id="f4-checkbox" onchange="switchF4(this.checked)">
+        <span>Closed Back Inside</span>
+      </label>
+    </div>
+  </div>
   <div class="filter-group filter-group-confirm">
     <label class="sel-label">Add Confirmation &nbsp;<span class="sel-label-hint">— check to narrow</span></label>
     <div class="filter-row">
@@ -823,18 +837,35 @@ function getSmtFilteredTrades(trades) {
   if (!trades || !trades.length) return trades;
   let out = trades;
   if (activeSmt) out = out.filter(t => t.smt === true);
+  if (activeF3)  out = out.filter(t => t.passes_f3 === true);
+  if (activeF4)  out = out.filter(t => t.passes_f4 === true);
   return out;
 }
 
 function hasNonBaselineFilters() {
-  return activeSmt;
+  return activeSmt || activeF3 || activeF4;
 }
 
 function switchSMT(checked) {
   activeSmt = !!checked;
+  _saveFilters();
   _tradesPage = 0;
   const D = _getActiveD();
   if (!D) return;
+  renderActive();
+}
+
+function switchF3(checked) {
+  activeF3 = !!checked;
+  _saveFilters();
+  _tradesPage = 0;
+  renderActive();
+}
+
+function switchF4(checked) {
+  activeF4 = !!checked;
+  _saveFilters();
+  _tradesPage = 0;
   renderActive();
 }
 
@@ -1024,7 +1055,27 @@ let activeMode    = 'PREV';
 let activeCisd    = 'CISD';
 let activeProfile = 'simple_1r';
 let activeTF      = 'all';  // 'all' | '2y' | '1y' | '6m' | '3m' | '1m'
-let activeSmt               = false;  // filter to smt===true
+let activeSmt = false;  // NQ-ES Divergence filter
+let activeF3  = false;  // Shallow Sweep filter (passes_f3)
+let activeF4  = false;  // Closed Back Inside filter (passes_f4)
+
+const FILTER_STORAGE_KEY = 'fractal-filters-v1';
+function _saveFilters() {
+  localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({smt: activeSmt, f3: activeF3, f4: activeF4}));
+}
+function _restoreFilters() {
+  try {
+    const s = JSON.parse(localStorage.getItem(FILTER_STORAGE_KEY) || '{}');
+    activeSmt = !!s.smt; activeF3 = !!s.f3; activeF4 = !!s.f4;
+  } catch(e) { /* ignore corrupt storage */ }
+  const smtEl = document.getElementById('smt-checkbox');
+  const f3El  = document.getElementById('f3-checkbox');
+  const f4El  = document.getElementById('f4-checkbox');
+  if(smtEl) smtEl.checked = activeSmt;
+  if(f3El)  f3El.checked  = activeF3;
+  if(f4El)  f4El.checked  = activeF4;
+}
+_restoreFilters();
 
 const RR_PROFILES = [
   'simple_1r',
@@ -4243,12 +4294,14 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
 //
 // F3 defaults CHECKED (active) — it's the baseline quality filter.
 function getFilteredD(D) {
-  const anyActive = activeSmt;
+  const anyActive = activeSmt || activeF3 || activeF4;
   if (!anyActive) return D;
   const rawTrades = D?.recent_trades;
   if (!rawTrades || !rawTrades.length) return D;
   let trades = rawTrades;
   if (activeSmt) trades = trades.filter(t => t.smt === true);
+  if (activeF3)  trades = trades.filter(t => t.passes_f3 === true);
+  if (activeF4)  trades = trades.filter(t => t.passes_f4 === true);
   if (!trades.length) return D;
 
   const wins = trades.filter(t => t.outcome === 'WIN');
@@ -4427,16 +4480,24 @@ function updateFilterChipDeltas(D){
   const rt = D?.recent_trades || [];
   if (!rt.length){
     _setChipDelta('smt-checkbox', null);
+    _setChipDelta('f3-checkbox', null);
+    _setChipDelta('f4-checkbox', null);
     return;
   }
   function countWith(over){
     let t = rt;
     const sm = over.smt !== undefined ? over.smt : activeSmt;
+    const f3 = over.f3  !== undefined ? over.f3  : activeF3;
+    const f4 = over.f4  !== undefined ? over.f4  : activeF4;
     if (sm) t = t.filter(x => x.smt === true);
+    if (f3) t = t.filter(x => x.passes_f3 === true);
+    if (f4) t = t.filter(x => x.passes_f4 === true);
     return t.length;
   }
   const cur = countWith({});
   _setChipDelta('smt-checkbox', countWith({smt: !activeSmt}) - cur);
+  _setChipDelta('f3-checkbox',  countWith({f3:  !activeF3})  - cur);
+  _setChipDelta('f4-checkbox',  countWith({f4:  !activeF4})  - cur);
 }
 
 function _setChipDelta(checkboxId, delta){
@@ -6173,10 +6234,11 @@ function renderFilterVariants(D, targetEl) {
 
   // Determine currently active filter set based on all header toggles
   const activeFilters = [];
+  if (activeF3)  activeFilters.push('F3');
+  if (activeF4)  activeFilters.push('F4');
   if (activeSmt) activeFilters.push('SMT');
-  const activeLabel = activeFilters.map(f => ({
-    'SMT': 'NQ-ES Divergence',
-  }[f])).join(' + ');
+  const _filterLabelMap = {'F3':'Shallow Sweep','F4':'Closed Back Inside','SMT':'NQ-ES Divergence'};
+  const activeLabel = activeFilters.map(f => _filterLabelMap[f]).join(' + ');
 
   const maxEV = Math.max(...combos.map(c => Math.abs(c.ev)));
   combos.forEach((c, i) => {
@@ -6911,11 +6973,31 @@ updateTabVisibility();
 drawSetupViz();
 let rt; window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{renderActive();drawSetupViz();},150);});
 
+const DASHBOARD_SCHEMA_VERSION = 1;
+
 function applyLoadedData(j){
   DATA=j; isDemo=false;
+
+  // Schema version check + freshness display
+  const meta = j['_meta'];
+  if(meta){
+    const freshEl = document.getElementById('data-freshness');
+    if(freshEl && meta.generated_at){
+      const d = new Date(meta.generated_at);
+      const fmt = new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',timeZoneName:'short'});
+      freshEl.textContent = 'Data: ' + fmt.format(d);
+      freshEl.style.display = '';
+    }
+    if(meta.schema_version !== undefined && meta.schema_version !== DASHBOARD_SCHEMA_VERSION){
+      console.warn(`[sweep] schema version mismatch: file=${meta.schema_version} dashboard=${DASHBOARD_SCHEMA_VERSION}`);
+      const badge = document.getElementById('demo-badge');
+      if(badge){ badge.textContent = `⚠ Schema v${meta.schema_version} (dashboard expects v${DASHBOARD_SCHEMA_VERSION}) — regenerate`; badge.style.display=''; }
+    }
+  }
+
   // Prefer 1H_5M_PREV_CISD as default; fall back to first key in the JSON
   const preferredKey = '1H_5M_PREV_CISD';
-  const resolvedKey  = j[preferredKey] ? preferredKey : (Object.keys(j)[0] || '');
+  const resolvedKey  = j[preferredKey] ? preferredKey : (Object.keys(j).filter(k=>k!=='_meta')[0] || '');
   if(resolvedKey){
     const {model,sweep,cisd}=parseKey(resolvedKey);
     activeModel=model; activeMode=sweep; activeCisd=cisd;

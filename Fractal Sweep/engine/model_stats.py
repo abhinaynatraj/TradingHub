@@ -44,6 +44,7 @@ import duckdb
 import pandas as pd
 import numpy as np
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 import scipy.stats as _scipy_stats
 
@@ -56,6 +57,12 @@ TABLE     = 'nq_1m'
 # source lived in the deleted NY1 FPFVG folder. `DATE_CLASSIFICATION` remains
 # an empty dict so downstream aggregations that read it degrade gracefully.
 DATE_CLASSIFICATION = {}
+
+# ── SCHEMA VERSION ────────────────────────────────────────────────────────────
+# Increment this integer whenever the model_stats.json structure changes in a
+# way that would break the dashboard (field renames, removed keys, type changes).
+# The dashboard reads this at startup and warns the user if the cached file is stale.
+SCHEMA_VERSION = 1
 
 # ── GLOBAL CONSTANTS ──────────────────────────────────────────────────────────
 ACCOUNT_SIZE     = 4500   # $ account size for risk metrics
@@ -2403,6 +2410,10 @@ def main():
     parser.add_argument('--rth-only', action='store_true',
                                             dest='rth_only',
                                             help='Restrict to RTH 07:00-16:00 ET; default is all 24h (Globex/ETH included)')
+    parser.add_argument('--since',          default=None,
+                                            help='Only process bars on or after YYYY-MM-DD (incremental mode). '
+                                                 'Model context (HTF candles) still uses the full history for '
+                                                 'accurate sweep detection; this restricts which setups are kept.')
     args = parser.parse_args()
     TABLE          = args.table
     CISD_FAST_BARS = args.cisd_fast_bars
@@ -2485,6 +2496,13 @@ def main():
         base_rows, base_pending = detect_setups_base(
             m1, s_arrs, c_arrs, mk, cfg, cisd_fast_bars=CISD_FAST_BARS,
             es_s_arrs=es_s, es_m1_arrs=es_m1)
+
+        # --since: discard setup rows whose trade_date precedes the cutoff.
+        # Full history was still used for anchor detection so sweep references are correct.
+        if args.since:
+            base_rows    = [r for r in base_rows    if str(r.get('trade_date','')) >= args.since]
+            base_pending = [r for r in base_pending if str(r.get('trade_date','')) >= args.since]
+
         if not base_rows:
             print(f"   ⚠  No setups found")
             continue
@@ -2521,6 +2539,10 @@ def main():
         ))
 
     # ── Write JSON ─────────────────────────────────────────────────────────────
+    all_stats['_meta'] = {
+        'schema_version': SCHEMA_VERSION,
+        'generated_at':   datetime.now(timezone.utc).isoformat(),
+    }
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, 'w') as f:
