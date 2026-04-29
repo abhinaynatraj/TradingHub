@@ -79,6 +79,25 @@ nav a:hover { text-decoration: underline; }
   --bar-track: rgba(15,23,42,.05);
 }
 
+/* Light-mode contrast overrides for chip + hero panel text */
+[data-theme="light"] {
+  --red-strong: #dc2626;     /* darker red for AA contrast */
+}
+[data-theme="light"] .fb-chip[data-active="true"],
+[data-theme="light"] .fb-chip[data-preset="true"][data-active="true"] {
+  color: var(--accent);  /* #059669 — passes AA on light tint */
+}
+[data-theme="light"] .hero-panel.bull .hero-eyebrow,
+[data-theme="light"] .hero-panel.bull .hero-big,
+[data-theme="light"] .hero-panel.bull .hero-mid {
+  color: var(--accent);
+}
+[data-theme="light"] .hero-panel.bear .hero-eyebrow,
+[data-theme="light"] .hero-panel.bear .hero-big,
+[data-theme="light"] .hero-panel.bear .hero-mid {
+  color: var(--red-strong);
+}
+
 /* ── Filter bar (collapsible) ────────────────────────────────── */
 .filter-bar.collapsible {
   display: block;
