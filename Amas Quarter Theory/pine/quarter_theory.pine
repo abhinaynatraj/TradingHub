@@ -149,7 +149,7 @@ resolveTheme() =>
           line_dn              = color.new(#ef4444, 0),
           apex_up              = color.new(#3b82f6, 0),
           apex_dn              = color.new(#8b5cf6, 0),
-          doji                 = color.new(#f59e0b, 0),
+          doji                 = color.new(#a78bfa, 0),       // violet (distinct from amber)
           mid_1h               = color.new(#f59e0b, 0),
           mid_3h               = color.new(#e2eaf4, 0),
           band_05              = color.new(#ffffff, 60),
@@ -177,7 +177,7 @@ resolveTheme() =>
           line_dn              = color.new(#dc2626, 0),
           apex_up              = color.new(#2563eb, 0),
           apex_dn              = color.new(#7c3aed, 0),
-          doji                 = color.new(#d97706, 0),
+          doji                 = color.new(#7c3aed, 0),       // violet (distinct from amber)
           mid_1h               = color.new(#d97706, 0),
           mid_3h               = color.new(#1f2937, 0),
           band_05              = color.new(#000000, 55),
@@ -478,6 +478,9 @@ classifyTriad(TriadAgg t) =>
 // ╔══════════════════════════════════════════════════════════════════════════╗
 // ║ 6. RENDERERS                                                             ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
+
+// ATR-based vertical offset used by labels positioned below price action.
+atrOffset() => ta.atr(20) * 2.0
 
 // ── Hour box (bounded to hour range) + intra-hour quarter verticals ───────
 // Hour box: tinted rectangle bounded by the hour's running high/low, growing
@@ -861,23 +864,28 @@ if gQStructOn and isHourClose() and not na(activeTriad)
             bool inStatLo = qLo.qIdx == 1 or qLo.qIdx == 4
 
             // Text always renders dark; background is a tinted fill for legibility.
+            // Anchored at hour-close bar (right edge of the hour) for consistent
+            // alignment, with the label's y-coord at the actual extreme price.
             color textHi = inStatHi ? T.in_stat : T.out_stat
             color textLo = inStatLo ? T.in_stat : T.out_stat
             color bgHi   = color.new(textHi, 80)
             color bgLo   = color.new(textLo, 80)
             if (inStatHi and gShowInStat) or (not inStatHi and gShowOutStat)
                 string txtHi = "Q" + str.tostring(qHi.qIdx) + (inStatHi ? " in-stat high" : " out-of-stat high")
-                label.new(qHi.highBar, qHi.high_, txtHi, xloc=xloc.bar_index,
+                label.new(bar_index, qHi.high_, txtHi, xloc=xloc.bar_index,
                           style=label.style_label_down, color=bgHi,
                           textcolor=textHi, size=size.small)
             if (inStatLo and gShowInStat) or (not inStatLo and gShowOutStat)
                 string txtLo = "Q" + str.tostring(qLo.qIdx) + (inStatLo ? " in-stat low" : " out-of-stat low")
-                label.new(qLo.lowBar, qLo.low_, txtLo, xloc=xloc.bar_index,
+                label.new(bar_index, qLo.low_, txtLo, xloc=xloc.bar_index,
                           style=label.style_label_up, color=bgLo,
                           textcolor=textLo, size=size.small)
 
 
 // ── Hour close verdicts ───────────────────────────────────────────────────
+// Anchored slightly below the hour-low so it doesn't overlap with the
+// in-stat/out-of-stat low label (also drawn at bar_index, qLo.low_).
+// Doji verdicts use a distinct prefix glyph so they don't read like an extreme.
 if gVerdictsOn and gShowHourVerd and isHourClose() and not na(activeTriad)
     int hidx_v = hourIndexInTriad()
     HourAgg justClosedV = hidx_v == 1 ? activeTriad.c1 : hidx_v == 2 ? activeTriad.c2 : activeTriad.c3
@@ -885,8 +893,12 @@ if gVerdictsOn and gShowHourVerd and isHourClose() and not na(activeTriad)
         cls = classifyHour(justClosedV)
         if cls != "pending"
             color c = cls == "line-up" ? T.line_up : cls == "line-down" ? T.line_dn : T.doji
-            label.new(bar_index, hourLow(justClosedV), cls + " hour", xloc=xloc.bar_index,
-                      style=label.style_label_up, color=color.new(c, 92),
+            string verdictText = cls == "line-up"   ? "▲ line-up hour"  :
+                                 cls == "line-down" ? "▼ line-down hour" :
+                                                       "◇ doji hour"
+            float verdictY = hourLow(justClosedV) - atrOffset() * 0.5
+            label.new(bar_index, verdictY, verdictText, xloc=xloc.bar_index,
+                      style=label.style_label_up, color=color.new(c, 88),
                       textcolor=c, size=size.small)
 
 
@@ -959,7 +971,6 @@ if gReadoutsOn and not na(activeTriad)
 // ── 1h hour readout (single styled label, anchored below price) ───────────
 // Use a single label with styled background. Position: ATR-offset below the
 // active hour's running low, horizontally centered on the active hour.
-atrOffset() => ta.atr(20) * 2.0
 
 var label activeHourReadout = na
 
