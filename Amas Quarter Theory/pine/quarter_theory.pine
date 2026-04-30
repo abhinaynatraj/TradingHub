@@ -25,8 +25,8 @@ gTzNote       = input.string("America/New_York", "Time zone (read-only)", option
 // ── 📊 Live Readouts ─────────────────────────────────────────────────────
 G_RO = "📊 Live Readouts"
 gReadoutsOn   = input.bool(true,  "▶ Enable group", group=G_RO)
-gShow1h       = input.bool(true,  "Show 1h hour readout", group=G_RO)
-gShow3h       = input.bool(true,  "Show 3h triad readout", group=G_RO)
+gShow1h       = input.bool(true,  "Show 1h hour tint box", group=G_RO)
+gShow3h       = input.bool(false, "Show 3h triad tint box", group=G_RO)
 gActiveStyle  = input.string("Highlighted + LIVE tag", "Active block style",
                               options=["Highlighted","LIVE tag","Highlighted + LIVE tag"], group=G_RO)
 gHistDepth    = input.int(20, "History depth (triads)", minval=1, maxval=40, group=G_RO)
@@ -297,6 +297,15 @@ isHourClose() =>
 isTriadClose() =>
     isHourClose() and hourIndexInTriad() == 3
 
+// ── Timeframe gates ───────────────────────────────────────────────────────
+// Visibility rules:
+//   - Quarter structure (hour box, quarter verticals)  → 1m only
+//   - Active hour / triad tint boxes                    → 1m and 5m
+//   - In-stat / out-of-stat extreme labels              → 1m only
+// Other features (midlines, bands, sweepers, verdicts) remain TF-agnostic.
+isTfMin1() => timeframe.in_seconds("") == 60
+isTfMin1or5() => timeframe.in_seconds("") <= 300
+
 
 // ╔══════════════════════════════════════════════════════════════════════════╗
 // ║ 4. RUNNING AGGREGATIONS                                                  ║
@@ -498,8 +507,8 @@ var line currentQ2Line = na
 var line currentQ3Line = na
 var line currentQ4Line = na
 
-// Reset / create at hour open (first bar of Q1 with valid block)
-if gQStructOn and gShowQDiv and isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(blockId())
+// Reset / create at hour open (first bar of Q1 with valid block) — 1m only
+if gQStructOn and gShowQDiv and isTfMin1() and isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(blockId())
     int barsPerHourDiv = math.max(1, int(60 * 60 / timeframe.in_seconds("")))
     currentHourBox := box.new(left=bar_index, top=high, right=bar_index + barsPerHourDiv - 1, bottom=low,
                               xloc=xloc.bar_index, bgcolor=hourBoxBg(),
@@ -510,7 +519,7 @@ if gQStructOn and gShowQDiv and isFirstBarOfQuarter() and quarterOfHour() == 1 a
     currentQ4Line := na
 
 // Update every bar inside the active hour: expand top/bottom to running range
-if gQStructOn and gShowQDiv and not na(currentHourBox) and not na(blockId()) and not na(hourIndexInTriad())
+if gQStructOn and gShowQDiv and isTfMin1() and not na(currentHourBox) and not na(blockId()) and not na(hourIndexInTriad())
     new_top    = math.max(box.get_top(currentHourBox),    high)
     new_bottom = math.min(box.get_bottom(currentHourBox), low)
     box.set_top(currentHourBox, new_top)
@@ -526,8 +535,8 @@ if gQStructOn and gShowQDiv and not na(currentHourBox) and not na(blockId()) and
         line.set_y1(currentQ4Line, new_bottom)
         line.set_y2(currentQ4Line, new_top)
 
-// Spawn quarter divider line at start of Q2/Q3/Q4
-if gQStructOn and gShowQDiv and isFirstBarOfQuarter() and not na(blockId()) and not na(currentHourBox)
+// Spawn quarter divider line at start of Q2/Q3/Q4 — 1m only
+if gQStructOn and gShowQDiv and isTfMin1() and isFirstBarOfQuarter() and not na(blockId()) and not na(currentHourBox)
     int qNew = quarterOfHour()
     float yTop = box.get_top(currentHourBox)
     float yBot = box.get_bottom(currentHourBox)
@@ -770,19 +779,18 @@ if gMidOn and gShowMid1h and isFirstBarOfQuarter() and quarterOfHour() == 1 and 
 // Reset / spawn 3h midline at triad open (first bar of C1)
 // Lazy-spawn fallback: if activeTriad exists but no line yet (chart loaded
 // mid-block), create one anchored at the triad's start bar.
-// 3h midline uses a dotted style to differentiate from the solid 1h midline.
+// 3h midline is solid; right-edge tracks the current bar (not the full triad).
 if gMidOn and gShowMid3h and isFirstBarOfQuarter() and quarterOfHour() == 1 and hourIndexInTriad() == 1 and not na(blockId())
-    int barsPerTriadMid = math.max(1, int(3 * 60 * 60 / timeframe.in_seconds("")))
-    currentMid3hLine := line.new(bar_index, na, bar_index + barsPerTriadMid - 1, na,
+    currentMid3hLine := line.new(bar_index, na, bar_index, na,
                                  xloc=xloc.bar_index, color=T.mid_3h,
-                                 width=gMid3hWidth, style=line.style_dotted)
+                                 width=gMid3hWidth, style=line.style_solid)
 else if gMidOn and gShowMid3h and not na(activeTriad) and na(currentMid3hLine)
-    int barsPerTriadMidLazy = math.max(1, int(3 * 60 * 60 / timeframe.in_seconds("")))
-    currentMid3hLine := line.new(activeTriad.anchorBar, na, activeTriad.anchorBar + barsPerTriadMidLazy - 1, na,
+    currentMid3hLine := line.new(activeTriad.anchorBar, na, activeTriad.anchorBar, na,
                                  xloc=xloc.bar_index, color=T.mid_3h,
-                                 width=gMid3hWidth, style=line.style_dotted)
+                                 width=gMid3hWidth, style=line.style_solid)
 
-// Update y-coords each bar so the line follows the running mid
+// Update y-coords each bar so the line follows the running mid; extend the
+// 3h line's right edge to the current bar so it grows with the active triad.
 if gMidOn and gShowMid1h and not na(currentMid1hLine) and not na(curMid1h)
     line.set_y1(currentMid1hLine, curMid1h)
     line.set_y2(currentMid1hLine, curMid1h)
@@ -790,6 +798,7 @@ if gMidOn and gShowMid1h and not na(currentMid1hLine) and not na(curMid1h)
 if gMidOn and gShowMid3h and not na(currentMid3hLine) and not na(curMid3h)
     line.set_y1(currentMid3hLine, curMid3h)
     line.set_y2(currentMid3hLine, curMid3h)
+    line.set_x2(currentMid3hLine, bar_index)
 
 
 // ── Sweepers + bias-shifts + doji-confirmed ───────────────────────────────
@@ -862,8 +871,8 @@ if gQStructOn and isLastBarOfQuarter() and not na(activeTriad)
 var label liveHighLabel = na
 var label liveLowLabel  = na
 
-// Reset / spawn at hour open
-if gQStructOn and isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(blockId())
+// Reset / spawn at hour open — 1m only
+if gQStructOn and isTfMin1() and isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(blockId())
     if not na(liveHighLabel)
         label.delete(liveHighLabel)
     if not na(liveLowLabel)
@@ -871,8 +880,8 @@ if gQStructOn and isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(bloc
     liveHighLabel := na
     liveLowLabel  := na
 
-// Update / create labels each bar based on running high/low and quarter
-if gQStructOn and not na(activeTriad)
+// Update / create labels each bar based on running high/low and quarter — 1m only
+if gQStructOn and isTfMin1() and not na(activeTriad)
     int hidx_live = hourIndexInTriad()
     HourAgg curH_live = hidx_live == 1 ? activeTriad.c1 : hidx_live == 2 ? activeTriad.c2 : hidx_live == 3 ? activeTriad.c3 : na
     if not na(curH_live)
@@ -931,7 +940,7 @@ if gQStructOn and not na(activeTriad)
 // throughout the hour. At hour close, we "release" the references so they
 // stay frozen on the closed hour while a fresh pair is created for the next
 // hour. (No new label.new calls needed — the live ones are already correct.)
-if gQStructOn and isHourClose() and not na(activeTriad)
+if gQStructOn and isTfMin1() and isHourClose() and not na(activeTriad)
     liveHighLabel := na
     liveLowLabel  := na
 
@@ -1007,12 +1016,21 @@ if isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(blockId())
 if isFirstBarOfQuarter() and quarterOfHour() == 1 and hourIndexInTriad() == 1 and not na(blockId())
     activeTriadTint := na
 
-if not na(activeTriad)
+// If toggle flipped off mid-session, delete the existing visible box.
+if not gShow1h and not na(activeHourTint)
+    box.delete(activeHourTint)
+    activeHourTint := na
+if not gShow3h and not na(activeTriadTint)
+    box.delete(activeTriadTint)
+    activeTriadTint := na
+
+// Active hour & triad tints: 1m and 5m only
+if isTfMin1or5() and not na(activeTriad)
     int hidx_t = hourIndexInTriad()
     HourAgg curH_t = hidx_t == 1 ? activeTriad.c1 : hidx_t == 2 ? activeTriad.c2 : hidx_t == 3 ? activeTriad.c3 : na
 
     // Active hour: bounded to current hour's running high/low
-    if not na(curH_t)
+    if gShow1h and not na(curH_t)
         float curHi = hourHigh(curH_t)
         float curLo = hourLow(curH_t)
         if not na(curHi) and not na(curLo)
@@ -1028,21 +1046,22 @@ if not na(activeTriad)
                 box.set_bgcolor(activeHourTint, T.active_hr)
 
     // Active triad: bounded to triad's running high/low
-    float trHi = triadHigh(activeTriad)
-    float trLo = triadLow(activeTriad)
-    if not na(trHi) and not na(trLo)
-        if na(activeTriadTint)
-            activeTriadTint := box.new(activeTriad.anchorBar, trHi, bar_index, trLo,
-                                       xloc=xloc.bar_index, bgcolor=T.active_triad,
-                                       border_color=color.new(T.active_triad, math.max(0, color.t(T.active_triad) - 40)),
-                                       border_width=2)
-        else
-            box.set_left(activeTriadTint, activeTriad.anchorBar)
-            box.set_right(activeTriadTint, bar_index)
-            box.set_top(activeTriadTint, trHi)
-            box.set_bottom(activeTriadTint, trLo)
-            box.set_bgcolor(activeTriadTint, T.active_triad)
-            box.set_border_color(activeTriadTint, color.new(T.active_triad, math.max(0, color.t(T.active_triad) - 40)))
+    if gShow3h
+        float trHi = triadHigh(activeTriad)
+        float trLo = triadLow(activeTriad)
+        if not na(trHi) and not na(trLo)
+            if na(activeTriadTint)
+                activeTriadTint := box.new(activeTriad.anchorBar, trHi, bar_index, trLo,
+                                           xloc=xloc.bar_index, bgcolor=T.active_triad,
+                                           border_color=color.new(T.active_triad, math.max(0, color.t(T.active_triad) - 40)),
+                                           border_width=2)
+            else
+                box.set_left(activeTriadTint, activeTriad.anchorBar)
+                box.set_right(activeTriadTint, bar_index)
+                box.set_top(activeTriadTint, trHi)
+                box.set_bottom(activeTriadTint, trLo)
+                box.set_bgcolor(activeTriadTint, T.active_triad)
+                box.set_border_color(activeTriadTint, color.new(T.active_triad, math.max(0, color.t(T.active_triad) - 40)))
 
 
 
