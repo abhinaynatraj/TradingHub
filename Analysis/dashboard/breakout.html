@@ -87,8 +87,74 @@
     }
 
     async function render() {
-      // Subsequent tasks fill these in
       await renderHero();
+      await renderTakeout();
+    }
+
+    async function renderTakeout() {
+      const where = FilterBar.whereClause();
+      const dir = FilterBar.direction();
+      const minCount = FilterBar.minCount();
+
+      async function getRows(direction) {
+        const sql = `
+          SELECT takeout_quarter_of_h2 AS q, COUNT(*) AS n
+          FROM events
+          WHERE ${where}
+            AND breakout = '${direction}'
+            AND followthrough = TRUE
+            AND takeout_quarter_of_h2 IS NOT NULL
+          GROUP BY q ORDER BY q
+        `;
+        const rows = await query(sql);
+        const total = rows.reduce((s, r) => s + Number(r.n), 0);
+        const byQ = { 1: 0, 2: 0, 3: 0, 4: 0 };
+        for (const r of rows) byQ[Number(r.q)] = Number(r.n);
+        return { byQ, total };
+      }
+
+      const bull = await getRows('bullish');
+      const bear = await getRows('bearish');
+
+      // Headline insight: which quarter dominates for bull (since direction-symmetric)
+      const dominantBull = Object.entries(bull.byQ).sort((a, b) => b[1] - a[1])[0];
+      if (bull.total > 0) {
+        const dPct = (dominantBull[1] / bull.total * 100).toFixed(0);
+        renderHeadline(document.getElementById('hl-takeout'),
+          'Most bull follow-throughs happen in Q${q} (${pct}%) — momentum after a breakout is fast.',
+          { q: dominantBull[0], pct: dPct });
+      } else {
+        renderHeadline(document.getElementById('hl-takeout'), null);
+      }
+
+      function rowsFor(byQ, total) {
+        return [1, 2, 3, 4].map(q => ({
+          q: `Q${q}`,
+          pct: total > 0 ? byQ[q] / total : 0,
+          count: total,
+        }));
+      }
+
+      const cols = [
+        { key: 'q', label: 'Quarter of H2', type: 'label' },
+        { key: 'pct', label: '% of follow-throughs', type: 'inlineBar', maxPct: 1.0, color: 'green' },
+      ];
+      const colsBear = cols.slice();
+      colsBear[1] = { ...colsBear[1], color: 'red' };
+
+      // Show or hide based on direction filter
+      const bullEl = document.getElementById('t-takeout-bull');
+      const bearEl = document.getElementById('t-takeout-bear');
+      bullEl.parentElement.style.display = (dir === 'bearish') ? 'none' : '';
+      bearEl.parentElement.style.display = (dir === 'bullish') ? 'none' : '';
+
+      bullEl.parentElement.querySelector('.study-section-title').textContent =
+        `Bullish follow-throughs (n=${fmtNum(bull.total)})`;
+      bearEl.parentElement.querySelector('.study-section-title').textContent =
+        `Bearish follow-throughs (n=${fmtNum(bear.total)})`;
+
+      renderInlineBarTable(bullEl, rowsFor(bull.byQ, bull.total), cols, { minCount });
+      renderInlineBarTable(bearEl, rowsFor(bear.byQ, bear.total), colsBear, { minCount });
     }
 
     async function renderHero() {
