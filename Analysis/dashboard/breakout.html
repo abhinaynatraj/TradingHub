@@ -92,11 +92,14 @@
     }
 
     async function renderHero() {
+      // Note: the direction filter does NOT narrow this query — both bull and bear
+      // metrics are always computed so the side-by-side hero panels stay visible.
+      // Direction is applied visually only (dimming the off-direction panel below).
+      // Per-panel queries in render functions BELOW the hero MAY apply direction.
       const where = FilterBar.whereClause();
       // Aggregate metrics over filtered events
       const sql = `
         SELECT
-          COUNT(*) AS n_total,
           COUNT(*) FILTER (WHERE breakout != 'no_prev') AS n_classifiable,
           COUNT(*) FILTER (WHERE breakout = 'bullish') AS n_bullish,
           COUNT(*) FILTER (WHERE breakout = 'bearish') AS n_bearish,
