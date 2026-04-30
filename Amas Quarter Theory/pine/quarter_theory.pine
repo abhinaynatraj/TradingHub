@@ -154,12 +154,12 @@ resolveTheme() =>
           mid_3h               = color.new(#e2eaf4, 0),
           band_05              = color.new(#ffffff, 60),
           band_10              = color.new(#ffffff, 30),
-          box_tint             = color.new(#ffffff, 85),
-          active_hr            = color.new(#06b6d4, 90),
-          active_triad         = color.new(#06b6d4, 94),
+          box_tint             = color.new(#ffffff, 92),       // 05 box bg: lighter
+          active_hr            = color.new(#cbd5e1, 92),       // light gray (slate-300), neutral
+          active_triad         = color.new(#cbd5e1, 95),       // even lighter gray for triad
           q_div                = color.new(#ffffff, 88),
-          readout_bg           = color.new(#111827, 15),
-          readout_border       = color.new(#ffffff, 90),
+          readout_bg           = color.new(#1a2235, 5),        // bg-raised, near-opaque
+          readout_border       = color.new(#ffffff, 75),
           readout_text         = color.new(#e2eaf4, 0),
           readout_text_dim     = color.new(#8ba4bc, 0),
           readout_active_accent= color.new(#06b6d4, 65),
@@ -182,13 +182,13 @@ resolveTheme() =>
           mid_3h               = color.new(#1f2937, 0),
           band_05              = color.new(#000000, 55),
           band_10              = color.new(#000000, 25),
-          box_tint             = color.new(#000000, 88),
-          active_hr            = color.new(#0891b2, 88),
-          active_triad         = color.new(#0891b2, 93),
-          q_div                = color.new(#94a3b8, 92),  // light slate, very faint on white
-          readout_bg           = color.new(#ffffff, 8),
-          readout_border       = color.new(#000000, 90),
-          readout_text         = color.new(#0f172a, 0),
+          box_tint             = color.new(#94a3b8, 92),       // 05 box bg: light slate, lighter
+          active_hr            = color.new(#94a3b8, 90),       // light gray (slate-400), neutral
+          active_triad         = color.new(#94a3b8, 94),       // lighter gray for triad
+          q_div                = color.new(#94a3b8, 92),       // light slate, very faint on white
+          readout_bg           = color.new(#f1f5f9, 5),        // slate-100 fill, near-opaque
+          readout_border       = color.new(#475569, 50),
+          readout_text         = color.new(#0f172a, 0),        // near-black for readability
           readout_text_dim     = color.new(#475569, 0),
           readout_active_accent= color.new(#0891b2, 55),
           conf_high            = color.new(#059669, 0),
@@ -537,17 +537,19 @@ if gQStructOn and gShowQDiv and isFirstBarOfQuarter() and not na(blockId()) and 
         currentQ4Line := line.new(bar_index, yBot, bar_index, yTop, xloc=xloc.bar_index,
                                   extend=extend.none, color=hourDivLine(), style=line.style_solid, width=1)
 
-// ── 05-box column (bounded to box range, drawn live as box forms) ────────
-// One box, anchored to the active hour's box high/low and bar 0..4 of the hour.
+// ── 05-box (bounded to box range, extends horizontally across the hour) ──
+// One box, anchored to the active hour's box high/low. Box high/low is locked
+// at minute :04; the rectangle extends horizontally to the end of the hour.
 var box current05Box = na
 
 if gBoxOn and gShowBoxCol and isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(blockId())
-    current05Box := box.new(left=bar_index, top=high, right=bar_index + 4, bottom=low,
+    int barsPerHour05 = math.max(1, int(60 * 60 / timeframe.in_seconds("")))
+    current05Box := box.new(left=bar_index, top=high, right=bar_index + barsPerHour05 - 1, bottom=low,
                             xloc=xloc.bar_index, bgcolor=T.box_tint,
                             border_color=color.new(T.box_tint, math.max(0, color.t(T.box_tint) - 10)),
                             border_width=1, border_style=line.style_solid)
 
-// Update 05-box bounds during minutes :00–:04
+// Update 05-box bounds during minutes :00–:04 (box high/low locks after :04)
 if gBoxOn and gShowBoxCol and isBoxBar() and not na(current05Box) and not na(blockId())
     new_top_05    = math.max(box.get_top(current05Box),    high)
     new_bottom_05 = math.min(box.get_bottom(current05Box), low)
@@ -564,22 +566,22 @@ if gBoxOn and not na(activeTriad)
     if not na(curH) and curH.box05Locked and minute(time, NY_TZ) == 4 and not na(curH.box05Hi)
         [u10, u05, l05_, l10] = bandLevels(curH.box05Hi, curH.box05Lo)
         int hourStartBar = curH.anchorBar
-        // Bars-per-hour for the chart's timeframe (60 / mins-per-bar). The band
-        // line extends to the end of the active hour.
-        int barsPerHour = math.max(1, int(60 * 60 / timeframe.in_seconds("")))
-        int hourEndBar = curH.anchorBar + barsPerHour - 1
+        // Bands extend only through the rest of Q1 — i.e. up to and including
+        // minute :14 of the hour. They are NOT drawn through Q2/Q3/Q4.
+        int barsPerQuarter = math.max(1, int(15 * 60 / timeframe.in_seconds("")))
+        int q1EndBar = curH.anchorBar + barsPerQuarter - 1
         if gShowBand10
-            line.new(hourStartBar, u10, hourEndBar, u10, xloc=xloc.bar_index, color=T.band_10, style=line.style_dotted, width=2)
-            line.new(hourStartBar, l10, hourEndBar, l10, xloc=xloc.bar_index, color=T.band_10, style=line.style_dotted, width=2)
+            line.new(hourStartBar, u10, q1EndBar, u10, xloc=xloc.bar_index, color=T.band_10, style=line.style_dotted, width=2)
+            line.new(hourStartBar, l10, q1EndBar, l10, xloc=xloc.bar_index, color=T.band_10, style=line.style_dotted, width=2)
             if gShowBandLbl
-                label.new(hourEndBar, u10, ".1%", xloc=xloc.bar_index, color=color.new(T.band_10, 100), textcolor=T.band_10, style=label.style_label_left, size=size.tiny)
-                label.new(hourEndBar, l10, ".1%", xloc=xloc.bar_index, color=color.new(T.band_10, 100), textcolor=T.band_10, style=label.style_label_left, size=size.tiny)
+                label.new(q1EndBar, u10, ".1%", xloc=xloc.bar_index, color=color.new(T.band_10, 100), textcolor=T.band_10, style=label.style_label_left, size=size.small)
+                label.new(q1EndBar, l10, ".1%", xloc=xloc.bar_index, color=color.new(T.band_10, 100), textcolor=T.band_10, style=label.style_label_left, size=size.small)
         if gShowBand05
-            line.new(hourStartBar, u05, hourEndBar, u05, xloc=xloc.bar_index, color=T.band_05, style=line.style_dotted, width=1)
-            line.new(hourStartBar, l05_, hourEndBar, l05_, xloc=xloc.bar_index, color=T.band_05, style=line.style_dotted, width=1)
+            line.new(hourStartBar, u05, q1EndBar, u05, xloc=xloc.bar_index, color=T.band_05, style=line.style_dotted, width=1)
+            line.new(hourStartBar, l05_, q1EndBar, l05_, xloc=xloc.bar_index, color=T.band_05, style=line.style_dotted, width=1)
             if gShowBandLbl
-                label.new(hourEndBar, u05, ".05%", xloc=xloc.bar_index, color=color.new(T.band_05, 100), textcolor=T.band_05, style=label.style_label_left, size=size.tiny)
-                label.new(hourEndBar, l05_, ".05%", xloc=xloc.bar_index, color=color.new(T.band_05, 100), textcolor=T.band_05, style=label.style_label_left, size=size.tiny)
+                label.new(q1EndBar, u05, ".05%", xloc=xloc.bar_index, color=color.new(T.band_05, 100), textcolor=T.band_05, style=label.style_label_left, size=size.small)
+                label.new(q1EndBar, l05_, ".05%", xloc=xloc.bar_index, color=color.new(T.band_05, 100), textcolor=T.band_05, style=label.style_label_left, size=size.small)
 
 // ── Band rejection markers ────────────────────────────────────────────────
 detectBandRejection(float h, float l, float c, float u10, float u05, float l05_, float l10) =>
@@ -618,7 +620,7 @@ if gBoxOn and not na(activeTriad)
                 float anchorY = side == "upper" ? high : low
                 label.new(bar_index, anchorY, "rej " + level,
                           style=side == "upper" ? label.style_label_down : label.style_label_up,
-                          color=color.new(cMark, 95), textcolor=cMark, size=size.tiny)
+                          color=color.new(cMark, 95), textcolor=cMark, size=size.small)
             if gAlertsOn and gAlertBandRej
                 alert("Quarter Theory: " + level + "% band " + side + " rejection", alert.freq_once_per_bar)
 
@@ -700,10 +702,10 @@ if not na(activeTriad)
                 if gMidOn and gShowMidReact
                     if r1 == "support"
                         label.new(bar_index, low, "●", style=label.style_label_up,
-                                  color=color.new(T.mid_1h, 90), textcolor=T.mid_1h, size=size.tiny)
+                                  color=color.new(T.mid_1h, 90), textcolor=T.mid_1h, size=size.small)
                     else
                         label.new(bar_index, high, "●", style=label.style_label_down,
-                                  color=color.new(T.mid_1h, 90), textcolor=T.mid_1h, size=size.tiny)
+                                  color=color.new(T.mid_1h, 90), textcolor=T.mid_1h, size=size.small)
                 if gAlertsOn and gAlertMid
                     alert("Quarter Theory: 1h midline " + r1, alert.freq_once_per_bar)
 
@@ -768,7 +770,7 @@ if gQStructOn and isLastBarOfQuarter() and not na(activeTriad)
                     if gShowDojiConf
                         label.new(bar_index, low, "◆ doji-confirmed", xloc=xloc.bar_index,
                                   style=label.style_label_up, color=color.new(T.doji_conf, 80),
-                                  textcolor=T.doji_conf, size=size.tiny)
+                                  textcolor=T.doji_conf, size=size.small)
                     if gAlertsOn and gAlertDoji
                         alert("Quarter Theory: doji-confirmed in current hour", alert.freq_once_per_bar)
                 lastSweepBias := newBias
@@ -811,18 +813,21 @@ if gQStructOn and isHourClose() and not na(activeTriad)
             bool inStatHi = qHi.qIdx == 1 or qHi.qIdx == 4
             bool inStatLo = qLo.qIdx == 1 or qLo.qIdx == 4
 
+            // Text always renders dark; background is a tinted fill for legibility.
+            color textHi = inStatHi ? T.in_stat : T.out_stat
+            color textLo = inStatLo ? T.in_stat : T.out_stat
+            color bgHi   = color.new(textHi, 80)
+            color bgLo   = color.new(textLo, 80)
             if (inStatHi and gShowInStat) or (not inStatHi and gShowOutStat)
                 string txtHi = "Q" + str.tostring(qHi.qIdx) + (inStatHi ? " in-stat high" : " out-of-stat high")
-                color cHi = inStatHi ? T.in_stat : T.out_stat
                 label.new(qHi.highBar, qHi.high_, txtHi, xloc=xloc.bar_index,
-                          style=label.style_label_down, color=color.new(cHi, 95),
-                          textcolor=cHi, size=size.small)
+                          style=label.style_label_down, color=bgHi,
+                          textcolor=textHi, size=size.small)
             if (inStatLo and gShowInStat) or (not inStatLo and gShowOutStat)
                 string txtLo = "Q" + str.tostring(qLo.qIdx) + (inStatLo ? " in-stat low" : " out-of-stat low")
-                color cLo = inStatLo ? T.in_stat : T.out_stat
                 label.new(qLo.lowBar, qLo.low_, txtLo, xloc=xloc.bar_index,
-                          style=label.style_label_up, color=color.new(cLo, 95),
-                          textcolor=cLo, size=size.small)
+                          style=label.style_label_up, color=bgLo,
+                          textcolor=textLo, size=size.small)
 
 
 // ── Hour close verdicts ───────────────────────────────────────────────────
@@ -904,22 +909,21 @@ if gReadoutsOn and not na(activeTriad)
                                    border_color=color.new(T.active_triad, 100), border_width=0)
 
 
-// ── 1h hour readout (centered, ATR-offset below price) ────────────────────
+// ── 1h hour readout (single styled label, anchored below price) ───────────
+// Use a single label with styled background. Position: ATR-offset below the
+// active hour's running low, horizontally centered on the active hour.
 atrOffset() => ta.atr(20) * 2.0
 
 var label activeHourReadout = na
-var box   activeHourReadoutBox = na
 
 if gReadoutsOn and gShow1h and not na(activeTriad)
     int hidx_ro = hourIndexInTriad()
     HourAgg curH_ro = hidx_ro == 1 ? activeTriad.c1 : hidx_ro == 2 ? activeTriad.c2 : hidx_ro == 3 ? activeTriad.c3 : na
     if not na(curH_ro) and not na(hourLow(curH_ro))
-        string title = "▸ HOUR " + str.tostring(hour(time, NY_TZ)) + ":00 · Q" + str.tostring(int(quarterOfHour())) + " forming"
-        string probLine = "L-up — · L-dn — · Doji —"
-        if gShowN
-            probLine := probLine + "  n=—"
-        string stateLine = "midhr=" + midhrState + (boxReactState != "none" ? "  box=" + boxReactState : "")
-        string roText = title + "\n" + probLine + "\n" + stateLine
+        string roTitle = "HOUR " + str.tostring(hour(time, NY_TZ)) + ":00 · Q" + str.tostring(int(quarterOfHour()))
+        string roProb  = "L-up — · L-dn — · Doji —" + (gShowN ? "  n=—" : "")
+        string roState = "midhr: " + midhrState + (boxReactState != "none" ? "  ·  box: " + boxReactState : "")
+        string roText  = roTitle + "\n" + roProb + "\n" + roState
 
         float yPos = hourLow(curH_ro) - atrOffset()
         int barsPerHourRO = math.max(1, int(60 * 60 / timeframe.in_seconds("")))
@@ -927,31 +931,24 @@ if gReadoutsOn and gShow1h and not na(activeTriad)
 
         if not na(activeHourReadout)
             label.delete(activeHourReadout)
-        if not na(activeHourReadoutBox)
-            box.delete(activeHourReadoutBox)
-        atr_off = atrOffset()
-        activeHourReadoutBox := box.new(centerBar - 5, yPos + atr_off/2, centerBar + 5, yPos - atr_off/2,
-                                        xloc=xloc.bar_index,
-                                        bgcolor=T.readout_bg, border_color=T.readout_active_accent, border_width=2)
         activeHourReadout := label.new(centerBar, yPos, roText, xloc=xloc.bar_index,
-                                       style=label.style_label_center, color=color.new(T.readout_bg, 100),
-                                       textcolor=T.readout_text, size=size.small)
+                                       style=label.style_label_up,
+                                       color=T.readout_bg,
+                                       textcolor=T.readout_text, size=size.small,
+                                       tooltip="Active hour state · midline reactions and 05-box rejections shown live")
 
 
-// ── 3h triad readout ──────────────────────────────────────────────────────
+// ── 3h triad readout (single styled label, below the hour readout) ────────
 var label activeTriadReadout = na
-var box   activeTriadReadoutBox = na
 var array<label> completedTriadReadouts = array.new<label>()
-var array<box>   completedTriadReadoutBoxes = array.new<box>()
 
 if gReadoutsOn and gShow3h and not na(activeTriad)
     string trCls = classifyTriad(activeTriad)
-    string title = "▸ TRIAD " + activeTriad.blockId + " · C" + str.tostring(int(hourIndexInTriad())) + " forming · " + (trCls == "pending" ? "tracking..." : trCls + " tracking")
-    string stateLine = "mid3h=" + mid3hState + " · midhr=" + midhrState
-    string probLine = "L-up — · A-up — · Doji — · L-dn — · A-dn —"
-    if gShowN
-        probLine := probLine + "  n=—"
-    string trText = title + "\n" + stateLine + "\n" + probLine
+    string trTitle = "TRIAD " + activeTriad.blockId + " · C" + str.tostring(int(hourIndexInTriad())) +
+                     " · " + (trCls == "pending" ? "tracking" : trCls)
+    string trState = "mid3h: " + mid3hState + "  ·  midhr: " + midhrState
+    string trProb  = "L-up — · A-up — · Doji — · L-dn — · A-dn —" + (gShowN ? "  n=—" : "")
+    string trText  = trTitle + "\n" + trState + "\n" + trProb
 
     float lowestY = na
     if not na(activeTriad.c1)
@@ -965,23 +962,18 @@ if gReadoutsOn and gShow3h and not na(activeTriad)
         if not na(l3) and (na(lowestY) or l3 < lowestY)
             lowestY := l3
     if not na(lowestY)
-        atr_off2 = atrOffset()
-        float yPos2 = lowestY - atr_off2 * 2.5
+        float yPos2 = lowestY - atrOffset() * 3.5
         int barsPerHour2 = math.max(1, int(60 * 60 / timeframe.in_seconds("")))
-        int centerBar2 = activeTriad.anchorBar + (barsPerHour2 * 3) / 2  // mid of the 3h triad
+        int centerBar2 = activeTriad.anchorBar + (barsPerHour2 * 3) / 2
 
         if not na(activeTriadReadout)
             label.delete(activeTriadReadout)
-        if not na(activeTriadReadoutBox)
-            box.delete(activeTriadReadoutBox)
-        activeTriadReadoutBox := box.new(centerBar2 - 8, yPos2 + atr_off2, centerBar2 + 8, yPos2 - atr_off2,
-                                         xloc=xloc.bar_index,
-                                         bgcolor=T.readout_bg, border_color=T.readout_active_accent, border_width=2)
         activeTriadReadout := label.new(centerBar2, yPos2, trText, xloc=xloc.bar_index,
-                                        style=label.style_label_center, color=color.new(T.readout_bg, 100),
+                                        style=label.style_label_up,
+                                        color=T.readout_bg,
                                         textcolor=T.readout_text, size=size.small,
-                                        tooltip="State (live):\nblock=" + activeTriad.blockId +
-                                                "\nC2 forming · class so far: " + trCls)
+                                        tooltip="Active triad state · block=" + activeTriad.blockId +
+                                                "\nClass so far: " + trCls)
 
 
 // ── 3h running OHLC + flip-level overlay ──────────────────────────────────
@@ -1013,7 +1005,7 @@ if gVerdictsOn and gShowOhlcOver and not na(activeTriad)
     ohlcOverlay := label.new(bar_index, high, txt,
                              xloc=xloc.bar_index, style=label.style_label_left,
                              color=color.new(T.readout_bg, 30),
-                             textcolor=T.readout_text_dim, size=size.tiny)
+                             textcolor=T.readout_text_dim, size=size.small)
 
 
 // ╔══════════════════════════════════════════════════════════════════════════╗
@@ -1026,13 +1018,8 @@ if gVerdictsOn and gShowOhlcOver and not na(activeTriad)
 if isTriadClose() and not na(activeTriad)
     if not na(activeTriadReadout)
         array.push(completedTriadReadouts, activeTriadReadout)
-        array.push(completedTriadReadoutBoxes, activeTriadReadoutBox)
         activeTriadReadout := na
-        activeTriadReadoutBox := na
     while array.size(completedTriadReadouts) > gHistDepth
         oldL = array.shift(completedTriadReadouts)
-        oldB = array.shift(completedTriadReadoutBoxes)
         if not na(oldL)
             label.delete(oldL)
-        if not na(oldB)
-            box.delete(oldB)
