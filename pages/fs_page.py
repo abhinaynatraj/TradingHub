@@ -30,7 +30,7 @@ SESSION_ORDER = ["NY1", "NY2", "OTHER", "OVERNIGHT", "PRE"]
 
 
 # ── Data loading ──────────────────────────────────────────────────────────────
-#@st.cache_data(show_spinner="Loading Fractal Sweep data…")
+@st.cache_data(show_spinner="Loading model data…", ttl=3600)
 def _load() -> dict:
     if not JSON_PATH.exists():
         return {}
@@ -39,20 +39,18 @@ def _load() -> dict:
 
 
 # ── Filter helpers ────────────────────────────────────────────────────────────
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=3600)
 def _load_trades(model_key: str, profile_key: str) -> list:
     parquet_path = JSON_PATH.parent / (JSON_PATH.stem + ".parquet")
     if parquet_path.exists():
         try:
             df = pd.read_parquet(parquet_path)
-            # Filter for the selected model & profile
             mask = (df["model_key"] == model_key) & (df["profile_key"] == profile_key)
             result = df[mask].to_dict("records")
-            if result:                     # Only use Parquet if it actually contains data
+            if result:
                 return result
         except Exception:
-            pass                           # Any error → fall back to JSON
-    # Fallback to JSON (exactly as before)
+            pass
     data = _load()
     if data:
         return (data.get(model_key, {})
@@ -60,6 +58,7 @@ def _load_trades(model_key: str, profile_key: str) -> list:
                 .get(profile_key, {})
                 .get("recent_trades", []))
     return []
+
 
 def _apply_filters(trades, f3, f4, smt):
     out = trades
@@ -82,7 +81,11 @@ def _summary(trades):
     return {"n": n, "wins": wins, "wr": wr, "ev": ev, "pf": pf}
 
 
-def _equity_curve(trades, account, risk):
+# Trades-based compute functions accept a tuple so Streamlit can hash them.
+# Call sites use: _equity_curve(tuple(trades), account, risk)
+
+@st.cache_data(show_spinner=False)
+def _equity_curve(trades: tuple, account: float, risk: float) -> pd.DataFrame:
     rows, eq = [], account
     for t in sorted(trades, key=lambda x: (x["date"], x["hr"], x["mn"])):
         eq += t["r"] * risk
@@ -90,7 +93,8 @@ def _equity_curve(trades, account, risk):
     return pd.DataFrame(rows)
 
 
-def _recompute_by_year(trades):
+@st.cache_data(show_spinner=False)
+def _recompute_by_year(trades: tuple) -> list:
     ym = {}
     for t in trades:
         yr = int(t["date"][:4])
@@ -103,7 +107,8 @@ def _recompute_by_year(trades):
             for yr, v in sorted(ym.items())]
 
 
-def _recompute_by_hour(trades):
+@st.cache_data(show_spinner=False)
+def _recompute_by_hour(trades: tuple) -> list:
     hm = {}
     for t in trades:
         r = hm.setdefault(t["hr"], {"n": 0, "wins": 0, "ev_sum": 0.0})
@@ -113,7 +118,8 @@ def _recompute_by_hour(trades):
             for h, v in sorted(hm.items()) if v["n"] >= 5]
 
 
-def _recompute_by_dow(trades):
+@st.cache_data(show_spinner=False)
+def _recompute_by_dow(trades: tuple) -> list:
     dm = {}
     for t in trades:
         dw = t["dow"]
@@ -210,88 +216,6 @@ EXEC_MODELS = {
 }
 
 
-def _cascade_pnl(trades, exec_model, total_risk_usd):
-    results = []
-    for t in trades:
-        d          = t.get("direction")
-        outcome    = t.get("outcome", "")
-        entry_pr   = t.get("entry_price")
-        sl_pr      = t.get("sl_price")
-        cisd       = t.get("cisd_level")
-        l33        = t.get("level_33")
-        l50        = t.get("level_50")
-        l66        = t.get("level_66")
-        target_pr  = t.get("target_price")
-        dap        = t.get("deepest_adverse_price")
-        base_r     = t.get("r", 0.0) or 0.0
-
-        # Fill helpers
-        def _reached(level):
-            if dap is None or level is None:
-                return False
-            return dap <= level if d == "LONG" else dap >= level
-
-        def _stopped(stop_level):
-            return _reached(stop_level)
-
-        def _leg_r(entry_lvl, stop_lvl, original_entry, original_sl):
-            if not _reached(entry_lvl):
-                return 0.0, False
-            if entry_lvl is None or stop_lvl is None or target_pr is None:
-                return 0.0, True
-            risk_leg = abs(entry_lvl - stop_lvl)
-            if risk_leg <= 0:
-                return 0.0, True
-            if _stopped(stop_lvl):
-                return -1.0, True
-            if outcome == "WIN":
-                reward = abs(target_pr - entry_lvl)
-                return round(reward / risk_leg, 3), True
-            if outcome == "LOSS":
-                return -1.0, True
-            # EXPIRED: scale original r by ratio of leg risk to original risk
-            if original_entry is not None and original_sl is not None \
-               and abs(original_entry - original_sl) > 0:
-                scale = risk_leg / abs(original_entry - original_sl)
-                return round(base_r * scale, 3), True
-            return round(base_r, 3), True
-
-        # Execution model logic
-        if exec_model == "market_1acc":
-            results.append({"r_total": base_r, "filled": True, "pnl_usd": base_r * total_risk_usd})
-
-        elif exec_model == "cisd_1acc":
-            r, filled = _leg_r(cisd, sl_pr, entry_pr, sl_pr)
-            results.append({"r_total": r, "filled": filled, "pnl_usd": r * total_risk_usd})
-
-        elif exec_model == "cascade_2tier":
-            per_risk = total_risk_usd / 2.0
-            r1, f1 = _leg_r(cisd, l50, entry_pr, sl_pr)
-            r2, f2 = _leg_r(l50,  sl_pr, entry_pr, sl_pr)
-            r_total = r1 + r2
-            pnl     = r1 * per_risk + r2 * per_risk
-            results.append({"r_total": round(r_total, 3), "filled": f1 or f2,
-                            "r_acc1": r1, "r_acc2": r2,
-                            "filled_acc1": f1, "filled_acc2": f2,
-                            "pnl_usd": round(pnl, 2)})
-
-        elif exec_model == "cascade_3tier":
-            per_risk = total_risk_usd / 3.0
-            r1, f1 = _leg_r(cisd, l33, entry_pr, sl_pr)
-            r2, f2 = _leg_r(l33,  l66, entry_pr, sl_pr)
-            r3, f3 = _leg_r(l66,  sl_pr, entry_pr, sl_pr)
-            r_total = r1 + r2 + r3
-            pnl     = r1 * per_risk + r2 * per_risk + r3 * per_risk
-            results.append({"r_total": round(r_total, 3), "filled": f1 or f2 or f3,
-                            "r_acc1": r1, "r_acc2": r2, "r_acc3": r3,
-                            "filled_acc1": f1, "filled_acc2": f2, "filled_acc3": f3,
-                            "pnl_usd": round(pnl, 2)})
-        else:
-            results.append({"r_total": 0.0, "filled": False, "pnl_usd": 0.0})
-
-    return results
-
-
 def render():
     # ── Sidebar controls ──────────────────────────────────────────────────────
     with st.sidebar:
@@ -318,9 +242,13 @@ def render():
         smt = st.toggle(FILTER_LABELS["SMT"], value=False)
         st.divider()
         st.subheader("Account")
-        account_size   = st.number_input("Account size ($)",   value=4500, step=500)
-        risk_per_trade = st.number_input("Risk per trade ($)", value=225,  step=25)
-        
+        account_size   = st.number_input("Account size ($)",   value=2000, step=500)
+        risk_per_trade = st.number_input("Risk per trade ($)", value=200,  step=25)
+        st.divider()
+        if st.button("Clear cache", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
 
     profile    = data[model_key]["profiles"][profile_key]
     meta       = profile["meta"]
@@ -385,6 +313,39 @@ def render():
 | Total raw setups | {meta.get('total_raw', '—'):,} |
 | Expired setups | {meta.get('total_expired', '—'):,} |
 """)
+
+        st.divider()
+        st.subheader("Equity Curve")
+        eq_df_ov = _equity_curve(tuple(trades), account_size, risk_per_trade)
+        if not eq_df_ov.empty:
+            st.plotly_chart(
+                _line(eq_df_ov, "date", "equity", hline=account_size,
+                      x_label="Date", y_label="Equity ($)"),
+                use_container_width=True, key="fs_ov_equity"
+            )
+
+        st.divider()
+        st.subheader("Streak Statistics")
+        _sorted_ov = sorted(trades, key=lambda x: (x["date"], x["hr"], x["mn"]))
+        _runs_l, _runs_w, _cl, _cw = [], [], 0, 0
+        for t in _sorted_ov:
+            if t["outcome"] == "LOSS":
+                _cl += 1
+                if _cw > 0: _runs_w.append(_cw); _cw = 0
+            else:
+                _cw += 1
+                if _cl > 0: _runs_l.append(_cl); _cl = 0
+        if _cl > 0: _runs_l.append(_cl)
+        if _cw > 0: _runs_w.append(_cw)
+        max_l_run = max(_runs_l) if _runs_l else 0
+        avg_l_run = sum(_runs_l) / len(_runs_l) if _runs_l else 0.0
+        max_w_run = max(_runs_w) if _runs_w else 0
+        avg_w_run = sum(_runs_w) / len(_runs_w) if _runs_w else 0.0
+        sk1, sk2, sk3, sk4 = st.columns(4)
+        sk1.metric("Max Consec Losses", max_l_run)
+        sk2.metric("Avg Consec Losses", f"{avg_l_run:.1f}")
+        sk3.metric("Max Consec Wins",   max_w_run)
+        sk4.metric("Avg Consec Wins",   f"{avg_w_run:.1f}")
 
         st.divider()
         st.subheader("Direction Summary — Long vs Short")
@@ -479,7 +440,7 @@ def render():
 
         # ── Yearly EV bar chart ───────────────────────────────────────────────
         st.subheader("Temporal Edge Stability — Yearly EV")
-        by_year = _recompute_by_year(trades) if any_filter else profile["by_year"]
+        by_year = _recompute_by_year(tuple(trades)) if any_filter else profile["by_year"]
         yr_df   = pd.DataFrame(by_year)
         col_yr, col_yr_wr = st.columns(2)
         with col_yr:
@@ -521,7 +482,7 @@ def render():
                              use_container_width=True, hide_index=True)
         with col_dow:
             st.markdown("**By Day of Week**")
-            dow_data = _recompute_by_dow(trades) if any_filter else [
+            dow_data = _recompute_by_dow(tuple(trades)) if any_filter else [
                 {**r, "dow_name": DOW_NAMES.get(r["dow"], str(r["dow"]))}
                 for r in profile["by_dow"] if r["n"] >= 5
             ]
@@ -562,7 +523,7 @@ def render():
 
         # ── Win rate by hour ──────────────────────────────────────────────────
         st.subheader("Win Rate by Hour")
-        hr_data = _recompute_by_hour(trades) if any_filter else \
+        hr_data = _recompute_by_hour(tuple(trades)) if any_filter else \
                   [r for r in profile["by_hour"] if r["n"] >= 5]
         if hr_data:
             hr_df       = pd.DataFrame(hr_data)
@@ -633,7 +594,7 @@ def render():
 
         st.divider()
         st.subheader("Win Rate by Year — Regime Check")
-        yr_data = _recompute_by_year(trades) if any_filter else profile["by_year"]
+        yr_data = _recompute_by_year(tuple(trades)) if any_filter else profile["by_year"]
         if yr_data:
             yr_df2 = pd.DataFrame(yr_data)
             yr_df2["wr_fmt"] = yr_df2["wr"].map("{:.1%}".format)
@@ -651,7 +612,7 @@ def render():
 
         st.divider()
         st.subheader("Equity Curve")
-        eq_df = _equity_curve(trades, account_size, risk_per_trade)
+        eq_df = _equity_curve(tuple(trades), account_size, risk_per_trade)
         if not eq_df.empty:
             st.plotly_chart(
                 _line(eq_df, "date", "equity", hline=account_size,
@@ -694,17 +655,49 @@ def render():
     with tab_risk:
         st.subheader("Account Risk Statistics")
         rs = profile.get("risk_stats", {})
-        if rs:
+
+        # Compute dollar metrics live from filtered trades + user's sidebar inputs
+        def _risk_metrics(trades, account, risk):
+            if not trades:
+                return {}
+            sorted_t = sorted(trades, key=lambda x: (x["date"], x["hr"], x["mn"]))
+            eq = float(account); peak = eq; min_eq = eq; max_dd_usd = 0.0; max_dd_pct = 0.0
+            daily_r: dict = {}
+            for t in sorted_t:
+                r_val = t.get("r") or 0.0
+                eq += r_val * risk
+                if eq < min_eq: min_eq = eq
+                if eq > peak: peak = eq
+                dd_usd = peak - eq
+                dd_pct = dd_usd / peak * 100 if peak > 0 else 0.0
+                if dd_usd > max_dd_usd:
+                    max_dd_usd = dd_usd
+                    max_dd_pct = dd_pct
+                d = t["date"][:10]
+                daily_r[d] = daily_r.get(d, 0.0) + r_val * risk
+            total_pnl = eq - account
+            blown = eq <= 0
+            dp = list(daily_r.values())
+            sharpe = None
+            if len(dp) > 1:
+                arr = np.array(dp)
+                if arr.std(ddof=1) > 0:
+                    sharpe = round(float(arr.mean() / arr.std(ddof=1) * np.sqrt(252)), 2)
+            return dict(total_pnl=total_pnl, min_eq=min_eq, max_dd_usd=max_dd_usd,
+                        max_dd_pct=max_dd_pct, blown=blown, sharpe=sharpe)
+
+        rm = _risk_metrics(trades, account_size, risk_per_trade)
+        if rm:
             col_r1, col_r2, col_r3, col_r4 = st.columns(4)
-            col_r1.metric("Total P&L",       f"${rs.get('total_pnl_usd', 0):+,.0f}")
-            col_r2.metric("Max DD",           f"${rs.get('max_dd_usd', 0):,.0f}  ({rs.get('max_dd_pct', 0):.1f}%)")
-            col_r3.metric("Sharpe",           f"{rs.get('sharpe', 0):+.2f}")
-            col_r4.metric("Max consec losses",str(rs.get("max_consec_losses", "—")))
+            col_r1.metric("Total P&L",        f"${rm['total_pnl']:+,.0f}")
+            col_r2.metric("Max DD",            f"${rm['max_dd_usd']:,.0f}  ({rm['max_dd_pct']:.1f}%)")
+            col_r3.metric("Sharpe",            f"{rm['sharpe']:+.2f}" if rm['sharpe'] is not None else "—")
+            col_r4.metric("Max consec losses", str(rs.get("max_consec_losses", "—")))
             col_r5, col_r6, col_r7, col_r8 = st.columns(4)
-            col_r5.metric("Max consec wins", str(rs.get("max_consec_wins", "—")))
-            col_r6.metric("Min equity",      f"${rs.get('min_equity_usd', 0):,.0f}")
-            col_r7.metric("Account blown",   "YES" if rs.get("blown") else "NO")
-            col_r8.metric("Certainty Equiv", f"{rs.get('ce', 0):+.4f}R")
+            col_r5.metric("Max consec wins",   str(rs.get("max_consec_wins", "—")))
+            col_r6.metric("Min equity",        f"${rm['min_eq']:,.0f}")
+            col_r7.metric("Account blown",     "YES" if rm["blown"] else "NO")
+            col_r8.metric("Certainty Equiv",   f"{rs.get('ce', 0):+.4f}R")
 
         st.divider()
         st.subheader("R Distribution")
@@ -719,7 +712,7 @@ def render():
 
         st.divider()
         st.subheader("Win Rate by Year")
-        yr_d   = _recompute_by_year(trades) if any_filter else profile["by_year"]
+        yr_d   = _recompute_by_year(tuple(trades)) if any_filter else profile["by_year"]
         yr_df3 = pd.DataFrame(yr_d)
         yr_df3["wr_fmt"] = yr_df3["wr"].map("{:.1%}".format)
         st.plotly_chart(
@@ -730,7 +723,7 @@ def render():
 
         st.divider()
         st.subheader("Equity Curve — Cumulative P&L")
-        eq_df2 = _equity_curve(trades, account_size, risk_per_trade)
+        eq_df2 = _equity_curve(tuple(trades), account_size, risk_per_trade)
         if not eq_df2.empty:
             st.plotly_chart(
                 _line(eq_df2, "date", "equity", hline=account_size,
@@ -939,29 +932,27 @@ def render():
                 )
                 st.stop()
 
-        # --- Run cascade PnL (corrected function) ---
-        def _cascade_pnl(trades, exec_model, total_risk_usd):
+        # --- Run cascade PnL ---
+        def _cascade_pnl(trades, exec_model, total_risk_usd, n_tiers):
             results = []
+            per_risk_acc = total_risk_usd / max(n_tiers, 1)
             for t in trades:
-                d          = t.get("direction")
-                outcome    = t.get("outcome", "")
-                entry_pr   = t.get("entry_price")
-                sl_pr      = t.get("sl_price")
-                cisd       = t.get("cisd_level")
-                l33        = t.get("level_33")
-                l50        = t.get("level_50")
-                l66        = t.get("level_66")
-                target_pr  = t.get("target_price")
-                dap        = t.get("deepest_adverse_price")
-                base_r     = t.get("r", 0.0) or 0.0
+                d         = t.get("direction")
+                outcome   = t.get("outcome", "")
+                entry_pr  = t.get("entry_price")
+                sl_pr     = t.get("sl_price")
+                cisd      = t.get("cisd_level")
+                l33       = t.get("level_33")
+                l50       = t.get("level_50")
+                l66       = t.get("level_66")
+                target_pr = t.get("target_price")
+                dap       = t.get("deepest_adverse_price")
+                base_r    = t.get("r", 0.0) or 0.0
 
                 def _reached(level):
                     if dap is None or level is None:
                         return False
                     return dap <= level if d == "LONG" else dap >= level
-
-                def _stopped(stop_level):
-                    return _reached(stop_level)
 
                 def _leg_r(entry_lvl, stop_lvl, original_entry, original_sl):
                     if not _reached(entry_lvl):
@@ -971,122 +962,109 @@ def render():
                     risk_leg = abs(entry_lvl - stop_lvl)
                     if risk_leg <= 0:
                         return 0.0, True
-                    if _stopped(stop_lvl):
+                    if _reached(stop_lvl):
                         return -1.0, True
                     if outcome == "WIN":
-                        reward = abs(target_pr - entry_lvl)
-                        return round(reward / risk_leg, 3), True
+                        return round(abs(target_pr - entry_lvl) / risk_leg, 3), True
                     if outcome == "LOSS":
                         return -1.0, True
-                    # EXPIRED: scale original r by ratio of leg risk to original risk
+                    # EXPIRED: scale base R by leg's share of original risk
                     if original_entry is not None and original_sl is not None \
                     and abs(original_entry - original_sl) > 0:
                         scale = risk_leg / abs(original_entry - original_sl)
                         return round(base_r * scale, 3), True
                     return round(base_r, 3), True
 
-                per_risk_acc = total_risk_usd / max(n_accs, 1)
-
                 if exec_model == "market_1acc":
                     results.append({
-                        "r_total": base_r,
-                        "filled": True,
+                        "r_total": base_r, "filled": True,
+                        "r_acc1": base_r, "filled_acc1": True,
                         "pnl_usd": base_r * per_risk_acc,
-                        # no per-acc fields needed
                     })
                 elif exec_model == "cisd_1acc":
-                    r, filled = _leg_r(cisd, sl_pr, entry_pr, sl_pr)
+                    r1, fa1 = _leg_r(cisd, sl_pr, entry_pr, sl_pr)
                     results.append({
-                        "r_total": r,
-                        "filled": filled,
-                        "pnl_usd": r * per_risk_acc,
+                        "r_total": r1, "filled": fa1,
+                        "r_acc1": r1, "filled_acc1": fa1,
+                        "pnl_usd": r1 * per_risk_acc,
                     })
                 elif exec_model == "cascade_2tier":
-                    r1, f1 = _leg_r(cisd, l50, entry_pr, sl_pr)
-                    r2, f2 = _leg_r(l50,  sl_pr, entry_pr, sl_pr)
+                    r1, fa1 = _leg_r(cisd, l50, entry_pr, sl_pr)
+                    r2, fa2 = _leg_r(l50,  sl_pr, entry_pr, sl_pr)
                     results.append({
-                        "r_total": round(r1 + r2, 3),
-                        "filled": f1 or f2,
-                        "r_acc1": r1, "r_acc2": r2,
-                        "filled_acc1": f1, "filled_acc2": f2,
-                        "pnl_usd": round(r1 * per_risk_acc + r2 * per_risk_acc, 2),
-                        "per_risk": per_risk_acc,
+                        "r_total": round(r1 + r2, 3), "filled": fa1 or fa2,
+                        "r_acc1": r1, "filled_acc1": fa1,
+                        "r_acc2": r2, "filled_acc2": fa2,
+                        "pnl_usd": round((r1 + r2) * per_risk_acc, 2),
                     })
                 elif exec_model == "cascade_3tier":
-                    r1, f1 = _leg_r(cisd, l33, entry_pr, sl_pr)
-                    r2, f2 = _leg_r(l33,  l66, entry_pr, sl_pr)
-                    r3, f3 = _leg_r(l66,  sl_pr, entry_pr, sl_pr)
+                    r1, fa1 = _leg_r(cisd, l33, entry_pr, sl_pr)
+                    r2, fa2 = _leg_r(l33,  l66, entry_pr, sl_pr)
+                    r3, fa3 = _leg_r(l66,  sl_pr, entry_pr, sl_pr)
                     results.append({
-                        "r_total": round(r1 + r2 + r3, 3),
-                        "filled": f1 or f2 or f3,
-                        "r_acc1": r1, "r_acc2": r2, "r_acc3": r3,
-                        "filled_acc1": f1, "filled_acc2": f2, "filled_acc3": f3,
-                        "pnl_usd": round(r1 * per_risk_acc + r2 * per_risk_acc + r3 * per_risk_acc, 2),
-                        "per_risk": per_risk_acc,
+                        "r_total": round(r1 + r2 + r3, 3), "filled": fa1 or fa2 or fa3,
+                        "r_acc1": r1, "filled_acc1": fa1,
+                        "r_acc2": r2, "filled_acc2": fa2,
+                        "r_acc3": r3, "filled_acc3": fa3,
+                        "pnl_usd": round((r1 + r2 + r3) * per_risk_acc, 2),
                     })
                 else:
                     results.append({"r_total": 0.0, "filled": False, "pnl_usd": 0.0})
             return results
 
-        leg_results = _cascade_pnl(trades, exec_model, total_risk_usd)
-        # (note: trades is already filtered by sidebar toggles)
-        n_total = len(trades)
-        # --- Combined KPIs ---
-            # ── Per‑account stats ────────────────────────────────────────────────────
-        n_tiers = n_accs                      # already computed (1,2,3)
+        n_tiers = n_accs
         per_risk_usd = total_risk_usd / max(n_tiers, 1)
 
-        # Gather per‑account data
-        tier_fills  = {t: 0 for t in range(1, n_tiers+1)}
-        tier_wins   = {t: 0 for t in range(1, n_tiers+1)}
-        tier_pnl    = {t: 0.0 for t in range(1, n_tiers+1)}
+        # Sort trades chronologically before all per-tier analysis
+        sorted_pairs = sorted(
+            zip(trades, _cascade_pnl(trades, exec_model, total_risk_usd, n_tiers)),
+            key=lambda x: (x[0]["date"], x[0].get("hr", 0), x[0].get("mn", 0)),
+        )
+        leg_results = [lr for _, lr in sorted_pairs]
+        sorted_trades = [tr for tr, _ in sorted_pairs]
+        n_total = len(sorted_trades)
 
-        tier_r_sum   = {t: 0.0 for t in range(1, n_tiers+1)}
-        tier_r_win   = {t: 0.0 for t in range(1, n_tiers+1)}
-        tier_r_loss  = {t: 0.0 for t in range(1, n_tiers+1)}
-        max_consec_loss = {t: 0 for t in range(1, n_tiers+1)}
-        streaks_loss = {t: [] for t in range(1, n_tiers+1)}   # store all losing streak lengths
+        # Per-tier accumulators
+        tier_fills  = {t: 0   for t in range(1, n_tiers + 1)}
+        tier_wins   = {t: 0   for t in range(1, n_tiers + 1)}
+        tier_pnl    = {t: 0.0 for t in range(1, n_tiers + 1)}
+        tier_r_sum  = {t: 0.0 for t in range(1, n_tiers + 1)}
+        tier_r_win  = {t: 0.0 for t in range(1, n_tiers + 1)}
+        tier_r_loss = {t: 0.0 for t in range(1, n_tiers + 1)}
+        # Streak tracking: one running counter per tier, closed into streaks_loss list
+        streaks_loss   = {t: [] for t in range(1, n_tiers + 1)}
+        cur_loss_streak = {t: 0  for t in range(1, n_tiers + 1)}
 
-        for trade, lr in zip(trades, leg_results):
-            for t in range(1, n_tiers+1):
-                r_key = f"r_acc{t}"
+        for lr in leg_results:
+            for t in range(1, n_tiers + 1):
+                r_key    = f"r_acc{t}"
                 fill_key = f"filled_acc{t}"
-                if fill_key in lr and lr[fill_key]:
-                    tier_fills[t] += 1
-                    r_val = lr[r_key]
-                    pnl = r_val * per_risk_usd
-                    tier_pnl[t] += pnl
-                    if r_val > 0:
-                        tier_wins[t] += 1
-                    # --- new accumulators ---
-                    tier_r_sum[t] += r_val
-                    if r_val > 0:
-                        tier_r_win[t] += r_val
-                    else:
-                        tier_r_loss[t] += abs(r_val)
+                if not (fill_key in lr and lr[fill_key]):
+                    continue
+                r_val = lr[r_key]
+                tier_fills[t] += 1
+                tier_pnl[t]   += r_val * per_risk_usd
+                tier_r_sum[t] += r_val
+                if r_val > 0:
+                    tier_wins[t]   += 1
+                    tier_r_win[t]  += r_val
+                    # win closes any open loss streak
+                    if cur_loss_streak[t] > 0:
+                        streaks_loss[t].append(cur_loss_streak[t])
+                        cur_loss_streak[t] = 0
+                else:
+                    tier_r_loss[t]      += abs(r_val)
+                    cur_loss_streak[t]  += 1
 
-        # Compute max & average consecutive losses per tier (sequential order)
-        trade_seq = list(zip(trades, leg_results))
-        trade_seq.sort(key=lambda x: (x[0]["date"], x[0].get("hr", 0), x[0].get("mn", 0)))
-        for t in range(1, n_tiers+1):
-            cur_streak = 0
-            r_key = f"r_acc{t}"
-            fill_key = f"filled_acc{t}"
-            for tr, lr in trade_seq:
-                if fill_key in lr and lr[fill_key]:
-                    if lr[r_key] <= 0:
-                        cur_streak += 1
-                    else:
-                        if cur_streak > 0:
-                            streaks_loss[t].append(cur_streak)
-                            if cur_streak > max_consec_loss[t]:
-                                max_consec_loss[t] = cur_streak
-                        cur_streak = 0
-            # If the series ends with a losing streak
-            if cur_streak > 0:
-                streaks_loss[t].append(cur_streak)
-                if cur_streak > max_consec_loss[t]:
-                    max_consec_loss[t] = cur_streak     
+        # Close any streak still open at end of series
+        for t in range(1, n_tiers + 1):
+            if cur_loss_streak[t] > 0:
+                streaks_loss[t].append(cur_loss_streak[t])
+
+        def _streak_stats(runs):
+            if not runs:
+                return 0, 0.0
+            return max(runs), sum(runs) / len(runs)
 
         # Aggregate across all tiers
         total_filled = sum(tier_fills.values())
@@ -1107,85 +1085,73 @@ def render():
         with col_t3:
             st.metric("Total trades", n_total)
 
-        # Per‑tier numbers (always show, even for 1‑acc models)
-        if n_tiers >= 1:
-            st.divider()
-            for t in range(1, n_tiers+1):
-                nf = tier_fills[t]
-                wr = tier_wins[t] / nf if nf else 0
-                pnl_tier = tier_pnl[t]
-                with st.expander(
-                    f"Tier {t} — Initial ${total_capital / n_tiers:,.0f}, "
-                    f"Risk ${per_risk_usd:,.2f}"
-                ):
-                    nf = tier_fills[t]
-                    wr = tier_wins[t] / nf if nf else 0
-                    pnl_tier = tier_pnl[t]
-                    ev_r = tier_r_sum[t] / nf if nf else 0.0
-                    pf_tier = (tier_r_win[t] / tier_r_loss[t]) if tier_r_loss[t] > 0 else float('inf')
-                    spd = nf / max(trading_days, 1)
+        # Per‑tier numbers
+        st.divider()
+        for t in range(1, n_tiers + 1):
+            nf       = tier_fills[t]
+            wr       = tier_wins[t] / nf if nf else 0.0
+            pnl_tier = tier_pnl[t]
+            max_cl, avg_cl = _streak_stats(streaks_loss[t])
+            with st.expander(
+                f"Tier {t} — Initial ${total_capital / n_tiers:,.0f}  ·  "
+                f"Risk ${per_risk_usd:,.2f}  ·  {nf} filled  ·  {wr:.1%} WR",
+                expanded=(n_tiers == 1),
+            ):
+                ev_r    = tier_r_sum[t] / nf if nf else 0.0
+                pf_tier = tier_r_win[t] / tier_r_loss[t] if tier_r_loss[t] > 0 else float("inf")
+                spd     = nf / max(trading_days, 1)
 
-                    col_a, col_b, col_c = st.columns(3)
-                    col_a.metric("Filled", nf)
-                    col_b.metric("Win Rate", f"{wr:.1%}")
-                    col_c.metric("P&L", f"${pnl_tier:,.0f}")
+                col_a, col_b, col_c = st.columns(3)
+                col_a.metric("Filled",       nf)
+                col_b.metric("Win Rate",     f"{wr:.1%}")
+                col_c.metric("P&L",          f"${pnl_tier:,.0f}")
 
-                    col_d, col_e, col_f = st.columns(3)
-                    col_d.metric("EV / trade", f"{ev_r:+.3f}R")
-                    col_e.metric("Profit Factor", f"{pf_tier:.2f}" if pf_tier < 999 else "∞")
-                    col_f.metric("Setups / day", f"{spd:.2f}")
-                    avg_loss_streak = (sum(streaks_loss[t]) / len(streaks_loss[t])) if streaks_loss[t] else 0.0
-                    col_g, col_h, col_i = st.columns(3)  # third row
-                    col_g.metric("Max Consec Losses", max_consec_loss[t])
-                    col_h.metric("Avg Consec Losses", f"{avg_loss_streak:.1f}")
+                col_d, col_e, col_f = st.columns(3)
+                col_d.metric("EV / trade",   f"{ev_r:+.3f}R")
+                col_e.metric("Profit Factor", f"{pf_tier:.2f}" if pf_tier < 999 else "∞")
+                col_f.metric("Setups / day", f"{spd:.2f}")
 
-                    # Equity curve for this tier
-                    eq_tier = total_capital / n_tiers
-                    eq_tier_rows = [{"trade_num": 0, "equity": eq_tier}]
-                    for idx, (trade, lr) in enumerate(zip(trades, leg_results), 1):
-                        r_key = f"r_acc{t}"
-                        fill_key = f"filled_acc{t}"
-                        if fill_key in lr and lr[fill_key]:
-                            eq_tier += lr[r_key] * per_risk_usd
-                        eq_tier_rows.append({"trade_num": idx, "equity": round(eq_tier, 2)})
-                    eq_df_tier = pd.DataFrame(eq_tier_rows)
-                    fig_tier = px.line(eq_df_tier, x="trade_num", y="equity",
-                                    height=200, color_discrete_sequence=["#10b981"])
-                    fig_tier.add_hline(y=total_capital / n_tiers, line_dash="dash",
-                                    line_color="gray")
-                    fig_tier.update_layout(
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        plot_bgcolor="rgba(0,0,0,0)",
-                        margin=dict(l=0, r=0, t=10, b=0),
-                        yaxis=dict(gridcolor="rgba(128,128,128,0.15)"),
-                    )
-                    st.plotly_chart(fig_tier, use_container_width=True)
+                col_g, col_h, _ = st.columns(3)
+                col_g.metric("Max Consec Losses", max_cl)
+                col_h.metric("Avg Consec Losses", f"{avg_cl:.1f}")
 
-        # Combined equity curve (total capital + sum of all tier P&Ls)
+                # Tier equity curve (chronological)
+                eq_tier = total_capital / n_tiers
+                r_key, fill_key = f"r_acc{t}", f"filled_acc{t}"
+                eq_tier_rows = [{"trade_num": 0, "equity": eq_tier}]
+                for idx, lr in enumerate(leg_results, 1):
+                    if fill_key in lr and lr[fill_key]:
+                        eq_tier += lr[r_key] * per_risk_usd
+                    eq_tier_rows.append({"trade_num": idx, "equity": round(eq_tier, 2)})
+                fig_tier = px.line(pd.DataFrame(eq_tier_rows), x="trade_num", y="equity",
+                                   height=200, color_discrete_sequence=["#10b981"])
+                fig_tier.add_hline(y=total_capital / n_tiers, line_dash="dash", line_color="gray")
+                fig_tier.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                                       margin=dict(l=0, r=0, t=10, b=0),
+                                       yaxis=dict(gridcolor="rgba(128,128,128,0.15)"))
+                st.plotly_chart(fig_tier, use_container_width=True)
+
+        # Combined equity curve
         st.subheader("Combined Equity Curve")
         eq_total = total_capital
         eq_rows = [{"trade_num": 0, "equity": eq_total}]
-        for trade, lr in zip(trades, leg_results):
+        for lr in leg_results:
             eq_total += lr.get("pnl_usd", 0)
             eq_rows.append({"trade_num": len(eq_rows), "equity": round(eq_total, 2)})
-        eq_df_combined = pd.DataFrame(eq_rows)
-        fig_comb = px.line(eq_df_combined, x="trade_num", y="equity", height=300,
-                        color_discrete_sequence=["#00b4d8"])
+        fig_comb = px.line(pd.DataFrame(eq_rows), x="trade_num", y="equity", height=300,
+                           color_discrete_sequence=["#00b4d8"])
         fig_comb.add_hline(y=total_capital, line_dash="dash", line_color="gray",
-                        annotation_text="Initial Capital")
-        fig_comb.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            margin=dict(l=0, r=0, t=10, b=0),
-            yaxis=dict(gridcolor="rgba(128,128,128,0.15)"),
-        )
+                           annotation_text="Initial Capital")
+        fig_comb.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                               margin=dict(l=0, r=0, t=10, b=0),
+                               yaxis=dict(gridcolor="rgba(128,128,128,0.15)"))
         st.plotly_chart(fig_comb, use_container_width=True)
 
-        # --- Trade detail table (existing, but ensure it shows new columns) ---
+        # Trade detail table
         st.divider()
         st.subheader("Trade Detail")
         detail_rows = []
-        for trade, lr in zip(trades, leg_results):
+        for trade, lr in zip(sorted_trades, leg_results):
             row = {
                 "Date":      trade.get("date", ""),
                 "Dir":       trade.get("direction", ""),

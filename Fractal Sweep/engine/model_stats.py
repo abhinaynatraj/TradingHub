@@ -65,11 +65,9 @@ DATE_CLASSIFICATION = {}
 SCHEMA_VERSION = 1
 
 # ── GLOBAL CONSTANTS ──────────────────────────────────────────────────────────
-ACCOUNT_SIZE     = 4500   # $ account size for risk metrics
-RISK_PER_TRADE   = 225    # $ risk per trade
 POINT_VALUE      = 2.0    # $ per point for MNQ (Micro NQ); NQ = 20.0
 MIN_RISK_PTS     = 3.0
-MAX_RISK_PTS     = RISK_PER_TRADE / POINT_VALUE  # 112.5 pts for MNQ @ $225 risk
+MAX_RISK_PTS     = 112.5  # pts ceiling; engine is account-size-agnostic
 OUTCOME_MAX_BARS = 1440  # 24h of 1m bars; matches indicator (no hard lifetime cap)
 SWEEP_MAX_PCT    = 0.50
 CISD_FAST_BARS   = None  # None = no limit; CISD can form any time before session end
@@ -1736,7 +1734,7 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
             if k in t and t[k] is not None:
                 t[k] = round(float(t[k]), 2)
 
-    # ── Risk stats for hero tiles ─────────────────────────────────────────────
+    # ── Risk stats ────────────────────────────────────────────────────────────
     wl_sorted   = wl.sort_values('date')
     outcomes_seq = wl_sorted['win'].tolist()
     def _max_consec(seq, val):
@@ -1745,16 +1743,23 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
             cur = cur + 1 if v == val else 0
             mx  = max(mx, cur)
         return mx
+    def _avg_consec_rs(seq, val):
+        runs, cur = [], 0
+        for v in seq:
+            if v == val: cur += 1
+            elif cur > 0: runs.append(cur); cur = 0
+        if cur > 0: runs.append(cur)
+        return round(sum(runs) / len(runs), 1) if runs else 0.0
     rs_max_cw = _max_consec(outcomes_seq, 1)
     rs_max_cl = _max_consec(outcomes_seq, 0)
+    rs_avg_cw = _avg_consec_rs(outcomes_seq, 1)
+    rs_avg_cl = _avg_consec_rs(outcomes_seq, 0)
 
     rr_actual   = round(target_mult / stop_mult, 4) if stop_mult > 0 else (None if profile_type == 'raw' else 2.0)
     wins_df     = wl_sorted[wl_sorted['win'] == 1]
     losses_df   = wl_sorted[wl_sorted['win'] == 0]
     avg_win_r   = round(float(wins_df['r'].mean()), 4)   if len(wins_df)   else rr_actual
     avg_loss_r  = round(float(losses_df['r'].mean()), 4) if len(losses_df) else -1.0
-    avg_win_usd  = round(avg_win_r  * RISK_PER_TRADE, 2) if avg_win_r  is not None else None
-    avg_loss_usd = round(avg_loss_r * RISK_PER_TRADE, 2) if avg_loss_r is not None else None
 
     # sl_pct = avg (risk_pts / entry_price * 100); tp_pct = sl_pct * rr_actual
     entry_col = wl_sorted['entry_price'].replace(0, np.nan).dropna()
@@ -1766,77 +1771,26 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         sl_pct_val = None
         tp_pct_val = None
 
-    eq = float(ACCOUNT_SIZE)
-    peak_eq = eq
-    min_eq = eq
-    max_dd_abs = 0.0
-    max_dd_usd = 0.0
-    # Daily P&L for Sharpe: accumulate by date
-    daily_pnl: dict = {}
-    for _, row in wl_sorted.iterrows():
-        r_val = row['r']
-        if r_val is not None and not np.isnan(r_val):
-            trade_pnl = float(r_val) * RISK_PER_TRADE
-            eq += trade_pnl
-            if eq < min_eq:
-                min_eq = eq
-            if eq > peak_eq:
-                peak_eq = eq
-            dd = (peak_eq - eq) / peak_eq if peak_eq > 0 else 0.0
-            if dd > max_dd_abs:
-                max_dd_abs = dd
-                max_dd_usd = peak_eq - eq
-            # date bucket for Sharpe
-            try:
-                trade_date = str(row['date'])[:10]
-                if trade_date:
-                    daily_pnl[trade_date] = daily_pnl.get(trade_date, 0.0) + trade_pnl
-            except Exception:
-                pass
-    min_eq = round(min_eq, 2)
-    max_dd_pct = round(max_dd_abs * 100, 2)
-    total_pnl_usd = round(eq - ACCOUNT_SIZE, 2)
-    blown  = min_eq <= 0.0
-
-    # Annualised Sharpe (daily returns, 252 trading days)
-    if len(daily_pnl) > 1:
-        dpnl_arr = np.array(list(daily_pnl.values()))
-        sharpe_val = round(float(dpnl_arr.mean() / dpnl_arr.std(ddof=1) * np.sqrt(252)), 2) \
-                     if dpnl_arr.std(ddof=1) > 0 else None
-    else:
-        sharpe_val = None
+    # CE — Combined Edge: EV × PF (pure R, no dollars)
+    _ev  = overall['ev']
+    _pf  = overall['pf']
+    _n   = overall['n']
+    ce   = round(_ev * _pf, 6) if _pf and _n > 0 else None
 
     risk_stats = {
-        'account_size':     ACCOUNT_SIZE,
-        'risk_per_trade':   RISK_PER_TRADE,
-        'trades':           overall['n'],
-        'wins':             overall['wins'],
-        'losses':           overall['n'] - overall['wins'],
-        'be_count':         0,
-        'avg_win_usd':      avg_win_usd,
-        'avg_loss_usd':     avg_loss_usd,
-        'blown':            blown,
-        'min_equity_usd':   min_eq,
-        'max_consec_wins':  rs_max_cw,
+        'trades':            overall['n'],
+        'wins':              overall['wins'],
+        'losses':            overall['n'] - overall['wins'],
+        'avg_win_r':         avg_win_r,
+        'avg_loss_r':        avg_loss_r,
+        'max_consec_wins':   rs_max_cw,
         'max_consec_losses': rs_max_cl,
-        'sl_pct':           sl_pct_val,
-        'tp_pct':           tp_pct_val,
-        'max_dd_pct':       max_dd_pct,
-        'max_dd_usd':       round(max_dd_usd, 2),
-        'total_pnl_usd':    total_pnl_usd,
-        'sharpe':           sharpe_val,
+        'avg_consec_wins':   rs_avg_cw,
+        'avg_consec_losses': rs_avg_cl,
+        'sl_pct':            sl_pct_val,
+        'tp_pct':            tp_pct_val,
+        'ce':                ce,
     }
-
-    # CE — Combined Edge: EV_R × PF
-    # EV_R = EV_dollar / risk_per_trade; CE = EV_R × PF
-    _pf = overall['pf']
-    _n_wins = risk_stats['wins']
-    _n_losses = risk_stats['losses']
-    _n_total = risk_stats['trades']
-    _ev_dollar = ((avg_win_usd or 0) * _n_wins + (avg_loss_usd or 0) * _n_losses) / _n_total if _n_total > 0 else 0
-    _ev_r = _ev_dollar / RISK_PER_TRADE if RISK_PER_TRADE > 0 else 0
-    ce = round(_ev_r * _pf, 6) if _pf and _n_total > 0 else None
-    risk_stats['ce'] = ce
 
     # Rich MAE / MFE distribution studies — split by outcome for deeper analysis
     # All trades (combined)
@@ -1991,49 +1945,17 @@ def _compute_by_classification(wl_sorted: 'pd.DataFrame') -> dict:
         wins   = int((sub['win'] == 1).sum())
         losses = n - wins
         wr     = round(wins / n * 100, 2)
-        gross_win  = float(sub.loc[sub['win'] == 1, 'r'].sum()) * RISK_PER_TRADE
-        gross_loss = abs(float(sub.loc[sub['win'] == 0, 'r'].sum())) * RISK_PER_TRADE
+        gross_win  = float(sub.loc[sub['win'] == 1, 'r'].sum())
+        gross_loss = abs(float(sub.loc[sub['win'] == 0, 'r'].sum()))
         pf     = round(gross_win / gross_loss, 3) if gross_loss > 0 else 0.0
-        # Equity curve
-        eq = float(ACCOUNT_SIZE)
-        peak_eq = eq
-        max_dd = 0.0
-        daily_pnl: dict = {}
-        for _, row in sub.iterrows():
-            r_val = row['r']
-            if r_val is None or np.isnan(float(r_val)):
-                continue
-            trade_pnl = float(r_val) * RISK_PER_TRADE
-            eq += trade_pnl
-            if eq > peak_eq:
-                peak_eq = eq
-            dd = (peak_eq - eq) / peak_eq if peak_eq > 0 else 0.0
-            if dd > max_dd:
-                max_dd = dd
-            try:
-                td = str(row['date'])[:10]
-                daily_pnl[td] = daily_pnl.get(td, 0.0) + trade_pnl
-            except Exception:
-                pass
-        total_pnl = round(eq - ACCOUNT_SIZE, 0)
-        max_dd_pct = round(max_dd * 100, 2)
-        blown = eq <= 0
-        if len(daily_pnl) > 1:
-            dpnl = np.array(list(daily_pnl.values()))
-            sharpe = round(float(dpnl.mean() / dpnl.std(ddof=1) * np.sqrt(252)), 2) \
-                     if dpnl.std(ddof=1) > 0 else None
-        else:
-            sharpe = None
+        ev     = round(float(sub['r'].sum()) / n, 3)
         result[cls] = {
-            'trades':    n,
-            'wins':      wins,
-            'losses':    losses,
-            'wr':        wr,
-            'pf':        pf,
-            'pnl':       total_pnl,
-            'sharpe':    sharpe,
-            'max_dd':    max_dd_pct,
-            'blown':     blown,
+            'trades':  n,
+            'wins':    wins,
+            'losses':  losses,
+            'wr':      wr,
+            'ev':      ev,
+            'pf':      pf,
         }
     return result
 
@@ -2066,42 +1988,23 @@ def _build_slice_stats(wl_sub, stop_mult, target_mult, agg_fn, hr_labels,
     date_range = f"{str(wl_sub['date'].min())[:10]} – {str(wl_sub['date'].max())[:10]}"
     sl_pct_val = None; tp_pct_val = None
 
-    # Equity / risk stats
+    # Streak stats
     ws_sorted = wl_sub.sort_values('date')
-    eq = float(ACCOUNT_SIZE); peak_eq = eq; max_dd = 0.0; max_dd_usd = 0.0; min_eq = eq
-    daily_pnl: dict = {}
     def _mc(seq, val):
         mx = cur = 0
         for v in seq:
             cur = cur + 1 if v == val else 0; mx = max(mx, cur)
         return mx
-    for _, row in ws_sorted.iterrows():
-        r_val = row['r']
-        if r_val is None or np.isnan(float(r_val)): continue
-        tp = float(r_val) * RISK_PER_TRADE
-        eq += tp
-        if eq < min_eq: min_eq = eq
-        if eq > peak_eq: peak_eq = eq
-        dd = (peak_eq - eq) / peak_eq if peak_eq > 0 else 0.0
-        if dd > max_dd:
-            max_dd = dd
-            max_dd_usd = peak_eq - eq
-        try:
-            td = str(row['date'])[:10]
-            daily_pnl[td] = daily_pnl.get(td, 0.0) + tp
-        except Exception:
-            pass
+    def _avg_consec(seq, val):
+        runs, cur = [], 0
+        for v in seq:
+            if v == val: cur += 1
+            elif cur > 0: runs.append(cur); cur = 0
+        if cur > 0: runs.append(cur)
+        return round(sum(runs) / len(runs), 1) if runs else 0.0
     outcomes_seq = ws_sorted['win'].tolist()
     mcw = _mc(outcomes_seq, 1); mcl = _mc(outcomes_seq, 0)
-    total_pnl = round(eq - ACCOUNT_SIZE, 2)
-    max_dd_pct = round(max_dd * 100, 2)
-    blown = eq <= 0.0
-    if len(daily_pnl) > 1:
-        dpnl = np.array(list(daily_pnl.values()))
-        sharpe = round(float(dpnl.mean() / dpnl.std(ddof=1) * np.sqrt(252)), 2) \
-                 if dpnl.std(ddof=1) > 0 else None
-    else:
-        sharpe = None
+    acw = _avg_consec(outcomes_seq, 1); acl = _avg_consec(outcomes_seq, 0)
     ce = round(ev * pf, 6) if pf and n > 0 else None
     # by_hour
     bh = []
@@ -2174,14 +2077,11 @@ def _build_slice_stats(wl_sub, stop_mult, target_mult, agg_fn, hr_labels,
             'rr_target': rr_actual,
         },
         'risk_stats': {
-            'account_size': ACCOUNT_SIZE, 'risk_per_trade': RISK_PER_TRADE,
-            'trades': n, 'wins': wins, 'losses': n - wins, 'be_count': 0,
-            'blown': blown, 'min_equity_usd': round(min_eq, 2),
-            'max_dd_usd': round(max_dd_usd, 2),
+            'trades': n, 'wins': wins, 'losses': n - wins,
             'max_consec_wins': mcw, 'max_consec_losses': mcl,
+            'avg_consec_wins': acw, 'avg_consec_losses': acl,
             'sl_pct': sl_pct_val, 'tp_pct': tp_pct_val,
-            'max_dd_pct': max_dd_pct, 'total_pnl_usd': total_pnl,
-            'sharpe': sharpe, 'ce': ce,
+            'ce': ce,
         },
         'by_hour':         bh,
         'by_session':      bs,
@@ -2307,19 +2207,19 @@ def compute_filter_variants(df_all):
         ev = round(float(wl['r'].sum()) / n, 3)
         pf = round(win_r / max(loss_r, 0.001), 3)
         avg_risk = round(float(wl['risk_pts'].mean()), 1) if 'risk_pts' in wl.columns and wl['risk_pts'].notna().any() else 0
-        # Equity curve for max DD
-        eq = float(ACCOUNT_SIZE); peak = eq; max_dd = 0.0
+        # Max DD in R terms (account-agnostic)
+        eq_r = 0.0; peak_r = 0.0; max_dd = 0.0
         for r_val in wl['r'].values:
-            eq += float(r_val) * RISK_PER_TRADE
-            if eq > peak: peak = eq
-            dd = (peak - eq) / peak if peak > 0 else 0
+            eq_r += float(r_val)
+            if eq_r > peak_r: peak_r = eq_r
+            dd = (peak_r - eq_r) / max(abs(peak_r), 1)
             if dd > max_dd: max_dd = dd
-        # Sharpe
-        daily_pnl = {}
+        # Sharpe (using R returns per day)
+        daily_r = {}
         for _, row in wl.iterrows():
             d = str(row['date'])[:10]
-            daily_pnl[d] = daily_pnl.get(d, 0) + float(row['r']) * RISK_PER_TRADE
-        dp = list(daily_pnl.values())
+            daily_r[d] = daily_r.get(d, 0) + float(row['r'])
+        dp = list(daily_r.values())
         sharpe = None
         if len(dp) > 1:
             mu = sum(dp) / len(dp)
