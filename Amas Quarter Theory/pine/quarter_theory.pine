@@ -44,6 +44,14 @@ gShowOutStat  = input.bool(true,  "Show out-of-stat extreme labels (Q2/Q3)", gro
 gShowSweepers = input.bool(true,  "Show sweeper markers", group=G_QS)
 gShowBiasShift= input.bool(true,  "Show bias-shift markers", group=G_QS)
 gShowDojiConf = input.bool(true,  "Show doji-confirmed marker", group=G_QS)
+gShowQBgs     = input.bool(true,  "Show per-quarter background tints", group=G_QS)
+// Per-quarter background colors. Q1/Q2/Q4 default to fully transparent so the
+// hour shows as clear; Q3 defaults to a faint amber wash so the eye picks it
+// out. All four are user-configurable.
+gColQ1Bg      = input.color(color.new(#000000, 100), "Q1 background", group=G_QS)
+gColQ2Bg      = input.color(color.new(#000000, 100), "Q2 background", group=G_QS)
+gColQ3Bg      = input.color(color.new(#fcd34d, 92),  "Q3 background", group=G_QS)
+gColQ4Bg      = input.color(color.new(#000000, 100), "Q4 background", group=G_QS)
 
 // ── 🕒 Hour & Triad Verdicts ─────────────────────────────────────────────
 G_VER = "🕒 Hour & Triad Verdicts"
@@ -157,7 +165,7 @@ resolveTheme() =>
           box_tint             = color.new(#fcd34d, 90),       // 05 box bg: soft amber (distinct from neutral gray)
           active_hr            = color.new(#cbd5e1, 92),       // light gray (slate-300), neutral
           active_triad         = color.new(#cbd5e1, 88),       // slightly more visible than active hour
-          q_div                = color.new(#ffffff, 88),
+          q_div                = color.new(#ffffff, 100),     // hour box bg: clear by default
           readout_bg           = color.new(#1a2235, 5),        // bg-raised, near-opaque
           readout_border       = color.new(#ffffff, 75),
           readout_text         = color.new(#e2eaf4, 0),
@@ -185,7 +193,7 @@ resolveTheme() =>
           box_tint             = color.new(#f59e0b, 88),       // 05 box bg: soft amber (distinct from neutral gray)
           active_hr            = color.new(#94a3b8, 90),       // light gray (slate-400), neutral
           active_triad         = color.new(#94a3b8, 86),       // more opaque than active hour
-          q_div                = color.new(#94a3b8, 92),       // light slate, very faint on white
+          q_div                = color.new(#94a3b8, 100),      // hour box bg: clear by default
           readout_bg           = color.new(#f1f5f9, 5),        // slate-100 fill, near-opaque
           readout_border       = color.new(#475569, 50),
           readout_text         = color.new(#0f172a, 0),        // near-black for readability
@@ -496,10 +504,11 @@ atrOffset() => ta.atr(20) * 2.0
 // with each bar. Quarter verticals at :15, :30, :45 are thin solid lines
 // confined to within the active hour's price range.
 
-// Hour box bg renders as the q_div tint at its native opacity (already faint).
-// Quarter divider verticals lean a bit darker than the box for distinction.
+// Hour box bg uses q_div (clear by default; user can set tint).
+// Quarter divider verticals always render visibly regardless of bg opacity —
+// pinned to a moderate gray that shows on both light and dark themes.
 hourBoxBg() => T.q_div
-hourDivLine() => color.new(T.q_div, math.max(0, color.t(T.q_div) - 25))
+hourDivLine() => gTheme == "Light" ? color.new(#475569, 55) : color.new(#cbd5e1, 55)
 
 // One box + 3 quarter-divider lines per hour, updated live as range expands
 var box currentHourBox = na
@@ -549,6 +558,62 @@ if gQStructOn and gShowQDiv and isTfMin1() and isFirstBarOfQuarter() and not na(
     if qNew == 4
         currentQ4Line := line.new(bar_index, yBot, bar_index, yTop, xloc=xloc.bar_index,
                                   extend=extend.none, color=hourDivLine(), style=line.style_solid, width=2)
+
+// ── Per-quarter background tints ──────────────────────────────────────────
+// One box per quarter, spawned at quarter open. Each box's bg color comes
+// from the user-configurable per-quarter setting. Bounded vertically to the
+// hour box (so they live inside the hour, not full chart height).
+
+var box currentQ1Bg = na
+var box currentQ2Bg = na
+var box currentQ3Bg = na
+var box currentQ4Bg = na
+
+qBgColorFor(int qIdx) =>
+    qIdx == 1 ? gColQ1Bg : qIdx == 2 ? gColQ2Bg : qIdx == 3 ? gColQ3Bg : gColQ4Bg
+
+// Reset references at hour open so closed-hour quarter tints freeze in place
+if gQStructOn and gShowQBgs and isTfMin1() and isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(blockId())
+    currentQ1Bg := na
+    currentQ2Bg := na
+    currentQ3Bg := na
+    currentQ4Bg := na
+
+// Spawn a per-quarter bg box at the start of each quarter
+if gQStructOn and gShowQBgs and isTfMin1() and isFirstBarOfQuarter() and not na(blockId()) and not na(currentHourBox)
+    int qNewBg = quarterOfHour()
+    int barsPerQuarterBg = math.max(1, int(15 * 60 / timeframe.in_seconds("")))
+    int qLeft  = bar_index
+    int qRight = bar_index + barsPerQuarterBg - 1
+    color qC = qBgColorFor(qNewBg)
+    box newQBox = box.new(qLeft, box.get_top(currentHourBox), qRight, box.get_bottom(currentHourBox),
+                          xloc=xloc.bar_index, bgcolor=qC,
+                          border_color=color.new(qC, 100), border_width=0)
+    if qNewBg == 1
+        currentQ1Bg := newQBox
+    if qNewBg == 2
+        currentQ2Bg := newQBox
+    if qNewBg == 3
+        currentQ3Bg := newQBox
+    if qNewBg == 4
+        currentQ4Bg := newQBox
+
+// Sync per-quarter bg tops/bottoms to the hour box as it expands
+if gQStructOn and gShowQBgs and isTfMin1() and not na(currentHourBox)
+    float qBgTop = box.get_top(currentHourBox)
+    float qBgBot = box.get_bottom(currentHourBox)
+    if not na(currentQ1Bg)
+        box.set_top(currentQ1Bg,    qBgTop)
+        box.set_bottom(currentQ1Bg, qBgBot)
+    if not na(currentQ2Bg)
+        box.set_top(currentQ2Bg,    qBgTop)
+        box.set_bottom(currentQ2Bg, qBgBot)
+    if not na(currentQ3Bg)
+        box.set_top(currentQ3Bg,    qBgTop)
+        box.set_bottom(currentQ3Bg, qBgBot)
+    if not na(currentQ4Bg)
+        box.set_top(currentQ4Bg,    qBgTop)
+        box.set_bottom(currentQ4Bg, qBgBot)
 
 // ── 05-box (bounded to box range, extends horizontally across the hour) ──
 // One box, anchored to the active hour's box high/low. Box high/low is locked
