@@ -71,3 +71,54 @@ def test_band_levels_distinct_high_low():
     assert bands.upper_10 == 21000.0 * 1.0010
     assert bands.lower_05 == 20990.0 * 0.9995
     assert bands.lower_10 == 20990.0 * 0.9990
+
+
+from engine.box_05 import detect_band_rejection, BandRejection
+
+
+def test_band_rejection_upper_05_wick_above_close_below():
+    bands = band_levels(box_high=100.0, box_low=99.0)  # upper_05 = 100.05
+    bar = {"open": 100.02, "high": 100.06, "low": 100.00, "close": 100.04}
+    r = detect_band_rejection(bar, bands)
+    assert r == BandRejection(side="upper", level="05")
+
+
+def test_band_rejection_upper_10_wick_above_close_below():
+    bands = band_levels(box_high=100.0, box_low=99.0)  # upper_10 = 100.10
+    bar = {"open": 100.06, "high": 100.12, "low": 100.04, "close": 100.08}
+    r = detect_band_rejection(bar, bands)
+    # NOTE: this bar wicks above upper_10 AND closes back below upper_10. It also
+    # wicks above upper_05 and closes above upper_05 (no rejection of 05). The
+    # "10 rejection" is the more meaningful event (heavier band).
+    assert r == BandRejection(side="upper", level="10")
+
+
+def test_band_rejection_lower_05_wick_below_close_above():
+    bands = band_levels(box_high=100.0, box_low=99.0)  # lower_05 = 98.9505
+    bar = {"open": 98.97, "high": 99.00, "low": 98.94, "close": 98.98}
+    r = detect_band_rejection(bar, bands)
+    assert r == BandRejection(side="lower", level="05")
+
+
+def test_no_rejection_when_close_outside_band():
+    # Wicks above upper_05 AND closes above upper_05 → no rejection
+    bands = band_levels(box_high=100.0, box_low=99.0)  # upper_05 = 100.05
+    bar = {"open": 100.02, "high": 100.08, "low": 100.00, "close": 100.07}
+    r = detect_band_rejection(bar, bands)
+    assert r is None
+
+
+def test_no_rejection_when_wick_doesnt_reach_band():
+    bands = band_levels(box_high=100.0, box_low=99.0)
+    bar = {"open": 100.00, "high": 100.04, "low": 99.96, "close": 100.02}
+    r = detect_band_rejection(bar, bands)
+    assert r is None
+
+
+def test_band_rejection_prefers_10_over_05_when_both_apply():
+    # Bar wicks above upper_10 and closes below upper_05 — both bands rejected,
+    # but the 10 band is the more prominent event.
+    bands = band_levels(box_high=100.0, box_low=99.0)
+    bar = {"open": 100.02, "high": 100.12, "low": 100.00, "close": 100.04}
+    r = detect_band_rejection(bar, bands)
+    assert r == BandRejection(side="upper", level="10")

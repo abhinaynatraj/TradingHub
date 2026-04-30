@@ -62,3 +62,36 @@ def band_levels(box_high: float, box_low: float) -> BandLevels:
         lower_05=box_low  * (1.0 - o05),
         lower_10=box_low  * (1.0 - o10),
     )
+
+
+from typing import Optional, Literal
+
+
+@dataclass(frozen=True)
+class BandRejection:
+    side: Literal["upper", "lower"]
+    level: Literal["05", "10"]
+
+
+def detect_band_rejection(bar: dict, bands: BandLevels) -> Optional[BandRejection]:
+    """Detect whether the given bar rejects a band.
+
+    Upper rejection: bar.high > band AND bar.close < band (wick above, close below).
+    Lower rejection: bar.low < band AND bar.close > band (wick below, close above).
+
+    When both 05 and 10 bands of the same side reject, the 10 takes precedence
+    (heavier band is the more meaningful event).
+    """
+    high = bar["high"]
+    low = bar["low"]
+    close = bar["close"]
+
+    if high > bands.upper_10 and close < bands.upper_10:
+        return BandRejection(side="upper", level="10")
+    if high > bands.upper_05 and close < bands.upper_05:
+        return BandRejection(side="upper", level="05")
+    if low < bands.lower_10 and close > bands.lower_10:
+        return BandRejection(side="lower", level="10")
+    if low < bands.lower_05 and close > bands.lower_05:
+        return BandRejection(side="lower", level="05")
+    return None
