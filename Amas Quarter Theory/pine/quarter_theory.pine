@@ -580,11 +580,14 @@ if gQStructOn and gShowQBgs and isTfMin1() and isFirstBarOfQuarter() and quarter
     currentQ4Bg := na
 
 // Spawn a per-quarter bg box at the start of each quarter
+// Right edge extends slightly into the next quarter (+1 bar) so adjacent
+// quarter boxes overlap by 1 bar — eliminates visual seam gaps caused by
+// pixel boundaries between consecutive bars on TradingView.
 if gQStructOn and gShowQBgs and isTfMin1() and isFirstBarOfQuarter() and not na(blockId()) and not na(currentHourBox)
     int qNewBg = quarterOfHour()
     int barsPerQuarterBg = math.max(1, int(15 * 60 / timeframe.in_seconds("")))
     int qLeft  = bar_index
-    int qRight = bar_index + barsPerQuarterBg - 1
+    int qRight = bar_index + barsPerQuarterBg
     color qC = qBgColorFor(qNewBg)
     box newQBox = box.new(qLeft, box.get_top(currentHourBox), qRight, box.get_bottom(currentHourBox),
                           xloc=xloc.bar_index, bgcolor=qC,
@@ -1023,23 +1026,20 @@ format12h(int h24) =>
 var line currentHourOpenLine = na
 var label currentHourOpenLabel = na
 
-// On each bar inside the active hour, extend the live open-line/label to bar_index
-if gQStructOn and not na(currentHourOpenLine) and not na(blockId()) and not na(hourIndexInTriad())
-    line.set_x2(currentHourOpenLine, bar_index)
-    if not na(currentHourOpenLabel)
-        label.set_x(currentHourOpenLabel, bar_index)
-
-// At hour open, drop refs first (so prior line freezes in place), then spawn a
-// fresh pair anchored at this bar's open price.
+// At hour open, drop refs (so prior line freezes), then spawn a new line that
+// spans the full hour (open bar through the :59 bar). Width=2 for prominence.
+// Label sits at the right edge of the hour so it doesn't overlap with price.
 if gQStructOn and isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(blockId())
     currentHourOpenLine := na
     currentHourOpenLabel := na
     string hourTag = format12h(hour(time, NY_TZ))
-    color cOpen = gTheme == "Light" ? color.new(#475569, 30) : color.new(#cbd5e1, 30)
-    currentHourOpenLine := line.new(bar_index, open, bar_index, open,
+    color cOpen = gTheme == "Light" ? color.new(#475569, 20) : color.new(#cbd5e1, 20)
+    int barsPerHourOpen = math.max(1, int(60 * 60 / timeframe.in_seconds("")))
+    int hourEndBarOpen = bar_index + barsPerHourOpen - 1
+    currentHourOpenLine := line.new(bar_index, open, hourEndBarOpen, open,
                                     xloc=xloc.bar_index, color=cOpen,
-                                    style=line.style_solid, width=1)
-    currentHourOpenLabel := label.new(bar_index, open, hourTag + " Open",
+                                    style=line.style_solid, width=2)
+    currentHourOpenLabel := label.new(hourEndBarOpen, open, hourTag + " Open",
                                       xloc=xloc.bar_index, style=label.style_label_left,
                                       color=color.new(cOpen, 100), textcolor=cOpen, size=size.small)
 
@@ -1077,16 +1077,20 @@ if gQStructOn and isHourClose() and not na(activeTriad)
             string hlTag = format12h(hour(time, NY_TZ))
 
             color cMark = gTheme == "Light" ? color.new(#0f172a, 30) : color.new(#e2eaf4, 30)
+            // Extend the H/L line 30 minutes into the next hour (i.e. through :29
+            // of the next hour). Bars-per-30-min is timeframe-aware.
+            int extendBars = math.max(1, int(30 * 60 / timeframe.in_seconds("")))
+            int hlEndBar = bar_index + extendBars
             if useHigh and not na(qHiHL)
-                line.new(qHiHL.highBar, hi, bar_index, hi, xloc=xloc.bar_index,
+                line.new(qHiHL.highBar, hi, hlEndBar, hi, xloc=xloc.bar_index,
                          color=cMark, style=line.style_solid, width=1)
-                label.new(bar_index, hi, hlTag + " High",
+                label.new(hlEndBar, hi, hlTag + " High",
                           xloc=xloc.bar_index, style=label.style_label_left,
                           color=color.new(cMark, 100), textcolor=cMark, size=size.small)
             else if not na(qLoHL)
-                line.new(qLoHL.lowBar, lo, bar_index, lo, xloc=xloc.bar_index,
+                line.new(qLoHL.lowBar, lo, hlEndBar, lo, xloc=xloc.bar_index,
                          color=cMark, style=line.style_solid, width=1)
-                label.new(bar_index, lo, hlTag + " Low",
+                label.new(hlEndBar, lo, hlTag + " Low",
                           xloc=xloc.bar_index, style=label.style_label_left,
                           color=color.new(cMark, 100), textcolor=cMark, size=size.small)
 
