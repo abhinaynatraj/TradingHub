@@ -82,7 +82,7 @@ gAlertBandRej = input.bool(false, "Alert on band rejection", group=G_AL)
 
 // ── 🎨 Custom Colors (only used when Theme = Custom) ─────────────────────
 G_COL = "🎨 Custom Colors (active when Theme = Custom)"
-gColInStat    = input.color(color.new(#06b6d4, 0),  "In-stat extreme",      group=G_COL)
+gColInStat    = input.color(color.new(#7eb6ff, 0),  "In-stat extreme (navy)", group=G_COL)
 gColOutStat   = input.color(color.new(#f59e0b, 0),  "Out-of-stat extreme",  group=G_COL)
 gColSweeper   = input.color(color.new(#8b5cf6, 0),  "Sweeper",              group=G_COL)
 gColDojiConf  = input.color(color.new(#f59e0b, 0),  "Doji-confirmed",       group=G_COL)
@@ -138,7 +138,9 @@ resolveTheme() =>
     Theme t = na
     if gTheme == "Dark"
         t := Theme.new(
-          in_stat              = color.new(#06b6d4, 0),
+          // In-stat: light navy in Dark mode for legibility against dark bg
+          // (the user spec said "dark navy"; we keep navy hue, lighten value)
+          in_stat              = color.new(#7eb6ff, 0),
           out_stat             = color.new(#f59e0b, 0),
           sweeper              = color.new(#8b5cf6, 0),
           doji_conf            = color.new(#f59e0b, 0),
@@ -166,7 +168,7 @@ resolveTheme() =>
           conf_low             = color.new(#ef4444, 0))
     else if gTheme == "Light"
         t := Theme.new(
-          in_stat              = color.new(#0891b2, 0),
+          in_stat              = color.new(#0a2540, 0),  // dark navy
           out_stat             = color.new(#d97706, 0),
           sweeper              = color.new(#7c3aed, 0),
           doji_conf            = color.new(#d97706, 0),
@@ -477,12 +479,24 @@ classifyTriad(TriadAgg t) =>
 // ║ 6. RENDERERS                                                             ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
 
-// ── Quarter dividers ──────────────────────────────────────────────────────
+// ── Hour box + intra-hour quarter verticals ───────────────────────────────
+// Hour box: full chart-height tinted box spanning the entire hour, drawn at
+// :00. Verticals at :15, :30, :45 are SOLID lines.
+
+hourBoxBg() => color.new(T.q_div, math.min(100, color.t(T.q_div) + 8))   // a bit fainter than the verticals
+hourDivLine() => color.new(T.q_div, math.max(0, color.t(T.q_div) - 25))  // a bit more prominent
+
 if gQStructOn and gShowQDiv and isFirstBarOfQuarter() and not na(blockId())
-    int q = quarterOfHour()
-    line.new(bar_index, low - syminfo.mintick, bar_index, high + syminfo.mintick,
-             xloc=xloc.bar_index, extend=extend.both,
-             color=T.q_div, style=line.style_dotted, width=q == 1 ? 2 : 1)
+    int qDivQ = quarterOfHour()
+    if qDivQ == 1
+        int barsPerHourDiv = math.max(1, int(60 * 60 / timeframe.in_seconds("")))
+        box.new(left=bar_index, top=high * 10, right=bar_index + barsPerHourDiv - 1, bottom=low * 0.1,
+                xloc=xloc.bar_index, bgcolor=hourBoxBg(),
+                border_color=color.new(T.q_div, 100), border_width=0)
+    else
+        line.new(bar_index, low - syminfo.mintick, bar_index, high + syminfo.mintick,
+                 xloc=xloc.bar_index, extend=extend.both,
+                 color=hourDivLine(), style=line.style_solid, width=1)
 
 // ── 05-box full-height column ─────────────────────────────────────────────
 if gBoxOn and gShowBoxCol and isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(blockId())
