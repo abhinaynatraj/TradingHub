@@ -323,3 +323,224 @@ window.FilterBar = (function () {
     HOUR_PRESETS, ALL_HOURS, ALL_DOWS, DOW_NAMES,
   };
 })();
+
+// ── Inline-bar table renderer ────────────────────────────────
+// Usage:
+//   renderInlineBarTable(el, rows, [
+//     { key: 'quarter',   label: 'Q', type: 'label' },
+//     { key: 'hi_pct',    label: 'High lands here', type: 'baseline',
+//       baseline: 0.25, maxPct: 0.5, colorAbove: 'green', colorBelow: 'blue' },
+//     { key: 'count',     label: 'n', type: 'count' },
+//   ], { minCount: 30, dimRowFn: (r) => r.year !== 2025 });
+
+window.renderInlineBarTable = function (el, rows, columnSpec, opts = {}) {
+  const minCount = opts.minCount || 0;
+  const dimRowFn = opts.dimRowFn || null;
+
+  const head = '<thead><tr>' + columnSpec.map(c => {
+    const cls = c.type === 'label' ? 'label' : '';
+    return `<th class="${cls}">${escapeHtml(c.label)}</th>`;
+  }).join('') + '</tr></thead>';
+
+  const body = '<tbody>' + rows.map(r => {
+    const lowCount = r.count != null && r.count < minCount;
+    const dimByFn = dimRowFn ? dimRowFn(r) : false;
+    const rowClass = (lowCount || dimByFn) ? ' class="dim"' : '';
+    return `<tr${rowClass}>` + columnSpec.map(c => renderCell(r, c)).join('') + '</tr>';
+  }).join('') + '</tbody>';
+
+  el.innerHTML = `<table class="ibt">${head}${body}</table>`;
+};
+
+function renderCell(row, col) {
+  const v = row[col.key];
+  if (col.type === 'label') {
+    return `<td class="label">${escapeHtml(col.formatter ? col.formatter(v, row) : v)}</td>`;
+  }
+  if (col.type === 'count') {
+    return `<td>${v == null ? '—' : Number(v).toLocaleString()}</td>`;
+  }
+  if (col.type === 'num') {
+    if (v == null || isNaN(v)) return '<td>—</td>';
+    const formatted = col.formatter ? col.formatter(v, row) : Number(v).toFixed(col.digits ?? 2);
+    const unit = col.unit ? ` ${col.unit}` : '';
+    return `<td>${formatted}${unit}</td>`;
+  }
+  if (col.type === 'pct') {
+    if (v == null || isNaN(v)) return '<td>—</td>';
+    return `<td>${(v * 100).toFixed(1)}%</td>`;
+  }
+  if (col.type === 'inlineBar' || col.type === 'baseline') {
+    return `<td class="ibt-bar-cell">${renderBarCell(v, col)}</td>`;
+  }
+  return `<td>${v == null ? '—' : escapeHtml(String(v))}</td>`;
+}
+
+function renderBarCell(value, col) {
+  if (value == null || isNaN(value)) return '—';
+  const isPct = col.type === 'baseline' || col.unit === '%' || col.maxPct != null;
+  // Determine bar fill width as percent of track
+  const max = col.maxPct != null ? col.maxPct
+            : col.maxValue != null ? col.maxValue
+            : isPct ? 1.0 : 1.0;
+  const widthPct = Math.max(0, Math.min(100, (value / max) * 100));
+  // Determine color
+  let colorClass = 'bar-neutral';
+  if (col.type === 'baseline' && col.baseline != null) {
+    colorClass = value >= col.baseline ? `bar-${col.colorAbove || 'green'}` : `bar-${col.colorBelow || 'blue'}`;
+  } else if (col.color) {
+    colorClass = `bar-${col.color}`;
+  }
+  // Format displayed value
+  const display = isPct
+    ? `${(value * 100).toFixed(1)}%`
+    : col.formatter ? col.formatter(value)
+    : Number(value).toFixed(col.digits ?? 2);
+  // Optional baseline marker
+  let baseline = '';
+  if (col.type === 'baseline' && col.baseline != null && max > 0) {
+    const baseLeft = (col.baseline / max) * 100;
+    baseline = `<div class="ibt-baseline" style="left:${baseLeft}%"></div>`;
+  }
+  return `<div class="ibt-bar-track">
+    <div class="ibt-bar-fill ${colorClass}" style="width:${widthPct}%"></div>
+    ${baseline}
+    <div class="ibt-bar-label">${display}</div>
+  </div>`;
+}
+
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ── Headline insight ─────────────────────────────────────────
+// Usage:
+//   renderHeadline(el, 'Q${topQuarter} contains the high ${topPct} of the time.',
+//                  { topQuarter: 1, topPct: '36.4%' });
+window.renderHeadline = function (el, template, vars, opts = {}) {
+  if (!vars) {
+    el.innerHTML = `<div class="headline warn">Not enough data for this slice.</div>`;
+    return;
+  }
+  const text = template.replace(/\$\{(\w+)\}/g, (_, k) => {
+    const v = vars[k];
+    return v == null ? '—' : escapeHtml(String(v));
+  });
+  const cls = opts.warn ? ' warn' : '';
+  el.innerHTML = `<div class="headline${cls}">${text}</div>`;
+};
+
+// ── Donut (CSS conic-gradient) ───────────────────────────────
+// Usage:
+//   renderDonut(el, [
+//     { label: 'H first', value: 0.47, color: 'var(--green)' },
+//     { label: 'L first', value: 0.51, color: 'var(--red)' },
+//     { label: 'Tie',     value: 0.02, color: 'var(--text-muted)' },
+//   ], { centerText: '47% / 51% / 2%' });
+
+window.renderDonut = function (el, segments, opts = {}) {
+  const total = segments.reduce((s, x) => s + x.value, 0);
+  if (total <= 0) { el.innerHTML = '<div class="headline warn">No data.</div>'; return; }
+  const stops = [];
+  let cumulative = 0;
+  for (const seg of segments) {
+    const start = (cumulative / total) * 360;
+    cumulative += seg.value;
+    const end = (cumulative / total) * 360;
+    stops.push(`${seg.color} ${start}deg ${end}deg`);
+  }
+  const conic = `conic-gradient(${stops.join(', ')})`;
+  const center = opts.centerText ? `<div class="donut-center">${escapeHtml(opts.centerText)}</div>` : '';
+  const legend = segments.map(s =>
+    `<div><span class="swatch" style="background:${s.color}"></span>${escapeHtml(s.label)}: ${(s.value * 100 / total).toFixed(1)}%</div>`
+  ).join('');
+  el.innerHTML = `
+    <div class="donut" style="background:${conic}">${center}</div>
+    <div class="donut-legend">${legend}</div>
+  `;
+};
+
+// ── Heatmap (rectangular) ────────────────────────────────────
+// Usage:
+//   renderHeatmap(el, {
+//     rowLabels: ['00','01',...'23'], colLabels: ['Mon','Tue','Wed','Thu','Fri'],
+//     values: [[0.42, 0.51, ...], ...],   // rows × cols
+//     counts: [[123, 145, ...], ...],
+//     colorScale: 'green-red',            // green high → red low
+//     minCount: 30,
+//     fmt: (v) => (v*100).toFixed(0)+'%',
+//     tooltip: (r,c) => `Mon hour 09 — bull FT 64% (n=145)`,
+//   });
+
+window.renderHeatmap = function (el, cfg) {
+  const { rowLabels, colLabels, values, counts, fmt, minCount = 0, tooltip } = cfg;
+  const allVals = values.flat().filter(v => v != null && !isNaN(v));
+  const vMin = Math.min(...allVals);
+  const vMax = Math.max(...allVals);
+  const range = vMax - vMin || 1;
+
+  function colorFor(v) {
+    if (v == null || isNaN(v)) return 'transparent';
+    const t = (v - vMin) / range; // 0 (low) → 1 (high)
+    // green-amber-red scale
+    if (t > 0.5) {
+      const a = (t - 0.5) * 2;
+      return `rgba(16,185,129,${0.15 + a * 0.55})`;
+    } else {
+      const a = (0.5 - t) * 2;
+      return `rgba(239,68,68,${0.15 + a * 0.55})`;
+    }
+  }
+
+  const cols = colLabels.length;
+  let html = `<div class="hm" style="grid-template-columns: 60px repeat(${cols}, 1fr)">`;
+  // Header row
+  html += `<div class="hm-axis"></div>`;
+  for (const c of colLabels) html += `<div class="hm-axis center">${escapeHtml(c)}</div>`;
+  // Body
+  for (let r = 0; r < rowLabels.length; r++) {
+    html += `<div class="hm-axis right">${escapeHtml(rowLabels[r])}</div>`;
+    for (let c = 0; c < cols; c++) {
+      const v = values[r]?.[c];
+      const n = counts ? counts[r]?.[c] : null;
+      const dim = (n != null && n < minCount) ? ' dim' : '';
+      const tip = tooltip ? tooltip(r, c, v, n) : '';
+      const tipAttr = tip ? ` title="${escapeHtml(tip)}"` : '';
+      if (v == null || isNaN(v)) {
+        html += `<div class="hm-cell empty"${tipAttr}>—</div>`;
+      } else {
+        html += `<div class="hm-cell${dim}" style="background:${colorFor(v)}"${tipAttr}>${fmt ? fmt(v) : v.toFixed(2)}</div>`;
+      }
+    }
+  }
+  html += `</div>`;
+  el.innerHTML = html;
+};
+
+// ── Cross-tab heatmap (4×4) ──────────────────────────────────
+// Used by quarter study A. Same shape as renderHeatmap but smaller and labels axes.
+
+window.renderCrossTab = function (el, cfg) {
+  const { rowLabels, colLabels, values, fmt, rowAxisLabel = '', colAxisLabel = '' } = cfg;
+  const allVals = values.flat().filter(v => v != null && !isNaN(v));
+  const vMax = Math.max(...allVals);
+  function colorFor(v) {
+    if (v == null) return 'transparent';
+    const t = vMax > 0 ? v / vMax : 0;
+    return `rgba(16,185,129,${0.10 + t * 0.50})`;
+  }
+  let html = `<div class="crosstab">`;
+  html += `<div class="crosstab-corner">${escapeHtml(rowAxisLabel)}\\${escapeHtml(colAxisLabel)}</div>`;
+  for (const c of colLabels) html += `<div class="crosstab-axis">${escapeHtml(c)}</div>`;
+  for (let r = 0; r < rowLabels.length; r++) {
+    html += `<div class="crosstab-axis">${escapeHtml(rowLabels[r])}</div>`;
+    for (let c = 0; c < colLabels.length; c++) {
+      const v = values[r][c];
+      const diag = r === c ? ' diag' : '';
+      html += `<div class="crosstab-cell${diag}" style="background:${colorFor(v)}">${fmt ? fmt(v) : v}</div>`;
+    }
+  }
+  html += `</div>`;
+  el.innerHTML = html;
+};
