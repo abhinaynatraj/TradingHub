@@ -311,16 +311,17 @@ type QuarterAgg
     int    barCount = 0
 
 quarterUpdate(QuarterAgg q, float o, float h, float l, float c) =>
-    if q.barCount == 0
-        q.open_ := o
-    q.close_ := c
-    if na(q.high_) or h > q.high_
-        q.high_   := h
-        q.highBar := bar_index
-    if na(q.low_) or l < q.low_
-        q.low_   := l
-        q.lowBar := bar_index
-    q.barCount += 1
+    if not na(q)
+        if q.barCount == 0
+            q.open_ := o
+        q.close_ := c
+        if na(q.high_) or h > q.high_
+            q.high_   := h
+            q.highBar := bar_index
+        if na(q.low_) or l < q.low_
+            q.low_   := l
+            q.lowBar := bar_index
+        q.barCount += 1
 
 type HourAgg
     int        anchorBar
@@ -412,25 +413,27 @@ if not na(activeTriad)
             activeTriad.c3 := HourAgg.new(anchorBar = bar_index)
 
         HourAgg curHour = hidx == 1 ? activeTriad.c1 : hidx == 2 ? activeTriad.c2 : activeTriad.c3
-        int qi = quarterOfHour()
-        if qi == 1 and na(curHour.q1)
-            curHour.q1 := QuarterAgg.new(qIdx = 1, anchorBar = bar_index)
-        if qi == 2 and na(curHour.q2)
-            curHour.q2 := QuarterAgg.new(qIdx = 2, anchorBar = bar_index)
-        if qi == 3 and na(curHour.q3)
-            curHour.q3 := QuarterAgg.new(qIdx = 3, anchorBar = bar_index)
-        if qi == 4 and na(curHour.q4)
-            curHour.q4 := QuarterAgg.new(qIdx = 4, anchorBar = bar_index)
-        QuarterAgg curQ = qi == 1 ? curHour.q1 : qi == 2 ? curHour.q2 : qi == 3 ? curHour.q3 : curHour.q4
+        if not na(curHour)
+            int qi = quarterOfHour()
+            if qi == 1 and na(curHour.q1)
+                curHour.q1 := QuarterAgg.new(qIdx = 1, anchorBar = bar_index)
+            if qi == 2 and na(curHour.q2)
+                curHour.q2 := QuarterAgg.new(qIdx = 2, anchorBar = bar_index)
+            if qi == 3 and na(curHour.q3)
+                curHour.q3 := QuarterAgg.new(qIdx = 3, anchorBar = bar_index)
+            if qi == 4 and na(curHour.q4)
+                curHour.q4 := QuarterAgg.new(qIdx = 4, anchorBar = bar_index)
+            QuarterAgg curQ = qi == 1 ? curHour.q1 : qi == 2 ? curHour.q2 : qi == 3 ? curHour.q3 : curHour.q4
 
-        quarterUpdate(curQ, open, high, low, close)
+            if not na(curQ)
+                quarterUpdate(curQ, open, high, low, close)
 
-        // 05-box accumulation
-        if isBoxBar()
-            curHour.box05Hi := na(curHour.box05Hi) ? high : math.max(curHour.box05Hi, high)
-            curHour.box05Lo := na(curHour.box05Lo) ? low  : math.min(curHour.box05Lo, low)
-            if minute(time, NY_TZ) == 4
-                curHour.box05Locked := true
+            // 05-box accumulation
+            if isBoxBar()
+                curHour.box05Hi := na(curHour.box05Hi) ? high : math.max(curHour.box05Hi, high)
+                curHour.box05Lo := na(curHour.box05Lo) ? low  : math.min(curHour.box05Lo, low)
+                if minute(time, NY_TZ) == 4
+                    curHour.box05Locked := true
 
 
 // ╔══════════════════════════════════════════════════════════════════════════╗
@@ -842,7 +845,7 @@ if gReadoutsOn and gShow1h and not na(activeTriad)
         if gShowN
             probLine := probLine + "  n=—"
         string stateLine = "midhr=" + midhrState + (boxReactState != "none" ? "  box=" + boxReactState : "")
-        string text = title + "\n" + probLine + "\n" + stateLine
+        string roText = title + "\n" + probLine + "\n" + stateLine
 
         float yPos = hourLow(curH_ro) - atrOffset()
         int barsPerHourRO = math.max(1, int(60 * 60 / timeframe.in_seconds("")))
@@ -856,7 +859,7 @@ if gReadoutsOn and gShow1h and not na(activeTriad)
         activeHourReadoutBox := box.new(centerBar - 5, yPos + atr_off/2, centerBar + 5, yPos - atr_off/2,
                                         xloc=xloc.bar_index,
                                         bgcolor=T.readout_bg, border_color=T.readout_active_accent, border_width=2)
-        activeHourReadout := label.new(centerBar, yPos, text, xloc=xloc.bar_index,
+        activeHourReadout := label.new(centerBar, yPos, roText, xloc=xloc.bar_index,
                                        style=label.style_label_center, color=color.new(T.readout_bg, 100),
                                        textcolor=T.readout_text, size=size.small)
 
@@ -874,7 +877,7 @@ if gReadoutsOn and gShow3h and not na(activeTriad)
     string probLine = "L-up — · A-up — · Doji — · L-dn — · A-dn —"
     if gShowN
         probLine := probLine + "  n=—"
-    string text = title + "\n" + stateLine + "\n" + probLine
+    string trText = title + "\n" + stateLine + "\n" + probLine
 
     float lowestY = na
     if not na(activeTriad.c1)
@@ -900,7 +903,7 @@ if gReadoutsOn and gShow3h and not na(activeTriad)
         activeTriadReadoutBox := box.new(centerBar2 - 8, yPos2 + atr_off2, centerBar2 + 8, yPos2 - atr_off2,
                                          xloc=xloc.bar_index,
                                          bgcolor=T.readout_bg, border_color=T.readout_active_accent, border_width=2)
-        activeTriadReadout := label.new(centerBar2, yPos2, text, xloc=xloc.bar_index,
+        activeTriadReadout := label.new(centerBar2, yPos2, trText, xloc=xloc.bar_index,
                                         style=label.style_label_center, color=color.new(T.readout_bg, 100),
                                         textcolor=T.readout_text, size=size.small,
                                         tooltip="State (live):\nblock=" + activeTriad.blockId +
