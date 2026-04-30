@@ -91,6 +91,7 @@
       await renderTakeout();
       await renderPrevMid();
       await renderBreakdowns();
+      await renderGrid();
     }
 
     async function renderPrevMid() {
@@ -251,6 +252,57 @@
             const idx = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].indexOf(r.k);
             return !activeDows.has(idx);
         }});
+    }
+
+    async function renderGrid() {
+      const minCount = FilterBar.minCount();
+      // Year filter applies (year is not a heatmap dimension), but hour/dow do NOT
+      // because they ARE the heatmap dimensions and we want to show all cells.
+      const years = FilterBar.years();
+      const availableYears = FilterBar.availableYears();
+      const yearWhere = years.length < availableYears.length
+        ? `WHERE year IN (${years.join(',')})` : '';
+
+      const sql = `
+        SELECT hour_of_day_et AS h, dow,
+               COUNT(*) AS n,
+               AVG(CASE WHEN breakout = 'bullish' AND followthrough THEN 1.0
+                        WHEN breakout = 'bullish' THEN 0.0 END) AS bull_ft,
+               AVG(CASE WHEN breakout = 'bullish' THEN 1.0 ELSE 0.0 END) AS bull_rate,
+               AVG(CASE WHEN breakout = 'bearish' THEN 1.0 ELSE 0.0 END) AS bear_rate,
+               AVG(CASE WHEN breakout = 'bearish' AND followthrough THEN 1.0
+                        WHEN breakout = 'bearish' THEN 0.0 END) AS bear_ft
+        FROM events
+        ${yearWhere}
+        GROUP BY h, dow
+      `;
+      const rows = await query(sql);
+
+      // Build 24 × 7 grids
+      const hourLabels = Array.from({length: 24}, (_, i) => i.toString().padStart(2, '0'));
+      const dowLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+      const values = Array.from({length: 24}, () => Array(7).fill(null));
+      const counts = Array.from({length: 24}, () => Array(7).fill(0));
+      const tooltips = Array.from({length: 24}, () => Array(7).fill(''));
+      for (const r of rows) {
+        const h = Number(r.h), d = Number(r.dow);
+        values[h][d] = r.bull_ft;
+        counts[h][d] = Number(r.n);
+        tooltips[h][d] =
+          `${dowLabels[d]} ${hourLabels[h]} ET\n` +
+          `n=${fmtNum(r.n)}\n` +
+          `Bull rate: ${fmtPct(r.bull_rate)}, FT: ${fmtPct(r.bull_ft)}\n` +
+          `Bear rate: ${fmtPct(r.bear_rate)}, FT: ${fmtPct(r.bear_ft)}`;
+      }
+
+      renderHeatmap(document.getElementById('t-grid'), {
+        rowLabels: hourLabels.map(h => `${h} ET`),
+        colLabels: dowLabels,
+        values, counts,
+        fmt: (v) => v == null ? '' : (v * 100).toFixed(0) + '%',
+        minCount,
+        tooltip: (r, c) => tooltips[r][c],
+      });
     }
 
     async function renderTakeout() {
