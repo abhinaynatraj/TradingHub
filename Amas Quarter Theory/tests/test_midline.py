@@ -60,3 +60,28 @@ def test_no_prior_uses_current_mid():
     )
     assert source == "current"
     assert mid == 100.5
+
+
+from engine.midline import detect_midline_reaction, MidlineReaction
+
+
+def test_support_reaction_wick_below_close_above():
+    # Mid at 100. Bar dips below mid then closes above → support
+    r = detect_midline_reaction(mid=100.0, bar_open=100.5, bar_high=100.8, bar_low=99.7, bar_close=100.3)
+    assert r == MidlineReaction.SUPPORT
+
+
+def test_reject_reaction_wick_above_close_below():
+    r = detect_midline_reaction(mid=100.0, bar_open=99.7, bar_high=100.4, bar_low=99.5, bar_close=99.9)
+    assert r == MidlineReaction.REJECT
+
+
+def test_no_reaction_when_bar_doesnt_cross_mid():
+    r = detect_midline_reaction(mid=100.0, bar_open=100.2, bar_high=100.5, bar_low=100.1, bar_close=100.3)
+    assert r is None
+
+
+def test_no_reaction_when_close_on_wrong_side():
+    # Wicks below mid AND closes below → no reaction (bar accepted the break)
+    r = detect_midline_reaction(mid=100.0, bar_open=100.1, bar_high=100.0, bar_low=99.5, bar_close=99.7)
+    assert r is None
