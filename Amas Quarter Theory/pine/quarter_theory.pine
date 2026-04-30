@@ -1293,17 +1293,20 @@ brokeAbove(HourAgg h, int holderIdx, float holderHigh) =>
                 broke := true
     broke
 
-// Track the most recent hour-close pill so we can delete it when the next
-// hour closes — only the current (most recent) hour's pill should be visible.
+// Track the live hour pill. Updated EVERY bar during the hour, mutated in
+// place via label.set_*. At hour open we drop the prior reference so the
+// new hour's pill spawns fresh; the previous hour's pill stays frozen on
+// the chart (it was the *current* pill until that moment).
 var label hourSummaryLabel = na
 
-if gVerdictsOn and gShowHourVerd and isHourClose() and hasLiveHour()
+// At hour open, release the previous hour's reference so it freezes in place
+// and the new hour gets a fresh label object.
+if gVerdictsOn and gShowHourVerd and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+    hourSummaryLabel := na
+
+if gVerdictsOn and gShowHourVerd and hasLiveHour()
     HourAgg justClosedV = liveHour()
     if not na(justClosedV)
-        // Drop the prior hour's pill before drawing this one.
-        if not na(hourSummaryLabel)
-            label.delete(hourSummaryLabel)
-            hourSummaryLabel := na
         float hiV = hourHigh(justClosedV)
         float loV = hourLow(justClosedV)
         // Latest quarter that actually prints the hour's extreme. Strict
@@ -1313,8 +1316,13 @@ if gVerdictsOn and gShowHourVerd and isHourClose() and hasLiveHour()
         // (which would prevent the opposite-side-break confirmation).
         QuarterAgg qHiV = na
         QuarterAgg qLoV = na
-        for qi = 4 to 1
-            QuarterAgg qxV = quartersFor(justClosedV, qi)
+        // Walk newest-first (Q4 → Q1) so a later quarter that prints the
+        // actual extreme wins over an early Q1 that happens to share the
+        // same exact value. Pine v6 `for ... to ...` only counts up, so we
+        // walk Q1→Q4 with a derived index (5 - qi) for newest-first order.
+        for qi = 1 to 4
+            int idx = 5 - qi
+            QuarterAgg qxV = quartersFor(justClosedV, idx)
             if not na(qxV)
                 if na(qHiV) and not na(hiV) and qxV.high_ == hiV
                     qHiV := qxV
@@ -1362,9 +1370,15 @@ if gVerdictsOn and gShowHourVerd and isHourClose() and hasLiveHour()
             int midBar    = justClosedV.anchorBar + BARS_PER_HOUR / 2
             float topY    = not na(currentHourBox) ? box.get_top(currentHourBox) : hiV
             float labelY  = topY + atrOffset() * 0.15
-            hourSummaryLabel := label.new(midBar, labelY, parts, xloc=xloc.bar_index,
-                      style=label.style_label_down, color=PILL_BG,
-                      textcolor=PILL_TEXT, size=size.small)
+            // Mutate the live pill in place if it already exists; otherwise
+            // spawn it. Avoids per-bar new+delete churn during the hour.
+            if na(hourSummaryLabel)
+                hourSummaryLabel := label.new(midBar, labelY, parts, xloc=xloc.bar_index,
+                          style=label.style_label_down, color=PILL_BG,
+                          textcolor=PILL_TEXT, size=size.small)
+            else
+                label.set_xy(hourSummaryLabel, midBar, labelY)
+                label.set_text(hourSummaryLabel, parts)
 
 
 // ── Triad close verdicts + apex-hour highlight ────────────────────────────
