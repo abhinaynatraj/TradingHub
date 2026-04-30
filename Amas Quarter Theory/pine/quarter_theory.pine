@@ -1,9 +1,9 @@
 //@version=6
-indicator("Amas Quarter Theory", overlay=true,
+indicator("Abhi's Live Price Action", overlay=true,
          max_labels_count=500, max_lines_count=500, max_boxes_count=500)
 
 // ╔══════════════════════════════════════════════════════════════════════════╗
-// ║ Amas Quarter Theory — bootcamp price-action overlay                      ║
+// ║ Abhi's Live Price Action — bootcamp price-action overlay                 ║
 // ║ 15m quarters · 1h doji/line · 3h triad line/apex · 05-box bands · midlns ║
 // ║                                                                          ║
 // ║ NOTE: This is the v1 visual-only build. Probability readouts display     ║
@@ -48,10 +48,10 @@ gShowQBgs     = input.bool(true,  "Show per-quarter background tints", group=G_Q
 // Per-quarter background colors. Q1/Q2/Q4 default to fully transparent so the
 // hour shows as clear; Q3 defaults to a faint cyan/teal wash so the eye picks
 // it out (cyan kept distinct from the amber 05 box). All user-configurable.
-gColQ1Bg      = input.color(color.new(#000000, 100), "Q1 background", group=G_QS)
-gColQ2Bg      = input.color(color.new(#000000, 100), "Q2 background", group=G_QS)
-gColQ3Bg      = input.color(color.new(#67e8f9, 90),  "Q3 background", group=G_QS)
-gColQ4Bg      = input.color(color.new(#000000, 100), "Q4 background", group=G_QS)
+gColQ1Bg      = input.color(color.new(color.white, 100), "Q1 background", group=G_QS)
+gColQ2Bg      = input.color(color.new(color.white, 100), "Q2 background", group=G_QS)
+gColQ3Bg      = input.color(color.new(#67e8f9, 90),       "Q3 background", group=G_QS)
+gColQ4Bg      = input.color(color.new(color.white, 100), "Q4 background", group=G_QS)
 
 // ── 🕒 Hour & Triad Verdicts ─────────────────────────────────────────────
 G_VER = "🕒 Hour & Triad Verdicts"
@@ -68,7 +68,7 @@ gShowMid1h    = input.bool(true,  "Show 1h midline", group=G_MID)
 gShowMid3h    = input.bool(true,  "Show 3h midline", group=G_MID)
 gShowMidReact = input.bool(false, "Show midline reaction markers", group=G_MID)
 gMid1hWidth   = input.int(1, "1h midline width", minval=1, maxval=4, group=G_MID)
-gMid3hWidth   = input.int(2, "3h midline width", minval=1, maxval=4, group=G_MID)
+gMid3hWidth   = input.int(1, "3h midline width", minval=1, maxval=4, group=G_MID)
 
 // ── 📦 05 Box & Bands ─────────────────────────────────────────────────────
 G_BOX = "📦 05 Box & Bands"
@@ -163,7 +163,7 @@ resolveTheme() =>
           band_05              = color.new(#ffffff, 60),
           band_10              = color.new(#ffffff, 30),
           box_tint             = color.new(#fcd34d, 90),       // 05 box bg: soft amber (distinct from neutral gray)
-          active_hr            = color.new(#cbd5e1, 92),       // light gray (slate-300), neutral
+          active_hr            = color.new(#cbd5e1, 100),      // clear by default
           active_triad         = color.new(#cbd5e1, 88),       // slightly more visible than active hour
           q_div                = color.new(#ffffff, 100),     // hour box bg: clear by default
           readout_bg           = color.new(#1a2235, 5),        // bg-raised, near-opaque
@@ -191,7 +191,7 @@ resolveTheme() =>
           band_05              = color.new(#000000, 55),
           band_10              = color.new(#000000, 25),
           box_tint             = color.new(#f59e0b, 88),       // 05 box bg: soft amber (distinct from neutral gray)
-          active_hr            = color.new(#94a3b8, 90),       // light gray (slate-400), neutral
+          active_hr            = color.new(#94a3b8, 100),      // clear by default
           active_triad         = color.new(#94a3b8, 86),       // more opaque than active hour
           q_div                = color.new(#94a3b8, 100),      // hour box bg: clear by default
           readout_bg           = color.new(#f1f5f9, 5),        // slate-100 fill, near-opaque
@@ -242,77 +242,67 @@ T := resolveTheme()
 
 NY_TZ = "America/New_York"
 
-quarterOfHour() =>
-    int m = minute(time, NY_TZ)
-    int q = m / 15 + 1
-    q
+// ── Script-level constants (computed once at script init) ─────────────────
+// `timeframe.in_seconds("")` returns a constant for the chart's TF, so we
+// pre-compute the bar counts that are reused all over the rendering blocks.
+int TF_SEC          = timeframe.in_seconds("")
+int BARS_PER_HOUR   = math.max(1, int(60 * 60   / TF_SEC))
+int BARS_PER_QUARTER= math.max(1, int(15 * 60   / TF_SEC))
+bool IS_TF_MIN1     = TF_SEC == 60
+bool IS_TF_MIN1OR5  = TF_SEC <= 300
+
+// ── Per-bar time cache ────────────────────────────────────────────────────
+// `hour(...)` and `minute(...)` with a tz argument do non-trivial work each
+// call. Call them once per bar and cache the results — every predicate
+// below is a pure arithmetic test against the cache.
+int _H = hour(time, NY_TZ)
+int _M = minute(time, NY_TZ)
+
+quarterOfHour()    => int(math.floor(_M / 15)) + 1
+isFirstBarOfQuarter() => _M == 0  or _M == 15 or _M == 30 or _M == 45
+isLastBarOfQuarter()  => _M == 14 or _M == 29 or _M == 44 or _M == 59
+isBoxBar()         => _M <= 4
+isHourClose()      => _M == 59
+isTfMin1()         => IS_TF_MIN1
+isTfMin1or5()      => IS_TF_MIN1OR5
 
 blockId() =>
-    int h = hour(time, NY_TZ)
     string b = na
-    if h < 3
+    if _H < 3
         b := "00-03"
-    else if h < 6
+    else if _H < 6
         b := "03-06"
-    else if h < 9
+    else if _H < 9
         b := "06-09"
-    else if h < 12
+    else if _H < 12
         b := "09-12"
-    else if h < 15
+    else if _H < 15
         b := "12-15"
-    else if h >= 18 and h < 21
+    else if _H >= 18 and _H < 21
         b := "18-21"
-    else if h >= 21
+    else if _H >= 21
         b := "21-00"
-    // else 15..17 → b stays na (excluded gap)
     b
 
 hourIndexInTriad() =>
-    int h = hour(time, NY_TZ)
     int idx = na
-    if h < 3
-        idx := h + 1                  // 0,1,2 → 1,2,3 within block 00-03
-    else if h < 6
-        idx := h - 3 + 1
-    else if h < 9
-        idx := h - 6 + 1
-    else if h < 12
-        idx := h - 9 + 1
-    else if h < 15
-        idx := h - 12 + 1
-    else if h >= 18 and h < 21
-        idx := h - 18 + 1
-    else if h >= 21
-        idx := h - 21 + 1
-    // else 15..17 → idx stays na
+    if _H < 3
+        idx := _H + 1
+    else if _H < 6
+        idx := _H - 2
+    else if _H < 9
+        idx := _H - 5
+    else if _H < 12
+        idx := _H - 8
+    else if _H < 15
+        idx := _H - 11
+    else if _H >= 18 and _H < 21
+        idx := _H - 17
+    else if _H >= 21
+        idx := _H - 20
     idx
 
-isFirstBarOfQuarter() =>
-    int m = minute(time, NY_TZ)
-    m == 0 or m == 15 or m == 30 or m == 45
-
-isLastBarOfQuarter() =>
-    int m = minute(time, NY_TZ)
-    m == 14 or m == 29 or m == 44 or m == 59
-
-isBoxBar() =>
-    int m = minute(time, NY_TZ)
-    m <= 4
-
-isHourClose() =>
-    minute(time, NY_TZ) == 59
-
-isTriadClose() =>
-    isHourClose() and hourIndexInTriad() == 3
-
-// ── Timeframe gates ───────────────────────────────────────────────────────
-// Visibility rules:
-//   - Quarter structure (hour box, quarter verticals)  → 1m only
-//   - Active hour / triad tint boxes                    → 1m and 5m
-//   - In-stat / out-of-stat extreme labels              → 1m only
-// Other features (midlines, bands, sweepers, verdicts) remain TF-agnostic.
-isTfMin1() => timeframe.in_seconds("") == 60
-isTfMin1or5() => timeframe.in_seconds("") <= 300
+isTriadClose() => isHourClose() and hourIndexInTriad() == 3
 
 
 // ╔══════════════════════════════════════════════════════════════════════════╗
@@ -335,10 +325,13 @@ quarterUpdate(QuarterAgg q, float o, float h, float l, float c) =>
         if q.barCount == 0
             q.open_ := o
         q.close_ := c
-        if na(q.high_) or h > q.high_
+        // Use >= so equal-high re-touches advance highBar to the most recent
+        // bar holding the extreme. Better matches the eye for live tracking
+        // when price retests an earlier high within the same quarter.
+        if na(q.high_) or h >= q.high_
             q.high_   := h
             q.highBar := bar_index
-        if na(q.low_) or l < q.low_
+        if na(q.low_) or l <= q.low_
             q.low_   := l
             q.lowBar := bar_index
         q.barCount += 1
@@ -376,11 +369,6 @@ hourLow(HourAgg h) =>
     if not na(h.q4) and (na(lo) or h.q4.low_ < lo)
         lo := h.q4.low_
     lo
-
-hourMid(HourAgg h) =>
-    hi = hourHigh(h)
-    lo = hourLow(h)
-    na(hi) or na(lo) ? na : (hi + lo) / 2.0
 
 type TriadAgg
     string  blockId
@@ -421,39 +409,84 @@ var TriadAgg activeTriad = na
 if isFirstBarOfQuarter() and quarterOfHour() == 1 and hourIndexInTriad() == 1
     activeTriad := TriadAgg.new(blockId = blockId(), anchorBar = bar_index)
 
-if not na(activeTriad)
-    int hidx = hourIndexInTriad()
-    if not na(hidx)
-        // Lazily create the hour and quarter on first bar of each
-        if hidx == 1 and na(activeTriad.c1)
-            activeTriad.c1 := HourAgg.new(anchorBar = bar_index)
-        if hidx == 2 and na(activeTriad.c2)
-            activeTriad.c2 := HourAgg.new(anchorBar = bar_index)
-        if hidx == 3 and na(activeTriad.c3)
-            activeTriad.c3 := HourAgg.new(anchorBar = bar_index)
+// Standalone aggregator for the 3pm hour (15:00–15:59). Outside any triad
+// block, but hour-level features still render. Triad-only features (3h
+// midline, apex hour, triad verdict) are gated separately on activeTriad.
+var HourAgg hour3pm = na
+is3pmHour() => _H == 15
 
-        HourAgg curHour = hidx == 1 ? activeTriad.c1 : hidx == 2 ? activeTriad.c2 : activeTriad.c3
-        if not na(curHour)
-            int qi = quarterOfHour()
-            if qi == 1 and na(curHour.q1)
-                curHour.q1 := QuarterAgg.new(qIdx = 1, anchorBar = bar_index)
-            if qi == 2 and na(curHour.q2)
-                curHour.q2 := QuarterAgg.new(qIdx = 2, anchorBar = bar_index)
-            if qi == 3 and na(curHour.q3)
-                curHour.q3 := QuarterAgg.new(qIdx = 3, anchorBar = bar_index)
-            if qi == 4 and na(curHour.q4)
-                curHour.q4 := QuarterAgg.new(qIdx = 4, anchorBar = bar_index)
-            QuarterAgg curQ = qi == 1 ? curHour.q1 : qi == 2 ? curHour.q2 : qi == 3 ? curHour.q3 : curHour.q4
+if isFirstBarOfQuarter() and quarterOfHour() == 1 and is3pmHour()
+    hour3pm := HourAgg.new(anchorBar = bar_index)
 
-            if not na(curQ)
-                quarterUpdate(curQ, open, high, low, close)
+// Lazy-create the triad hour for the current triad index. Returns the
+// per-hour aggregator (or na if outside the triad's hour range).
+ensureTriadHour() =>
+    HourAgg h = na
+    if not na(activeTriad)
+        int hidx = hourIndexInTriad()
+        if hidx == 1
+            if na(activeTriad.c1)
+                activeTriad.c1 := HourAgg.new(anchorBar = bar_index)
+            h := activeTriad.c1
+        else if hidx == 2
+            if na(activeTriad.c2)
+                activeTriad.c2 := HourAgg.new(anchorBar = bar_index)
+            h := activeTriad.c2
+        else if hidx == 3
+            if na(activeTriad.c3)
+                activeTriad.c3 := HourAgg.new(anchorBar = bar_index)
+            h := activeTriad.c3
+    h
 
-            // 05-box accumulation
-            if isBoxBar()
-                curHour.box05Hi := na(curHour.box05Hi) ? high : math.max(curHour.box05Hi, high)
-                curHour.box05Lo := na(curHour.box05Lo) ? low  : math.min(curHour.box05Lo, low)
-                if minute(time, NY_TZ) == 4
-                    curHour.box05Locked := true
+// Returns the active per-hour aggregator (3pm standalone or triad's
+// current-hour slot). Centralizes the dispatch so all rendering blocks
+// share one code path. Pine UDTs are reference types, so the returned
+// HourAgg can be mutated by callers.
+liveHour() =>
+    HourAgg h = na
+    if is3pmHour()
+        h := hour3pm
+    else
+        h := ensureTriadHour()
+    h
+
+hasLiveHour() => not na(liveHour())
+
+// Per-bar aggregation for the active hour: lazy-create the current quarter,
+// update its OHLC, and accumulate the 05-box. Idempotent across triad and
+// 3pm paths since both share the HourAgg/QuarterAgg shape.
+aggregateLiveHour() =>
+    HourAgg h = liveHour()
+    if not na(h)
+        int qi = quarterOfHour()
+        if qi == 1 and na(h.q1)
+            h.q1 := QuarterAgg.new(qIdx = 1, anchorBar = bar_index)
+        if qi == 2 and na(h.q2)
+            h.q2 := QuarterAgg.new(qIdx = 2, anchorBar = bar_index)
+        if qi == 3 and na(h.q3)
+            h.q3 := QuarterAgg.new(qIdx = 3, anchorBar = bar_index)
+        if qi == 4 and na(h.q4)
+            h.q4 := QuarterAgg.new(qIdx = 4, anchorBar = bar_index)
+        QuarterAgg q = qi == 1 ? h.q1 : qi == 2 ? h.q2 : qi == 3 ? h.q3 : h.q4
+        if not na(q)
+            if q.barCount == 0
+                q.open_ := open
+            q.close_ := close
+            if na(q.high_) or high >= q.high_
+                q.high_   := high
+                q.highBar := bar_index
+            if na(q.low_) or low <= q.low_
+                q.low_   := low
+                q.lowBar := bar_index
+            q.barCount += 1
+        if isBoxBar()
+            h.box05Hi := na(h.box05Hi) ? high : math.max(h.box05Hi, high)
+            h.box05Lo := na(h.box05Lo) ? low  : math.min(h.box05Lo, low)
+            if _M == 4
+                h.box05Locked := true
+
+// Single per-bar aggregation entry point.
+aggregateLiveHour()
 
 
 // ╔══════════════════════════════════════════════════════════════════════════╗
@@ -499,16 +532,68 @@ classifyTriad(TriadAgg t) =>
 // ATR-based vertical offset used by labels positioned below price action.
 atrOffset() => ta.atr(20) * 2.0
 
+// Tolerance for "extreme" tie-breaking: the earliest quarter within one tick
+// of the running hour high/low is treated as holding the extreme. Prevents a
+// later quarter that nudges past the early high by a tick from stealing the
+// label when the early quarter is what the eye reads as the high.
+extremeEps() => syminfo.mintick
+
+// True for any hour we render hour-level features on: triad-block hours OR
+// the 3pm standalone hour. The 3-4pm and 4-5pm gap and overnight hours that
+// fall outside both still return false.
+inTrackedHour() => not na(blockId()) or is3pmHour()
+
 // ── Hour box (bounded to hour range) + intra-hour quarter verticals ───────
 // Hour box: tinted rectangle bounded by the hour's running high/low, growing
 // with each bar. Quarter verticals at :15, :30, :45 are thin solid lines
 // confined to within the active hour's price range.
 
-// Hour box bg uses q_div (clear by default; user can set tint).
+// Hour box bg: clear by default. Pass `na` when q_div is at alpha ≥95 so
+// the fill is truly invisible (Pine's `color.new(c, 100)` can paint a faint
+// wash on some renderers).
 // Quarter divider verticals always render visibly regardless of bg opacity —
 // pinned to a moderate gray that shows on both light and dark themes.
-hourBoxBg() => T.q_div
-hourDivLine() => gTheme == "Light" ? color.new(#475569, 55) : color.new(#cbd5e1, 55)
+// Resolve once: theme is constant across a script run.
+color HOUR_BOX_BG          = color.t(T.q_div) >= 95 ? color(na) : T.q_div
+// Detect the actual chart background brightness so contrast-sensitive colors
+// (text, frame borders) stay readable even if the indicator's theme input
+// doesn't match the user's TradingView chart skin.
+// `color.r/g/b` give 0–255; pick light text on dark bg and vice versa.
+bool _CHART_IS_LIGHT       = (color.r(chart.bg_color) + color.g(chart.bg_color) + color.b(chart.bg_color)) / 3.0 > 127
+color HOUR_BOX_BORDER      = _CHART_IS_LIGHT ? color.new(#475569, 70) : color.new(#cbd5e1, 70)
+color HOUR_DIV_LINE        = _CHART_IS_LIGHT ? color.new(#475569, 80) : color.new(#cbd5e1, 80)
+color HOUR_OPEN_COLOR      = _CHART_IS_LIGHT ? color.new(#0f172a, 0)  : color.new(#f1f5f9, 0)
+color HL_MARK_COLOR        = _CHART_IS_LIGHT ? color.new(#0f172a, 0)  : color.new(#f1f5f9, 0)
+color SWEEP_RED_COLOR      = gTheme == "Light" ? color.new(#dc2626, 0)  : color.new(#ef4444, 0)
+color SWEEP_GREEN_COLOR    = gTheme == "Light" ? color.new(#059669, 0)  : color.new(#10b981, 0)
+color DOJI_LINE_COLOR      = gTheme == "Light" ? color.new(#000000, 0)  : color.new(#ffffff, 0)
+color IN_STAT_BG           = color.new(T.in_stat, 80)
+color OUT_STAT_BG          = color.new(T.out_stat, 80)
+color ACTIVE_TRIAD_BORDER  = color.new(T.active_triad, math.max(0, color.t(T.active_triad) - 40))
+color BOX_05_BORDER        = color.new(T.box_tint, math.max(0, color.t(T.box_tint) - 10))
+color ACTIVE_HR_BG         = color.t(T.active_hr) >= 95 ? color(na) : T.active_hr
+color ACTIVE_HR_BORDER     = color(na)
+color BAND_05_BG           = color.new(T.band_05, 100)
+color BAND_10_BG           = color.new(T.band_10, 100)
+color APEX_HOUR_BG         = color.new(T.apex_hour, 97)
+color APEX_HOUR_BORDER     = color.new(T.apex_hour, 85)
+color APEX_HOUR_LABEL_BG   = color.new(T.apex_hour, 88)
+color MID_1H_BG            = color.new(T.mid_1h, 90)
+color MID_3H_LINE          = color.new(T.mid_3h, 50)
+color HOUR_OPEN_LABEL_BG   = color.new(HOUR_OPEN_COLOR, 100)
+color HL_MARK_LABEL_BG     = color.new(HL_MARK_COLOR, 100)
+color RED_TRANSPARENT      = color.new(color.red, 100)
+// Formal "pill" palette for hour-close summary label. Neutral slate fill,
+// solid (no transparency) so the box reads clearly against any chart bg.
+color PILL_BG              = gTheme == "Light" ? color.new(#e2e8f0, 0)  : color.new(#334155, 0)
+color PILL_BORDER          = gTheme == "Light" ? color.new(#94a3b8, 30) : color.new(#64748b, 30)
+color PILL_TEXT            = gTheme == "Light" ? color.new(#0f172a, 0)  : color.new(#f1f5f9, 0)
+// Per-quarter background border (100-alpha = invisible). qC differs per
+// quarter (Q1/Q2/Q3/Q4 user-configurable), so we resolve all four.
+color Q1_BG_BORDER         = color.new(gColQ1Bg, 100)
+color Q2_BG_BORDER         = color.new(gColQ2Bg, 100)
+color Q3_BG_BORDER         = color.new(gColQ3Bg, 100)
+color Q4_BG_BORDER         = color.new(gColQ4Bg, 100)
 
 // One box + 3 quarter-divider lines per hour, updated live as range expands
 var box currentHourBox = na
@@ -516,19 +601,26 @@ var line currentQ2Line = na
 var line currentQ3Line = na
 var line currentQ4Line = na
 
-// Reset / create at hour open (first bar of Q1 with valid block) — 1m only
-if gQStructOn and gShowQDiv and isTfMin1() and isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(blockId())
-    int barsPerHourDiv = math.max(1, int(60 * 60 / timeframe.in_seconds("")))
-    currentHourBox := box.new(left=bar_index, top=high, right=bar_index + barsPerHourDiv - 1, bottom=low,
-                              xloc=xloc.bar_index, bgcolor=hourBoxBg(),
-                              border_color=color.new(T.q_div, math.max(0, color.t(T.q_div) - 35)),
-                              border_width=2)
-    currentQ2Line := na
-    currentQ3Line := na
-    currentQ4Line := na
+// Reset / create at hour open (first bar of Q1 with valid block) — 1m only.
+// Quarter divider verticals are spawned now at their predicted bar positions
+// (Q2 = hourStart+15, Q3 = +30, Q4 = +45) so they're visible from hour open
+// instead of appearing only as price reaches each minute.
+if gQStructOn and gShowQDiv and IS_TF_MIN1 and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+    currentHourBox := box.new(left=bar_index, top=high, right=bar_index + BARS_PER_HOUR - 1, bottom=low,
+                              xloc=xloc.bar_index, bgcolor=HOUR_BOX_BG,
+                              border_color=HOUR_BOX_BORDER, border_width=2)
+    currentQ2Line := line.new(bar_index + BARS_PER_QUARTER,     low, bar_index + BARS_PER_QUARTER,     high,
+                              xloc=xloc.bar_index, extend=extend.none,
+                              color=HOUR_DIV_LINE, style=line.style_solid, width=2)
+    currentQ3Line := line.new(bar_index + BARS_PER_QUARTER * 2, low, bar_index + BARS_PER_QUARTER * 2, high,
+                              xloc=xloc.bar_index, extend=extend.none,
+                              color=HOUR_DIV_LINE, style=line.style_solid, width=2)
+    currentQ4Line := line.new(bar_index + BARS_PER_QUARTER * 3, low, bar_index + BARS_PER_QUARTER * 3, high,
+                              xloc=xloc.bar_index, extend=extend.none,
+                              color=HOUR_DIV_LINE, style=line.style_solid, width=2)
 
 // Update every bar inside the active hour: expand top/bottom to running range
-if gQStructOn and gShowQDiv and isTfMin1() and not na(currentHourBox) and not na(blockId()) and not na(hourIndexInTriad())
+if gQStructOn and gShowQDiv and isTfMin1() and not na(currentHourBox) and inTrackedHour()
     new_top    = math.max(box.get_top(currentHourBox),    high)
     new_bottom = math.min(box.get_bottom(currentHourBox), low)
     box.set_top(currentHourBox, new_top)
@@ -544,21 +636,6 @@ if gQStructOn and gShowQDiv and isTfMin1() and not na(currentHourBox) and not na
         line.set_y1(currentQ4Line, new_bottom)
         line.set_y2(currentQ4Line, new_top)
 
-// Spawn quarter divider line at start of Q2/Q3/Q4 — 1m only
-if gQStructOn and gShowQDiv and isTfMin1() and isFirstBarOfQuarter() and not na(blockId()) and not na(currentHourBox)
-    int qNew = quarterOfHour()
-    float yTop = box.get_top(currentHourBox)
-    float yBot = box.get_bottom(currentHourBox)
-    if qNew == 2
-        currentQ2Line := line.new(bar_index, yBot, bar_index, yTop, xloc=xloc.bar_index,
-                                  extend=extend.none, color=hourDivLine(), style=line.style_solid, width=2)
-    if qNew == 3
-        currentQ3Line := line.new(bar_index, yBot, bar_index, yTop, xloc=xloc.bar_index,
-                                  extend=extend.none, color=hourDivLine(), style=line.style_solid, width=2)
-    if qNew == 4
-        currentQ4Line := line.new(bar_index, yBot, bar_index, yTop, xloc=xloc.bar_index,
-                                  extend=extend.none, color=hourDivLine(), style=line.style_solid, width=2)
-
 // ── Per-quarter background tints ──────────────────────────────────────────
 // One box per quarter, spawned at quarter open. Each box's bg color comes
 // from the user-configurable per-quarter setting. Bounded vertically to the
@@ -573,7 +650,7 @@ qBgColorFor(int qIdx) =>
     qIdx == 1 ? gColQ1Bg : qIdx == 2 ? gColQ2Bg : qIdx == 3 ? gColQ3Bg : gColQ4Bg
 
 // Reset references at hour open so closed-hour quarter tints freeze in place
-if gQStructOn and gShowQBgs and isTfMin1() and isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(blockId())
+if gQStructOn and gShowQBgs and isTfMin1() and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
     currentQ1Bg := na
     currentQ2Bg := na
     currentQ3Bg := na
@@ -583,15 +660,15 @@ if gQStructOn and gShowQBgs and isTfMin1() and isFirstBarOfQuarter() and quarter
 // Right edge extends slightly into the next quarter (+1 bar) so adjacent
 // quarter boxes overlap by 1 bar — eliminates visual seam gaps caused by
 // pixel boundaries between consecutive bars on TradingView.
-if gQStructOn and gShowQBgs and isTfMin1() and isFirstBarOfQuarter() and not na(blockId()) and not na(currentHourBox)
+if gQStructOn and gShowQBgs and IS_TF_MIN1 and isFirstBarOfQuarter() and inTrackedHour() and not na(currentHourBox)
     int qNewBg = quarterOfHour()
-    int barsPerQuarterBg = math.max(1, int(15 * 60 / timeframe.in_seconds("")))
     int qLeft  = bar_index
-    int qRight = bar_index + barsPerQuarterBg
-    color qC = qBgColorFor(qNewBg)
+    int qRight = bar_index + BARS_PER_QUARTER
+    color qC      = qNewBg == 1 ? gColQ1Bg     : qNewBg == 2 ? gColQ2Bg     : qNewBg == 3 ? gColQ3Bg     : gColQ4Bg
+    color qBorder = qNewBg == 1 ? Q1_BG_BORDER : qNewBg == 2 ? Q2_BG_BORDER : qNewBg == 3 ? Q3_BG_BORDER : Q4_BG_BORDER
     box newQBox = box.new(qLeft, box.get_top(currentHourBox), qRight, box.get_bottom(currentHourBox),
                           xloc=xloc.bar_index, bgcolor=qC,
-                          border_color=color.new(qC, 100), border_width=0)
+                          border_color=qBorder, border_width=0)
     if qNewBg == 1
         currentQ1Bg := newQBox
     if qNewBg == 2
@@ -623,15 +700,14 @@ if gQStructOn and gShowQBgs and isTfMin1() and not na(currentHourBox)
 // at minute :04; the rectangle extends horizontally to the end of the hour.
 var box current05Box = na
 
-if gBoxOn and gShowBoxCol and isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(blockId())
-    int barsPerHour05 = math.max(1, int(60 * 60 / timeframe.in_seconds("")))
-    current05Box := box.new(left=bar_index, top=high, right=bar_index + barsPerHour05 - 1, bottom=low,
+if gBoxOn and gShowBoxCol and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+    current05Box := box.new(left=bar_index, top=high, right=bar_index + BARS_PER_HOUR - 1, bottom=low,
                             xloc=xloc.bar_index, bgcolor=T.box_tint,
-                            border_color=color.new(T.box_tint, math.max(0, color.t(T.box_tint) - 10)),
+                            border_color=BOX_05_BORDER,
                             border_width=1, border_style=line.style_solid)
 
 // Update 05-box bounds during minutes :00–:04 (box high/low locks after :04)
-if gBoxOn and gShowBoxCol and isBoxBar() and not na(current05Box) and not na(blockId())
+if gBoxOn and gShowBoxCol and isBoxBar() and not na(current05Box) and inTrackedHour()
     new_top_05    = math.max(box.get_top(current05Box),    high)
     new_bottom_05 = math.min(box.get_bottom(current05Box), low)
     box.set_top(current05Box, new_top_05)
@@ -641,28 +717,26 @@ if gBoxOn and gShowBoxCol and isBoxBar() and not na(current05Box) and not na(blo
 bandLevels(float boxHi, float boxLo) =>
     [boxHi * 1.0010, boxHi * 1.0005, boxLo * 0.9995, boxLo * 0.9990]
 
-if gBoxOn and not na(activeTriad)
-    int hidx = hourIndexInTriad()
-    HourAgg curH = hidx == 1 ? activeTriad.c1 : hidx == 2 ? activeTriad.c2 : hidx == 3 ? activeTriad.c3 : na
-    if not na(curH) and curH.box05Locked and minute(time, NY_TZ) == 4 and not na(curH.box05Hi)
+if gBoxOn and hasLiveHour()
+    HourAgg curH = liveHour()
+    if not na(curH) and curH.box05Locked and _M == 4 and not na(curH.box05Hi)
         [u10, u05, l05_, l10] = bandLevels(curH.box05Hi, curH.box05Lo)
         int hourStartBar = curH.anchorBar
         // Bands extend only through the rest of Q1 — i.e. up to and including
         // minute :14 of the hour. They are NOT drawn through Q2/Q3/Q4.
-        int barsPerQuarter = math.max(1, int(15 * 60 / timeframe.in_seconds("")))
-        int q1EndBar = curH.anchorBar + barsPerQuarter - 1
+        int q1EndBar = curH.anchorBar + BARS_PER_QUARTER - 1
         if gShowBand10
             line.new(hourStartBar, u10, q1EndBar, u10, xloc=xloc.bar_index, color=T.band_10, style=line.style_dotted, width=2)
             line.new(hourStartBar, l10, q1EndBar, l10, xloc=xloc.bar_index, color=T.band_10, style=line.style_dotted, width=2)
             if gShowBandLbl
-                label.new(q1EndBar, u10, ".1%", xloc=xloc.bar_index, color=color.new(T.band_10, 100), textcolor=T.band_10, style=label.style_label_left, size=size.small)
-                label.new(q1EndBar, l10, ".1%", xloc=xloc.bar_index, color=color.new(T.band_10, 100), textcolor=T.band_10, style=label.style_label_left, size=size.small)
+                label.new(q1EndBar, u10, ".1%", xloc=xloc.bar_index, color=BAND_10_BG, textcolor=T.band_10, style=label.style_label_left, size=size.small)
+                label.new(q1EndBar, l10, ".1%", xloc=xloc.bar_index, color=BAND_10_BG, textcolor=T.band_10, style=label.style_label_left, size=size.small)
         if gShowBand05
             line.new(hourStartBar, u05, q1EndBar, u05, xloc=xloc.bar_index, color=T.band_05, style=line.style_dotted, width=1)
             line.new(hourStartBar, l05_, q1EndBar, l05_, xloc=xloc.bar_index, color=T.band_05, style=line.style_dotted, width=1)
             if gShowBandLbl
-                label.new(q1EndBar, u05, ".05%", xloc=xloc.bar_index, color=color.new(T.band_05, 100), textcolor=T.band_05, style=label.style_label_left, size=size.small)
-                label.new(q1EndBar, l05_, ".05%", xloc=xloc.bar_index, color=color.new(T.band_05, 100), textcolor=T.band_05, style=label.style_label_left, size=size.small)
+                label.new(q1EndBar, u05, ".05%", xloc=xloc.bar_index, color=BAND_05_BG, textcolor=T.band_05, style=label.style_label_left, size=size.small)
+                label.new(q1EndBar, l05_, ".05%", xloc=xloc.bar_index, color=BAND_05_BG, textcolor=T.band_05, style=label.style_label_left, size=size.small)
 
 // ── Band rejection markers ────────────────────────────────────────────────
 detectBandRejection(float h, float l, float c, float u10, float u05, float l05_, float l10) =>
@@ -688,9 +762,8 @@ var bool rejFired10Dn = false
 var bool rejFired05Up = false
 var bool rejFired05Dn = false
 
-if gBoxOn and not na(activeTriad)
-    int hidx_br = hourIndexInTriad()
-    HourAgg curH_br = hidx_br == 1 ? activeTriad.c1 : hidx_br == 2 ? activeTriad.c2 : hidx_br == 3 ? activeTriad.c3 : na
+if gBoxOn and hasLiveHour()
+    HourAgg curH_br = liveHour()
     if not na(curH_br) and curH_br.box05Locked and not na(curH_br.box05Hi)
         [u10b, u05b, l05b, l10b] = bandLevels(curH_br.box05Hi, curH_br.box05Lo)
         [side, level] = detectBandRejection(high, low, close, u10b, u05b, l05b, l10b)
@@ -726,7 +799,7 @@ if gBoxOn and not na(activeTriad)
                               style=side == "upper" ? label.style_label_down : label.style_label_up,
                               color=color.new(cMark, 95), textcolor=cMark, size=size.small)
                 if gAlertsOn and gAlertBandRej
-                    alert("Quarter Theory: " + level + "% band " + side + " rejection", alert.freq_once_per_bar)
+                    alert("Live Price Action: " + level + "% band " + side + " rejection", alert.freq_once_per_bar)
 
 // Reset per-hour state at hour open
 if isFirstBarOfQuarter() and quarterOfHour() == 1
@@ -797,9 +870,8 @@ if isFirstBarOfQuarter() and quarterOfHour() == 1 and hourIndexInTriad() == 1
 
 // Compute current 1h mid + reaction
 float curMid1h = na
-if not na(activeTriad)
-    int hidx_m = hourIndexInTriad()
-    HourAgg curH_m = hidx_m == 1 ? activeTriad.c1 : hidx_m == 2 ? activeTriad.c2 : hidx_m == 3 ? activeTriad.c3 : na
+if hasLiveHour()
+    HourAgg curH_m = liveHour()
     if not na(curH_m)
         [m1, _src1] = resolve1hMid(curH_m, priorHour1h)
         curMid1h := m1
@@ -811,12 +883,12 @@ if not na(activeTriad)
                 if gMidOn and gShowMidReact
                     if r1 == "support"
                         label.new(bar_index, low, "●", style=label.style_label_up,
-                                  color=color.new(T.mid_1h, 90), textcolor=T.mid_1h, size=size.small)
+                                  color=MID_1H_BG, textcolor=T.mid_1h, size=size.small)
                     else
                         label.new(bar_index, high, "●", style=label.style_label_down,
-                                  color=color.new(T.mid_1h, 90), textcolor=T.mid_1h, size=size.small)
+                                  color=MID_1H_BG, textcolor=T.mid_1h, size=size.small)
                 if gAlertsOn and gAlertMid
-                    alert("Quarter Theory: 1h midline " + r1, alert.freq_once_per_bar)
+                    alert("Live Price Action: 1h midline " + r1, alert.freq_once_per_bar)
 
 // Compute current 3h mid + reaction
 float curMid3h = na
@@ -830,7 +902,7 @@ if not na(activeTriad)
             lastMid3hReaction := r3
             // (Same alert path as 1h, no separate marker by default)
             if gAlertsOn and gAlertMid
-                alert("Quarter Theory: 3h midline " + r3, alert.freq_once_per_bar)
+                alert("Live Price Action: 3h midline " + r3, alert.freq_once_per_bar)
 
 // Draw midlines as ONE line per hour (1h) and ONE per triad (3h), updated
 // in-place as the running mid drifts. New objects spawn at hour/triad open.
@@ -838,9 +910,8 @@ var line currentMid1hLine = na
 var line currentMid3hLine = na
 
 // Reset / spawn 1h midline at hour open
-if gMidOn and gShowMid1h and isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(blockId())
-    int barsPerHourMid = math.max(1, int(60 * 60 / timeframe.in_seconds("")))
-    currentMid1hLine := line.new(bar_index, na, bar_index + barsPerHourMid - 1, na,
+if gMidOn and gShowMid1h and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+    currentMid1hLine := line.new(bar_index, na, bar_index + BARS_PER_HOUR - 1, na,
                                  xloc=xloc.bar_index, color=T.mid_1h,
                                  width=gMid1hWidth, style=line.style_solid)
 
@@ -850,11 +921,11 @@ if gMidOn and gShowMid1h and isFirstBarOfQuarter() and quarterOfHour() == 1 and 
 // 3h midline is solid; right-edge tracks the current bar (not the full triad).
 if gMidOn and gShowMid3h and isFirstBarOfQuarter() and quarterOfHour() == 1 and hourIndexInTriad() == 1 and not na(blockId())
     currentMid3hLine := line.new(bar_index, na, bar_index, na,
-                                 xloc=xloc.bar_index, color=T.mid_3h,
+                                 xloc=xloc.bar_index, color=MID_3H_LINE,
                                  width=gMid3hWidth, style=line.style_solid)
 else if gMidOn and gShowMid3h and not na(activeTriad) and na(currentMid3hLine)
     currentMid3hLine := line.new(activeTriad.anchorBar, na, activeTriad.anchorBar, na,
-                                 xloc=xloc.bar_index, color=T.mid_3h,
+                                 xloc=xloc.bar_index, color=MID_3H_LINE,
                                  width=gMid3hWidth, style=line.style_solid)
 
 // Update y-coords each bar so the line follows the running mid; extend the
@@ -863,16 +934,30 @@ if gMidOn and gShowMid1h and not na(currentMid1hLine) and not na(curMid1h)
     line.set_y1(currentMid1hLine, curMid1h)
     line.set_y2(currentMid1hLine, curMid1h)
 
-if gMidOn and gShowMid3h and not na(currentMid3hLine) and not na(curMid3h)
+if gMidOn and gShowMid3h and not na(currentMid3hLine) and not na(curMid3h) and not na(activeTriad)
     line.set_y1(currentMid3hLine, curMid3h)
     line.set_y2(currentMid3hLine, curMid3h)
-    line.set_x2(currentMid3hLine, bar_index)
+    // Clamp right edge to the triad's last bar so the line doesn't extend
+    // past the triad close (e.g. the 12-15 triad's midline shouldn't reach
+    // beyond 14:59, the :59 of the triad's third hour).
+    int triadEndBar = activeTriad.anchorBar + 3 * BARS_PER_HOUR - 1
+    line.set_x2(currentMid3hLine, math.min(bar_index, triadEndBar))
 
 
 // ── Sweepers + bias-shifts + doji-confirmed ───────────────────────────────
+// Also returns the price and bar of the EXTREME that was broken by `byQ`.
+// When newBias==1 (high taken out), brokenLevel = the broken target high.
+// When newBias==-1 (low taken out), brokenLevel = the broken target low.
+// Used to draw the doji-confirmation line at the actual broken price level.
+// Returns: events string, took-high flag, took-low flag, broken hi/lo.
+// Caller decides whether to flip bias based on prior state — if the quarter
+// took both sides, that's a full range expansion, not a no-op.
 detectSweepsForQuarter(HourAgg h, int byQ) =>
     string events = ""
-    int newBias = 0
+    bool tookHigh = false
+    bool tookLow  = false
+    float brokenHi = na
+    float brokenLo = na
     QuarterAgg byQuarter = byQ == 2 ? h.q2 : byQ == 3 ? h.q3 : h.q4
     if not na(byQuarter)
         for tQ = 1 to byQ - 1
@@ -880,137 +965,154 @@ detectSweepsForQuarter(HourAgg h, int byQ) =>
             if not na(targ)
                 if byQuarter.high_ > targ.high_
                     events := events + "Q" + str.tostring(int(byQ)) + "→Q" + str.tostring(int(tQ)) + " high  "
-                    newBias := newBias != -1 ? 1 : 0
+                    tookHigh := true
+                    if na(brokenHi) or targ.high_ > brokenHi
+                        brokenHi := targ.high_
                 if byQuarter.low_ < targ.low_
                     events := events + "Q" + str.tostring(int(byQ)) + "→Q" + str.tostring(int(tQ)) + " low  "
-                    newBias := newBias != 1 ? -1 : 0
-    [events, newBias]
+                    tookLow := true
+                    if na(brokenLo) or targ.low_ < brokenLo
+                        brokenLo := targ.low_
+    [events, tookHigh, tookLow, brokenHi, brokenLo]
 
-var int lastSweepBias = 0
+var int  lastSweepBias    = 0
+var int  lastSweepBiasBar = na  // bar_index where lastSweepBias was last set
 var bool dojiConfirmedThisHour = false
 
 if isFirstBarOfQuarter() and quarterOfHour() == 1
-    lastSweepBias := 0
+    lastSweepBias    := 0
+    lastSweepBiasBar := na
     dojiConfirmedThisHour := false
 
-if gQStructOn and isLastBarOfQuarter() and not na(activeTriad)
-    int hidx_sw = hourIndexInTriad()
-    HourAgg curH_sw = hidx_sw == 1 ? activeTriad.c1 : hidx_sw == 2 ? activeTriad.c2 : hidx_sw == 3 ? activeTriad.c3 : na
+if gQStructOn and isLastBarOfQuarter() and hasLiveHour()
+    HourAgg curH_sw = liveHour()
     int byQ = quarterOfHour()
     if not na(curH_sw) and byQ >= 2
-        [events, newBias] = detectSweepsForQuarter(curH_sw, byQ)
+        [events, tookHigh, tookLow, brokenHi, brokenLo] = detectSweepsForQuarter(curH_sw, byQ)
         if events != ""
-            // Detect doji-confirmed (bias flip within hour)
+            // Doji-confirmed fires when the breaking quarter takes out the
+            // OPPOSITE side of the hour's prior bias. If both sides were
+            // taken in the same close (full range expansion), that also
+            // counts as a flip vs whichever side the prior bias was on.
+            // The "side broken" for marker purposes is the side opposite
+            // to the prior bias.
+            int flipDir = 0
+            if lastSweepBias > 0 and tookLow
+                flipDir := -1
+            else if lastSweepBias < 0 and tookHigh
+                flipDir := 1
+
+            if flipDir != 0 and not dojiConfirmedThisHour
+                dojiConfirmedThisHour := true
+                if gShowDojiConf
+                    QuarterAgg byQuarter_brk = byQ == 2 ? curH_sw.q2 : byQ == 3 ? curH_sw.q3 : curH_sw.q4
+                    color cLine = DOJI_LINE_COLOR
+                    color cX    = SWEEP_RED_COLOR
+                    // Walk targets newest-first (Q3 → Q2 → Q1) and pick
+                    // the most-recent broken quarter on the flip side.
+                    int firstLeftBar = na
+                    float firstYLevel = na
+                    int firstBrokenQ  = na
+                    if not na(byQuarter_brk)
+                        for tQ_brk = byQ - 1 to 1
+                            QuarterAgg targ_brk = tQ_brk == 1 ? curH_sw.q1 : tQ_brk == 2 ? curH_sw.q2 : curH_sw.q3
+                            if not na(targ_brk) and na(firstLeftBar)
+                                if flipDir < 0 and byQuarter_brk.low_ < targ_brk.low_
+                                    firstLeftBar := targ_brk.lowBar
+                                    firstYLevel  := targ_brk.low_
+                                    firstBrokenQ := tQ_brk
+                                if flipDir > 0 and byQuarter_brk.high_ > targ_brk.high_
+                                    firstLeftBar := targ_brk.highBar
+                                    firstYLevel  := targ_brk.high_
+                                    firstBrokenQ := tQ_brk
+                    if not na(firstLeftBar) and not na(firstYLevel)
+                        int rBar = flipDir < 0 ? byQuarter_brk.lowBar : byQuarter_brk.highBar
+                        line.new(firstLeftBar, firstYLevel, rBar, firstYLevel,
+                                 xloc=xloc.bar_index,
+                                 color=cLine, style=line.style_solid, width=1)
+                        int mBar = math.round((firstLeftBar + rBar) / 2.0)
+                        label.new(mBar, firstYLevel, "✕", xloc=xloc.bar_index,
+                                  style=label.style_none,
+                                  color=RED_TRANSPARENT,
+                                  textcolor=cX, size=size.normal,
+                                  tooltip="Q" + str.tostring(byQ) + " broke Q" + str.tostring(firstBrokenQ) + (flipDir < 0 ? " low" : " high") + " — doji-confirmed")
+                if gAlertsOn and gAlertDoji
+                    alert("Live Price Action: doji-confirmed in current hour", alert.freq_once_per_bar)
+
+            // Update lastSweepBias: prefer continuation of prior bias if
+            // both sides were taken; otherwise pick whichever side fired.
+            int newBias = 0
+            if tookHigh and not tookLow
+                newBias := 1
+            else if tookLow and not tookHigh
+                newBias := -1
+            else if tookHigh and tookLow
+                // Both sides taken — bias direction is ambiguous; preserve
+                // whichever existed previously (so a Q4 full-range expansion
+                // doesn't reset the bias state mid-hour).
+                newBias := lastSweepBias
             if newBias != 0
-                if lastSweepBias != 0 and lastSweepBias != newBias
-                    dojiConfirmedThisHour := true
-                    if gShowDojiConf
-                        label.new(bar_index, low, "◆ doji-confirmed", xloc=xloc.bar_index,
-                                  style=label.style_label_up, color=color.new(T.doji_conf, 80),
-                                  textcolor=T.doji_conf, size=size.small)
-                    if gAlertsOn and gAlertDoji
-                        alert("Quarter Theory: doji-confirmed in current hour", alert.freq_once_per_bar)
-                lastSweepBias := newBias
+                lastSweepBias    := newBias
+                lastSweepBiasBar := bar_index
 
-            if gShowSweepers
-                color cSwLabel = T.sweeper
-                label.new(bar_index, newBias > 0 ? high : low,
-                          "Q" + str.tostring(int(byQ)) + " sweep",
-                          xloc=xloc.bar_index,
-                          style=newBias > 0 ? label.style_label_down : label.style_label_up,
-                          color=color.new(cSwLabel, 92), textcolor=cSwLabel, size=size.small,
-                          tooltip="Sweeps:\n" + events)
-            if gShowBiasShift and newBias != 0
-                color cArr = newBias > 0 ? T.line_up : T.line_dn
-                string arr = newBias > 0 ? "▲" : "▼"
-                label.new(bar_index, newBias > 0 ? high : low, arr, xloc=xloc.bar_index,
-                          style=label.style_label_left,
-                          color=color.new(cArr, 100), textcolor=cArr, size=size.small)
             if gAlertsOn and gAlertSweep
-                alert("Quarter Theory: sweeper Q" + str.tostring(int(byQ)), alert.freq_once_per_bar)
+                alert("Live Price Action: sweeper Q" + str.tostring(int(byQ)), alert.freq_once_per_bar)
 
 
-// ── Live in-stat / out-of-stat extreme labels ────────────────────────────
-// Track two label objects per hour (one for the running high, one for the
-// running low). Reposition them on every bar to the candle that currently
-// holds the hour's high/low. They're created at hour open and persist through
-// hour close — the final extreme is automatically the correct anchor.
+// ── Live extreme lines (high/low markers, no labels) ─────────────────────
+// Two horizontal lines per hour, anchored at the candle that currently holds
+// the hour's high/low and extending right to :59. Updated in-place every
+// bar. The corresponding text labels (in-stat / out-of-stat) are rendered
+// once at hour close as a single centered label on top of the hour box.
 
-var label liveHighLabel = na
-var label liveLowLabel  = na
+var line liveHighLine = na
+var line liveLowLine  = na
 
-// Reset / spawn at hour open — 1m only
-if gQStructOn and isTfMin1() and isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(blockId())
-    if not na(liveHighLabel)
-        label.delete(liveHighLabel)
-    if not na(liveLowLabel)
-        label.delete(liveLowLabel)
-    liveHighLabel := na
-    liveLowLabel  := na
+if gQStructOn and isTfMin1() and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+    liveHighLine := na
+    liveLowLine  := na
 
-// Update / create labels each bar based on running high/low and quarter — 1m only
-if gQStructOn and isTfMin1() and not na(activeTriad)
-    int hidx_live = hourIndexInTriad()
-    HourAgg curH_live = hidx_live == 1 ? activeTriad.c1 : hidx_live == 2 ? activeTriad.c2 : hidx_live == 3 ? activeTriad.c3 : na
+if gQStructOn and isTfMin1() and hasLiveHour()
+    HourAgg curH_live = liveHour()
     if not na(curH_live)
         float curHi = hourHigh(curH_live)
         float curLo = hourLow(curH_live)
         if not na(curHi) and not na(curLo)
-            // Find earliest quarter holding the running extreme
             QuarterAgg qHiL = na
             QuarterAgg qLoL = na
+            float epsL = extremeEps()
             for q_idx_l = 1 to 4
                 QuarterAgg qxL = q_idx_l == 1 ? curH_live.q1 : q_idx_l == 2 ? curH_live.q2 : q_idx_l == 3 ? curH_live.q3 : curH_live.q4
                 if not na(qxL)
-                    if na(qHiL) and qxL.high_ == curHi
+                    if na(qHiL) and qxL.high_ >= curHi - epsL
                         qHiL := qxL
-                    if na(qLoL) and qxL.low_ == curLo
+                    if na(qLoL) and qxL.low_ <= curLo + epsL
                         qLoL := qxL
-            float liveOffset = atrOffset() * 0.3
+            int hourEndBarLive = curH_live.anchorBar + BARS_PER_HOUR - 1
 
             if not na(qHiL)
-                bool inStatHi_live = qHiL.qIdx == 1 or qHiL.qIdx == 4
-                bool showHi = (inStatHi_live and gShowInStat) or (not inStatHi_live and gShowOutStat)
-                if showHi
-                    color textHi_live = inStatHi_live ? T.in_stat : T.out_stat
-                    color bgHi_live   = color.new(textHi_live, 80)
-                    string txtHi_live = "Q" + str.tostring(qHiL.qIdx) + (inStatHi_live ? " in-stat high" : " out-of-stat high")
-                    if na(liveHighLabel)
-                        liveHighLabel := label.new(qHiL.highBar, qHiL.high_ + liveOffset, txtHi_live,
-                                                   xloc=xloc.bar_index, style=label.style_label_down,
-                                                   color=bgHi_live, textcolor=textHi_live, size=size.small)
-                    else
-                        label.set_xy(liveHighLabel, qHiL.highBar, qHiL.high_ + liveOffset)
-                        label.set_text(liveHighLabel, txtHi_live)
-                        label.set_color(liveHighLabel, bgHi_live)
-                        label.set_textcolor(liveHighLabel, textHi_live)
+                if na(liveHighLine)
+                    liveHighLine := line.new(qHiL.highBar, qHiL.high_, hourEndBarLive, qHiL.high_,
+                                             xloc=xloc.bar_index, color=HL_MARK_COLOR,
+                                             style=line.style_solid, width=1)
+                else
+                    line.set_xy1(liveHighLine, qHiL.highBar, qHiL.high_)
+                    line.set_xy2(liveHighLine, hourEndBarLive, qHiL.high_)
 
             if not na(qLoL)
-                bool inStatLo_live = qLoL.qIdx == 1 or qLoL.qIdx == 4
-                bool showLo = (inStatLo_live and gShowInStat) or (not inStatLo_live and gShowOutStat)
-                if showLo
-                    color textLo_live = inStatLo_live ? T.in_stat : T.out_stat
-                    color bgLo_live   = color.new(textLo_live, 80)
-                    string txtLo_live = "Q" + str.tostring(qLoL.qIdx) + (inStatLo_live ? " in-stat low" : " out-of-stat low")
-                    if na(liveLowLabel)
-                        liveLowLabel := label.new(qLoL.lowBar, qLoL.low_ - liveOffset, txtLo_live,
-                                                  xloc=xloc.bar_index, style=label.style_label_up,
-                                                  color=bgLo_live, textcolor=textLo_live, size=size.small)
-                    else
-                        label.set_xy(liveLowLabel, qLoL.lowBar, qLoL.low_ - liveOffset)
-                        label.set_text(liveLowLabel, txtLo_live)
-                        label.set_color(liveLowLabel, bgLo_live)
-                        label.set_textcolor(liveLowLabel, textLo_live)
+                if na(liveLowLine)
+                    liveLowLine := line.new(qLoL.lowBar, qLoL.low_, hourEndBarLive, qLoL.low_,
+                                            xloc=xloc.bar_index, color=HL_MARK_COLOR,
+                                            style=line.style_solid, width=1)
+                else
+                    line.set_xy1(liveLowLine, qLoL.lowBar, qLoL.low_)
+                    line.set_xy2(liveLowLine, hourEndBarLive, qLoL.low_)
 
 
-// ── Final commit of in-stat/out-of-stat labels at hour close ──────────────
-// The live block above keeps the labels positioned at the running extreme
-// throughout the hour. At hour close, we "release" the references so they
-// stay frozen on the closed hour while a fresh pair is created for the next
-// hour. (No new label.new calls needed — the live ones are already correct.)
-if gQStructOn and isTfMin1() and isHourClose() and not na(activeTriad)
-    liveHighLabel := na
-    liveLowLabel  := na
+// Release line refs at hour close so the next hour spawns fresh ones.
+if gQStructOn and isTfMin1() and isHourClose() and hasLiveHour()
+    liveHighLine := na
+    liveLowLine  := na
 
 
 // ── Hour-open line (live, extends to current bar) ─────────────────────────
@@ -1023,25 +1125,30 @@ format12h(int h24) =>
     string suffix = h24 < 12 ? "am" : "pm"
     str.tostring(h12) + suffix
 
-var line currentHourOpenLine = na
+// Track current + previous hour's open line/label so older ones get deleted
+// — only the two most-recent hours' open markers stay visible.
+var line  currentHourOpenLine  = na
 var label currentHourOpenLabel = na
+var line  priorHourOpenLine    = na
+var label priorHourOpenLabel   = na
 
-// At hour open, drop refs (so prior line freezes), then spawn a new line that
-// spans the full hour (open bar through the :59 bar). Width=2 for prominence.
-// Label sits at the right edge of the hour so it doesn't overlap with price.
-if gQStructOn and isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(blockId())
-    currentHourOpenLine := na
-    currentHourOpenLabel := na
-    string hourTag = format12h(hour(time, NY_TZ))
-    color cOpen = gTheme == "Light" ? color.new(#475569, 20) : color.new(#cbd5e1, 20)
-    int barsPerHourOpen = math.max(1, int(60 * 60 / timeframe.in_seconds("")))
-    int hourEndBarOpen = bar_index + barsPerHourOpen - 1
+if gQStructOn and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+    // Shift current → prior, delete the older "prior" before overwriting.
+    if not na(priorHourOpenLine)
+        line.delete(priorHourOpenLine)
+    if not na(priorHourOpenLabel)
+        label.delete(priorHourOpenLabel)
+    priorHourOpenLine  := currentHourOpenLine
+    priorHourOpenLabel := currentHourOpenLabel
+    string hourTag = format12h(_H)
+    int hourEndBarOpen = bar_index + BARS_PER_HOUR - 1
     currentHourOpenLine := line.new(bar_index, open, hourEndBarOpen, open,
-                                    xloc=xloc.bar_index, color=cOpen,
+                                    xloc=xloc.bar_index, color=HOUR_OPEN_COLOR,
                                     style=line.style_solid, width=2)
-    currentHourOpenLabel := label.new(hourEndBarOpen, open, hourTag + " Open",
-                                      xloc=xloc.bar_index, style=label.style_label_left,
-                                      color=color.new(cOpen, 100), textcolor=cOpen, size=size.small)
+    int hourMidBarOpen = bar_index + BARS_PER_HOUR / 2
+    currentHourOpenLabel := label.new(hourMidBarOpen, open, hourTag + " Open",
+                                      xloc=xloc.bar_index, style=label.style_label_down,
+                                      color=HOUR_OPEN_LABEL_BG, textcolor=HOUR_OPEN_COLOR, size=size.small)
 
 
 // ── Hour high/low marker (whichever is closer to current close) ───────────
@@ -1049,22 +1156,39 @@ if gQStructOn and isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(bloc
 // hour's extreme to the closing bar, labelled "XXam High" or "XXam Low".
 // Selection: whichever extreme is **closer in price to the closing bar's close**
 // — that's the "active" reference the next hour is most likely to revisit.
-if gQStructOn and isHourClose() and not na(activeTriad)
-    int hidx_hl = hourIndexInTriad()
-    HourAgg justClosedHL = hidx_hl == 1 ? activeTriad.c1 : hidx_hl == 2 ? activeTriad.c2 : activeTriad.c3
+//
+// Sweep recolor: while the marker is live (next hour), if price pierces the
+// level and closes back inside, recolor the line + label — red for a swept
+// high, green for a swept low. Once recolored, the state is sticky.
+
+// Persistent refs for the most-recently-drawn hour H/L marker so the sweep
+// detector below can recolor it during the following hour.
+// Plus a "prior" pair so we can keep the previous hour's marker visible
+// alongside the current one — older markers get deleted when shifted out.
+var line  hlLine   = na
+var label hlLabel  = na
+var float hlLevel  = na
+var bool  hlIsHigh = false  // true → high marker; false → low marker
+var bool  hlSwept  = false  // sticky once a sweep+reclose is detected
+var line  hlLinePrev  = na
+var label hlLabelPrev = na
+
+if gQStructOn and isHourClose() and hasLiveHour()
+    HourAgg justClosedHL = liveHour()
     if not na(justClosedHL)
         float hi = hourHigh(justClosedHL)
         float lo = hourLow(justClosedHL)
         if not na(hi) and not na(lo)
-            // Find earliest quarter holding the extremes
+            // Find earliest quarter holding the extremes (within one tick)
             QuarterAgg qHiHL = na
             QuarterAgg qLoHL = na
+            float epsHL = extremeEps()
             for q_idx_hl = 1 to 4
                 QuarterAgg qxHL = q_idx_hl == 1 ? justClosedHL.q1 : q_idx_hl == 2 ? justClosedHL.q2 : q_idx_hl == 3 ? justClosedHL.q3 : justClosedHL.q4
                 if not na(qxHL)
-                    if na(qHiHL) and qxHL.high_ == hi
+                    if na(qHiHL) and qxHL.high_ >= hi - epsHL
                         qHiHL := qxHL
-                    if na(qLoHL) and qxHL.low_ == lo
+                    if na(qLoHL) and qxHL.low_ <= lo + epsHL
                         qLoHL := qxHL
 
             // Pick whichever extreme is closer to current close
@@ -1072,47 +1196,175 @@ if gQStructOn and isHourClose() and not na(activeTriad)
             float distToLo = math.abs(close - lo)
             bool useHigh = distToHi <= distToLo
 
-            // Tag uses the just-closed hour. This fires on the :59 bar of that hour,
-            // so hour(time, NY_TZ) is the right value.
-            string hlTag = format12h(hour(time, NY_TZ))
+            // Tag uses the just-closed hour. This fires on the :59 bar of that hour.
+            string hlTag = format12h(_H)
 
-            color cMark = gTheme == "Light" ? color.new(#0f172a, 30) : color.new(#e2eaf4, 30)
-            // Extend the H/L line 30 minutes into the next hour (i.e. through :29
-            // of the next hour). Bars-per-30-min is timeframe-aware.
-            int extendBars = math.max(1, int(30 * 60 / timeframe.in_seconds("")))
-            int hlEndBar = bar_index + extendBars
+            // Extend the H/L line through :59 of the next hour. The current bar
+            // is the :59 close of the just-closed hour, so a full hour (60 mins)
+            // forward lands on the :59 bar of the next hour.
+            int hlEndBar = bar_index + BARS_PER_HOUR
+
+            // Shift current → prior and drop the older prior so only the
+            // last two hour H/L markers remain on the chart.
+            if not na(hlLinePrev)
+                line.delete(hlLinePrev)
+            if not na(hlLabelPrev)
+                label.delete(hlLabelPrev)
+            hlLinePrev  := hlLine
+            hlLabelPrev := hlLabel
+
+            // Reset sweep state for the new marker
+            hlSwept := false
+            hlLine  := na
+            hlLabel := na
+            hlLevel := na
+
             if useHigh and not na(qHiHL)
-                line.new(qHiHL.highBar, hi, hlEndBar, hi, xloc=xloc.bar_index,
-                         color=cMark, style=line.style_solid, width=1)
-                label.new(hlEndBar, hi, hlTag + " High",
-                          xloc=xloc.bar_index, style=label.style_label_left,
-                          color=color.new(cMark, 100), textcolor=cMark, size=size.small)
+                hlLine := line.new(qHiHL.highBar, hi, hlEndBar, hi, xloc=xloc.bar_index,
+                                   color=HL_MARK_COLOR, style=line.style_solid, width=1)
+                // Centered above the line: anchor at the midpoint of the
+                // line span with style_label_down so the box floats above.
+                int hlMidBar = math.round((qHiHL.highBar + hlEndBar) / 2.0)
+                hlLabel := label.new(hlMidBar, hi, hlTag + " High",
+                                     xloc=xloc.bar_index, style=label.style_label_down,
+                                     color=HL_MARK_LABEL_BG, textcolor=HL_MARK_COLOR, size=size.small)
+                hlLevel := hi
+                hlIsHigh := true
             else if not na(qLoHL)
-                line.new(qLoHL.lowBar, lo, hlEndBar, lo, xloc=xloc.bar_index,
-                         color=cMark, style=line.style_solid, width=1)
-                label.new(hlEndBar, lo, hlTag + " Low",
-                          xloc=xloc.bar_index, style=label.style_label_left,
-                          color=color.new(cMark, 100), textcolor=cMark, size=size.small)
+                hlLine := line.new(qLoHL.lowBar, lo, hlEndBar, lo, xloc=xloc.bar_index,
+                                   color=HL_MARK_COLOR, style=line.style_solid, width=1)
+                // Centered above the line.
+                int hlMidBar = math.round((qLoHL.lowBar + hlEndBar) / 2.0)
+                hlLabel := label.new(hlMidBar, lo, hlTag + " Low",
+                                     xloc=xloc.bar_index, style=label.style_label_down,
+                                     color=HL_MARK_LABEL_BG, textcolor=HL_MARK_COLOR, size=size.small)
+                hlLevel := lo
+                hlIsHigh := false
+
+// Sweep + reclose detector. Runs every bar while a live marker exists and
+// hasn't already been flagged. High swept → red; low swept → green.
+if gQStructOn and not hlSwept and not na(hlLine) and not na(hlLevel)
+    bool fired = false
+    color cSwept = na
+    if hlIsHigh and high > hlLevel and close < hlLevel
+        fired := true
+        cSwept := SWEEP_RED_COLOR
+    else if not hlIsHigh and low < hlLevel and close > hlLevel
+        fired := true
+        cSwept := SWEEP_GREEN_COLOR
+    if fired
+        line.set_color(hlLine, cSwept)
+        if not na(hlLabel)
+            label.set_textcolor(hlLabel, cSwept)
+        hlSwept := true
 
 
-// ── Hour close verdicts ───────────────────────────────────────────────────
-// Anchored slightly below the hour-low so it doesn't overlap with the
-// in-stat/out-of-stat low label (also drawn at bar_index, qLo.low_).
-// Doji verdicts use a distinct prefix glyph so they don't read like an extreme.
-if gVerdictsOn and gShowHourVerd and isHourClose() and not na(activeTriad)
-    int hidx_v = hourIndexInTriad()
-    HourAgg justClosedV = hidx_v == 1 ? activeTriad.c1 : hidx_v == 2 ? activeTriad.c2 : activeTriad.c3
+// ── Hour close summary label ──────────────────────────────────────────────
+// One label per closed hour, centered horizontally on top of the hour box.
+// Combines the stat-tagged extremes (Q# in-stat / out-of-stat high/low) and
+// the hour classifier (line-up / line-down / doji).
+//
+// Stat rule: a quarter's extreme is only labelled when a *later* quarter has
+// taken the holder's *opposite* side. If Q1 holds both high+low and nothing
+// breaks Q1's range, no stat tag fires. If Q2 takes Q1's high → Q2 = out-of-
+// stat high, Q1 retains the low → Q1 = in-stat low.
+quartersFor(HourAgg h, int idx) =>
+    QuarterAgg q = idx == 1 ? h.q1 : idx == 2 ? h.q2 : idx == 3 ? h.q3 : h.q4
+    q
+
+// True when some OTHER quarter (any qIdx != holderIdx) has a low strictly
+// below `holderLow`. Confirms the hour's range extended past the holder's
+// own low → the high holder isn't trivial.
+brokeBelow(HourAgg h, int holderIdx, float holderLow) =>
+    bool broke = false
+    for j = 1 to 4
+        if j != holderIdx
+            QuarterAgg qj = quartersFor(h, j)
+            if not na(qj) and qj.low_ < holderLow
+                broke := true
+    broke
+
+brokeAbove(HourAgg h, int holderIdx, float holderHigh) =>
+    bool broke = false
+    for j = 1 to 4
+        if j != holderIdx
+            QuarterAgg qj = quartersFor(h, j)
+            if not na(qj) and qj.high_ > holderHigh
+                broke := true
+    broke
+
+// Track the most recent hour-close pill so we can delete it when the next
+// hour closes — only the current (most recent) hour's pill should be visible.
+var label hourSummaryLabel = na
+
+if gVerdictsOn and gShowHourVerd and isHourClose() and hasLiveHour()
+    HourAgg justClosedV = liveHour()
     if not na(justClosedV)
+        // Drop the prior hour's pill before drawing this one.
+        if not na(hourSummaryLabel)
+            label.delete(hourSummaryLabel)
+            hourSummaryLabel := na
+        float hiV = hourHigh(justClosedV)
+        float loV = hourLow(justClosedV)
+        // Latest quarter that actually prints the hour's extreme. Strict
+        // equality (no eps fuzz) — we don't want an early Q1 that happens
+        // to come within 1 tick of a later real high to steal the high
+        // holder slot, leaving the same quarter holding both extremes
+        // (which would prevent the opposite-side-break confirmation).
+        QuarterAgg qHiV = na
+        QuarterAgg qLoV = na
+        for qi = 4 to 1
+            QuarterAgg qxV = quartersFor(justClosedV, qi)
+            if not na(qxV)
+                if na(qHiV) and not na(hiV) and qxV.high_ == hiV
+                    qHiV := qxV
+                if na(qLoV) and not na(loV) and qxV.low_ == loV
+                    qLoV := qxV
+
+        // Apply stat rule: high holder's tag depends on whether some later
+        // quarter broke the holder's LOW (confirming the hour moved past it).
+        // Symmetrically for low holder.
+        string hiTag = ""
+        bool   hasHiTag = false
+        if not na(qHiV) and brokeBelow(justClosedV, qHiV.qIdx, qHiV.low_)
+            bool hiInStat = qHiV.qIdx == 1 or qHiV.qIdx == 4
+            hiTag := "• Q" + str.tostring(qHiV.qIdx) + (hiInStat ? " In Stat High" : " Out of Stat High")
+            hasHiTag := true
+        string loTag = ""
+        bool   hasLoTag = false
+        if not na(qLoV) and brokeAbove(justClosedV, qLoV.qIdx, qLoV.high_)
+            bool loInStat = qLoV.qIdx == 1 or qLoV.qIdx == 4
+            loTag := "• Q" + str.tostring(qLoV.qIdx) + (loInStat ? " In Stat Low" : " Out of Stat Low")
+            hasLoTag := true
+
         cls = classifyHour(justClosedV)
-        if cls != "pending"
-            color c = cls == "line-up" ? T.line_up : cls == "line-down" ? T.line_dn : T.doji
-            string verdictText = cls == "line-up"   ? "▲ line-up hour"  :
-                                 cls == "line-down" ? "▼ line-down hour" :
-                                                       "◇ doji hour"
-            float verdictY = hourLow(justClosedV) - atrOffset() * 0.5
-            label.new(bar_index, verdictY, verdictText, xloc=xloc.bar_index,
-                      style=label.style_label_up, color=color.new(c, 88),
-                      textcolor=c, size=size.small)
+        string clsTag = cls == "doji" ? "• Doji Hour" : ""
+
+        // Compose multi-line label: low / high / doji, each on its own line.
+        // Apex hour line is appended later only when the apex case fires
+        // (handled in the triad close block below — separate label).
+        //
+        // Left-alignment trick: anchor the label at the hour box's left edge
+        // and use style_label_lower_right so the label box extends RIGHT
+        // from the anchor — text inside is then visually left-flush against
+        // the box's left edge. Internal padding is added via leading spaces
+        // on every line and blank top/bottom lines.
+        bool showStats = gShowInStat or gShowOutStat
+        string parts = ""
+        if hasLoTag and showStats
+            parts := loTag
+        if hasHiTag and showStats
+            parts := parts == "" ? hiTag : parts + "\n" + hiTag
+        if clsTag != ""
+            parts := parts == "" ? clsTag : parts + "\n" + clsTag
+
+        if parts != ""
+            int midBar    = justClosedV.anchorBar + BARS_PER_HOUR / 2
+            float topY    = not na(currentHourBox) ? box.get_top(currentHourBox) : hiV
+            float labelY  = topY + atrOffset() * 0.15
+            hourSummaryLabel := label.new(midBar, labelY, parts, xloc=xloc.bar_index,
+                      style=label.style_label_down, color=PILL_BG,
+                      textcolor=PILL_TEXT, size=size.small)
 
 
 // ── Triad close verdicts + apex-hour highlight ────────────────────────────
@@ -1132,21 +1384,23 @@ if gVerdictsOn and isTriadClose() and not na(activeTriad)
         if gShowApexHr and (cls_t == "apex-up" or cls_t == "apex-down") and not na(activeTriad.c2)
             int c2Q1Bar = na(activeTriad.c2.q1) ? activeTriad.c2.anchorBar : activeTriad.c2.q1.anchorBar
             int c2Q4Bar = na(activeTriad.c2.q4) ? bar_index : activeTriad.c2.q4.anchorBar + 14
-            box.new(c2Q1Bar, hourHigh(activeTriad.c2), c2Q4Bar, hourLow(activeTriad.c2),
-                    xloc=xloc.bar_index, bgcolor=color.new(T.apex_hour, 92),
-                    border_color=color.new(T.apex_hour, 70), border_width=1)
-            label.new(c2Q4Bar, hourLow(activeTriad.c2), "apex hour", xloc=xloc.bar_index,
-                      style=label.style_label_up, color=color.new(T.apex_hour, 80),
+            float c2Hi = hourHigh(activeTriad.c2)
+            float c2Lo = hourLow(activeTriad.c2)
+            box.new(c2Q1Bar, c2Hi, c2Q4Bar, c2Lo,
+                    xloc=xloc.bar_index, bgcolor=APEX_HOUR_BG,
+                    border_color=APEX_HOUR_BORDER, border_width=1)
+            // Centered horizontally on top of the apex hour box.
+            int apexMidBar = activeTriad.c2.anchorBar + BARS_PER_HOUR / 2
+            label.new(apexMidBar, c2Hi, "• Apex Hour", xloc=xloc.bar_index,
+                      style=label.style_label_down, color=APEX_HOUR_LABEL_BG,
                       textcolor=T.apex_hour, size=size.small)
         if gAlertsOn and gAlertApex and (cls_t == "apex-up" or cls_t == "apex-down")
-            alert("Quarter Theory: " + cls_t + " confirmed for triad " + activeTriad.blockId, alert.freq_once_per_bar)
+            alert("Live Price Action: " + cls_t + " confirmed for triad " + activeTriad.blockId, alert.freq_once_per_bar)
 
 
 // ── Save prior hour / prior triad on close ────────────────────────────────
-if isHourClose() and not na(activeTriad)
-    int hidx_pc = hourIndexInTriad()
-    HourAgg justC = hidx_pc == 1 ? activeTriad.c1 : hidx_pc == 2 ? activeTriad.c2 : activeTriad.c3
-    priorHour1h := justC
+if isHourClose() and hasLiveHour()
+    priorHour1h := liveHour()
 if isTriadClose() and not na(activeTriad)
     priorTriadHi := triadHigh(activeTriad)
     priorTriadLo := triadLow(activeTriad)
@@ -1161,7 +1415,7 @@ var box activeTriadTint = na
 
 // At hour/triad open, drop the reference (so existing closed-block boxes
 // freeze in place) and spawn a fresh one in the update block below.
-if isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(blockId())
+if isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
     activeHourTint := na
 if isFirstBarOfQuarter() and quarterOfHour() == 1 and hourIndexInTriad() == 1 and not na(blockId())
     activeTriadTint := na
@@ -1174,10 +1428,9 @@ if not gShow3h and not na(activeTriadTint)
     box.delete(activeTriadTint)
     activeTriadTint := na
 
-// Active hour & triad tints: 1m and 5m only
-if isTfMin1or5() and not na(activeTriad)
-    int hidx_t = hourIndexInTriad()
-    HourAgg curH_t = hidx_t == 1 ? activeTriad.c1 : hidx_t == 2 ? activeTriad.c2 : hidx_t == 3 ? activeTriad.c3 : na
+// Active hour tint: works for triad hours AND the 3pm standalone hour.
+if isTfMin1or5() and hasLiveHour()
+    HourAgg curH_t = liveHour()
 
     // Active hour: bounded to current hour's running high/low
     if gShow1h and not na(curH_t)
@@ -1186,16 +1439,16 @@ if isTfMin1or5() and not na(activeTriad)
         if not na(curHi) and not na(curLo)
             if na(activeHourTint)
                 activeHourTint := box.new(curH_t.anchorBar, curHi, bar_index, curLo,
-                                          xloc=xloc.bar_index, bgcolor=T.active_hr,
-                                          border_color=color.new(T.active_hr, 100), border_width=0)
+                                          xloc=xloc.bar_index, bgcolor=ACTIVE_HR_BG,
+                                          border_color=ACTIVE_HR_BORDER, border_width=0)
             else
                 box.set_left(activeHourTint, curH_t.anchorBar)
                 box.set_right(activeHourTint, bar_index)
                 box.set_top(activeHourTint, curHi)
                 box.set_bottom(activeHourTint, curLo)
-                box.set_bgcolor(activeHourTint, T.active_hr)
 
-    // Active triad: bounded to triad's running high/low
+// Active triad tint: triad-only (no 3pm). Skipped during 3pm hour.
+if isTfMin1or5() and not na(activeTriad)
     if gShow3h
         float trHi = triadHigh(activeTriad)
         float trLo = triadLow(activeTriad)
@@ -1203,15 +1456,13 @@ if isTfMin1or5() and not na(activeTriad)
             if na(activeTriadTint)
                 activeTriadTint := box.new(activeTriad.anchorBar, trHi, bar_index, trLo,
                                            xloc=xloc.bar_index, bgcolor=T.active_triad,
-                                           border_color=color.new(T.active_triad, math.max(0, color.t(T.active_triad) - 40)),
+                                           border_color=ACTIVE_TRIAD_BORDER,
                                            border_width=2)
             else
                 box.set_left(activeTriadTint, activeTriad.anchorBar)
                 box.set_right(activeTriadTint, bar_index)
                 box.set_top(activeTriadTint, trHi)
                 box.set_bottom(activeTriadTint, trLo)
-                box.set_bgcolor(activeTriadTint, T.active_triad)
-                box.set_border_color(activeTriadTint, color.new(T.active_triad, math.max(0, color.t(T.active_triad) - 40)))
 
 
 
