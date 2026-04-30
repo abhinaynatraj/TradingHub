@@ -46,11 +46,11 @@ gShowBiasShift= input.bool(true,  "Show bias-shift markers", group=G_QS)
 gShowDojiConf = input.bool(true,  "Show doji-confirmed marker", group=G_QS)
 gShowQBgs     = input.bool(true,  "Show per-quarter background tints", group=G_QS)
 // Per-quarter background colors. Q1/Q2/Q4 default to fully transparent so the
-// hour shows as clear; Q3 defaults to a faint amber wash so the eye picks it
-// out. All four are user-configurable.
+// hour shows as clear; Q3 defaults to a faint cyan/teal wash so the eye picks
+// it out (cyan kept distinct from the amber 05 box). All user-configurable.
 gColQ1Bg      = input.color(color.new(#000000, 100), "Q1 background", group=G_QS)
 gColQ2Bg      = input.color(color.new(#000000, 100), "Q2 background", group=G_QS)
-gColQ3Bg      = input.color(color.new(#fcd34d, 92),  "Q3 background", group=G_QS)
+gColQ3Bg      = input.color(color.new(#67e8f9, 90),  "Q3 background", group=G_QS)
 gColQ4Bg      = input.color(color.new(#000000, 100), "Q4 background", group=G_QS)
 
 // ── 🕒 Hour & Triad Verdicts ─────────────────────────────────────────────
