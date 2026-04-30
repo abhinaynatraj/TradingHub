@@ -1,4 +1,4 @@
-# Statistic.ally
+# TradingHub
 
 A personal trading research hub for NQ and ES futures. Multiple statistical backtesting models run against 11+ years of 1-minute bar data, each with an interactive dashboard you open in a browser.
 
@@ -55,39 +55,39 @@ Python is a free programming language. These projects use it to process data and
 
 If you have Git installed:
 ```
-git clone https://github.com/abhinaynatraj/Statistic.ally.git
-cd Statistic.ally
+git clone https://github.com/silviyaguzen/TradingHub.git
+cd TradingHub
 ```
 
 ---
 
 ## Step 2 — Install the Required Python Packages
 
-These are free libraries Python needs to process the data.
+These are free libraries Python needs to process the data. All dependencies are listed in `requirements.txt` at the repo root.
 
 ### Mac
 
 Open Terminal, navigate to the folder you downloaded, then run:
 ```
-cd path/to/Statistic.ally
-pip3 install duckdb pandas numpy openpyxl
+cd path/to/TradingHub
+pip3 install -r requirements.txt
 ```
 
-Replace `path/to/Statistic.ally` with the actual location — for example if you put it on your Desktop:
+Replace `path/to/TradingHub` with the actual location — for example if you put it on your Desktop:
 ```
-cd ~/Desktop/Statistic.ally
-pip3 install duckdb pandas numpy openpyxl
+cd ~/Desktop/TradingHub
+pip3 install -r requirements.txt
 ```
 
 ### Windows
 
 Open Command Prompt, then run:
 ```
-cd C:\Users\YourName\Desktop\Statistic.ally
-pip install duckdb pandas numpy openpyxl
+cd C:\Users\YourName\Desktop\TradingHub
+pip install -r requirements.txt
 ```
 
-Replace `C:\Users\YourName\Desktop\Statistic.ally` with wherever you saved the folder.
+Replace `C:\Users\YourName\Desktop\TradingHub` with wherever you saved the folder.
 
 ---
 
@@ -100,14 +100,14 @@ This command starts a tiny built-in web server — it's completely local, nothin
 ### Mac
 
 ```
-cd path/to/Statistic.ally
+cd path/to/TradingHub
 python3 -m http.server 8001
 ```
 
 ### Windows
 
 ```
-cd C:\path\to\Statistic.ally
+cd C:\path\to\TradingHub
 python -m http.server 8001
 ```
 
@@ -123,7 +123,7 @@ Open your web browser (Chrome, Firefox, Safari, Edge — any of them) and go to:
 http://localhost:8001
 ```
 
-You'll see the **Statistic.ally** hub page, which links the Fractal Sweep dashboard. Other dashboards (e.g. TTrades) open from their respective folders via direct URL.
+You'll see the **TradingHub** hub page, which links the Fractal Sweep dashboard. Other dashboards (e.g. TTrades) open from their respective folders via direct URL.
 
 > **Tip:** Bookmark `http://localhost:8001` so you can come back to it easily.
 
@@ -140,7 +140,7 @@ Re-run any backtest with newer data — see the README inside each project folde
 ## Folder Structure
 
 ```
-Statistic.ally/
+TradingHub/
 ├── index.html                                ← Hub page (open this in browser)
 ├── Fractal Sweep/                            [Sweep + CISD]
 │   ├── model_dashboard.html                  ← Dashboard with 3 runtime filter chips (F3, F4, SMT)
@@ -172,7 +172,7 @@ Statistic.ally/
 → Make sure the web server is running (`python3 -m http.server 8001`) and you're going to `http://localhost:8001` (not opening the HTML file directly).
 
 **"pip3 is not recognized"** (Windows)
-→ Use `pip` instead of `pip3`, or try `python -m pip install duckdb pandas numpy openpyxl`.
+→ Use `pip` instead of `pip3`, or try `python -m pip install -r requirements.txt`.
 
 **Port already in use**
 → Change the port number: `python3 -m http.server 8002`, then go to `http://localhost:8002`.

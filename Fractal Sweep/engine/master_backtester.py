@@ -175,8 +175,11 @@ def interactive_setup():
 
     return data_file, template_path, output_file, account_size, risk_per_trade
 
-# Run interactive setup
-DATA_FILE, TEMPLATE_FILE, OUTPUT_FILE, ACCOUNT_SIZE, RISK_PER_TRADE = interactive_setup()
+if __name__ == '__main__':
+    DATA_FILE, TEMPLATE_FILE, OUTPUT_FILE, ACCOUNT_SIZE, RISK_PER_TRADE = interactive_setup()
+else:
+    DATA_FILE = TEMPLATE_FILE = OUTPUT_FILE = None
+    ACCOUNT_SIZE = RISK_PER_TRADE = 0
 
 # ── COLUMN NAME ALIASES — script finds these regardless of order/case ─────────
 COLUMN_ALIASES = {

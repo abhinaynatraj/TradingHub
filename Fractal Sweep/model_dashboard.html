@@ -467,6 +467,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
   </div>
   <div class="hdr-right">
     <div class="demo-badge" id="demo-badge" style="display:none">⚠ Demo Data</div>
+    <div id="data-freshness" style="display:none;font-size:10px;color:var(--text-muted);font-family:var(--font-data);white-space:nowrap"></div>
     <button class="load-btn" onclick="document.getElementById('json-loader').click()">↑ Load model_stats.json</button>
     <div class="theme-picker" role="radiogroup" aria-label="Theme">
       <button class="theme-opt" data-theme="dark"   title="Dark"   aria-label="Dark theme">☀</button>
@@ -503,6 +504,19 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
 
 <!-- Filter bar: runtime-toggleable filters, dedicated row below the dropdowns -->
 <div class="filter-bar">
+  <div class="filter-group">
+    <label class="sel-label">Setup Quality &nbsp;<span class="sel-label-hint">— check to narrow</span></label>
+    <div class="filter-row">
+      <label class="filter-chk" title="Sweep depth ≤ 50% of prior range. Moderate +3-4% WR standalone edge.">
+        <input type="checkbox" id="f3-checkbox" onchange="switchF3(this.checked)">
+        <span>Shallow Sweep</span>
+      </label>
+      <label class="filter-chk" title="Price closed back inside the prior HTF range on the return bar. Useful in combination.">
+        <input type="checkbox" id="f4-checkbox" onchange="switchF4(this.checked)">
+        <span>Closed Back Inside</span>
+      </label>
+    </div>
+  </div>
   <div class="filter-group filter-group-confirm">
     <label class="sel-label">Add Confirmation &nbsp;<span class="sel-label-hint">— check to narrow</span></label>
     <div class="filter-row">
@@ -642,6 +656,14 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
       <div class="pb"><div class="dir-cards" id="dir-cards"></div></div>
     </div>
 
+    <div class="panel" style="margin-top:18px">
+      <div class="ph">
+        <span class="ph-title">Equity Curve · Cumulative P&amp;L</span>
+        <span class="ph-note">$<span id="ov-eq-acct-size">2,000</span> account · $<span id="ov-eq-risk-per-trade">200</span>/trade · yearly resolution · drawdown shaded</span>
+      </div>
+      <div class="pb"><div id="overview-equity-curve-chart"></div></div>
+    </div>
+
     <div class="sec-label">Risk Profile Comparison</div>
     <div id="profile-comparison-panel"></div>
 
@@ -726,7 +748,7 @@ html,body{background:var(--bg);color:var(--text-primary);font-family:var(--font-
     <div class="panel">
       <div class="ph">
         <span class="ph-title">Equity Curve · Cumulative P&amp;L</span>
-        <span class="ph-note">$<span id="eq-acct-size">4,500</span> account · $<span id="eq-risk-per-trade">225</span>/trade · yearly resolution · drawdown shaded</span>
+        <span class="ph-note">$<span id="eq-acct-size">2,000</span> account · $<span id="eq-risk-per-trade">200</span>/trade · yearly resolution · drawdown shaded</span>
       </div>
       <div class="pb"><div id="equity-curve-chart"></div></div>
     </div>
@@ -823,18 +845,35 @@ function getSmtFilteredTrades(trades) {
   if (!trades || !trades.length) return trades;
   let out = trades;
   if (activeSmt) out = out.filter(t => t.smt === true);
+  if (activeF3)  out = out.filter(t => t.passes_f3 === true);
+  if (activeF4)  out = out.filter(t => t.passes_f4 === true);
   return out;
 }
 
 function hasNonBaselineFilters() {
-  return activeSmt;
+  return activeSmt || activeF3 || activeF4;
 }
 
 function switchSMT(checked) {
   activeSmt = !!checked;
+  _saveFilters();
   _tradesPage = 0;
   const D = _getActiveD();
   if (!D) return;
+  renderActive();
+}
+
+function switchF3(checked) {
+  activeF3 = !!checked;
+  _saveFilters();
+  _tradesPage = 0;
+  renderActive();
+}
+
+function switchF4(checked) {
+  activeF4 = !!checked;
+  _saveFilters();
+  _tradesPage = 0;
   renderActive();
 }
 
@@ -869,6 +908,9 @@ function switchPageTab(tab){
   const baseD = getProfileData(fullKey, activeProfile);
   if(!baseD) return;
   const D = getSmtD(getActiveTFData(baseD));
+  if(tab === 'overview'){
+    renderOverviewEquityCurve(D);
+  }
   if(tab === 'edge'){
     renderEdgeStudy(D);
   }
@@ -1024,7 +1066,27 @@ let activeMode    = 'PREV';
 let activeCisd    = 'CISD';
 let activeProfile = 'simple_1r';
 let activeTF      = 'all';  // 'all' | '2y' | '1y' | '6m' | '3m' | '1m'
-let activeSmt               = false;  // filter to smt===true
+let activeSmt = false;  // NQ-ES Divergence filter
+let activeF3  = false;  // Shallow Sweep filter (passes_f3)
+let activeF4  = false;  // Closed Back Inside filter (passes_f4)
+
+const FILTER_STORAGE_KEY = 'fractal-filters-v1';
+function _saveFilters() {
+  localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({smt: activeSmt, f3: activeF3, f4: activeF4}));
+}
+function _restoreFilters() {
+  try {
+    const s = JSON.parse(localStorage.getItem(FILTER_STORAGE_KEY) || '{}');
+    activeSmt = !!s.smt; activeF3 = !!s.f3; activeF4 = !!s.f4;
+  } catch(e) { /* ignore corrupt storage */ }
+  const smtEl = document.getElementById('smt-checkbox');
+  const f3El  = document.getElementById('f3-checkbox');
+  const f4El  = document.getElementById('f4-checkbox');
+  if(smtEl) smtEl.checked = activeSmt;
+  if(f3El)  f3El.checked  = activeF3;
+  if(f4El)  f4El.checked  = activeF4;
+}
+_restoreFilters();
 
 const RR_PROFILES = [
   'simple_1r',
@@ -1832,7 +1894,7 @@ function computeRangeStats(trades){
   const avgLossStreak = lossStreaks.length > 0 ? lossStreaks.reduce((s,v)=>s+v,0)/lossStreaks.length : 0;
 
   // Equity curve
-  const ACCT = 4500, RPT = 225;
+  const ACCT = 2000, RPT = 200;
   let eq = ACCT, peak = ACCT, minEq = ACCT, maxDD = 0;
   const dailyPnl = {};
   const equityCurve = [ACCT];
@@ -2662,7 +2724,7 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
   const cv = document.getElementById('custom-view');
   if(!cv) return;
 
-  const ACCT = 4500, RPT = 225;
+  const ACCT = 2000, RPT = 200;
 
   function statColor(val, threshGood, threshBad, invert){
     if(invert) return val <= threshGood ? 'var(--green)' : val >= threshBad ? 'var(--red)' : 'var(--amber)';
@@ -2730,8 +2792,8 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
     html += `</div>`;
     // Row 2: P&L, Min Equity, Max DD, Sharpe
     html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px">`;
-    html += heroTile('P&L', fmtDol(cs.totalPnl), statColor(cs.totalPnl, 0, -1, false), '$4,500 account');
-    html += heroTile('Min Equity', fmtDol(cs.minEq), statColor(cs.minEq, 3600, 2250, false), cs.blown ? 'ACCOUNT BLOWN' : '');
+    html += heroTile('P&L', fmtDol(cs.totalPnl), statColor(cs.totalPnl, 0, -1, false), '$2,000 account');
+    html += heroTile('Min Equity', fmtDol(cs.minEq), statColor(cs.minEq, 1600, 1000, false), cs.blown ? 'ACCOUNT BLOWN' : '');
     html += heroTile('Max DD', cs.maxDDPct.toFixed(2)+'%', statColor(cs.maxDDPct, 10, 25, true), fmtDol(cs.maxDDPct/100*ACCT)+' drawdown');
     html += heroTile('Sharpe', cs.sharpe != null ? cs.sharpe.toFixed(2) : '\u2014', cs.sharpe != null ? statColor(cs.sharpe, 1.5, 0.5, false) : 'var(--text-muted)', 'annualised');
     html += `</div>`;
@@ -2743,7 +2805,7 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
     const _blownBadge = cs.blown
       ? '<span style="font-family:var(--font-data);font-size:11px;font-weight:700;padding:4px 10px;border-radius:4px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:var(--red)">BLOWN</span>'
       : '<span style="font-family:var(--font-data);font-size:11px;font-weight:700;padding:4px 10px;border-radius:4px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:var(--green)">SAFE</span>';
-    html += heroTile('Account', _blownBadge, 'var(--text-secondary)', '$4,500 @ $225/trade');
+    html += heroTile('Account', _blownBadge, 'var(--text-secondary)', '$2,000 @ $200/trade');
     html += `</div>`;
   }
 
@@ -4243,12 +4305,14 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
 //
 // F3 defaults CHECKED (active) — it's the baseline quality filter.
 function getFilteredD(D) {
-  const anyActive = activeSmt;
+  const anyActive = activeSmt || activeF3 || activeF4;
   if (!anyActive) return D;
   const rawTrades = D?.recent_trades;
   if (!rawTrades || !rawTrades.length) return D;
   let trades = rawTrades;
   if (activeSmt) trades = trades.filter(t => t.smt === true);
+  if (activeF3)  trades = trades.filter(t => t.passes_f3 === true);
+  if (activeF4)  trades = trades.filter(t => t.passes_f4 === true);
   if (!trades.length) return D;
 
   const wins = trades.filter(t => t.outcome === 'WIN');
@@ -4262,7 +4326,7 @@ function getFilteredD(D) {
   const ce = ev * pf;
 
   // Equity / drawdown from filtered trades
-  const ACCT = 4500, RPT = 225;
+  const ACCT = 2000, RPT = 200;
   let eq = ACCT, peak = ACCT, minEq = ACCT, maxDD = 0;
   const dailyPnl = {};
   const sortedT = trades.slice().sort((a,b) => a.date.localeCompare(b.date));
@@ -4427,16 +4491,24 @@ function updateFilterChipDeltas(D){
   const rt = D?.recent_trades || [];
   if (!rt.length){
     _setChipDelta('smt-checkbox', null);
+    _setChipDelta('f3-checkbox', null);
+    _setChipDelta('f4-checkbox', null);
     return;
   }
   function countWith(over){
     let t = rt;
     const sm = over.smt !== undefined ? over.smt : activeSmt;
+    const f3 = over.f3  !== undefined ? over.f3  : activeF3;
+    const f4 = over.f4  !== undefined ? over.f4  : activeF4;
     if (sm) t = t.filter(x => x.smt === true);
+    if (f3) t = t.filter(x => x.passes_f3 === true);
+    if (f4) t = t.filter(x => x.passes_f4 === true);
     return t.length;
   }
   const cur = countWith({});
   _setChipDelta('smt-checkbox', countWith({smt: !activeSmt}) - cur);
+  _setChipDelta('f3-checkbox',  countWith({f3:  !activeF3})  - cur);
+  _setChipDelta('f4-checkbox',  countWith({f4:  !activeF4})  - cur);
 }
 
 function _setChipDelta(checkboxId, delta){
@@ -4471,12 +4543,38 @@ function renderModel(D){
   const beLeg=document.getElementById('be-wr-legend');
   if(beLeg) beLeg.textContent=`Breakeven ${(be*100).toFixed(1)}%`;
   const rs=D.risk_stats||{};
+  const acct=ACCT;  // user-configured account size constant
 
   const fmt$=v=>v!=null?'$'+Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}):'—';
   const fmtPct=v=>v!=null?v.toFixed(2)+'%':'—';
-  const blown=rs.blown;
-  const minEq=rs.min_equity_usd;
-  const acct=rs.account_size||4500;
+
+  // Compute dollar stats from by_year + R averages × account constants
+  // (engine no longer bakes in dollar fields — they depend on user's account size)
+  const avgWinR=rs.avg_win_r, avgLossR=rs.avg_loss_r;
+  const byYearAll=D.by_year||[];
+  let _eq=acct, _peak=acct, _minEq=acct, _maxDdUsd=0, _maxDdPct=0, _dailyPnl={};
+  if(avgWinR!=null&&avgLossR!=null&&byYearAll.length){
+    byYearAll.forEach(yr=>{
+      const pnl=(yr.wins*(avgWinR*RPT))+(( yr.n-yr.wins)*(avgLossR*RPT));
+      _eq+=pnl;
+      if(_eq<_minEq)_minEq=_eq;
+      if(_eq>_peak)_peak=_eq;
+      const ddU=_peak-_eq, ddP=ddU/_peak*100;
+      if(ddU>_maxDdUsd){_maxDdUsd=ddU;_maxDdPct=ddP;}
+    });
+  }
+  const totalPnl = avgWinR!=null ? _eq-acct : null;
+  const totalPnlStr = totalPnl != null ? (totalPnl >= 0 ? '+$' : '-$') + Math.abs(Math.round(totalPnl)).toLocaleString('en-US') : '—';
+  const blown = _minEq<=0;
+  const minEq = avgWinR!=null ? _minEq : null;
+  const maxDdPct = avgWinR!=null ? _maxDdPct : null;
+  const maxDdUsd = avgWinR!=null ? _maxDdUsd : null;
+  const maxDdStr = maxDdPct != null ? maxDdPct.toFixed(1)+'%' : '—';
+  // Sharpe: computed from EV and by_year count distribution (approximation)
+  // Use the R-based EV and PF from meta for CE; no dollar Sharpe here
+  const sharpeVal = null;  // not available without per-trade data in dashboard
+  const sharpeStr = '—';
+  const sharpeCls = 'w';
 
   // Hero tiles — Row 1: performance, Row 2: risk
   const mrEl=document.getElementById('meta-row'); mrEl.innerHTML='';
@@ -4488,14 +4586,6 @@ function renderModel(D){
   }
   const rrTarget = m.rr_target != null ? m.rr_target : (rs.tp_pct != null && rs.sl_pct != null && rs.sl_pct > 0 ? rs.tp_pct / rs.sl_pct : null);
   const rrStr = rrTarget != null ? rrTarget.toFixed(2)+':1' : '—';
-  const totalPnl = rs.total_pnl_usd;
-  const totalPnlStr = totalPnl != null ? (totalPnl >= 0 ? '+$' : '-$') + Math.abs(totalPnl).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}) : '—';
-  const maxDdPct = rs.max_dd_pct;
-  const maxDdStr = maxDdPct != null ? maxDdPct.toFixed(1)+'%' : '—';
-  const maxDdUsd = rs.max_dd_usd != null ? rs.max_dd_usd : (maxDdPct != null ? Math.round(maxDdPct / 100 * acct) : null);
-  const sharpeVal = rs.sharpe;
-  const sharpeStr = sharpeVal != null ? sharpeVal.toFixed(2) : '—';
-  const sharpeCls = sharpeVal == null ? 'w' : sharpeVal >= 2 ? 'g' : sharpeVal >= 1 ? 'a' : 'r';
   const ddCls = maxDdPct == null ? 'w' : maxDdPct <= 15 ? 'g' : maxDdPct <= 30 ? 'a' : 'r';
   const wrVal = m.win_rate;
   const wrCls = wrVal == null ? 'w' : wrVal >= 0.55 ? 'g' : wrVal >= 0.45 ? 'a' : 'r';
@@ -4528,16 +4618,17 @@ function renderModel(D){
     {label:'EV (R)',      val:evVal!=null?(evVal>0?'+':'')+evVal.toFixed(3)+'R':'—', sub:'Expected value per R risked',             cls:evVal==null?'w':evVal>0?'g':'r', vc:evVal==null?'w':evVal>0?'g':'r'},
     {label:'Prof Factor', val:pfVal!=null?pfVal.toFixed(3):'—',               sub:'Gross profit ÷ gross loss',                    cls:pfCls,  vc:pfCls},
     {label:'CE',          val:ceVal!=null?ceVal.toFixed(3):'—',               sub:'Combined Edge · EV/R × PF',                    cls:ceCls,  vc:ceCls},
-    {label:'Total P&L',   val:totalPnlStr,                                    sub:`$${acct.toLocaleString()} account · $${(rs.risk_per_trade??225).toLocaleString()}/trade · ${dr}`, cls:pnlCls, vc:pnlCls},
+    {label:'Total P&L',   val:totalPnlStr,                                    sub:`$${acct.toLocaleString()} account · $${RPT.toLocaleString()}/trade · ${dr}`, cls:pnlCls, vc:pnlCls},
     {label:'Sharpe',      val:sharpeStr,                                      sub:'Annualised Sharpe ratio',                      cls:sharpeCls, vc:sharpeCls},
     {label:'Trades/Day',  val:tpdStr,                                         sub:tpdSub,                                         cls:tpdCls, vc:tpdCls},
     ...(rs.sl_pct!=null?[{label:'SL %',val:rs.sl_pct.toFixed(2)+'%',sub:'Fixed stop-loss % from entry',cls:'a',vc:'a'}]:[]),
     ...(rs.tp_pct!=null?[{label:'TP %',val:rs.tp_pct.toFixed(2)+'%',sub:'Fixed take-profit % from entry',cls:'g',vc:'g'}]:[]),
     {label:'R:R',         val:rrStr,                                          sub:'Reward-to-risk ratio (TP÷SL)',                 cls:'b',    vc:'b'},
-    {label:'Account',     val:blown==null?'—':blown?'<span style="font-family:var(--font-data);font-size:11px;font-weight:700;padding:4px 10px;border-radius:4px;background:var(--red-tint);border:1px solid var(--red-border);color:var(--red)">BLOWN</span>':'<span style="font-family:var(--font-data);font-size:11px;font-weight:700;padding:4px 10px;border-radius:4px;background:var(--green-tint);border:1px solid var(--green-border);color:var(--green)">SAFE</span>', sub:`$${acct.toLocaleString()} @ $${(rs.risk_per_trade??225).toLocaleString()}/trade`, cls:blown?'r':'g', vc:blown?'r':'g'},
+    {label:'Account',     val:blown==null?'—':blown?'<span style="font-family:var(--font-data);font-size:11px;font-weight:700;padding:4px 10px;border-radius:4px;background:var(--red-tint);border:1px solid var(--red-border);color:var(--red)">BLOWN</span>':'<span style="font-family:var(--font-data);font-size:11px;font-weight:700;padding:4px 10px;border-radius:4px;background:var(--green-tint);border:1px solid var(--green-border);color:var(--green)">SAFE</span>', sub:`$${acct.toLocaleString()} @ $${RPT.toLocaleString()}/trade`, cls:blown?'r':'g', vc:blown?'r':'g'},
     {label:'Max DD',      val:maxDdStr,                                       sub:`-$${maxDdUsd!=null?Math.round(maxDdUsd).toLocaleString():'—'} from peak · ${dr}`, cls:ddCls, vc:ddCls},
     {label:'Max W Run',   val:rs.max_consec_wins??'—',                        sub:'Longest winning streak · '+dr,                 cls:'g',    vc:'g'},
     {label:'Max L Run',   val:rs.max_consec_losses??'—',                      sub:'Longest losing streak · '+dr,                  cls:'r',    vc:'r'},
+    {label:'Avg L Run',   val:rs.avg_consec_losses!=null?rs.avg_consec_losses.toFixed(1):'—', sub:'Average losing streak length · '+dr, cls:'r', vc:'r'},
   ].forEach(card=>{
     const el=document.createElement('div'); el.className=`mc ${card.cls}`;
     el.innerHTML=`<div class="mc-accent"></div><div class="mc-lbl">${card.label}</div><div class="mc-val ${card.vc}">${card.val}</div><div class="mc-sub">${card.sub}</div>`;
@@ -4571,6 +4662,7 @@ function renderModel(D){
   // Risk tab
   if(activePageTab === 'risk') renderEquityCurveFS(D);
 
+  renderOverviewEquityCurve(D);
   renderClassificationBreakdown();
   renderProfileComparison();
   renderVerdict(document.getElementById('overview-verdict-panel'));
@@ -4578,38 +4670,50 @@ function renderModel(D){
 }
 
 // ── EQUITY CURVE ─────────────────────────────────────────────────────────────
+function _buildEquityPts(D){
+  const rs=D?.risk_stats||{};
+  const byYear=D?.by_year||[];
+  const avgWinR=rs.avg_win_r, avgLossR=rs.avg_loss_r;
+  if(!byYear.length||avgWinR==null||avgLossR==null) return null;
+  let eq=ACCT, peak=eq;
+  const pts=[{yr:'Start',eq,dd:0,pnl:null}];
+  byYear.forEach(d=>{
+    const pnl=d.wins*(avgWinR*RPT)+(d.n-d.wins)*(avgLossR*RPT);
+    eq+=pnl;
+    if(eq>peak) peak=eq;
+    pts.push({yr:d.yr,eq,dd:(peak-eq)/peak*100,pnl});
+  });
+  return pts;
+}
+
 function renderEquityCurveFS(D){
   const container=document.getElementById('equity-curve-chart');
   if(!container) return;
-  const rs=D?.risk_stats||{}, m=D?.meta||{};
-  const byYear=D?.by_year||[];
-  const avgWin=rs.avg_win_usd, avgLoss=rs.avg_loss_usd;
-  const acctSize=rs.account_size||4500, rpt=rs.risk_per_trade||225;
-
-  // Update header note
   const an=document.getElementById('eq-acct-size');
   const rn2=document.getElementById('eq-risk-per-trade');
-  if(an) an.textContent=acctSize.toLocaleString();
-  if(rn2) rn2.textContent=rpt.toLocaleString();
-
-  if(!byYear.length||avgWin==null||avgLoss==null){
+  if(an) an.textContent=ACCT.toLocaleString();
+  if(rn2) rn2.textContent=RPT.toLocaleString();
+  const pts=_buildEquityPts(D);
+  if(!pts){
     container.innerHTML=`<div style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);padding:8px">Load real model_stats.json to see the equity curve.</div>`;
     return;
   }
+  _drawEquityCurveSVG(container,pts,ACCT);
+}
 
-  // Build yearly equity points
-  let eq=acctSize, peak=eq;
-  const pts=[{yr:'Start',eq,dd:0,pnl:null,label:'Start'}];
-  byYear.forEach(d=>{
-    const losses=d.n-d.wins;
-    const pnl=d.wins*avgWin+losses*avgLoss;
-    eq+=pnl;
-    if(eq>peak) peak=eq;
-    const dd=(peak-eq)/peak*100;
-    pts.push({yr:d.yr,eq,dd,pnl});
-  });
-
-  _drawEquityCurveSVG(container,pts,acctSize);
+function renderOverviewEquityCurve(D){
+  const container=document.getElementById('overview-equity-curve-chart');
+  if(!container) return;
+  const an=document.getElementById('ov-eq-acct-size');
+  const rn2=document.getElementById('ov-eq-risk-per-trade');
+  if(an) an.textContent=ACCT.toLocaleString();
+  if(rn2) rn2.textContent=RPT.toLocaleString();
+  const pts=_buildEquityPts(D);
+  if(!pts){
+    container.innerHTML=`<div style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);padding:8px">Load real model_stats.json to see the equity curve.</div>`;
+    return;
+  }
+  _drawEquityCurveSVG(container,pts,ACCT);
 }
 
 function _drawEquityCurveSVG(container,pts,acctSize){
@@ -4748,11 +4852,11 @@ function renderSweepMAEAnalysis(D) {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
           <div style="background:var(--bg-alt,#0d1420);border:1px solid var(--border);border-radius:8px;padding:12px">
             <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Avg Win R</div>
-            <div style="font-size:20px;font-weight:700;color:var(--green)">${rs.avg_win_usd != null ? '+' + (rs.avg_win_usd/225).toFixed(2) + 'R' : '—'}</div>
+            <div style="font-size:20px;font-weight:700;color:var(--green)">${rs.avg_win_r != null ? '+' + rs.avg_win_r.toFixed(2) + 'R' : '—'}</div>
           </div>
           <div style="background:var(--bg-alt,#0d1420);border:1px solid var(--border);border-radius:8px;padding:12px">
             <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Avg Loss R</div>
-            <div style="font-size:20px;font-weight:700;color:var(--red)">${rs.avg_loss_usd != null ? (rs.avg_loss_usd/225).toFixed(2) + 'R' : '—'}</div>
+            <div style="font-size:20px;font-weight:700;color:var(--red)">${rs.avg_loss_r != null ? rs.avg_loss_r.toFixed(2) + 'R' : '—'}</div>
           </div>
         </div>
         <div style="font-size:11px;color:var(--text-muted);line-height:1.6">
@@ -5743,7 +5847,7 @@ function renderProfileComparison(targetEl, dateRanges, tradeDateSet) {
     return;
   }
 
-  const ACCT = 4500, RPT = 225;
+  const ACCT = 2000, RPT = 200;
   const profileKeys = Object.keys(base.profiles);
   if (profileKeys.length < 2) {
     el.innerHTML = '';
@@ -5827,13 +5931,28 @@ function renderProfileComparison(targetEl, dateRanges, tradeDateSet) {
       ev = m.ev_per_trade || 0;
       pf = m.profit_factor || 0;
       n = m.total_wl || 0;
-      sharpe = rs.sharpe;
-      maxDD = rs.max_dd_pct || 0;
-      totalPnl = rs.total_pnl_usd || 0;
-      minEq = rs.min_equity_usd || ACCT;
-      blown = rs.blown || false;
       mcw = rs.max_consec_wins || 0;
       mcl = rs.max_consec_losses || 0;
+      // Derive dollar stats from by_year + avg R values × account constants
+      const byYr = d.by_year || [];
+      const awR = rs.avg_win_r, alR = rs.avg_loss_r;
+      if (awR != null && alR != null && byYr.length) {
+        let eq = ACCT, peak = ACCT, mEq = ACCT, mDDu = 0, mDDp = 0;
+        byYr.forEach(yr => {
+          eq += yr.wins*(awR*RPT) + (yr.n-yr.wins)*(alR*RPT);
+          if (eq < mEq) mEq = eq;
+          if (eq > peak) peak = eq;
+          const ddu = peak-eq, ddp = peak > 0 ? ddu/peak*100 : 0;
+          if (ddu > mDDu) { mDDu = ddu; mDDp = ddp; }
+        });
+        totalPnl = eq - ACCT;
+        minEq = mEq;
+        maxDD = mDDp;
+        blown = mEq <= 0;
+      } else {
+        totalPnl = 0; minEq = ACCT; maxDD = 0; blown = false;
+      }
+      sharpe = null;
     }
 
     return {
@@ -6065,7 +6184,7 @@ function renderFilterVariants(D, targetEl) {
     return;
   }
 
-  const ACCT = 4500, RPT = 225;
+  const ACCT = 2000, RPT = 200;
   const combos = fv.all_combinations;
   const best = fv.best_combination;
   const baseline = fv.baseline;
@@ -6173,10 +6292,11 @@ function renderFilterVariants(D, targetEl) {
 
   // Determine currently active filter set based on all header toggles
   const activeFilters = [];
+  if (activeF3)  activeFilters.push('F3');
+  if (activeF4)  activeFilters.push('F4');
   if (activeSmt) activeFilters.push('SMT');
-  const activeLabel = activeFilters.map(f => ({
-    'SMT': 'NQ-ES Divergence',
-  }[f])).join(' + ');
+  const _filterLabelMap = {'F3':'Shallow Sweep','F4':'Closed Back Inside','SMT':'NQ-ES Divergence'};
+  const activeLabel = activeFilters.map(f => _filterLabelMap[f]).join(' + ');
 
   const maxEV = Math.max(...combos.map(c => Math.abs(c.ev)));
   combos.forEach((c, i) => {
@@ -6911,11 +7031,31 @@ updateTabVisibility();
 drawSetupViz();
 let rt; window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{renderActive();drawSetupViz();},150);});
 
+const DASHBOARD_SCHEMA_VERSION = 1;
+
 function applyLoadedData(j){
   DATA=j; isDemo=false;
+
+  // Schema version check + freshness display
+  const meta = j['_meta'];
+  if(meta){
+    const freshEl = document.getElementById('data-freshness');
+    if(freshEl && meta.generated_at){
+      const d = new Date(meta.generated_at);
+      const fmt = new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',timeZoneName:'short'});
+      freshEl.textContent = 'Data: ' + fmt.format(d);
+      freshEl.style.display = '';
+    }
+    if(meta.schema_version !== undefined && meta.schema_version !== DASHBOARD_SCHEMA_VERSION){
+      console.warn(`[sweep] schema version mismatch: file=${meta.schema_version} dashboard=${DASHBOARD_SCHEMA_VERSION}`);
+      const badge = document.getElementById('demo-badge');
+      if(badge){ badge.textContent = `⚠ Schema v${meta.schema_version} (dashboard expects v${DASHBOARD_SCHEMA_VERSION}) — regenerate`; badge.style.display=''; }
+    }
+  }
+
   // Prefer 1H_5M_PREV_CISD as default; fall back to first key in the JSON
   const preferredKey = '1H_5M_PREV_CISD';
-  const resolvedKey  = j[preferredKey] ? preferredKey : (Object.keys(j)[0] || '');
+  const resolvedKey  = j[preferredKey] ? preferredKey : (Object.keys(j).filter(k=>k!=='_meta')[0] || '');
   if(resolvedKey){
     const {model,sweep,cisd}=parseKey(resolvedKey);
     activeModel=model; activeMode=sweep; activeCisd=cisd;
