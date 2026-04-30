@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hourly Analysis · Statistic.ally</title>
+  <link rel="stylesheet" href="shared.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <button class="theme-toggle" onclick="toggleTheme()">theme</button>
+  <div class="container">
+    <nav>
+      <a href="../../index.html">← Statistic.ally hub</a>
+    </nav>
+    <h1>NQ Hourly Analysis</h1>
+
+    <div id="manifest-card" class="card">
+      <div class="metric-label">Loading manifest...</div>
+    </div>
+
+    <div class="card-grid">
+      <a href="breakout.html" class="card" style="text-decoration:none;color:inherit;">
+        <h2>Breakout Follow-Through</h2>
+        <p style="color:var(--text-secondary);margin-top:8px;">When an hourly candle closes above the prior hour's high (or below the prior low), how often does the next hour take out the newly-formed extreme — and in which quarter?</p>
+      </a>
+      <a href="quarters.html" class="card" style="text-decoration:none;color:inherit;">
+        <h2>Quarter-of-the-Hour Study</h2>
+        <p style="color:var(--text-secondary);margin-top:8px;">In-depth analysis of intra-hour price action: where highs/lows form, sequencing, conditional shifts (Q1 → Q4), early-extreme persistence, and Q1-range expansion.</p>
+      </a>
+    </div>
+  </div>
+
+  <script src="shared.js"></script>
+  <script>
+    (async () => {
+      try {
+        const resp = await fetch('../data/manifest.json');
+        const m = await resp.json();
+        const card = document.getElementById('manifest-card');
+        card.innerHTML = `
+          <div class="card-grid">
+            <div><div class="metric-label">Date range</div><div class="metric-value" style="font-size:18px;">${m.date_range_start.slice(0,10)} → ${m.date_range_end.slice(0,10)}</div></div>
+            <div><div class="metric-label">Total hours</div><div class="metric-value">${fmtNum(m.total_hours)}</div></div>
+            <div><div class="metric-label">Bullish breakouts</div><div class="metric-value">${fmtNum(m.n_bullish_breakouts)}</div></div>
+            <div><div class="metric-label">Bearish breakouts</div><div class="metric-value">${fmtNum(m.n_bearish_breakouts)}</div></div>
+            <div><div class="metric-label">Last run</div><div class="metric-value" style="font-size:14px;">${m.run_timestamp_utc.slice(0,16)}Z</div></div>
+          </div>
+        `;
+      } catch (e) {
+        document.getElementById('manifest-card').innerHTML =
+          `<div class="metric-label">Could not load manifest: ${e.message}. Run <code>python Analysis/engine/run_all.py</code> first.</div>`;
+      }
+    })();
+  </script>
+</body>
+</html>

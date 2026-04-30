@@ -133,3 +133,6 @@ Custom date ranges view pairs consecutive ranges into train→test walk-forward 
 ## Date Classification
 - `DATE_CLASSIFICATION` is an empty dict — the classifier source (`daily_classifier.py`) was in the deleted NY1 FPFVG folder
 - Downstream aggregations read it defensively; absence is fine
+
+## Diagnostic-only fields (not promoted to filters)
+- `passes_fvg_cisd_strict`, `passes_fvg_cisd_loose`, `passes_fvg_1m_strict`, `passes_fvg_1m_loose` — supporting FVG flags. Tested 2026-04-26, did not clear the +3% standalone / +1% vs-SMT decision criterion (no marginal edge over SMT alone). Kept on rows + in `fvg_summary` for future reference. See `docs/superpowers/specs/2026-04-26-supporting-fvg-confluence-design.md`.

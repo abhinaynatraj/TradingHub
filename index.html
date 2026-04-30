@@ -768,6 +768,30 @@ const PROJECTS = [
     type:     'sweep',
     stats:    null,
   },
+  {
+    id:       'amas',
+    title:    'Amas Models',
+    subtitle: 'Mentorship-derived models · WIP',
+    desc:     'Backtest engine + dashboard for trading models extracted from the Amas mentorship materials. Mirrors the Fractal Sweep pattern: Python engine writes model_stats.json, single-file dashboard reads it.',
+    json:     'Amas Models/model_stats.json',
+    link:     'Amas Models/model_dashboard.html',
+    color:    '#06b6d4',
+    icon:     '📐',
+    type:     'sweep',
+    stats:    null,
+  },
+  {
+    id:       'hourly',
+    title:    'NQ Hourly Analysis',
+    subtitle: 'Breakout follow-through · Quarter-of-the-hour study',
+    desc:     'When an hourly candle closes above the prior hour\'s high (or below the prior low), how often does the next hour take out the newly-formed extreme — and in which quarter? Plus an in-depth standalone study of intra-hour quarter price action.',
+    json:     'Analysis/data/manifest.json',
+    link:     'Analysis/dashboard/index.html',
+    color:    '#10b981',
+    icon:     '⏱️',
+    type:     'hourly',
+    stats:    null,
+  },
 ];
 
 // ── Load JSON and extract key stats ──────────────────────────────────────────
@@ -809,6 +833,20 @@ async function loadStats(project) {
         label3: 'Trades',  val3: num(totalN), cls3: 'neutral',
         dateRange: latestDate || '—',
         subtitle2: `Best: ${best.modelKey.replace(/_/g,' · ')} · PF ${best.pf?.toFixed(2) || '—'} · ${best.n.toLocaleString()} trades`,
+      };
+    }
+
+    if (project.type === 'hourly') {
+      // manifest.json shape: { total_hours, n_bullish_breakouts, n_bearish_breakouts,
+      //                        date_range_start, date_range_end, years_covered, ... }
+      const dr = (d.date_range_start && d.date_range_end)
+        ? `${d.date_range_start.slice(0,10)} → ${d.date_range_end.slice(0,10)}`
+        : '—';
+      return {
+        label1: 'Hours',          val1: num(d.total_hours),           cls1: 'neutral',
+        label2: 'Bull breakouts', val2: num(d.n_bullish_breakouts),   cls2: 'pos',
+        label3: 'Bear breakouts', val3: num(d.n_bearish_breakouts),   cls3: 'neg',
+        dateRange: dr,
       };
     }
 

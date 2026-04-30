@@ -326,6 +326,77 @@ def find_cisd(c_arrs, return_ts_ns, direction, max_bars, cisd_mode):
     )
 
 
+# ── SUPPORTING FVG DETECTION ──────────────────────────────────────────────────
+def find_supporting_fvg(arrs, window_start_idx, entry_idx,
+                        sweep_extreme, entry_price, direction):
+    """
+    Scan a single OHLC array for an unfilled same-side 3-bar FVG that supports
+    the trade. Returns (strict, loose) booleans.
+
+    Bullish FVG at index i: low[i] > high[i-2]. Gap band (high[i-2], low[i]).
+    Bearish FVG at index i: high[i] < low[i-2]. Gap band (high[i], low[i-2]).
+
+    Strict: gap body fully between sweep_extreme and entry_price (inclusive).
+    Loose:  top-of-gap at or below entry_price for LONG; bottom-of-gap at or
+            above entry_price for SHORT.
+    Unfilled at entry: no bar in the half-open interval (i, entry_idx) wicks
+    into the gap. The entry bar itself is excluded from the fill check.
+
+    Window: scans formation indices i in [window_start_idx + 2, entry_idx).
+    Returns early as soon as a strict FVG is found (strict ⇒ loose).
+    """
+    highs = arrs['high']
+    lows  = arrs['low']
+    n     = len(highs)
+
+    first_i = max(window_start_idx + 2, 2)
+    last_i  = min(entry_idx, n)
+
+    found_loose = False
+
+    if direction == 'LONG':
+        for i in range(first_i, last_i):
+            top    = float(lows[i])
+            bottom = float(highs[i - 2])
+            if top <= bottom:
+                continue  # no bullish gap
+            # Unfilled at entry: no bar in (i, entry_idx) has low <= bottom
+            unfilled = True
+            for j in range(i + 1, last_i):
+                if float(lows[j]) <= bottom:
+                    unfilled = False
+                    break
+            if not unfilled:
+                continue
+            # Loose: top of gap at or below entry_price
+            if top <= entry_price:
+                found_loose = True
+                # Strict: bottom at or above sweep_extreme AND top at or below entry
+                if bottom >= sweep_extreme:
+                    return True, True
+        return False, found_loose
+    else:  # SHORT
+        for i in range(first_i, last_i):
+            top    = float(lows[i - 2])  # upper edge of bearish gap
+            bottom = float(highs[i])     # lower edge of bearish gap
+            if top <= bottom:
+                continue  # no bearish gap
+            unfilled = True
+            for j in range(i + 1, last_i):
+                if float(highs[j]) >= top:
+                    unfilled = False
+                    break
+            if not unfilled:
+                continue
+            # Loose (short): bottom of gap at or above entry
+            if bottom >= entry_price:
+                found_loose = True
+                # Strict (short): top at or below sweep_extreme
+                if top <= sweep_extreme:
+                    return True, True
+        return False, found_loose
+
+
 # ── VECTORISED OUTCOME RESOLUTION ────────────────────────────────────────────
 def resolve_outcomes_vectorised(m1_arrs, pending):
     """
@@ -1223,6 +1294,14 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
             else:
                 passes_f4 = bool(ret_close <= float(s_high[i - 1]))
 
+            # Default supporting-FVG flags. Real values are computed once we
+            # know entry_price and entry_idx (after CISD fires + entry bar
+            # resolved). The no-CISD / pre-entry path keeps these defaults.
+            passes_fvg_cisd_strict = False
+            passes_fvg_cisd_loose  = False
+            passes_fvg_1m_strict   = False
+            passes_fvg_1m_loose    = False
+
             base_row = dict(
                 date          = str(s_arrs['trade_date'][i]),
                 yr            = int(s_arrs['yr'][i]),
@@ -1238,6 +1317,10 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                 cisd_mode     = 'CISD',
                 ref_lookback  = ref_lookback,
                 smt           = smt_divergence,
+                passes_fvg_cisd_strict = passes_fvg_cisd_strict,
+                passes_fvg_cisd_loose  = passes_fvg_cisd_loose,
+                passes_fvg_1m_strict   = passes_fvg_1m_strict,
+                passes_fvg_1m_loose    = passes_fvg_1m_loose,
             )
 
             if cisd_ts_ns is None:
@@ -1274,6 +1357,26 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
             if direction == 'SHORT' and entry_price >= sweep_extreme:
                 continue
 
+            # ── Supporting FVG flags (computed at entry, scoped to anchor window) ──
+            # Scan CISD-TF candles for an unfilled same-side FVG between
+            # window start and entry. Then scan 1M bars over the same window.
+            # entry_ts_ns is exactly c_arrs['ts_ns'][next_c_idx], so the entry
+            # index on the CISD-TF axis IS next_c_idx — skip the redundant
+            # searchsorted.
+            cisd_window_start = int(np.searchsorted(c_arrs['ts_ns'], q1_start_ns, side='left'))
+            passes_fvg_cisd_strict, passes_fvg_cisd_loose = find_supporting_fvg(
+                c_arrs, cisd_window_start, next_c_idx,
+                sweep_extreme=float(sweep_extreme),
+                entry_price=entry_price,
+                direction=direction,
+            )
+            passes_fvg_1m_strict, passes_fvg_1m_loose = find_supporting_fvg(
+                m1_arrs, q1_s, entry_start,
+                sweep_extreme=float(sweep_extreme),
+                entry_price=entry_price,
+                direction=direction,
+            )
+
             hr_val = int(m1_hr[entry_start])
             mn_val = int(m1_mn[entry_start])
             _entry_date = m1_date[entry_start]
@@ -1303,6 +1406,10 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                 mfe_pct      = None,
                 mae_pct_hr   = None,
                 mfe_pct_hr   = None,
+                passes_fvg_cisd_strict = passes_fvg_cisd_strict,
+                passes_fvg_cisd_loose  = passes_fvg_cisd_loose,
+                passes_fvg_1m_strict   = passes_fvg_1m_strict,
+                passes_fvg_1m_loose    = passes_fvg_1m_loose,
             )
             base_rows.append(base_row)
             base_pending.append(dict(
@@ -1600,6 +1707,39 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         for smt_val, g in wl.groupby('smt'):
             s = agg(g); s.update(smt=bool(smt_val))
             smt_summary.append(s)
+
+    # ── Supporting FVG breakdown ─────────────────────────────────────────────
+    # Each leaf is the result of agg() on a boolean-mask slice of wl.
+    # Cells: per-TF (cisd / m1 / any) × geometry (strict / loose / none) +
+    # confluence with SMT for the strict cells (since SMT is the strongest
+    # known filter).
+    fvg_summary = {}
+    if {'passes_fvg_cisd_strict', 'passes_fvg_cisd_loose',
+        'passes_fvg_1m_strict',   'passes_fvg_1m_loose'} <= set(wl.columns):
+        cs = wl['passes_fvg_cisd_strict'].astype(bool)
+        cl = wl['passes_fvg_cisd_loose'].astype(bool)
+        m1s = wl['passes_fvg_1m_strict'].astype(bool)
+        m1l = wl['passes_fvg_1m_loose'].astype(bool)
+        smt_mask = wl['smt'].astype(bool) if 'smt' in wl.columns else pd.Series(False, index=wl.index)
+
+        any_strict = cs | m1s
+        any_loose  = cl | m1l
+
+        cells = {
+            'cisd_strict':     cs,
+            'cisd_loose':      cl,
+            'no_cisd_fvg':     ~cl,
+            'm1_strict':       m1s,
+            'm1_loose':        m1l,
+            'no_m1_fvg':       ~m1l,
+            'any_strict':      any_strict,
+            'any_loose':       any_loose,
+            'cisd_strict_smt': cs & smt_mask,
+            'm1_strict_smt':   m1s & smt_mask,
+            'any_strict_smt':  any_strict & smt_mask,
+        }
+        for key, mask in cells.items():
+            fvg_summary[key] = agg(wl[mask])
 
     mae = wl['mae_pct'].dropna()
     mfe = wl['mfe_pct'].dropna()
@@ -1899,6 +2039,7 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         'r_hist':        r_hist,
         'dir_summary':   dir_summary,
         'smt_summary':   smt_summary,
+        'fvg_summary':   fvg_summary,
         'risk_dist':     risk_dist,
         'filter_impact': filter_impact,
         'filter_variants': filter_variants,
