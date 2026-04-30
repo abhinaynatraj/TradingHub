@@ -89,6 +89,62 @@
     async function render() {
       await renderHero();
       await renderTakeout();
+      await renderPrevMid();
+    }
+
+    async function renderPrevMid() {
+      const where = FilterBar.whereClause();
+      const minCount = FilterBar.minCount();
+
+      const sql = `
+        SELECT breakout, h1_open_vs_prev_mid AS side,
+               COUNT(*) AS n,
+               AVG(CASE WHEN followthrough THEN 1.0 ELSE 0.0 END) AS ft_rate
+        FROM events
+        WHERE ${where}
+          AND breakout IN ('bullish','bearish')
+          AND h1_open_vs_prev_mid IN ('above', 'below')
+        GROUP BY breakout, side
+      `;
+      const rows = await query(sql);
+      const lookup = {};
+      for (const r of rows) lookup[`${r.breakout}-${r.side}`] = r;
+
+      function card(direction, side) {
+        const key = `${direction}-${side}`;
+        const r = lookup[key] || { n: 0, ft_rate: null };
+        const lowCount = Number(r.n) < minCount;
+        const cls = direction === 'bullish' ? 'bull' : 'bear';
+        const sideLabel = side === 'above' ? 'opened above prev-mid' : 'opened below prev-mid';
+        return `
+          <div class="stat-card ${cls}${lowCount ? ' dim' : ''}">
+            <div class="stat-card-label">${direction === 'bullish' ? '▲ Bull' : '▼ Bear'} — ${sideLabel}</div>
+            <div class="stat-card-value">${fmtPct(r.ft_rate)}</div>
+            <div class="stat-card-sub">follow-through · n=${fmtNum(r.n)}</div>
+          </div>
+        `;
+      }
+
+      // Headline insight: pick bullish row that has data
+      const bullAbove = lookup['bullish-above'];
+      const bullBelow = lookup['bullish-below'];
+      if (bullAbove && bullBelow && Number(bullAbove.n) >= minCount && Number(bullBelow.n) >= minCount) {
+        renderHeadline(document.getElementById('hl-prevmid'),
+          'Bull breakouts that opened ${aboveOrBelow} prev-mid follow through ${aboveBelowRate}, vs ${otherRate} when they opened the other way.',
+          {
+            aboveOrBelow: bullAbove.ft_rate >= bullBelow.ft_rate ? 'above' : 'below',
+            aboveBelowRate: fmtPct(Math.max(bullAbove.ft_rate, bullBelow.ft_rate)),
+            otherRate: fmtPct(Math.min(bullAbove.ft_rate, bullBelow.ft_rate)),
+          });
+      } else {
+        renderHeadline(document.getElementById('hl-prevmid'), null);
+      }
+
+      document.getElementById('t-prevmid').innerHTML =
+        card('bullish', 'above') +
+        card('bullish', 'below') +
+        card('bearish', 'above') +
+        card('bearish', 'below');
     }
 
     async function renderTakeout() {
