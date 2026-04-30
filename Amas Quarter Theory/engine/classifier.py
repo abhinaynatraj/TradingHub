@@ -59,3 +59,38 @@ def classify_triad(triad: TriadAgg) -> TriadClass:
     if h_low[0] > h_low[1] < h_low[2]:
         return "apex-down"
     return "doji"
+
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, order=True)
+class SweepEvent:
+    """A strict break of a prior quarter's extreme by a later quarter, within an hour."""
+    by_q: int           # 2..4
+    target_q: int       # 1..(by_q-1)
+    side: str           # "high" or "low"
+
+
+def detect_sweeps_in_hour(hour: HourAgg) -> list[SweepEvent]:
+    """Return all sweep events in the hour, sorted by (by_q, target_q, side).
+
+    Sweep = later quarter's high strictly > earlier quarter's high (or low <).
+    Equality does NOT trigger a sweep.
+    """
+    qs = [hour.q1, hour.q2, hour.q3, hour.q4]
+    sweeps: list[SweepEvent] = []
+    for by_idx in range(1, 4):       # Q2, Q3, Q4 → indices 1, 2, 3 in zero-based
+        by_q = qs[by_idx]
+        if by_q is None:
+            continue
+        for target_idx in range(0, by_idx):
+            target_q = qs[target_idx]
+            if target_q is None:
+                continue
+            if by_q.high > target_q.high:
+                sweeps.append(SweepEvent(by_q=by_q.quarter_idx, target_q=target_q.quarter_idx, side="high"))
+            if by_q.low < target_q.low:
+                sweeps.append(SweepEvent(by_q=by_q.quarter_idx, target_q=target_q.quarter_idx, side="low"))
+    sweeps.sort()
+    return sweeps
