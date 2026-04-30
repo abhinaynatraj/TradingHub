@@ -156,9 +156,12 @@
       const activeHours = new Set(FilterBar.hours());
       const activeDows = new Set(FilterBar.dows());
 
-      // Common SQL pattern: aggregate over events at the slice-key level,
-      // computing classifiable count, bull rate, bear rate, bull FT, bear FT.
-      function sliceSql(keyExpr) {
+      // Common SQL pattern: aggregate over events at the slice-key level.
+      // The breakdown tables show ALL cells in the dimension (e.g. all years), so
+      // they apply the filter ONLY for the OTHER dimensions. The slice's own
+      // dimension is left unfiltered so cells outside the active filter are
+      // visible-but-dimmed (via dimRowFn) rather than absent.
+      function sliceSql(keyExpr, partialWhere) {
         return `
           SELECT ${keyExpr} AS k,
                  COUNT(*) AS n,
@@ -170,8 +173,29 @@
                  AVG(CASE WHEN breakout = 'bearish' AND followthrough THEN 1.0
                           WHEN breakout = 'bearish' THEN 0.0 END) AS bear_ft
           FROM events
+          WHERE ${partialWhere}
           GROUP BY k ORDER BY k
         `;
+      }
+
+      // Build per-dimension partial WHERE clauses (exclude the dimension being grouped)
+      function buildPartialWhere(excludeDim) {
+        const ALL_HOURS_LEN = 24;
+        const parts = [];
+        const years = FilterBar.years();
+        const hours = FilterBar.hours();
+        const dows = FilterBar.dows();
+        const availableYears = FilterBar.availableYears();
+        if (excludeDim !== 'year' && years.length < availableYears.length) {
+          parts.push(`year IN (${years.join(',')})`);
+        }
+        if (excludeDim !== 'hour' && hours.length < ALL_HOURS_LEN) {
+          parts.push(`hour_of_day_et IN (${hours.join(',')})`);
+        }
+        if (excludeDim !== 'dow' && dows.length < 7) {
+          parts.push(`dow IN (${dows.join(',')})`);
+        }
+        return parts.length ? parts.join(' AND ') : '1=1';
       }
 
       function transform(rows) {
@@ -204,22 +228,22 @@
         return cols;
       };
 
-      // By year
-      const yearRows = transform(await query(sliceSql('year')));
+      // By year — apply hour + dow filters, but show all years
+      const yearRows = transform(await query(sliceSql('year', buildPartialWhere('year'))));
       renderInlineBarTable(document.getElementById('t-by-year'),
         yearRows.map(r => ({ ...r, k: r.k })),
         baseCols('Year'),
         { minCount, dimRowFn: (r) => !activeYears.has(Number(r.k)) });
 
-      // By hour-of-day
-      const hourRows = transform(await query(sliceSql('hour_of_day_et')));
+      // By hour-of-day — apply year + dow filters, but show all hours
+      const hourRows = transform(await query(sliceSql('hour_of_day_et', buildPartialWhere('hour'))));
       renderInlineBarTable(document.getElementById('t-by-hour'),
         hourRows.map(r => ({ ...r, k: String(r.k).padStart(2, '0') + ' ET' })),
         baseCols('Hour'),
         { minCount, dimRowFn: (r) => !activeHours.has(Number(String(r.k).slice(0,2))) });
 
-      // By DOW
-      const dowRows = transform(await query(sliceSql('dow')));
+      // By DOW — apply year + hour filters, but show all DOWs
+      const dowRows = transform(await query(sliceSql('dow', buildPartialWhere('dow'))));
       renderInlineBarTable(document.getElementById('t-by-dow'),
         dowRows.map(r => ({ ...r, k: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][Number(r.k)] })),
         baseCols('DOW'),
@@ -254,13 +278,17 @@
       const bull = await getRows('bullish');
       const bear = await getRows('bearish');
 
-      // Headline insight: which quarter dominates for bull (since direction-symmetric)
-      const dominantBull = Object.entries(bull.byQ).sort((a, b) => b[1] - a[1])[0];
-      if (bull.total > 0) {
-        const dPct = (dominantBull[1] / bull.total * 100).toFixed(0);
+      // Headline insight: pick the direction matching the active filter
+      // (default 'bullish' if Both is selected, since headline must say something).
+      const useBull = dir !== 'bearish';
+      const useStats = useBull ? bull : bear;
+      const useLabel = useBull ? 'bull' : 'bear';
+      const dominant = Object.entries(useStats.byQ).sort((a, b) => b[1] - a[1])[0];
+      if (useStats.total > 0) {
+        const dPct = (dominant[1] / useStats.total * 100).toFixed(0);
         renderHeadline(document.getElementById('hl-takeout'),
-          'Most bull follow-throughs happen in Q${q} (${pct}%) — momentum after a breakout is fast.',
-          { q: dominantBull[0], pct: dPct });
+          'Most ${dir} follow-throughs happen in Q${q} (${pct}%) — momentum after a breakout is fast.',
+          { dir: useLabel, q: dominant[0], pct: dPct });
       } else {
         renderHeadline(document.getElementById('hl-takeout'), null);
       }

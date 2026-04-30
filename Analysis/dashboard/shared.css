@@ -306,6 +306,7 @@ nav a:hover { text-decoration: underline; }
 .stat-card.bull .stat-card-value { color: var(--green); }
 .stat-card.bear .stat-card-value { color: var(--red); }
 .stat-card.amber .stat-card-value { color: var(--amber); }
+.stat-card.dim { opacity: .35; }
 
 /* ── Donut (CSS-only) ────────────────────────────────────────── */
 .donut {
