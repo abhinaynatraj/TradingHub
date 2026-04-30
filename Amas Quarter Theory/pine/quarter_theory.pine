@@ -157,7 +157,7 @@ resolveTheme() =>
           box_tint             = color.new(#ffffff, 85),
           active_hr            = color.new(#06b6d4, 90),
           active_triad         = color.new(#06b6d4, 94),
-          q_div                = color.new(#ffffff, 75),
+          q_div                = color.new(#ffffff, 88),
           readout_bg           = color.new(#111827, 15),
           readout_border       = color.new(#ffffff, 90),
           readout_text         = color.new(#e2eaf4, 0),
@@ -185,7 +185,7 @@ resolveTheme() =>
           box_tint             = color.new(#000000, 88),
           active_hr            = color.new(#0891b2, 88),
           active_triad         = color.new(#0891b2, 93),
-          q_div                = color.new(#475569, 80),  // slate, visible on white bg
+          q_div                = color.new(#94a3b8, 92),  // light slate, very faint on white
           readout_bg           = color.new(#ffffff, 8),
           readout_border       = color.new(#000000, 90),
           readout_text         = color.new(#0f172a, 0),
@@ -484,8 +484,10 @@ classifyTriad(TriadAgg t) =>
 // with each bar. Quarter verticals at :15, :30, :45 are thin solid lines
 // confined to within the active hour's price range.
 
-hourBoxBg() => color.new(T.q_div, math.min(100, color.t(T.q_div) + 5))   // box bg: faint
-hourDivLine() => color.new(T.q_div, math.max(0, color.t(T.q_div) - 20))  // verticals: a bit more prominent
+// Hour box bg renders as the q_div tint at its native opacity (already faint).
+// Quarter divider verticals lean a bit darker than the box for distinction.
+hourBoxBg() => T.q_div
+hourDivLine() => color.new(T.q_div, math.max(0, color.t(T.q_div) - 25))
 
 // One box + 3 quarter-divider lines per hour, updated live as range expands
 var box currentHourBox = na
