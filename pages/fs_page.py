@@ -39,7 +39,6 @@ def _load() -> dict:
 
 
 # ── Filter helpers ────────────────────────────────────────────────────────────
-@st.cache_data(show_spinner="Loading trade data…")
 @st.cache_data(show_spinner=False)
 def _load_trades(model_key: str, profile_key: str) -> list:
     parquet_path = JSON_PATH.parent / (JSON_PATH.stem + ".parquet")
@@ -325,6 +324,7 @@ def render():
 
     profile    = data[model_key]["profiles"][profile_key]
     meta       = profile["meta"]
+    trading_days = meta['trading_days'] 
     #all_trades = profile["recent_trades"]
     all_trades = _load_trades(model_key, profile_key)
     trades     = _apply_filters(all_trades, f3, f4, smt)
@@ -1030,88 +1030,128 @@ def render():
 
         leg_results = _cascade_pnl(trades, exec_model, total_risk_usd)
         # (note: trades is already filtered by sidebar toggles)
-
-        # --- Combined KPIs ---
-        filled_results = [lr for lr in leg_results if lr["filled"]]
         n_total = len(trades)
-        n_filled = len(filled_results)
-        fill_rate = n_filled / n_total if n_total else 0
-        total_pnl = sum(lr["pnl_usd"] for lr in leg_results)
-        avg_r_filled = sum(lr["r_total"] for lr in filled_results) / n_filled if n_filled else 0
-        wins_filled = sum(1 for lr in filled_results if lr["r_total"] > 0)
-        wr_filled = wins_filled / n_filled if n_filled else 0
+        # --- Combined KPIs ---
+            # ── Per‑account stats ────────────────────────────────────────────────────
+        n_tiers = n_accs                      # already computed (1,2,3)
+        per_risk_usd = total_risk_usd / max(n_tiers, 1)
 
-        kpi1, kpi2, kpi3, kpi4, kpi5, kpi6 = st.columns(6)
-        kpi1.metric("Trades", n_total)
-        kpi2.metric("Filled", n_filled)
-        kpi3.metric("Fill Rate", f"{fill_rate:.1%}")
-        kpi4.metric("WR (filled)", f"{wr_filled:.1%}")
-        kpi5.metric("Avg R (filled)", f"{avg_r_filled:+.3f}")
-        kpi6.metric("Total PnL", f"${total_pnl:,.0f}")
+        # Gather per‑account data
+        tier_fills  = {t: 0 for t in range(1, n_tiers+1)}
+        tier_wins   = {t: 0 for t in range(1, n_tiers+1)}
+        tier_pnl    = {t: 0.0 for t in range(1, n_tiers+1)}
 
-        # --- Combined equity curve ---
-        st.divider()
-        st.subheader("Combined Equity Curve")
-        eq_rows = []
-        eq = float(total_capital)
+        tier_r_sum   = {t: 0.0 for t in range(1, n_tiers+1)}
+        tier_r_win   = {t: 0.0 for t in range(1, n_tiers+1)}
+        tier_r_loss  = {t: 0.0 for t in range(1, n_tiers+1)}
+        max_consec_loss = {t: 0 for t in range(1, n_tiers+1)}
+        streaks_loss = {t: [] for t in range(1, n_tiers+1)}   # store all losing streak lengths
+
         for trade, lr in zip(trades, leg_results):
-            eq += lr["pnl_usd"]
-            eq_rows.append({"date": trade["date"], "equity": round(eq, 2)})
-        eq_df = pd.DataFrame(eq_rows)
-        if not eq_df.empty:
-            fig_eq = px.line(eq_df, x="date", y="equity", height=300,
-                            color_discrete_sequence=["#00b4d8"])
-            fig_eq.add_hline(y=total_capital, line_dash="dash", line_color="gray",
-                            annotation_text="Initial Capital")
-            fig_eq.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                margin=dict(l=0, r=0, t=10, b=0),
-                yaxis=dict(gridcolor="rgba(128,128,128,0.15)"),
-            )
-            st.plotly_chart(fig_eq, use_container_width=True)
-
-        # --- Per‑tier breakdown (only for multi‑acc models) ---
-        if exec_model in ("cascade_2tier", "cascade_3tier"):
-            st.divider()
-            st.subheader("Per‑Tier Performance")
-            n_tiers = 2 if exec_model == "cascade_2tier" else 3
-            per_risk = total_risk_usd / n_tiers
-
-            # Initialize per-tier equity starting at per_acc_capital
-            tier_equity = {i: [per_acc_capital] for i in range(1, n_tiers+1)}
-            tier_pnls   = {i: [] for i in range(1, n_tiers+1)}
-            tier_wins   = {i: 0 for i in range(1, n_tiers+1)}
-            tier_fills  = {i: 0 for i in range(1, n_tiers+1)}
-
-            for trade, lr in zip(trades, leg_results):
-                for tier in range(1, n_tiers+1):
-                    r_key = f"r_acc{tier}"
-                    fill_key = f"filled_acc{tier}"
-                    if r_key in lr and lr[fill_key]:
-                        r_val = lr[r_key]
-                        pnl_tier = r_val * per_risk
-                        tier_equity[tier].append(tier_equity[tier][-1] + pnl_tier)
-                        tier_pnls[tier].append(pnl_tier)
-                        if r_val > 0:
-                            tier_wins[tier] += 1
-                        tier_fills[tier] += 1
+            for t in range(1, n_tiers+1):
+                r_key = f"r_acc{t}"
+                fill_key = f"filled_acc{t}"
+                if fill_key in lr and lr[fill_key]:
+                    tier_fills[t] += 1
+                    r_val = lr[r_key]
+                    pnl = r_val * per_risk_usd
+                    tier_pnl[t] += pnl
+                    if r_val > 0:
+                        tier_wins[t] += 1
+                    # --- new accumulators ---
+                    tier_r_sum[t] += r_val
+                    if r_val > 0:
+                        tier_r_win[t] += r_val
                     else:
-                        # no fill → equity stays flat
-                        tier_equity[tier].append(tier_equity[tier][-1])
+                        tier_r_loss[t] += abs(r_val)
 
-            for tier in range(1, n_tiers+1):
+        # Compute max & average consecutive losses per tier (sequential order)
+        trade_seq = list(zip(trades, leg_results))
+        trade_seq.sort(key=lambda x: (x[0]["date"], x[0].get("hr", 0), x[0].get("mn", 0)))
+        for t in range(1, n_tiers+1):
+            cur_streak = 0
+            r_key = f"r_acc{t}"
+            fill_key = f"filled_acc{t}"
+            for tr, lr in trade_seq:
+                if fill_key in lr and lr[fill_key]:
+                    if lr[r_key] <= 0:
+                        cur_streak += 1
+                    else:
+                        if cur_streak > 0:
+                            streaks_loss[t].append(cur_streak)
+                            if cur_streak > max_consec_loss[t]:
+                                max_consec_loss[t] = cur_streak
+                        cur_streak = 0
+            # If the series ends with a losing streak
+            if cur_streak > 0:
+                streaks_loss[t].append(cur_streak)
+                if cur_streak > max_consec_loss[t]:
+                    max_consec_loss[t] = cur_streak     
+
+        # Aggregate across all tiers
+        total_filled = sum(tier_fills.values())
+        total_wins   = sum(tier_wins.values())
+        total_pnl_all = sum(tier_pnl.values())
+
+        st.subheader("Tier Performance")
+        col_t1, col_t2, col_t3 = st.columns(3)
+        with col_t1:
+            st.metric("Total P&L (all tiers)", f"${total_pnl_all:,.0f}")
+            st.caption(f"Aggregate filled opportunities: {total_filled}")
+        with col_t2:
+            if total_filled:
+                st.metric("Overall Win Rate", f"{total_wins / total_filled:.1%}")
+                st.caption(f"{total_wins} wins / {total_filled} filled")
+            else:
+                st.metric("Overall Win Rate", "N/A")
+        with col_t3:
+            st.metric("Total trades", n_total)
+
+        # Per‑tier numbers (always show, even for 1‑acc models)
+        if n_tiers >= 1:
+            st.divider()
+            for t in range(1, n_tiers+1):
+                nf = tier_fills[t]
+                wr = tier_wins[t] / nf if nf else 0
+                pnl_tier = tier_pnl[t]
                 with st.expander(
-                    f"Tier {tier} — Initial ${per_acc_capital:,.0f}, "
-                    f"Risk per trade ${per_risk:,.2f}"
+                    f"Tier {t} — Initial ${total_capital / n_tiers:,.0f}, "
+                    f"Risk ${per_risk_usd:,.2f}"
                 ):
-                    eq_df_tier = pd.DataFrame({
-                        "trade_num": range(len(tier_equity[tier])),
-                        "equity": tier_equity[tier]
-                    })
+                    nf = tier_fills[t]
+                    wr = tier_wins[t] / nf if nf else 0
+                    pnl_tier = tier_pnl[t]
+                    ev_r = tier_r_sum[t] / nf if nf else 0.0
+                    pf_tier = (tier_r_win[t] / tier_r_loss[t]) if tier_r_loss[t] > 0 else float('inf')
+                    spd = nf / max(trading_days, 1)
+
+                    col_a, col_b, col_c = st.columns(3)
+                    col_a.metric("Filled", nf)
+                    col_b.metric("Win Rate", f"{wr:.1%}")
+                    col_c.metric("P&L", f"${pnl_tier:,.0f}")
+
+                    col_d, col_e, col_f = st.columns(3)
+                    col_d.metric("EV / trade", f"{ev_r:+.3f}R")
+                    col_e.metric("Profit Factor", f"{pf_tier:.2f}" if pf_tier < 999 else "∞")
+                    col_f.metric("Setups / day", f"{spd:.2f}")
+                    avg_loss_streak = (sum(streaks_loss[t]) / len(streaks_loss[t])) if streaks_loss[t] else 0.0
+                    col_g, col_h, col_i = st.columns(3)  # third row
+                    col_g.metric("Max Consec Losses", max_consec_loss[t])
+                    col_h.metric("Avg Consec Losses", f"{avg_loss_streak:.1f}")
+
+                    # Equity curve for this tier
+                    eq_tier = total_capital / n_tiers
+                    eq_tier_rows = [{"trade_num": 0, "equity": eq_tier}]
+                    for idx, (trade, lr) in enumerate(zip(trades, leg_results), 1):
+                        r_key = f"r_acc{t}"
+                        fill_key = f"filled_acc{t}"
+                        if fill_key in lr and lr[fill_key]:
+                            eq_tier += lr[r_key] * per_risk_usd
+                        eq_tier_rows.append({"trade_num": idx, "equity": round(eq_tier, 2)})
+                    eq_df_tier = pd.DataFrame(eq_tier_rows)
                     fig_tier = px.line(eq_df_tier, x="trade_num", y="equity",
                                     height=200, color_discrete_sequence=["#10b981"])
-                    fig_tier.add_hline(y=per_acc_capital, line_dash="dash",
+                    fig_tier.add_hline(y=total_capital / n_tiers, line_dash="dash",
                                     line_color="gray")
                     fig_tier.update_layout(
                         paper_bgcolor="rgba(0,0,0,0)",
@@ -1121,13 +1161,25 @@ def render():
                     )
                     st.plotly_chart(fig_tier, use_container_width=True)
 
-                    n_filled_tier = tier_fills[tier]
-                    total_pnl_tier = tier_equity[tier][-1] - per_acc_capital
-                    wr_tier = tier_wins[tier] / n_filled_tier if n_filled_tier else 0
-                    col_t1, col_t2, col_t3 = st.columns(3)
-                    col_t1.metric("Filled trades", n_filled_tier)
-                    col_t2.metric("Win rate", f"{wr_tier:.1%}")
-                    col_t3.metric("Total PnL", f"${total_pnl_tier:,.0f}")
+        # Combined equity curve (total capital + sum of all tier P&Ls)
+        st.subheader("Combined Equity Curve")
+        eq_total = total_capital
+        eq_rows = [{"trade_num": 0, "equity": eq_total}]
+        for trade, lr in zip(trades, leg_results):
+            eq_total += lr.get("pnl_usd", 0)
+            eq_rows.append({"trade_num": len(eq_rows), "equity": round(eq_total, 2)})
+        eq_df_combined = pd.DataFrame(eq_rows)
+        fig_comb = px.line(eq_df_combined, x="trade_num", y="equity", height=300,
+                        color_discrete_sequence=["#00b4d8"])
+        fig_comb.add_hline(y=total_capital, line_dash="dash", line_color="gray",
+                        annotation_text="Initial Capital")
+        fig_comb.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            margin=dict(l=0, r=0, t=10, b=0),
+            yaxis=dict(gridcolor="rgba(128,128,128,0.15)"),
+        )
+        st.plotly_chart(fig_comb, use_container_width=True)
 
         # --- Trade detail table (existing, but ensure it shows new columns) ---
         st.divider()
