@@ -601,6 +601,11 @@ detectBandRejection(float h, float l, float c, float u10, float u05, float l05_,
     [side, level]
 
 var string boxReactState = "none"
+// Per-band first-rejection flags. Reset at hour open, set true after first hit.
+var bool rejFired10Up = false
+var bool rejFired10Dn = false
+var bool rejFired05Up = false
+var bool rejFired05Dn = false
 
 if gBoxOn and not na(activeTriad)
     int hidx_br = hourIndexInTriad()
@@ -615,17 +620,39 @@ if gBoxOn and not na(activeTriad)
                 boxReactState := token
             else
                 boxReactState := "multi"
-            if gShowBandRej
-                color cMark = level == "10" ? T.band_10 : T.band_05
-                float anchorY = side == "upper" ? high : low
-                label.new(bar_index, anchorY, "rej " + level,
-                          style=side == "upper" ? label.style_label_down : label.style_label_up,
-                          color=color.new(cMark, 95), textcolor=cMark, size=size.small)
-            if gAlertsOn and gAlertBandRej
-                alert("Quarter Theory: " + level + "% band " + side + " rejection", alert.freq_once_per_bar)
 
+            // Only mark the FIRST rejection of each (level, side) per hour.
+            bool isFirst = (level == "10" and side == "upper" and not rejFired10Up) or
+                           (level == "10" and side == "lower" and not rejFired10Dn) or
+                           (level == "05" and side == "upper" and not rejFired05Up) or
+                           (level == "05" and side == "lower" and not rejFired05Dn)
+
+            if isFirst
+                if level == "10" and side == "upper"
+                    rejFired10Up := true
+                if level == "10" and side == "lower"
+                    rejFired10Dn := true
+                if level == "05" and side == "upper"
+                    rejFired05Up := true
+                if level == "05" and side == "lower"
+                    rejFired05Dn := true
+
+                if gShowBandRej
+                    color cMark = level == "10" ? T.band_10 : T.band_05
+                    float anchorY = side == "upper" ? high : low
+                    label.new(bar_index, anchorY, "rej " + level,
+                              style=side == "upper" ? label.style_label_down : label.style_label_up,
+                              color=color.new(cMark, 95), textcolor=cMark, size=size.small)
+                if gAlertsOn and gAlertBandRej
+                    alert("Quarter Theory: " + level + "% band " + side + " rejection", alert.freq_once_per_bar)
+
+// Reset per-hour state at hour open
 if isFirstBarOfQuarter() and quarterOfHour() == 1
     boxReactState := "none"
+    rejFired10Up := false
+    rejFired10Dn := false
+    rejFired05Up := false
+    rejFired05Dn := false
 
 // ── 1h midline + reactions ────────────────────────────────────────────────
 resolve1hMid(HourAgg cur, HourAgg prior) =>
