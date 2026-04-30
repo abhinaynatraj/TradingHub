@@ -533,13 +533,13 @@ if gQStructOn and gShowQDiv and isFirstBarOfQuarter() and not na(blockId()) and 
     float yBot = box.get_bottom(currentHourBox)
     if qNew == 2
         currentQ2Line := line.new(bar_index, yBot, bar_index, yTop, xloc=xloc.bar_index,
-                                  extend=extend.none, color=hourDivLine(), style=line.style_solid, width=1)
+                                  extend=extend.none, color=hourDivLine(), style=line.style_solid, width=2)
     if qNew == 3
         currentQ3Line := line.new(bar_index, yBot, bar_index, yTop, xloc=xloc.bar_index,
-                                  extend=extend.none, color=hourDivLine(), style=line.style_solid, width=1)
+                                  extend=extend.none, color=hourDivLine(), style=line.style_solid, width=2)
     if qNew == 4
         currentQ4Line := line.new(bar_index, yBot, bar_index, yTop, xloc=xloc.bar_index,
-                                  extend=extend.none, color=hourDivLine(), style=line.style_solid, width=1)
+                                  extend=extend.none, color=hourDivLine(), style=line.style_solid, width=2)
 
 // ── 05-box (bounded to box range, extends horizontally across the hour) ──
 // One box, anchored to the active hour's box high/low. Box high/low is locked
@@ -853,45 +853,87 @@ if gQStructOn and isLastBarOfQuarter() and not na(activeTriad)
                 alert("Quarter Theory: sweeper Q" + str.tostring(int(byQ)), alert.freq_once_per_bar)
 
 
-// ── In-stat / out-of-stat extreme labels (drawn at hour close) ────────────
-if gQStructOn and isHourClose() and not na(activeTriad)
-    int hidx_ex = hourIndexInTriad()
-    HourAgg justClosed = hidx_ex == 1 ? activeTriad.c1 : hidx_ex == 2 ? activeTriad.c2 : activeTriad.c3
-    if not na(justClosed) and not na(justClosed.q1) and not na(justClosed.q2) and not na(justClosed.q3) and not na(justClosed.q4)
-        float hi = hourHigh(justClosed)
-        float lo = hourLow(justClosed)
-        // Earliest quarter holding the extreme (matches Python tie-break)
-        QuarterAgg qHi = na
-        QuarterAgg qLo = na
-        for q_idx = 1 to 4
-            QuarterAgg qx = q_idx == 1 ? justClosed.q1 : q_idx == 2 ? justClosed.q2 : q_idx == 3 ? justClosed.q3 : justClosed.q4
-            if na(qHi) and qx.high_ == hi
-                qHi := qx
-            if na(qLo) and qx.low_ == lo
-                qLo := qx
-        if not na(qHi) and not na(qLo)
-            bool inStatHi = qHi.qIdx == 1 or qHi.qIdx == 4
-            bool inStatLo = qLo.qIdx == 1 or qLo.qIdx == 4
+// ── Live in-stat / out-of-stat extreme labels ────────────────────────────
+// Track two label objects per hour (one for the running high, one for the
+// running low). Reposition them on every bar to the candle that currently
+// holds the hour's high/low. They're created at hour open and persist through
+// hour close — the final extreme is automatically the correct anchor.
 
-            // Text always renders dark; background is a tinted fill for legibility.
-            // Anchored to the candle that printed the extreme (qHi.highBar / qLo.lowBar),
-            // offset ~20 pts (≈ 0.3*ATR) beyond the hour box top/bottom so they
-            // float above/below the price action instead of sitting on the wick.
-            float labelOffset = atrOffset() * 0.3
-            color textHi = inStatHi ? T.in_stat : T.out_stat
-            color textLo = inStatLo ? T.in_stat : T.out_stat
-            color bgHi   = color.new(textHi, 80)
-            color bgLo   = color.new(textLo, 80)
-            if (inStatHi and gShowInStat) or (not inStatHi and gShowOutStat)
-                string txtHi = "Q" + str.tostring(qHi.qIdx) + (inStatHi ? " in-stat high" : " out-of-stat high")
-                label.new(qHi.highBar, qHi.high_ + labelOffset, txtHi, xloc=xloc.bar_index,
-                          style=label.style_label_down, color=bgHi,
-                          textcolor=textHi, size=size.small)
-            if (inStatLo and gShowInStat) or (not inStatLo and gShowOutStat)
-                string txtLo = "Q" + str.tostring(qLo.qIdx) + (inStatLo ? " in-stat low" : " out-of-stat low")
-                label.new(qLo.lowBar, qLo.low_ - labelOffset, txtLo, xloc=xloc.bar_index,
-                          style=label.style_label_up, color=bgLo,
-                          textcolor=textLo, size=size.small)
+var label liveHighLabel = na
+var label liveLowLabel  = na
+
+// Reset / spawn at hour open
+if gQStructOn and isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(blockId())
+    if not na(liveHighLabel)
+        label.delete(liveHighLabel)
+    if not na(liveLowLabel)
+        label.delete(liveLowLabel)
+    liveHighLabel := na
+    liveLowLabel  := na
+
+// Update / create labels each bar based on running high/low and quarter
+if gQStructOn and not na(activeTriad)
+    int hidx_live = hourIndexInTriad()
+    HourAgg curH_live = hidx_live == 1 ? activeTriad.c1 : hidx_live == 2 ? activeTriad.c2 : hidx_live == 3 ? activeTriad.c3 : na
+    if not na(curH_live)
+        float curHi = hourHigh(curH_live)
+        float curLo = hourLow(curH_live)
+        if not na(curHi) and not na(curLo)
+            // Find earliest quarter holding the running extreme
+            QuarterAgg qHiL = na
+            QuarterAgg qLoL = na
+            for q_idx_l = 1 to 4
+                QuarterAgg qxL = q_idx_l == 1 ? curH_live.q1 : q_idx_l == 2 ? curH_live.q2 : q_idx_l == 3 ? curH_live.q3 : curH_live.q4
+                if not na(qxL)
+                    if na(qHiL) and qxL.high_ == curHi
+                        qHiL := qxL
+                    if na(qLoL) and qxL.low_ == curLo
+                        qLoL := qxL
+            float liveOffset = atrOffset() * 0.3
+
+            if not na(qHiL)
+                bool inStatHi_live = qHiL.qIdx == 1 or qHiL.qIdx == 4
+                bool showHi = (inStatHi_live and gShowInStat) or (not inStatHi_live and gShowOutStat)
+                if showHi
+                    color textHi_live = inStatHi_live ? T.in_stat : T.out_stat
+                    color bgHi_live   = color.new(textHi_live, 80)
+                    string txtHi_live = "Q" + str.tostring(qHiL.qIdx) + (inStatHi_live ? " in-stat high" : " out-of-stat high")
+                    if na(liveHighLabel)
+                        liveHighLabel := label.new(qHiL.highBar, qHiL.high_ + liveOffset, txtHi_live,
+                                                   xloc=xloc.bar_index, style=label.style_label_down,
+                                                   color=bgHi_live, textcolor=textHi_live, size=size.small)
+                    else
+                        label.set_xy(liveHighLabel, qHiL.highBar, qHiL.high_ + liveOffset)
+                        label.set_text(liveHighLabel, txtHi_live)
+                        label.set_color(liveHighLabel, bgHi_live)
+                        label.set_textcolor(liveHighLabel, textHi_live)
+
+            if not na(qLoL)
+                bool inStatLo_live = qLoL.qIdx == 1 or qLoL.qIdx == 4
+                bool showLo = (inStatLo_live and gShowInStat) or (not inStatLo_live and gShowOutStat)
+                if showLo
+                    color textLo_live = inStatLo_live ? T.in_stat : T.out_stat
+                    color bgLo_live   = color.new(textLo_live, 80)
+                    string txtLo_live = "Q" + str.tostring(qLoL.qIdx) + (inStatLo_live ? " in-stat low" : " out-of-stat low")
+                    if na(liveLowLabel)
+                        liveLowLabel := label.new(qLoL.lowBar, qLoL.low_ - liveOffset, txtLo_live,
+                                                  xloc=xloc.bar_index, style=label.style_label_up,
+                                                  color=bgLo_live, textcolor=textLo_live, size=size.small)
+                    else
+                        label.set_xy(liveLowLabel, qLoL.lowBar, qLoL.low_ - liveOffset)
+                        label.set_text(liveLowLabel, txtLo_live)
+                        label.set_color(liveLowLabel, bgLo_live)
+                        label.set_textcolor(liveLowLabel, textLo_live)
+
+
+// ── Final commit of in-stat/out-of-stat labels at hour close ──────────────
+// The live block above keeps the labels positioned at the running extreme
+// throughout the hour. At hour close, we "release" the references so they
+// stay frozen on the closed hour while a fresh pair is created for the next
+// hour. (No new label.new calls needed — the live ones are already correct.)
+if gQStructOn and isHourClose() and not na(activeTriad)
+    liveHighLabel := na
+    liveLowLabel  := na
 
 
 // ── Hour close verdicts ───────────────────────────────────────────────────
@@ -952,10 +994,20 @@ if isTriadClose() and not na(activeTriad)
 
 
 // ── Active hour & triad tints (bounded to their respective ranges) ────────
+// Use box.set_* on a single box per scope so the box dimensions update
+// in-place every bar — preventing a stale box from being shown when
+// triad/hour high/low expand into new territory.
 var box activeHourTint = na
 var box activeTriadTint = na
 
-if gReadoutsOn and not na(activeTriad)
+// At hour/triad open, drop the reference (so existing closed-block boxes
+// freeze in place) and spawn a fresh one in the update block below.
+if isFirstBarOfQuarter() and quarterOfHour() == 1 and not na(blockId())
+    activeHourTint := na
+if isFirstBarOfQuarter() and quarterOfHour() == 1 and hourIndexInTriad() == 1 and not na(blockId())
+    activeTriadTint := na
+
+if not na(activeTriad)
     int hidx_t = hourIndexInTriad()
     HourAgg curH_t = hidx_t == 1 ? activeTriad.c1 : hidx_t == 2 ? activeTriad.c2 : hidx_t == 3 ? activeTriad.c3 : na
 
@@ -964,22 +1016,34 @@ if gReadoutsOn and not na(activeTriad)
         float curHi = hourHigh(curH_t)
         float curLo = hourLow(curH_t)
         if not na(curHi) and not na(curLo)
-            if not na(activeHourTint)
-                box.delete(activeHourTint)
-            activeHourTint := box.new(curH_t.anchorBar, curHi, bar_index, curLo,
-                                      xloc=xloc.bar_index, bgcolor=T.active_hr,
-                                      border_color=color.new(T.active_hr, 100), border_width=0)
+            if na(activeHourTint)
+                activeHourTint := box.new(curH_t.anchorBar, curHi, bar_index, curLo,
+                                          xloc=xloc.bar_index, bgcolor=T.active_hr,
+                                          border_color=color.new(T.active_hr, 100), border_width=0)
+            else
+                box.set_left(activeHourTint, curH_t.anchorBar)
+                box.set_right(activeHourTint, bar_index)
+                box.set_top(activeHourTint, curHi)
+                box.set_bottom(activeHourTint, curLo)
+                box.set_bgcolor(activeHourTint, T.active_hr)
 
     // Active triad: bounded to triad's running high/low
     float trHi = triadHigh(activeTriad)
     float trLo = triadLow(activeTriad)
     if not na(trHi) and not na(trLo)
-        if not na(activeTriadTint)
-            box.delete(activeTriadTint)
-        activeTriadTint := box.new(activeTriad.anchorBar, trHi, bar_index, trLo,
-                                   xloc=xloc.bar_index, bgcolor=T.active_triad,
-                                   border_color=color.new(T.active_triad, math.max(0, color.t(T.active_triad) - 40)),
-                                   border_width=2)
+        if na(activeTriadTint)
+            activeTriadTint := box.new(activeTriad.anchorBar, trHi, bar_index, trLo,
+                                       xloc=xloc.bar_index, bgcolor=T.active_triad,
+                                       border_color=color.new(T.active_triad, math.max(0, color.t(T.active_triad) - 40)),
+                                       border_width=2)
+        else
+            box.set_left(activeTriadTint, activeTriad.anchorBar)
+            box.set_right(activeTriadTint, bar_index)
+            box.set_top(activeTriadTint, trHi)
+            box.set_bottom(activeTriadTint, trLo)
+            box.set_bgcolor(activeTriadTint, T.active_triad)
+            box.set_border_color(activeTriadTint, color.new(T.active_triad, math.max(0, color.t(T.active_triad) - 40)))
+
 
 
 // ── Readouts and OHLC overlay removed.
