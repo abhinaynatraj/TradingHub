@@ -1,0 +1,76 @@
+{
+  "_doc": "Spot-check fixture for verifying Pine-side canonicalHash() matches the Python implementation. Pine canonicalHash(key) MUST equal hash for each case.",
+  "_format": "32-bit polynomial rolling hash (base 131), output as base36 string",
+  "cases": [
+    {
+      "tf": "hour",
+      "key": "v1|sym=NQ|tf=hour|block=00-03|hour_idx=1|q=Q4|q1cls=in-stat-high|q2cls=inside|q3cls=inside|q4cls=in-stat-low|sweep_set=Q2_swept_Q1_low,Q3_swept_Q1_low,Q3_swept_Q2_low,Q4_swept_Q1_low,Q4_swept_Q2_low,Q4_swept_Q3_low|midhr=reject|box_react=05dn_rejected",
+      "hash": "158jrh8"
+    },
+    {
+      "tf": "hour",
+      "key": "v1|sym=NQ|tf=hour|block=00-03|hour_idx=1|q=Q4|q1cls=in-stat-high|q2cls=inside|q3cls=inside|q4cls=in-stat-low|sweep_set=Q2_swept_Q1_low,Q3_swept_Q1_low,Q3_swept_Q2_low,Q4_swept_Q1_low,Q4_swept_Q2_low,Q4_swept_Q3_low|midhr=reject|box_react=10dn_rejected",
+      "hash": "1fzd012"
+    },
+    {
+      "tf": "triad",
+      "key": "v1|sym=NQ|tf=triad|block=00-03|c1cls=doji|c2q=Q1|c2vh=above|c2vl=above|c2sw_c1h=Y|c2sw_c1l=N|c2_inside=N|midhr=reject|mid3h=untouched|box_react=05dn_rejected",
+      "hash": "1jix8y4"
+    },
+    {
+      "tf": "triad",
+      "key": "v1|sym=NQ|tf=triad|block=00-03|c1cls=doji|c2q=Q1|c2vh=above|c2vl=above|c2sw_c1h=Y|c2sw_c1l=N|c2_inside=N|midhr=reject|mid3h=untouched|box_react=05up_rejected",
+      "hash": "iucoej"
+    },
+    {
+      "tf": "sweep_h",
+      "key": "v1|sym=NQ|tf=sweep_h|block=00-03|hour_idx=1|q=closed|q1cls=in-stat-high|q2cls=inside|q3cls=inside|q4cls=in-stat-low|sweep_set=none|midhr=untouched|box_react=none",
+      "hash": "sfvzyw"
+    },
+    {
+      "tf": "sweep_h",
+      "key": "v1|sym=NQ|tf=sweep_h|block=00-03|hour_idx=1|q=closed|q1cls=in-stat-high|q2cls=inside|q3cls=inside|q4cls=inside|sweep_set=none|midhr=untouched|box_react=none",
+      "hash": "1wrfe6v"
+    },
+    {
+      "tf": "sweep_l",
+      "key": "v1|sym=NQ|tf=sweep_l|block=00-03|hour_idx=1|q=closed|q1cls=in-stat-high|q2cls=inside|q3cls=inside|q4cls=in-stat-low|sweep_set=none|midhr=untouched|box_react=none",
+      "hash": "87orhg"
+    },
+    {
+      "tf": "sweep_l",
+      "key": "v1|sym=NQ|tf=sweep_l|block=00-03|hour_idx=1|q=closed|q1cls=in-stat-high|q2cls=inside|q3cls=inside|q4cls=inside|sweep_set=none|midhr=untouched|box_react=none",
+      "hash": "3xxgkb"
+    },
+    {
+      "tf": "ext_up",
+      "key": "v1|sym=NQ|tf=ext_up|block=00-03|hour_idx=1|q=closed|q1cls=in-stat-high|q2cls=inside|q3cls=inside|q4cls=in-stat-low|sweep_set=none|midhr=untouched|box_react=none",
+      "hash": "f2ex8y"
+    },
+    {
+      "tf": "ext_up",
+      "key": "v1|sym=NQ|tf=ext_up|block=00-03|hour_idx=1|q=closed|q1cls=in-stat-high|q2cls=inside|q3cls=inside|q4cls=inside|sweep_set=none|midhr=untouched|box_react=none",
+      "hash": "3wgzed"
+    },
+    {
+      "tf": "ext_dn",
+      "key": "v1|sym=NQ|tf=ext_dn|block=00-03|hour_idx=1|q=closed|q1cls=in-stat-high|q2cls=inside|q3cls=inside|q4cls=in-stat-low|sweep_set=none|midhr=untouched|box_react=none",
+      "hash": "1s4mc6b"
+    },
+    {
+      "tf": "ext_dn",
+      "key": "v1|sym=NQ|tf=ext_dn|block=00-03|hour_idx=1|q=closed|q1cls=in-stat-high|q2cls=inside|q3cls=inside|q4cls=inside|sweep_set=none|midhr=untouched|box_react=none",
+      "hash": "n1tuu8"
+    },
+    {
+      "tf": "pair",
+      "key": "v1|sym=NQ|tf=pair|block=00-03|c1cls=doji|c2q=closed|c2vh=above|c2vl=above|c2sw_c1h=Y|c2sw_c1l=N|c2_inside=N|midhr=untouched|mid3h=untouched|box_react=none|prior_class=apex-up",
+      "hash": "atskpa"
+    },
+    {
+      "tf": "pair",
+      "key": "v1|sym=NQ|tf=pair|block=00-03|c1cls=doji|c2q=closed|c2vh=above|c2vl=above|c2sw_c1h=Y|c2sw_c1l=N|c2_inside=N|midhr=untouched|mid3h=untouched|box_react=none|prior_class=doji",
+      "hash": "1otdajq"
+    }
+  ]
+}

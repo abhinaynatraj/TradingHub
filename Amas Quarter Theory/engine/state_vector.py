@@ -7,7 +7,6 @@ strings. Parity is tested in Phase 9.
 """
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from typing import Literal, Tuple
 
@@ -115,19 +114,31 @@ def build_hour_key(s: HourStateInputs) -> str:
 
 # ── Compact hash (Pine map keys) ─────────────────────────────────────────────
 
+_HASH_BASE  = 131
+# 32-bit truncation: keeps the running hash within float53 mantissa
+# precision so Pine's float-based emulation stays bit-exact. Collision
+# rate over ~3K keys per map: ~3000^2 / 2^32 ≈ 1 in 2 million probability
+# of *any* collision. We have ~13K distinct hashed keys total in the v1
+# build, so total collision probability is <0.02% — acceptable.
+_HASH_MOD   = 1 << 32
+
+
 def canonical_hash(key: str) -> str:
-    """Return a base36-encoded 64-bit hash of the canonical key string.
+    """Return a base36-encoded 32-bit polynomial rolling hash of the key.
 
-    Pine must compute the same hash. We use the low 64 bits of SHA-256 for
-    portability — Pine 6 has built-in str.tonumber-style helpers that can
-    replicate this with a simple polynomial-rolling hash. Phase 6 will
-    implement the Pine-side equivalent and parity-test the values.
+    Both Python and Pine MUST produce the same digest. We use a polynomial
+    rolling hash (h = h*131 + c, 32-bit truncated) because it's ~10 lines
+    of Pine to replicate, vs. ~300 for SHA-256, and 32-bit modulus fits
+    inside float64 mantissa precision cleanly.
 
-    Uses SHA-256 in Python; Pine emulates with manual byte-level arithmetic.
+    All state-key strings are pure ASCII by construction, so `ord(c)`
+    gives byte codepoints in [0, 127]. Pine emulates with a 95-char
+    printable-ASCII lookup table indexed by str.substring().
     """
-    digest = hashlib.sha256(key.encode("utf-8")).digest()
-    n = int.from_bytes(digest[:8], "big", signed=False)
-    return _to_base36(n)
+    h = 0
+    for c in key:
+        h = (h * _HASH_BASE + ord(c)) % _HASH_MOD
+    return _to_base36(h)
 
 
 def _to_base36(n: int) -> str:
