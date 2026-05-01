@@ -39,13 +39,32 @@ def aggregate_samples(samples: Iterable[DecisionPointSample]) -> pd.DataFrame:
 def run_full_empirical(df_bars: pd.DataFrame, sym: str) -> pd.DataFrame:
     """End-to-end: bars → walk triads → sample decision points → aggregate.
 
-    Wraps walk_triads + sample_decision_points + aggregate_samples for callers
-    that just want the final parquet-shape DataFrame.
+    Combines two sample streams into one parquet-shape DataFrame:
+      1. Per-episode samples (existing): triad/hour outcomes at each
+         decision point (quarter close, hour close, sweep, midline, etc.).
+      2. Forward-looking samples (new): hour-close sweep / extension and
+         triad-close pair continuation. These need lookahead beyond the
+         per-episode bars, so they have their own walker.
+
+    Both streams write into the same `state_key | outcome | p | ci_lo |
+    ci_hi | n` shape; the `tf=` token in the state-key distinguishes them
+    on the consumer side.
     """
     from engine.walker import walk_triads
     from engine.sampler import sample_decision_points
+    from engine.forward_sampler import sample_forward
 
     all_samples = []
     for episode in walk_triads(df_bars):
         all_samples.extend(sample_decision_points(episode, sym=sym))
+
+    # Forward-looking stream: emits its own .tf field but we coerce all
+    # samples into the same DecisionPointSample-compatible shape that
+    # `aggregate_samples` consumes (it only needs state_key + outcome).
+    from engine.sampler import DecisionPointSample
+    for fs in sample_forward(df_bars, sym=sym):
+        all_samples.append(DecisionPointSample(
+            decision_ts=fs.decision_ts, tf=fs.tf,  # type: ignore[arg-type]
+            state_key=fs.state_key, outcome=fs.outcome,
+        ))
     return aggregate_samples(all_samples)

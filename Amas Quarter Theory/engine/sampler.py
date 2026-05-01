@@ -16,7 +16,7 @@ Decision points (one sample fires per qualifying event on a bar):
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterator, Literal
+from typing import Iterator
 
 import pandas as pd
 
@@ -44,10 +44,9 @@ from engine.walker import TriadEpisode
 @dataclass(frozen=True)
 class DecisionPointSample:
     decision_ts: pd.Timestamp
-    tf: Literal["triad", "hour"]
+    tf: str  # "triad" | "hour" | "sweep_h" | "sweep_l" | "ext_up" | "ext_dn" | "pair"
     state_key: str
-    outcome: str  # "line-up" | "line-down" | "apex-up" | "apex-down" | "doji" (triad)
-    # or "line-up" | "line-down" | "doji" (hour)
+    outcome: str  # outcome alphabet depends on tf — see forward_sampler.py
 
 
 def sample_decision_points(

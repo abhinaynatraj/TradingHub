@@ -35,6 +35,26 @@ def _hour_key(suffix: str = "a") -> str:
     )
 
 
+def _sweep_h_key(suffix: str = "a") -> str:
+    return _hour_key(suffix).replace("|tf=hour|", "|tf=sweep_h|")
+
+
+def _sweep_l_key(suffix: str = "a") -> str:
+    return _hour_key(suffix).replace("|tf=hour|", "|tf=sweep_l|")
+
+
+def _ext_up_key(suffix: str = "a") -> str:
+    return _hour_key(suffix).replace("|tf=hour|", "|tf=ext_up|")
+
+
+def _ext_dn_key(suffix: str = "a") -> str:
+    return _hour_key(suffix).replace("|tf=hour|", "|tf=ext_dn|")
+
+
+def _pair_key(suffix: str = "a") -> str:
+    return _triad_key(suffix).replace("|tf=triad|", "|tf=pair|") + "|prior_class=line-up"
+
+
 def _row(state_key: str, outcome: str, p: float, n: int) -> dict:
     return {
         "state_key": state_key, "outcome": outcome,
@@ -86,7 +106,7 @@ def test_missing_outcome_defaults_to_zero():
 # ── Probabilities are quantized to 1 decimal place ──────────────────────
 
 def test_probabilities_quantized_to_one_decimal():
-    df = pd.DataFrame([_row(_hour_key("q"), "line-up", 0.4567, 25)])
+    df = pd.DataFrame([_row(_hour_key("q"), "line-up", 0.4567, 30)])
     out = pine_emit.emit_pine_tables(df, df.iloc[0:0].copy())
     # 0.4567 → 0.5 (one-decimal rounding)
     assert "0.5" in out
@@ -96,8 +116,8 @@ def test_probabilities_quantized_to_one_decimal():
 # ── Both NQ and ES sections present ─────────────────────────────────────
 
 def test_both_symbols_emit_independent_blocks():
-    nq = pd.DataFrame([_row(_hour_key("nq"), "line-up", 0.4, 20)])
-    es = pd.DataFrame([_row(_hour_key("es"), "doji",    0.6, 18)])
+    nq = pd.DataFrame([_row(_hour_key("nq"), "line-up", 0.4, 50)])
+    es = pd.DataFrame([_row(_hour_key("es"), "doji",    0.6, 40)])
     out = pine_emit.emit_pine_tables(nq, es)
     assert "EMPIRICAL_NQ_HOUR" in out
     assert "EMPIRICAL_NQ_TRIAD" in out
@@ -119,7 +139,7 @@ def test_paste_region_sentinels_present():
 def test_triad_and_hour_keys_route_to_correct_maps():
     df = pd.DataFrame([
         _row(_triad_key("only_triad"), "line-up", 0.3, 40),
-        _row(_hour_key("only_hour"),   "doji",    0.5, 22),
+        _row(_hour_key("only_hour"),   "doji",    0.5, 35),
     ])
     out = pine_emit.emit_pine_tables(df, df.iloc[0:0].copy())
     triad_h = canonical_hash(_triad_key("only_triad"))
@@ -148,6 +168,108 @@ def test_distinct_state_keys_produce_distinct_hashes():
     assert h_a != h_b
     assert h_a in out
     assert h_b in out
+
+
+# ── New: sweep / extension / pair maps ──────────────────────────────────
+
+def test_sweep_h_emits_two_element_array():
+    df = pd.DataFrame([
+        _row(_sweep_h_key("s1"), "taken", 0.6, 50),
+        _row(_sweep_h_key("s1"), "held",  0.4, 50),
+    ])
+    out = pine_emit.emit_pine_tables(df, df.iloc[0:0].copy())
+    h = canonical_hash(_sweep_h_key("s1"))
+    expected = f'map.put(EMPIRICAL_NQ_SWEEP_H, "{h}", array.from(0.6, 50.0))'
+    assert expected in out
+
+
+def test_sweep_l_emits_two_element_array():
+    df = pd.DataFrame([
+        _row(_sweep_l_key("s1"), "taken", 0.3, 40),
+        _row(_sweep_l_key("s1"), "held",  0.7, 40),
+    ])
+    out = pine_emit.emit_pine_tables(df, df.iloc[0:0].copy())
+    h = canonical_hash(_sweep_l_key("s1"))
+    expected = f'map.put(EMPIRICAL_NQ_SWEEP_L, "{h}", array.from(0.3, 40.0))'
+    assert expected in out
+
+
+def test_pair_emits_two_element_array_with_prior_class_in_key():
+    df = pd.DataFrame([
+        _row(_pair_key("p1"), "continues", 0.4, 60),
+        _row(_pair_key("p1"), "reverses",  0.6, 60),
+    ])
+    out = pine_emit.emit_pine_tables(df, df.iloc[0:0].copy())
+    h = canonical_hash(_pair_key("p1"))
+    expected = f'map.put(EMPIRICAL_NQ_PAIR, "{h}", array.from(0.4, 60.0))'
+    assert expected in out
+
+
+def test_ext_up_emits_mean_median_mode_n_array():
+    # Bucket distribution: half the mass at 10, half at 50.
+    # mean = 0.5*10 + 0.5*50 = 30
+    # median: cum hits 0.5 at first bucket → 10
+    # mode: tie-break by lower-bucket value → 10
+    df = pd.DataFrame([
+        _row(_ext_up_key("e1"), "10", 0.5, 100),
+        _row(_ext_up_key("e1"), "50", 0.5, 100),
+    ])
+    out = pine_emit.emit_pine_tables(df, df.iloc[0:0].copy())
+    h = canonical_hash(_ext_up_key("e1"))
+    # mean=30.0, median=10.0, mode=10.0, n=100.0
+    expected = f'map.put(EMPIRICAL_NQ_EXT_UP, "{h}", array.from(30.0, 10.0, 10.0, 100.0))'
+    assert expected in out
+
+
+def test_ext_dn_routing_does_not_collide_with_ext_up():
+    df = pd.DataFrame([
+        _row(_ext_up_key("a"), "20", 1.0, 50),
+        _row(_ext_dn_key("a"), "5",  1.0, 40),
+    ])
+    out = pine_emit.emit_pine_tables(df, df.iloc[0:0].copy())
+    up_h  = canonical_hash(_ext_up_key("a"))
+    dn_h  = canonical_hash(_ext_dn_key("a"))
+    # Each hash must be put into its own map only (matched by the put-call
+    # signature, not by string-region splitting which is fragile).
+    assert f'map.put(EMPIRICAL_NQ_EXT_UP, "{up_h}"' in out
+    assert f'map.put(EMPIRICAL_NQ_EXT_DN, "{dn_h}"' in out
+    assert f'map.put(EMPIRICAL_NQ_EXT_UP, "{dn_h}"' not in out
+    assert f'map.put(EMPIRICAL_NQ_EXT_DN, "{up_h}"' not in out
+
+
+def test_all_six_maps_per_symbol_present():
+    # Empty inputs still emit all 6 map declarations per symbol (so the
+    # indicator can always do a lookup without na-checking the map itself).
+    empty = pd.DataFrame(columns=["state_key","outcome","p","ci_lo","ci_hi","n"])
+    out = pine_emit.emit_pine_tables(empty, empty)
+    for sym in ("NQ", "ES"):
+        assert f"EMPIRICAL_{sym}_TRIAD"   in out
+        assert f"EMPIRICAL_{sym}_HOUR"    in out
+        assert f"EMPIRICAL_{sym}_SWEEP_H" in out
+        assert f"EMPIRICAL_{sym}_SWEEP_L" in out
+        assert f"EMPIRICAL_{sym}_EXT_UP"  in out
+        assert f"EMPIRICAL_{sym}_EXT_DN"  in out
+        assert f"EMPIRICAL_{sym}_PAIR"    in out
+
+
+# ── min_n filter drops low-sample states ────────────────────────────────
+
+def test_min_n_filters_low_sample_states():
+    df = pd.DataFrame([
+        _row(_hour_key("low"),  "line-up", 0.5, 5),    # below default
+        _row(_hour_key("high"), "line-up", 0.5, 100),  # above default
+    ])
+    out = pine_emit.emit_pine_tables(df, df.iloc[0:0].copy())
+    low_h  = canonical_hash(_hour_key("low"))
+    high_h = canonical_hash(_hour_key("high"))
+    assert low_h not in out
+    assert high_h in out
+
+
+def test_min_n_zero_emits_everything():
+    df = pd.DataFrame([_row(_hour_key("tiny"), "line-up", 0.5, 1)])
+    out = pine_emit.emit_pine_tables(df, df.iloc[0:0].copy(), min_n=0)
+    assert canonical_hash(_hour_key("tiny")) in out
 
 
 # ── Size budget assertion ───────────────────────────────────────────────
