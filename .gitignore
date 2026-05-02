@@ -35,3 +35,7 @@ Fractal Sweep/model_stats.json
 # Analysis engine derived data (parquet files, gitignored build artifact)
 Analysis/data/
 .superpowers/
+
+# Shell-quoting accident — directory at repo root literally named
+# "Amas\ Quarter\ Theory" (with backslashes baked into the name).
+Amas\\ Quarter\\ Theory/

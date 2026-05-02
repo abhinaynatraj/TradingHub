@@ -1,0 +1,2901 @@
+//@version=6
+indicator("Abhi's Live Price Action", overlay=true,
+         max_labels_count=500, max_lines_count=500, max_boxes_count=500)
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ Abhi's Live Price Action — intraday price-action structure overlay       ║
+// ║ 15m quarters · 1h doji/line · 3h triad line/apex · 05-box bands · midlns ║
+// ║                                                                          ║
+// ║ NOTE: This is the v1 visual-only build. Probability readouts display     ║
+// ║ "—" placeholders; empirical tables wired in a follow-up release.         ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 1. SETTINGS                                                              ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+// ── ⚙ General ─────────────────────────────────────────────────────────────
+G_GENERAL = "⚙ General"
+gTheme        = input.string("Dark", "Theme",        options=["Dark","Light","Custom"], group=G_GENERAL)
+gDataSource   = input.string("Auto", "Empirical data source (reserved)", options=["Auto","NQ","ES"], group=G_GENERAL,
+                              tooltip="Reserved for empirical-table phase. Currently inert.")
+gTzNote       = input.string("America/New_York", "Time zone (read-only)", options=["America/New_York"], group=G_GENERAL)
+
+// ── 📊 Live Readouts ─────────────────────────────────────────────────────
+G_RO = "📊 Live Readouts"
+gReadoutsOn   = input.bool(true,  "▶ Enable group", group=G_RO)
+gShow1h       = input.bool(true,  "Show 1h hour tint box", group=G_RO)
+gShow3h       = input.bool(false, "Show 3h triad tint box", group=G_RO)
+gActiveStyle  = input.string("Highlighted + LIVE tag", "Active block style",
+                              options=["Highlighted","LIVE tag","Highlighted + LIVE tag"], group=G_RO)
+gHistDepth    = input.int(20, "History depth (triads)", minval=1, maxval=40, group=G_RO)
+gShowN        = input.bool(true,  "Show sample count (n)", group=G_RO)
+gConfColor    = input.bool(true,  "Confidence color on n", group=G_RO)
+gShowPath     = input.bool(true,  "Show conditional path %", group=G_RO)
+gShowQPair    = input.bool(true,  "Show quarter-pair recommendation", group=G_RO)
+
+// ── 🕐 Quarter Structure ─────────────────────────────────────────────────
+G_QS = "🕐 Quarter Structure"
+gQStructOn    = input.bool(true,  "▶ Enable group", group=G_QS)
+gShowQDiv     = input.bool(true,  "Show quarter dividers (vertical dotted)", group=G_QS)
+gShowInStat   = input.bool(true,  "Show in-stat extreme labels (Q1/Q4)", group=G_QS)
+gShowOutStat  = input.bool(true,  "Show out-of-stat extreme labels (Q2/Q3)", group=G_QS)
+gShowSweepers = input.bool(true,  "Show sweeper markers", group=G_QS)
+gShowBiasShift= input.bool(true,  "Show bias-shift markers", group=G_QS)
+gShowDojiConf = input.bool(true,  "Show doji-confirmed marker", group=G_QS)
+gShowQBgs     = input.bool(true,  "Show per-quarter background tints", group=G_QS)
+gShowHourOpenBox = input.bool(true, "Show hour-open minute box (gray strip at :00)", group=G_QS)
+gColHourOpenBox  = input.color(color.new(#94a3b8, 75), "Hour-open minute box color", group=G_QS)
+// Per-quarter background colors. Q1/Q2/Q4 default to fully transparent so the
+// hour shows as clear; Q3 defaults to a faint cyan/teal wash so the eye picks
+// it out (cyan kept distinct from the amber 05 box). All user-configurable.
+gColQ1Bg      = input.color(color.new(color.white, 100), "Q1 background", group=G_QS)
+gColQ2Bg      = input.color(color.new(color.white, 100), "Q2 background", group=G_QS)
+gColQ3Bg      = input.color(color.new(#64748b, 88),       "Q3 background", group=G_QS)
+gColQ4Bg      = input.color(color.new(color.white, 100), "Q4 background", group=G_QS)
+
+// ── 🕒 Hour & Triad Verdicts ─────────────────────────────────────────────
+G_VER = "🕒 Hour & Triad Verdicts"
+gVerdictsOn   = input.bool(true,  "▶ Enable group", group=G_VER)
+gShowHourVerd = input.bool(true,  "Show hour close verdict", group=G_VER)
+gPillRetention= input.string("Current and previous", "Hour close pill retention",
+                              options=["Current", "Current and previous", "All"], group=G_VER,
+                              tooltip="How many hour-close pills stay on chart. 'All' keeps every closed-hour pill (bounded by TradingView's max_labels_count cap).")
+gShowTriadVerd= input.bool(true,  "Show triad close verdict", group=G_VER)
+gShowApexHr   = input.bool(true,  "Show apex-hour highlight", group=G_VER)
+gShowOhlcOver = input.bool(true,  "Show 3h running OHLC overlay", group=G_VER)
+
+// ── 📐 Midlines ───────────────────────────────────────────────────────────
+G_MID = "📐 Midlines"
+gMidOn        = input.bool(true,  "▶ Enable group", group=G_MID)
+gShowMid1h    = input.bool(true,  "Show 1h midline", group=G_MID)
+gShowMid3h    = input.bool(true,  "Show 3h midline", group=G_MID)
+gShowMidReact = input.bool(false, "Show midline reaction markers", group=G_MID)
+gMid1hWidth   = input.int(1, "1h midline width", minval=1, maxval=4, group=G_MID)
+gMid3hWidth   = input.int(1, "3h midline width", minval=1, maxval=4, group=G_MID)
+
+// ── 📦 05 Box & Bands ─────────────────────────────────────────────────────
+G_BOX = "📦 05 Box & Bands"
+gBoxOn        = input.bool(true,  "▶ Enable group", group=G_BOX)
+gShowBoxCol   = input.bool(true,  "Show 05 box column (full-height tint)", group=G_BOX)
+gShowBand05   = input.bool(true,  "Show ±0.05% bands", group=G_BOX)
+gShowBand10   = input.bool(true,  "Show ±0.10% bands", group=G_BOX)
+gShowBandRej  = input.bool(true,  "Show band rejection markers", group=G_BOX)
+gShowBandLbl  = input.bool(true,  "Show inline % labels (.05% / .1%)", group=G_BOX)
+
+// ── 🟦 9:30 Range Box ─────────────────────────────────────────────────────
+G_930 = "🟦 9:30 Range Box"
+g930On        = input.bool(true,  "▶ Enable group", group=G_930)
+g930ShowBox   = input.bool(true,  "Show 9:30 candle range box (9:30 → 16:00)", group=G_930)
+g930ShowQuart = input.bool(true,  "Show .25 / .5 / .75 lines", group=G_930)
+g930BoxColor  = input.color(color.new(#94a3b8, 85), "Box fill (9:30 → 16:00)", group=G_930)
+g930LineColor = input.color(color.new(#94a3b8, 50), "Quartile line color", group=G_930)
+g930CandleColor = input.color(color.new(#fbbf24, 60), "9:30 candle highlight (separate shade)", group=G_930,
+                              tooltip="Distinct color overlay on just the 9:30 bar so the originating candle stands apart from the session range box.")
+
+// ── 🌐 Session Anchors (Asia / London / NY1 / NY2 + P12 + midnight) ──────
+G_SESS = "🌐 Session Anchors"
+gSessOn          = input.bool(true,  "▶ Enable group", group=G_SESS)
+gSessShowBoxes   = input.bool(true,  "Show fixed-window session range boxes (4/day)", group=G_SESS,
+                               tooltip="Draws a range box + midline for each fixed window: Asia 18:00-19:30, London 02:30-03:30, NY1 07:30-08:30, NY2 11:30-12:30 (NY time).")
+gSessShowP12     = input.bool(true,  "Show P12 high / mid / low lines (18:00-06:00 range)", group=G_SESS)
+gSessShowMidnight= input.bool(true,  "Show midnight vertical line (00:00 NY)", group=G_SESS)
+gSessRetention   = input.string("Current and previous", "History retention",
+                                 options=["Current", "Current and previous", "All"], group=G_SESS,
+                                 tooltip="How many days of session anchors stay on chart. Applies to session boxes, P12 lines, and midnight verticals.")
+gSessBoxColor    = input.color(color.new(#f59e0b, 75), "Session box color (4 boxes share)", group=G_SESS)
+gSessP12Color    = input.color(color.new(#14b8a6, 20), "P12 line color (high / mid / low share)", group=G_SESS)
+gSessMidnightCol = input.color(color.new(#94a3b8, 60), "Midnight line color", group=G_SESS)
+gSessShowOU      = input.bool(true,  "Show O/U lines (mid of each session box)", group=G_SESS,
+                               tooltip="At each session close, draws a horizontal line at the session's MID extending to 17:00 of the trading day. Labels: Asia O/U, London O/U, NY1 O/U, NY2 O/U.")
+gSessOUColor     = input.color(color.new(#a78bfa, 60), "O/U line color (4 share)", group=G_SESS)
+gSessShowMDR     = input.bool(true,  "Show MDR-10 High / Low", group=G_SESS,
+                               tooltip="At 18:00 NY (new trading day), spawns High/Low lines at session_open ± round(avg(last 10 day-ranges) / 2). Day = 18:00 → 17:00 NY. Excludes today.")
+gSessMDRColor    = input.color(color.new(#f87171, 20), "MDR-10 line color (high / low share)", group=G_SESS)
+gSessShowSD      = input.bool(true,  "Show Asia fib projections (-2.5 / -2 / -1.5 / -1 / +1.5 / +2 / +2.5)", group=G_SESS,
+                               tooltip="At 19:30 (Asia close), projects fib levels off the Asia 18:00–19:30 range. Anchor: high = 0, low = 1, unit = (asiaHi − asiaLo). Lines above the high (-1, -1.5, -2, -2.5) and below the low (+1.5, +2, +2.5) extend to 17:00. The 0/1 levels themselves are the Asia box edges and are not redrawn.")
+gSessSDColor     = input.color(color.new(#fbbf24, 65), "Fib projection color (all 7 share)", group=G_SESS)
+
+// ── 🔔 Alerts ─────────────────────────────────────────────────────────────
+G_AL = "🔔 Alerts"
+gAlertsOn     = input.bool(true,  "▶ Enable group", group=G_AL)
+gAlertSweep   = input.bool(false, "Alert on sweeper", group=G_AL)
+gAlertDoji    = input.bool(true,  "Alert on doji-confirmed", group=G_AL)
+gAlertApex    = input.bool(true,  "Alert on apex-confirmed", group=G_AL)
+gAlertMid     = input.bool(false, "Alert on midline reaction", group=G_AL)
+gAlertBandRej = input.bool(false, "Alert on band rejection", group=G_AL)
+
+// ── 📋 Session Status Table ──────────────────────────────────────────────
+G_TBL = "📋 Session Status Table"
+gTblOn          = input.bool(true,  "▶ Show session status table", group=G_TBL,
+                             tooltip="3-row × 4-col table tracking how price reacts to each fixed-window session box (Asia / London / NY1 / NY2). Rows: Direction (Long/Short on first wick of locked H or L), Session (True if direction holds, False if opposite side later wicked), Model Status (Broken if the session's MID is wicked during the next session's window).")
+gTblPos         = input.string("top_right", "Table position",
+                                options=["top_right","top_left","bottom_right","bottom_left","middle_right","middle_left"], group=G_TBL)
+gTblBgColor     = input.color(color.new(#1a2235, 15), "Table bg color", group=G_TBL)
+gTblTextColor   = input.color(color.new(#e2eaf4, 0),  "Table text color", group=G_TBL)
+gTblHdrColor    = input.color(color.new(#94a3b8, 0),  "Header text color (row/col labels)", group=G_TBL)
+gTblLongColor   = input.color(color.new(#10b981, 0),  "Long color", group=G_TBL)
+gTblShortColor  = input.color(color.new(#ef4444, 0),  "Short color", group=G_TBL)
+gTblTrueColor   = input.color(color.new(#10b981, 0),  "True color", group=G_TBL)
+gTblFalseColor  = input.color(color.new(#ef4444, 0),  "False color", group=G_TBL)
+gTblBrokenColor = input.color(color.new(#ef4444, 0),  "Broken color", group=G_TBL)
+gTblShowBreakMark = input.bool(true, "Mark breaking candle (▲ Long above / ▼ Short below)", group=G_TBL,
+                               tooltip="On the bar where price first wicks one side of an FC's locked H/L, draws a small triangle on the broken side. Same color palette as the Long/Short cells in the table. One marker per FC per day.")
+
+// ── 🎨 Custom Colors (only used when Theme = Custom) ─────────────────────
+G_COL = "🎨 Custom Colors (active when Theme = Custom)"
+gColInStat    = input.color(color.new(#7eb6ff, 0),  "In-stat extreme (navy)", group=G_COL)
+gColOutStat   = input.color(color.new(#f59e0b, 0),  "Out-of-stat extreme",  group=G_COL)
+gColSweeper   = input.color(color.new(#8b5cf6, 0),  "Sweeper",              group=G_COL)
+gColDojiConf  = input.color(color.new(#f59e0b, 0),  "Doji-confirmed",       group=G_COL)
+gColApexHr    = input.color(color.new(#ef4444, 0),  "Apex-hour highlight",  group=G_COL)
+gColLineUp    = input.color(color.new(#10b981, 0),  "Line-up readout",      group=G_COL)
+gColLineDn    = input.color(color.new(#ef4444, 0),  "Line-down readout",    group=G_COL)
+gColApexUp    = input.color(color.new(#3b82f6, 0),  "Apex-up readout",      group=G_COL)
+gColApexDn    = input.color(color.new(#8b5cf6, 0),  "Apex-down readout",    group=G_COL)
+gColDojiRO    = input.color(color.new(#f59e0b, 0),  "Doji readout",         group=G_COL)
+gColMid1h     = input.color(color.new(#f59e0b, 0),  "1h midline",           group=G_COL)
+gColMid3h     = input.color(color.new(#e2eaf4, 0),  "3h midline",           group=G_COL)
+gColBand05    = input.color(color.new(#ffffff, 75), "0.05% band",           group=G_COL)
+gColBand10    = input.color(color.new(#ffffff, 50), "0.10% band",           group=G_COL)
+gColBoxTint   = input.color(color.new(#ffffff, 94), "05 box tint",          group=G_COL)
+gColActiveHr  = input.color(color.new(#06b6d4, 95), "Active hour tint",     group=G_COL)
+gColActiveTr  = input.color(color.new(#06b6d4, 97), "Active triad tint",    group=G_COL)
+gColQDiv      = input.color(color.new(#ffffff, 88), "Quarter divider",      group=G_COL)
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 2. THEME RESOLVER                                                        ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+type Theme
+    color in_stat
+    color out_stat
+    color sweeper
+    color doji_conf
+    color apex_hour
+    color line_up
+    color line_dn
+    color apex_up
+    color apex_dn
+    color doji
+    color mid_1h
+    color mid_3h
+    color band_05
+    color band_10
+    color box_tint
+    color active_hr
+    color active_triad
+    color q_div
+    color readout_bg
+    color readout_border
+    color readout_text
+    color readout_text_dim
+    color readout_active_accent
+    color conf_high
+    color conf_med
+    color conf_low
+
+resolveTheme() =>
+    Theme t = na
+    if gTheme == "Dark"
+        t := Theme.new(
+          // In-stat: light navy in Dark mode for legibility against dark bg
+          // (the user spec said "dark navy"; we keep navy hue, lighten value)
+          in_stat              = color.new(#7eb6ff, 0),
+          out_stat             = color.new(#f59e0b, 0),
+          sweeper              = color.new(#8b5cf6, 0),
+          doji_conf            = color.new(#f59e0b, 0),
+          apex_hour            = color.new(#ef4444, 0),
+          line_up              = color.new(#10b981, 0),
+          line_dn              = color.new(#ef4444, 0),
+          apex_up              = color.new(#3b82f6, 0),
+          apex_dn              = color.new(#8b5cf6, 0),
+          doji                 = color.new(#a78bfa, 0),       // violet (distinct from amber)
+          mid_1h               = color.new(#f59e0b, 0),       // amber
+          mid_3h               = color.new(#06b6d4, 0),       // cyan, distinct from amber
+          band_05              = color.new(#ffffff, 60),
+          band_10              = color.new(#ffffff, 30),
+          box_tint             = color.new(#06b6d4, 82),       // 05 box bg: vivid cyan (distinct from amber Q3)
+          active_hr            = color.new(#cbd5e1, 100),      // clear by default
+          active_triad         = color.new(#cbd5e1, 88),       // slightly more visible than active hour
+          q_div                = color.new(#ffffff, 100),     // hour box bg: clear by default
+          readout_bg           = color.new(#1a2235, 5),        // bg-raised, near-opaque
+          readout_border       = color.new(#ffffff, 75),
+          readout_text         = color.new(#e2eaf4, 0),
+          readout_text_dim     = color.new(#8ba4bc, 0),
+          readout_active_accent= color.new(#06b6d4, 65),
+          conf_high            = color.new(#10b981, 0),
+          conf_med             = color.new(#f59e0b, 0),
+          conf_low             = color.new(#ef4444, 0))
+    else if gTheme == "Light"
+        t := Theme.new(
+          in_stat              = color.new(#0a2540, 0),  // dark navy
+          out_stat             = color.new(#d97706, 0),
+          sweeper              = color.new(#7c3aed, 0),
+          doji_conf            = color.new(#d97706, 0),
+          apex_hour            = color.new(#dc2626, 0),
+          line_up              = color.new(#059669, 0),
+          line_dn              = color.new(#dc2626, 0),
+          apex_up              = color.new(#2563eb, 0),
+          apex_dn              = color.new(#7c3aed, 0),
+          doji                 = color.new(#7c3aed, 0),       // violet (distinct from amber)
+          mid_1h               = color.new(#d97706, 0),       // amber
+          mid_3h               = color.new(#0891b2, 0),       // cyan, distinct from amber
+          band_05              = color.new(#000000, 55),
+          band_10              = color.new(#000000, 25),
+          box_tint             = color.new(#0891b2, 78),       // 05 box bg: vivid cyan (distinct from amber Q3)
+          active_hr            = color.new(#94a3b8, 100),      // clear by default
+          active_triad         = color.new(#94a3b8, 86),       // more opaque than active hour
+          q_div                = color.new(#94a3b8, 100),      // hour box bg: clear by default
+          readout_bg           = color.new(#f1f5f9, 5),        // slate-100 fill, near-opaque
+          readout_border       = color.new(#475569, 50),
+          readout_text         = color.new(#0f172a, 0),        // near-black for readability
+          readout_text_dim     = color.new(#475569, 0),
+          readout_active_accent= color.new(#0891b2, 55),
+          conf_high            = color.new(#059669, 0),
+          conf_med             = color.new(#d97706, 0),
+          conf_low             = color.new(#dc2626, 0))
+    else
+        t := Theme.new(
+          in_stat              = gColInStat,
+          out_stat             = gColOutStat,
+          sweeper              = gColSweeper,
+          doji_conf            = gColDojiConf,
+          apex_hour            = gColApexHr,
+          line_up              = gColLineUp,
+          line_dn              = gColLineDn,
+          apex_up              = gColApexUp,
+          apex_dn              = gColApexDn,
+          doji                 = gColDojiRO,
+          mid_1h               = gColMid1h,
+          mid_3h               = gColMid3h,
+          band_05              = gColBand05,
+          band_10              = gColBand10,
+          box_tint             = gColBoxTint,
+          active_hr            = gColActiveHr,
+          active_triad         = gColActiveTr,
+          q_div                = gColQDiv,
+          readout_bg           = color.new(#111827, 15),
+          readout_border       = color.new(#ffffff, 90),
+          readout_text         = color.new(#e2eaf4, 0),
+          readout_text_dim     = color.new(#8ba4bc, 0),
+          readout_active_accent= color.new(#06b6d4, 65),
+          conf_high            = color.new(#10b981, 0),
+          conf_med             = color.new(#f59e0b, 0),
+          conf_low             = color.new(#ef4444, 0))
+    t
+
+var Theme T = na
+T := resolveTheme()
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 2.5  EMPIRICAL TABLES (auto-generated)                                   ║
+// ║ The block between the PASTE-REGION sentinels is rewritten by            ║
+// ║ engine/build.py — do not edit by hand.                                   ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+// PASTE-REGION-START
+// (TEMPORARILY STUBBED for TradingView compile-size limit — empirical
+// readouts will show "—" placeholders. To restore: re-run engine/build.py
+// and paste output between the START/END sentinels.)
+
+type Probs
+    array<float> v
+
+var map<string, Probs> EMPIRICAL_NQ_TRIAD   = map.new<string, Probs>()
+var map<string, Probs> EMPIRICAL_NQ_HOUR    = map.new<string, Probs>()
+var map<string, Probs> EMPIRICAL_NQ_SWEEP_H = map.new<string, Probs>()
+var map<string, Probs> EMPIRICAL_NQ_SWEEP_L = map.new<string, Probs>()
+var map<string, Probs> EMPIRICAL_NQ_EXT_UP  = map.new<string, Probs>()
+var map<string, Probs> EMPIRICAL_NQ_EXT_DN  = map.new<string, Probs>()
+var map<string, Probs> EMPIRICAL_NQ_PAIR    = map.new<string, Probs>()
+var map<string, Probs> EMPIRICAL_ES_TRIAD   = map.new<string, Probs>()
+var map<string, Probs> EMPIRICAL_ES_HOUR    = map.new<string, Probs>()
+var map<string, Probs> EMPIRICAL_ES_SWEEP_H = map.new<string, Probs>()
+var map<string, Probs> EMPIRICAL_ES_SWEEP_L = map.new<string, Probs>()
+var map<string, Probs> EMPIRICAL_ES_EXT_UP  = map.new<string, Probs>()
+var map<string, Probs> EMPIRICAL_ES_EXT_DN  = map.new<string, Probs>()
+var map<string, Probs> EMPIRICAL_ES_PAIR    = map.new<string, Probs>()
+
+// Compile-time check: skip all empirical readouts (state-key building, hashing,
+// map lookups) when tables are empty. canonicalHash is O(key_len * 95) per call
+// and runs up to 8x per bar in the readout blocks — this gates everything off
+// when there's nothing to look up. Restoring the tables auto-lights readouts.
+bool _EMP_ENABLED = map.size(EMPIRICAL_NQ_HOUR) > 0 or map.size(EMPIRICAL_ES_HOUR) > 0
+
+// PASTE-REGION-END
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 2b. EMPIRICAL LOOKUP HELPERS                                             ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+//
+// Pine-side polynomial rolling hash + state-key builders. MUST produce the
+// same string as the Python-side `canonical_hash()` and `build_*_key()` in
+// `engine/state_vector.py`.
+//
+// Hash: h_{i+1} = (h_i * 131 + ord(c_i)) mod 2^32, output base36.
+// 32-bit modulus chosen so the running hash fits cleanly in float64
+// mantissa precision (53 bits).
+
+// Lookup table for ord() of printable ASCII (codes 32–126).
+var string _ASCII = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+
+ordOf(string s) =>
+    int code = 32
+    for i = 0 to str.length(_ASCII) - 1
+        if str.substring(_ASCII, i, i + 1) == s
+            code := i + 32
+            break
+    code
+
+toBase36(float n) =>
+    string out = ""
+    string chars = "0123456789abcdefghijklmnopqrstuvwxyz"
+    float v = n
+    if v == 0
+        out := "0"
+    while v > 0
+        int digit = int(v - math.floor(v / 36) * 36)
+        out := str.substring(chars, digit, digit + 1) + out
+        v := math.floor(v / 36)
+    out
+
+canonicalHash(string key) =>
+    float h = 0.0
+    float MOD = 4294967296.0  // 2^32
+    int n = str.length(key)
+    for i = 0 to n - 1
+        string ch = str.substring(key, i, i + 1)
+        int c = ordOf(ch)
+        float v2 = h * 131.0 + c
+        h := v2 - math.floor(v2 / MOD) * MOD
+    toBase36(h)
+
+buildHourKey(string sym, string block, int hour_idx, string q,
+             string q1cls, string q2cls, string q3cls, string q4cls,
+             string sweep_set, string midhr, string box_react) =>
+    "v1|sym=" + sym + "|tf=hour|block=" + block + "|hour_idx=" + str.tostring(hour_idx) + "|q=" + q +
+     "|q1cls=" + q1cls + "|q2cls=" + q2cls + "|q3cls=" + q3cls + "|q4cls=" + q4cls +
+     "|sweep_set=" + sweep_set + "|midhr=" + midhr + "|box_react=" + box_react
+
+buildTriadKey(string sym, string block, string c1cls, string c2q,
+              string c2vh, string c2vl, bool c2sw_c1h, bool c2sw_c1l,
+              bool c2_inside, string midhr, string mid3h, string box_react) =>
+    "v1|sym=" + sym + "|tf=triad|block=" + block + "|c1cls=" + c1cls + "|c2q=" + c2q +
+     "|c2vh=" + c2vh + "|c2vl=" + c2vl +
+     "|c2sw_c1h=" + (c2sw_c1h ? "Y" : "N") +
+     "|c2sw_c1l=" + (c2sw_c1l ? "Y" : "N") +
+     "|c2_inside=" + (c2_inside ? "Y" : "N") +
+     "|midhr=" + midhr + "|mid3h=" + mid3h + "|box_react=" + box_react
+
+rekeyHourFor(string hour_key, string tf) =>
+    str.replace(hour_key, "|tf=hour|", "|tf=" + tf + "|", 0)
+
+buildPairKey(string triad_key, string prior_class) =>
+    str.replace(triad_key, "|tf=triad|", "|tf=pair|", 0) + "|prior_class=" + prior_class
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 3. TIME / STRUCTURE PRIMITIVES                                           ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+NY_TZ = "America/New_York"
+
+// ── Script-level constants (computed once at script init) ─────────────────
+// `timeframe.in_seconds("")` returns a constant for the chart's TF, so we
+// pre-compute the bar counts that are reused all over the rendering blocks.
+int TF_SEC          = timeframe.in_seconds("")
+int BARS_PER_HOUR   = math.max(1, int(60 * 60   / TF_SEC))
+int BARS_PER_QUARTER= math.max(1, int(15 * 60   / TF_SEC))
+// Visible right-edge padding: anchored lines (P12, O/U, MDR-10, fib, midnight)
+// extend ~30 min past their nominal endpoint so they don't end flush with
+// the last printed candle. Floor at 6 bars for very low TFs.
+int RIGHT_EDGE_PAD_BARS = math.max(6, int(30 * 60 / TF_SEC))
+bool IS_TF_MIN1     = TF_SEC == 60
+bool IS_TF_MIN1OR5  = TF_SEC <= 300
+bool IS_TF_MIN1TO15 = TF_SEC <= 900
+
+// ── Per-bar time cache ────────────────────────────────────────────────────
+// `hour(...)` and `minute(...)` with a tz argument do non-trivial work each
+// call. Call them once per bar and cache the results — every predicate
+// below is a pure arithmetic test against the cache.
+int _H = hour(time, NY_TZ)
+int _M = minute(time, NY_TZ)
+
+quarterOfHour()    => int(math.floor(_M / 15)) + 1
+isFirstBarOfQuarter() => _M == 0  or _M == 15 or _M == 30 or _M == 45
+isLastBarOfQuarter()  => _M == 14 or _M == 29 or _M == 44 or _M == 59
+isBoxBar()         => _M <= 4
+isHourClose()      => _M == 59
+isTfMin1()         => IS_TF_MIN1
+isTfMin1or5()      => IS_TF_MIN1OR5
+isTfMin1to15()     => IS_TF_MIN1TO15
+
+blockId() =>
+    string b = na
+    if _H < 3
+        b := "00-03"
+    else if _H < 6
+        b := "03-06"
+    else if _H < 9
+        b := "06-09"
+    else if _H < 12
+        b := "09-12"
+    else if _H < 15
+        b := "12-15"
+    else if _H >= 18 and _H < 21
+        b := "18-21"
+    else if _H >= 21
+        b := "21-00"
+    b
+
+hourIndexInTriad() =>
+    int idx = na
+    if _H < 3
+        idx := _H + 1
+    else if _H < 6
+        idx := _H - 2
+    else if _H < 9
+        idx := _H - 5
+    else if _H < 12
+        idx := _H - 8
+    else if _H < 15
+        idx := _H - 11
+    else if _H >= 18 and _H < 21
+        idx := _H - 17
+    else if _H >= 21
+        idx := _H - 20
+    idx
+
+isTriadClose() => isHourClose() and hourIndexInTriad() == 3
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 4. RUNNING AGGREGATIONS                                                  ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+type QuarterAgg
+    int    qIdx
+    int    anchorBar
+    float  open_   = na
+    float  close_  = na
+    float  high_   = na
+    float  low_    = na
+    int    highBar = na
+    int    lowBar  = na
+    int    barCount = 0
+
+quarterUpdate(QuarterAgg q, float o, float h, float l, float c) =>
+    if not na(q)
+        if q.barCount == 0
+            q.open_ := o
+        q.close_ := c
+        // Use >= so equal-high re-touches advance highBar to the most recent
+        // bar holding the extreme. Better matches the eye for live tracking
+        // when price retests an earlier high within the same quarter.
+        if na(q.high_) or h >= q.high_
+            q.high_   := h
+            q.highBar := bar_index
+        if na(q.low_) or l <= q.low_
+            q.low_   := l
+            q.lowBar := bar_index
+        q.barCount += 1
+
+type HourAgg
+    int        anchorBar
+    QuarterAgg q1 = na
+    QuarterAgg q2 = na
+    QuarterAgg q3 = na
+    QuarterAgg q4 = na
+    float      box05Hi = na
+    float      box05Lo = na
+    bool       box05Locked = false
+
+hourHigh(HourAgg h) =>
+    float hi = na
+    if not na(h.q1) and (na(hi) or h.q1.high_ > hi)
+        hi := h.q1.high_
+    if not na(h.q2) and (na(hi) or h.q2.high_ > hi)
+        hi := h.q2.high_
+    if not na(h.q3) and (na(hi) or h.q3.high_ > hi)
+        hi := h.q3.high_
+    if not na(h.q4) and (na(hi) or h.q4.high_ > hi)
+        hi := h.q4.high_
+    hi
+
+hourLow(HourAgg h) =>
+    float lo = na
+    if not na(h.q1) and (na(lo) or h.q1.low_ < lo)
+        lo := h.q1.low_
+    if not na(h.q2) and (na(lo) or h.q2.low_ < lo)
+        lo := h.q2.low_
+    if not na(h.q3) and (na(lo) or h.q3.low_ < lo)
+        lo := h.q3.low_
+    if not na(h.q4) and (na(lo) or h.q4.low_ < lo)
+        lo := h.q4.low_
+    lo
+
+type TriadAgg
+    string  blockId
+    int     anchorBar
+    HourAgg c1 = na
+    HourAgg c2 = na
+    HourAgg c3 = na
+
+triadHigh(TriadAgg t) =>
+    float hi = na
+    h1 = na(t.c1) ? na : hourHigh(t.c1)
+    h2 = na(t.c2) ? na : hourHigh(t.c2)
+    h3 = na(t.c3) ? na : hourHigh(t.c3)
+    if not na(h1)
+        hi := h1
+    if not na(h2) and (na(hi) or h2 > hi)
+        hi := h2
+    if not na(h3) and (na(hi) or h3 > hi)
+        hi := h3
+    hi
+
+triadLow(TriadAgg t) =>
+    float lo = na
+    l1 = na(t.c1) ? na : hourLow(t.c1)
+    l2 = na(t.c2) ? na : hourLow(t.c2)
+    l3 = na(t.c3) ? na : hourLow(t.c3)
+    if not na(l1)
+        lo := l1
+    if not na(l2) and (na(lo) or l2 < lo)
+        lo := l2
+    if not na(l3) and (na(lo) or l3 < lo)
+        lo := l3
+    lo
+
+// One TriadAgg per active 3h block. Reset at the start of each block.
+var TriadAgg activeTriad = na
+
+if isFirstBarOfQuarter() and quarterOfHour() == 1 and hourIndexInTriad() == 1
+    activeTriad := TriadAgg.new(blockId = blockId(), anchorBar = bar_index)
+
+// Standalone aggregator for the 3pm hour (15:00–15:59). Outside any triad
+// block, but hour-level features still render. Triad-only features (3h
+// midline, apex hour, triad verdict) are gated separately on activeTriad.
+var HourAgg hour3pm = na
+is3pmHour() => _H == 15
+
+if isFirstBarOfQuarter() and quarterOfHour() == 1 and is3pmHour()
+    hour3pm := HourAgg.new(anchorBar = bar_index)
+
+// Lazy-create the triad hour for the current triad index. Returns the
+// per-hour aggregator (or na if outside the triad's hour range).
+ensureTriadHour() =>
+    HourAgg h = na
+    if not na(activeTriad)
+        int hidx = hourIndexInTriad()
+        if hidx == 1
+            if na(activeTriad.c1)
+                activeTriad.c1 := HourAgg.new(anchorBar = bar_index)
+            h := activeTriad.c1
+        else if hidx == 2
+            if na(activeTriad.c2)
+                activeTriad.c2 := HourAgg.new(anchorBar = bar_index)
+            h := activeTriad.c2
+        else if hidx == 3
+            if na(activeTriad.c3)
+                activeTriad.c3 := HourAgg.new(anchorBar = bar_index)
+            h := activeTriad.c3
+    h
+
+// Returns the active per-hour aggregator (3pm standalone or triad's
+// current-hour slot). Centralizes the dispatch so all rendering blocks
+// share one code path. Pine UDTs are reference types, so the returned
+// HourAgg can be mutated by callers.
+liveHour() =>
+    HourAgg h = na
+    if is3pmHour()
+        h := hour3pm
+    else
+        h := ensureTriadHour()
+    h
+
+hasLiveHour() => not na(liveHour())
+
+// Per-bar aggregation for the active hour: lazy-create the current quarter,
+// update its OHLC, and accumulate the 05-box. Idempotent across triad and
+// 3pm paths since both share the HourAgg/QuarterAgg shape.
+aggregateLiveHour() =>
+    HourAgg h = liveHour()
+    if not na(h)
+        int qi = quarterOfHour()
+        if qi == 1 and na(h.q1)
+            h.q1 := QuarterAgg.new(qIdx = 1, anchorBar = bar_index)
+        if qi == 2 and na(h.q2)
+            h.q2 := QuarterAgg.new(qIdx = 2, anchorBar = bar_index)
+        if qi == 3 and na(h.q3)
+            h.q3 := QuarterAgg.new(qIdx = 3, anchorBar = bar_index)
+        if qi == 4 and na(h.q4)
+            h.q4 := QuarterAgg.new(qIdx = 4, anchorBar = bar_index)
+        QuarterAgg q = qi == 1 ? h.q1 : qi == 2 ? h.q2 : qi == 3 ? h.q3 : h.q4
+        if not na(q)
+            if q.barCount == 0
+                q.open_ := open
+            q.close_ := close
+            if na(q.high_) or high >= q.high_
+                q.high_   := high
+                q.highBar := bar_index
+            if na(q.low_) or low <= q.low_
+                q.low_   := low
+                q.lowBar := bar_index
+            q.barCount += 1
+        if isBoxBar()
+            h.box05Hi := na(h.box05Hi) ? high : math.max(h.box05Hi, high)
+            h.box05Lo := na(h.box05Lo) ? low  : math.min(h.box05Lo, low)
+            if _M == 4
+                h.box05Locked := true
+
+// Single per-bar aggregation entry point.
+aggregateLiveHour()
+
+// Per-bar liveHour cache. The dispatch (3pm vs triad-hour) is invariant for
+// a single bar — every downstream renderer can read this directly instead of
+// re-walking the triad / 3pm branches via liveHour() each time. Pine UDTs are
+// reference types, so mutations through this handle propagate.
+HourAgg LH = liveHour()
+bool HAS_LH = not na(LH)
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 5. CLASSIFIERS                                                           ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+classifyHour(HourAgg h) =>
+    string cls = "pending"
+    if not na(h) and not na(h.q1) and not na(h.q2) and not na(h.q3) and not na(h.q4)
+        h1 = h.q1.high_, h2 = h.q2.high_, h3 = h.q3.high_, h4 = h.q4.high_
+        l1 = h.q1.low_,  l2 = h.q2.low_,  l3 = h.q3.low_,  l4 = h.q4.low_
+        if h1 < h2 and h2 < h3 and h3 < h4 and l1 < l2 and l2 < l3 and l3 < l4
+            cls := "line-up"
+        else if h1 > h2 and h2 > h3 and h3 > h4 and l1 > l2 and l2 > l3 and l3 > l4
+            cls := "line-down"
+        else
+            cls := "doji"
+    cls
+
+classifyTriad(TriadAgg t) =>
+    string cls = "pending"
+    if not na(t) and not na(t.c1) and not na(t.c2) and not na(t.c3)
+        h1 = hourHigh(t.c1), h2 = hourHigh(t.c2), h3 = hourHigh(t.c3)
+        l1 = hourLow(t.c1),  l2 = hourLow(t.c2),  l3 = hourLow(t.c3)
+        if not na(h1) and not na(h2) and not na(h3) and not na(l1) and not na(l2) and not na(l3)
+            if h1 < h2 and h2 < h3 and l1 < l2 and l2 < l3
+                cls := "line-up"
+            else if h1 > h2 and h2 > h3 and l1 > l2 and l2 > l3
+                cls := "line-down"
+            else if h1 < h2 and h2 > h3
+                cls := "apex-up"
+            else if l1 > l2 and l2 < l3
+                cls := "apex-down"
+            else
+                cls := "doji"
+    cls
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 6. RENDERERS                                                             ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+// ATR-based vertical offset used by labels positioned below price action.
+// Hoisted to script scope so ta.atr() runs every bar (CW10003 fix).
+float _ATR20 = ta.atr(20)
+atrOffset() => _ATR20 * 2.0
+
+// Tolerance for "extreme" tie-breaking: the earliest quarter within one tick
+// of the running hour high/low is treated as holding the extreme. Prevents a
+// later quarter that nudges past the early high by a tick from stealing the
+// label when the early quarter is what the eye reads as the high.
+extremeEps() => syminfo.mintick
+
+// True for any hour we render hour-level features on: triad-block hours OR
+// the 3pm standalone hour. The 3-4pm and 4-5pm gap and overnight hours that
+// fall outside both still return false.
+inTrackedHour() => not na(blockId()) or is3pmHour()
+
+// ── Hour box (bounded to hour range) + intra-hour quarter verticals ───────
+// Hour box: tinted rectangle bounded by the hour's running high/low, growing
+// with each bar. Quarter verticals at :15, :30, :45 are thin solid lines
+// confined to within the active hour's price range.
+
+// Hour box bg: clear by default. Pass `na` when q_div is at alpha ≥95 so
+// the fill is truly invisible (Pine's `color.new(c, 100)` can paint a faint
+// wash on some renderers).
+// Quarter divider verticals always render visibly regardless of bg opacity —
+// pinned to a moderate gray that shows on both light and dark themes.
+// Resolve once: theme is constant across a script run.
+color HOUR_BOX_BG          = color.t(T.q_div) >= 95 ? color(na) : T.q_div
+// Detect the actual chart background brightness so contrast-sensitive colors
+// (text, frame borders) stay readable even if the indicator's theme input
+// doesn't match the user's TradingView chart skin.
+// `color.r/g/b` give 0–255; pick light text on dark bg and vice versa.
+bool _CHART_IS_LIGHT       = (color.r(chart.bg_color) + color.g(chart.bg_color) + color.b(chart.bg_color)) / 3.0 > 127
+color HOUR_BOX_BORDER      = _CHART_IS_LIGHT ? color.new(#475569, 70) : color.new(#cbd5e1, 70)
+color HOUR_DIV_LINE        = _CHART_IS_LIGHT ? color.new(#475569, 80) : color.new(#cbd5e1, 80)
+// Hour-open line color: distinct orange so it doesn't blend with candle
+// wicks or other price-action markers. Same hue in light/dark for consistency.
+color HOUR_OPEN_COLOR      = _CHART_IS_LIGHT ? color.new(#c2410c, 0)  : color.new(#fb923c, 0)
+color HL_MARK_COLOR        = _CHART_IS_LIGHT ? color.new(#0f172a, 0)  : color.new(#f1f5f9, 0)
+color SWEEP_RED_COLOR      = gTheme == "Light" ? color.new(#dc2626, 0)  : color.new(#ef4444, 0)
+color SWEEP_GREEN_COLOR    = gTheme == "Light" ? color.new(#059669, 0)  : color.new(#10b981, 0)
+color DOJI_LINE_COLOR      = gTheme == "Light" ? color.new(#000000, 0)  : color.new(#ffffff, 0)
+color IN_STAT_BG           = color.new(T.in_stat, 80)
+color OUT_STAT_BG          = color.new(T.out_stat, 80)
+color ACTIVE_TRIAD_BORDER  = color.new(T.active_triad, math.max(0, color.t(T.active_triad) - 40))
+color BOX_05_BORDER        = color.new(T.box_tint, math.max(0, color.t(T.box_tint) - 10))
+color ACTIVE_HR_BG         = color.t(T.active_hr) >= 95 ? color(na) : T.active_hr
+color ACTIVE_HR_BORDER     = color(na)
+color BAND_05_BG           = color.new(T.band_05, 100)
+color BAND_10_BG           = color.new(T.band_10, 100)
+color APEX_HOUR_BG         = color.new(T.apex_hour, 97)
+color APEX_HOUR_BORDER     = color.new(T.apex_hour, 85)
+color APEX_HOUR_LABEL_BG   = color.new(T.apex_hour, 88)
+color MID_1H_BG            = color.new(T.mid_1h, 90)
+color MID_3H_LINE          = color.new(T.mid_3h, 50)
+color HOUR_OPEN_LABEL_BG   = color.new(HOUR_OPEN_COLOR, 100)
+color HL_MARK_LABEL_BG     = color.new(HL_MARK_COLOR, 100)
+color RED_TRANSPARENT      = color.new(color.red, 100)
+// Formal "pill" palette for hour-close summary label. Solid fill so the box
+// reads clearly against any chart bg. Light-mode pills use a dark slate fill
+// with light text for inverse contrast (more legible against bright charts).
+color PILL_BG              = gTheme == "Light" ? color.new(#1e293b, 0)  : color.new(#334155, 0)
+color PILL_BORDER          = gTheme == "Light" ? color.new(#475569, 30) : color.new(#64748b, 30)
+color PILL_TEXT            = gTheme == "Light" ? color.new(#f1f5f9, 0)  : color.new(#f1f5f9, 0)
+// Per-quarter background border (100-alpha = invisible). qC differs per
+// quarter (Q1/Q2/Q3/Q4 user-configurable), so we resolve all four.
+color Q1_BG_BORDER         = color.new(gColQ1Bg, 100)
+color Q2_BG_BORDER         = color.new(gColQ2Bg, 100)
+color Q3_BG_BORDER         = color.new(gColQ3Bg, 100)
+color Q4_BG_BORDER         = color.new(gColQ4Bg, 100)
+
+// One box + 3 quarter-divider lines per hour, updated live as range expands
+var box currentHourBox = na
+var line currentQ2Line = na
+var line currentQ3Line = na
+var line currentQ4Line = na
+
+// Reset / create at hour open (first bar of Q1 with valid block).
+// Hour box (with border) renders on 1m, 5m, AND 15m. Quarter divider verticals
+// at :15 / :30 / :45 only render on 1m — on 5m there are 3 bars per quarter
+// and on 15m each quarter IS a single bar, so dividers add no information and
+// just clutter the candles.
+if gQStructOn and gShowQDiv and IS_TF_MIN1TO15 and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+    currentHourBox := box.new(left=bar_index, top=high, right=bar_index + BARS_PER_HOUR - 1, bottom=low,
+                              xloc=xloc.bar_index, bgcolor=HOUR_BOX_BG,
+                              border_color=HOUR_BOX_BORDER, border_width=2)
+    if IS_TF_MIN1
+        currentQ2Line := line.new(bar_index + BARS_PER_QUARTER,     low, bar_index + BARS_PER_QUARTER,     high,
+                                  xloc=xloc.bar_index, extend=extend.none,
+                                  color=HOUR_DIV_LINE, style=line.style_solid, width=2)
+        currentQ3Line := line.new(bar_index + BARS_PER_QUARTER * 2, low, bar_index + BARS_PER_QUARTER * 2, high,
+                                  xloc=xloc.bar_index, extend=extend.none,
+                                  color=HOUR_DIV_LINE, style=line.style_solid, width=2)
+        currentQ4Line := line.new(bar_index + BARS_PER_QUARTER * 3, low, bar_index + BARS_PER_QUARTER * 3, high,
+                                  xloc=xloc.bar_index, extend=extend.none,
+                                  color=HOUR_DIV_LINE, style=line.style_solid, width=2)
+
+// Update every bar inside the active hour: expand top/bottom to running range
+if gQStructOn and gShowQDiv and isTfMin1to15() and not na(currentHourBox) and inTrackedHour()
+    new_top    = math.max(box.get_top(currentHourBox),    high)
+    new_bottom = math.min(box.get_bottom(currentHourBox), low)
+    box.set_top(currentHourBox, new_top)
+    box.set_bottom(currentHourBox, new_bottom)
+    // Sync any existing quarter divider lines to match new top/bottom (1m only)
+    if not na(currentQ2Line)
+        line.set_y1(currentQ2Line, new_bottom)
+        line.set_y2(currentQ2Line, new_top)
+    if not na(currentQ3Line)
+        line.set_y1(currentQ3Line, new_bottom)
+        line.set_y2(currentQ3Line, new_top)
+    if not na(currentQ4Line)
+        line.set_y1(currentQ4Line, new_bottom)
+        line.set_y2(currentQ4Line, new_top)
+
+// ── Per-quarter background tints ──────────────────────────────────────────
+// One box per quarter, spawned at quarter open. Each box's bg color comes
+// from the user-configurable per-quarter setting. Bounded vertically to the
+// hour box (so they live inside the hour, not full chart height).
+
+var box currentQ1Bg = na
+var box currentQ2Bg = na
+var box currentQ3Bg = na
+var box currentQ4Bg = na
+
+qBgColorFor(int qIdx) =>
+    qIdx == 1 ? gColQ1Bg : qIdx == 2 ? gColQ2Bg : qIdx == 3 ? gColQ3Bg : gColQ4Bg
+
+// Reset references at hour open so closed-hour quarter tints freeze in place
+if gQStructOn and gShowQBgs and isTfMin1() and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+    currentQ1Bg := na
+    currentQ2Bg := na
+    currentQ3Bg := na
+    currentQ4Bg := na
+
+// Spawn a per-quarter bg box at the start of each quarter
+// Right edge extends slightly into the next quarter (+1 bar) so adjacent
+// quarter boxes overlap by 1 bar — eliminates visual seam gaps caused by
+// pixel boundaries between consecutive bars on TradingView.
+if gQStructOn and gShowQBgs and IS_TF_MIN1 and isFirstBarOfQuarter() and inTrackedHour() and not na(currentHourBox)
+    int qNewBg = quarterOfHour()
+    int qLeft  = bar_index
+    int qRight = bar_index + BARS_PER_QUARTER
+    color qC      = qNewBg == 1 ? gColQ1Bg     : qNewBg == 2 ? gColQ2Bg     : qNewBg == 3 ? gColQ3Bg     : gColQ4Bg
+    color qBorder = qNewBg == 1 ? Q1_BG_BORDER : qNewBg == 2 ? Q2_BG_BORDER : qNewBg == 3 ? Q3_BG_BORDER : Q4_BG_BORDER
+    box newQBox = box.new(qLeft, box.get_top(currentHourBox), qRight, box.get_bottom(currentHourBox),
+                          xloc=xloc.bar_index, bgcolor=qC,
+                          border_color=qBorder, border_width=0)
+    if qNewBg == 1
+        currentQ1Bg := newQBox
+    if qNewBg == 2
+        currentQ2Bg := newQBox
+    if qNewBg == 3
+        currentQ3Bg := newQBox
+    if qNewBg == 4
+        currentQ4Bg := newQBox
+
+// Sync per-quarter bg tops/bottoms to the hour box as it expands
+if gQStructOn and gShowQBgs and isTfMin1() and not na(currentHourBox)
+    float qBgTop = box.get_top(currentHourBox)
+    float qBgBot = box.get_bottom(currentHourBox)
+    if not na(currentQ1Bg)
+        box.set_top(currentQ1Bg,    qBgTop)
+        box.set_bottom(currentQ1Bg, qBgBot)
+    if not na(currentQ2Bg)
+        box.set_top(currentQ2Bg,    qBgTop)
+        box.set_bottom(currentQ2Bg, qBgBot)
+    if not na(currentQ3Bg)
+        box.set_top(currentQ3Bg,    qBgTop)
+        box.set_bottom(currentQ3Bg, qBgBot)
+    if not na(currentQ4Bg)
+        box.set_top(currentQ4Bg,    qBgTop)
+        box.set_bottom(currentQ4Bg, qBgBot)
+
+// ── Hour-open box (covers minutes :00–:04 of every hour) ────────────────
+// Spawned on the first bar of Q1 (minute :00), 5 bars wide so it spans
+// minutes :00 through :04 inclusive. Bounded vertically to ONLY the H/L of
+// those 5 bars (NOT the full hour range). The aggregator's existing
+// `box05Hi` / `box05Lo` fields already track the 5-min open range and stop
+// updating after minute :04, so we just mirror them onto the box.
+var box currentHourOpenBox = na
+
+if gQStructOn and gShowHourOpenBox and IS_TF_MIN1 and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+    currentHourOpenBox := box.new(bar_index, high, bar_index + 4, low,
+                                  xloc=xloc.bar_index, bgcolor=gColHourOpenBox,
+                                  border_color=color.new(gColHourOpenBox, 100), border_width=0)
+
+// During minutes :00–:04, expand top/bottom to track the running 5-bar H/L.
+// At :05+ the box freezes at the locked range. We piggy-back on the
+// HourAgg's box05Hi/box05Lo which the aggregator already maintains.
+if gQStructOn and gShowHourOpenBox and isTfMin1() and not na(currentHourOpenBox) and HAS_LH and isBoxBar()
+    HourAgg curH_hob = LH
+    if not na(curH_hob) and not na(curH_hob.box05Hi) and not na(curH_hob.box05Lo)
+        box.set_top(currentHourOpenBox,    curH_hob.box05Hi)
+        box.set_bottom(currentHourOpenBox, curH_hob.box05Lo)
+
+// ── 05-box (bounded to box range, extends horizontally across the hour) ──
+// One box, anchored to the active hour's box high/low. Box high/low is locked
+// at minute :04; the rectangle extends horizontally to the end of the hour.
+var box current05Box = na
+
+if gBoxOn and gShowBoxCol and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+    current05Box := box.new(left=bar_index, top=high, right=bar_index + BARS_PER_HOUR - 1, bottom=low,
+                            xloc=xloc.bar_index, bgcolor=T.box_tint,
+                            border_color=BOX_05_BORDER,
+                            border_width=1, border_style=line.style_solid)
+
+// Update 05-box bounds during minutes :00–:04 (box high/low locks after :04)
+if gBoxOn and gShowBoxCol and isBoxBar() and not na(current05Box) and inTrackedHour()
+    new_top_05    = math.max(box.get_top(current05Box),    high)
+    new_bottom_05 = math.min(box.get_bottom(current05Box), low)
+    box.set_top(current05Box, new_top_05)
+    box.set_bottom(current05Box, new_bottom_05)
+
+// ── ±0.05% / ±0.10% bands (drawn on the :04 minute when box locks) ────────
+bandLevels(float boxHi, float boxLo) =>
+    [boxHi * 1.0010, boxHi * 1.0005, boxLo * 0.9995, boxLo * 0.9990]
+
+if gBoxOn and HAS_LH
+    HourAgg curH = LH
+    if not na(curH) and curH.box05Locked and _M == 4 and not na(curH.box05Hi)
+        [u10, u05, l05_, l10] = bandLevels(curH.box05Hi, curH.box05Lo)
+        int hourStartBar = curH.anchorBar
+        // Bands extend only through the rest of Q1 — i.e. up to and including
+        // minute :14 of the hour. They are NOT drawn through Q2/Q3/Q4.
+        int q1EndBar = curH.anchorBar + BARS_PER_QUARTER - 1
+        if gShowBand10
+            line.new(hourStartBar, u10, q1EndBar, u10, xloc=xloc.bar_index, color=T.band_10, style=line.style_solid, width=2)
+            line.new(hourStartBar, l10, q1EndBar, l10, xloc=xloc.bar_index, color=T.band_10, style=line.style_solid, width=2)
+            if gShowBandLbl
+                label.new(q1EndBar, u10, ".1%", xloc=xloc.bar_index, color=BAND_10_BG, textcolor=T.band_10, style=label.style_label_left, size=size.small)
+                label.new(q1EndBar, l10, ".1%", xloc=xloc.bar_index, color=BAND_10_BG, textcolor=T.band_10, style=label.style_label_left, size=size.small)
+        if gShowBand05
+            line.new(hourStartBar, u05, q1EndBar, u05, xloc=xloc.bar_index, color=T.band_05, style=line.style_solid, width=1)
+            line.new(hourStartBar, l05_, q1EndBar, l05_, xloc=xloc.bar_index, color=T.band_05, style=line.style_solid, width=1)
+            if gShowBandLbl
+                label.new(q1EndBar, u05, ".05%", xloc=xloc.bar_index, color=BAND_05_BG, textcolor=T.band_05, style=label.style_label_left, size=size.small)
+                label.new(q1EndBar, l05_, ".05%", xloc=xloc.bar_index, color=BAND_05_BG, textcolor=T.band_05, style=label.style_label_left, size=size.small)
+
+// ── Band rejection markers ────────────────────────────────────────────────
+detectBandRejection(float h, float l, float c, float u10, float u05, float l05_, float l10) =>
+    string side = "", level = ""
+    if h > u10 and c < u10
+        side := "upper"
+        level := "10"
+    else if h > u05 and c < u05
+        side := "upper"
+        level := "05"
+    else if l < l10 and c > l10
+        side := "lower"
+        level := "10"
+    else if l < l05_ and c > l05_
+        side := "lower"
+        level := "05"
+    [side, level]
+
+var string boxReactState = "none"
+// Per-band first-rejection flags. Reset at hour open, set true after first hit.
+var bool rejFired10Up = false
+var bool rejFired10Dn = false
+var bool rejFired05Up = false
+var bool rejFired05Dn = false
+
+if gBoxOn and HAS_LH
+    HourAgg curH_br = LH
+    if not na(curH_br) and curH_br.box05Locked and not na(curH_br.box05Hi)
+        [u10b, u05b, l05b, l10b] = bandLevels(curH_br.box05Hi, curH_br.box05Lo)
+        [side, level] = detectBandRejection(high, low, close, u10b, u05b, l05b, l10b)
+        if side != ""
+            // Update box-react state used in readouts
+            string token = level + (side == "upper" ? "up_rejected" : "dn_rejected")
+            if boxReactState == "none" or boxReactState == token
+                boxReactState := token
+            else
+                boxReactState := "multi"
+
+            // Only mark the FIRST rejection of each (level, side) per hour.
+            bool isFirst = (level == "10" and side == "upper" and not rejFired10Up) or
+                           (level == "10" and side == "lower" and not rejFired10Dn) or
+                           (level == "05" and side == "upper" and not rejFired05Up) or
+                           (level == "05" and side == "lower" and not rejFired05Dn)
+
+            if isFirst
+                if level == "10" and side == "upper"
+                    rejFired10Up := true
+                if level == "10" and side == "lower"
+                    rejFired10Dn := true
+                if level == "05" and side == "upper"
+                    rejFired05Up := true
+                if level == "05" and side == "lower"
+                    rejFired05Dn := true
+
+                // Only render the 10% band rejections; 05% rejections suppressed.
+                if gShowBandRej and level == "10"
+                    color cMark = T.band_10
+                    float anchorY = side == "upper" ? high : low
+                    label.new(bar_index, anchorY, "rej " + level,
+                              style=side == "upper" ? label.style_label_down : label.style_label_up,
+                              color=color.new(cMark, 95), textcolor=cMark, size=size.small)
+                if gAlertsOn and gAlertBandRej
+                    alert("Live Price Action: " + level + "% band " + side + " rejection", alert.freq_once_per_bar)
+
+// Reset per-hour state at hour open
+if isFirstBarOfQuarter() and quarterOfHour() == 1
+    boxReactState := "none"
+    rejFired10Up := false
+    rejFired10Dn := false
+    rejFired05Up := false
+    rejFired05Dn := false
+
+// ── 1h midline + reactions ────────────────────────────────────────────────
+resolve1hMid(HourAgg cur, HourAgg prior) =>
+    float mid = na
+    string source = "current"
+    if not na(cur)
+        curHi = hourHigh(cur)
+        curLo = hourLow(cur)
+        if not na(curHi) and not na(curLo)
+            // Containment rule: when the current hour's range is contained
+            // inside the prior hour's range, the actionable midline is the
+            // PRIOR hour's mid (price is reacting to that level, not its
+            // own running midpoint). Mirrors the 3h midline rule.
+            float priHi = na
+            float priLo = na
+            if not na(prior)
+                priHi := hourHigh(prior)
+                priLo := hourLow(prior)
+            if not na(priHi) and not na(priLo) and curLo > priLo and curHi < priHi
+                mid := (priHi + priLo) / 2.0
+                source := "prior"
+            else
+                mid := (curHi + curLo) / 2.0
+    [mid, source]
+
+resolve3hMid(TriadAgg cur, float priorTriadHi, float priorTriadLo) =>
+    float mid = na
+    string source = "current"
+    if not na(cur)
+        curHi = triadHigh(cur)
+        curLo = triadLow(cur)
+        if not na(curHi) and not na(curLo)
+            if not na(priorTriadHi) and not na(priorTriadLo) and curLo > priorTriadLo and curHi < priorTriadHi
+                mid := (priorTriadHi + priorTriadLo) / 2.0
+                source := "prior"
+            else
+                mid := (curHi + curLo) / 2.0
+    [mid, source]
+
+detectMidReaction(float mid, float h, float l, float c) =>
+    string r = ""
+    if not na(mid)
+        if l < mid and c > mid
+            r := "support"
+        else if h > mid and c < mid
+            r := "reject"
+    r
+
+var HourAgg priorHour1h = na
+var float priorTriadHi  = na
+var float priorTriadLo  = na
+var string midhrState   = "untouched"
+var string mid3hState   = "untouched"
+var string lastMidhrReaction = "none"   // dedup
+var string lastMid3hReaction = "none"
+
+// Reset on hour and triad rollovers
+if isFirstBarOfQuarter() and quarterOfHour() == 1
+    midhrState := "untouched"
+    lastMidhrReaction := "none"
+if isFirstBarOfQuarter() and quarterOfHour() == 1 and hourIndexInTriad() == 1
+    mid3hState := "untouched"
+    lastMid3hReaction := "none"
+
+// Compute current 1h mid + reaction
+float curMid1h = na
+if HAS_LH
+    HourAgg curH_m = LH
+    if not na(curH_m)
+        [m1, _src1] = resolve1hMid(curH_m, priorHour1h)
+        curMid1h := m1
+        if not na(curMid1h)
+            r1 = detectMidReaction(curMid1h, high, low, close)
+            if r1 != "" and r1 != lastMidhrReaction
+                midhrState := r1
+                lastMidhrReaction := r1
+                if gMidOn and gShowMidReact
+                    if r1 == "support"
+                        label.new(bar_index, low, "●", style=label.style_label_up,
+                                  color=MID_1H_BG, textcolor=T.mid_1h, size=size.small)
+                    else
+                        label.new(bar_index, high, "●", style=label.style_label_down,
+                                  color=MID_1H_BG, textcolor=T.mid_1h, size=size.small)
+                if gAlertsOn and gAlertMid
+                    alert("Live Price Action: 1h midline " + r1, alert.freq_once_per_bar)
+
+// Compute current 3h mid + reaction
+float curMid3h = na
+if not na(activeTriad)
+    [m3, _src3] = resolve3hMid(activeTriad, priorTriadHi, priorTriadLo)
+    curMid3h := m3
+    if not na(curMid3h)
+        r3 = detectMidReaction(curMid3h, high, low, close)
+        if r3 != "" and r3 != lastMid3hReaction
+            mid3hState := r3
+            lastMid3hReaction := r3
+            // (Same alert path as 1h, no separate marker by default)
+            if gAlertsOn and gAlertMid
+                alert("Live Price Action: 3h midline " + r3, alert.freq_once_per_bar)
+
+// Draw midlines as ONE line per hour (1h) and ONE per triad (3h), updated
+// in-place as the running mid drifts. Prior 1h midlines stay on chart frozen
+// at their hour-end right edge. Prior 3h midline is still deleted at triad
+// rollover (the long bar span makes a stranded frozen 3h line confusing).
+var line currentMid1hLine = na
+var line currentMid3hLine = na
+
+// Spawn a NEW 1h midline at every hour open. We do NOT delete the prior
+// hour's line — its right edge is already pinned at the prior hour's :59 bar
+// so it freezes there visually. Only the current line keeps moving (the
+// per-bar y-update block below writes to `currentMid1hLine` only).
+if gMidOn and gShowMid1h and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+    currentMid1hLine := line.new(bar_index, na, bar_index + BARS_PER_HOUR - 1, na,
+                                 xloc=xloc.bar_index, color=T.mid_1h,
+                                 width=gMid1hWidth, style=line.style_solid)
+
+// Reset / spawn 3h midline at triad open (first bar of C1). Same delete-then-
+// spawn pattern as the 1h line above.
+// Lazy-spawn fallback: if activeTriad exists but no line yet (chart loaded
+// mid-block), create one anchored at the triad's start bar.
+// 3h midline is solid; right-edge tracks the current bar (not the full triad).
+if gMidOn and gShowMid3h and isFirstBarOfQuarter() and quarterOfHour() == 1 and hourIndexInTriad() == 1 and not na(blockId())
+    if not na(currentMid3hLine)
+        line.delete(currentMid3hLine)
+    currentMid3hLine := line.new(bar_index, na, bar_index, na,
+                                 xloc=xloc.bar_index, color=MID_3H_LINE,
+                                 width=gMid3hWidth, style=line.style_solid)
+else if gMidOn and gShowMid3h and not na(activeTriad) and na(currentMid3hLine)
+    currentMid3hLine := line.new(activeTriad.anchorBar, na, activeTriad.anchorBar, na,
+                                 xloc=xloc.bar_index, color=MID_3H_LINE,
+                                 width=gMid3hWidth, style=line.style_solid)
+
+// Update y-coords each bar so the line follows the running mid; extend the
+// 3h line's right edge to the current bar so it grows with the active triad.
+if gMidOn and gShowMid1h and not na(currentMid1hLine) and not na(curMid1h)
+    line.set_y1(currentMid1hLine, curMid1h)
+    line.set_y2(currentMid1hLine, curMid1h)
+
+if gMidOn and gShowMid3h and not na(currentMid3hLine) and not na(curMid3h) and not na(activeTriad)
+    line.set_y1(currentMid3hLine, curMid3h)
+    line.set_y2(currentMid3hLine, curMid3h)
+    // Clamp right edge to the triad's last bar so the line doesn't extend
+    // past the triad close (e.g. the 12-15 triad's midline shouldn't reach
+    // beyond 14:59, the :59 of the triad's third hour).
+    int triadEndBar = activeTriad.anchorBar + 3 * BARS_PER_HOUR - 1
+    line.set_x2(currentMid3hLine, math.min(bar_index, triadEndBar))
+
+
+// ── Sweepers + bias-shifts + doji-confirmed ───────────────────────────────
+// Also returns the price and bar of the EXTREME that was broken by `byQ`.
+// When newBias==1 (high taken out), brokenLevel = the broken target high.
+// When newBias==-1 (low taken out), brokenLevel = the broken target low.
+// Used to draw the doji-confirmation line at the actual broken price level.
+// Returns: events string, took-high flag, took-low flag, broken hi/lo.
+// Caller decides whether to flip bias based on prior state — if the quarter
+// took both sides, that's a full range expansion, not a no-op.
+detectSweepsForQuarter(HourAgg h, int byQ) =>
+    string events = ""
+    bool tookHigh = false
+    bool tookLow  = false
+    float brokenHi = na
+    float brokenLo = na
+    QuarterAgg byQuarter = byQ == 2 ? h.q2 : byQ == 3 ? h.q3 : h.q4
+    if not na(byQuarter)
+        for tQ = 1 to byQ - 1
+            QuarterAgg targ = tQ == 1 ? h.q1 : tQ == 2 ? h.q2 : h.q3
+            if not na(targ)
+                if byQuarter.high_ > targ.high_
+                    events := events + "Q" + str.tostring(int(byQ)) + "→Q" + str.tostring(int(tQ)) + " high  "
+                    tookHigh := true
+                    if na(brokenHi) or targ.high_ > brokenHi
+                        brokenHi := targ.high_
+                if byQuarter.low_ < targ.low_
+                    events := events + "Q" + str.tostring(int(byQ)) + "→Q" + str.tostring(int(tQ)) + " low  "
+                    tookLow := true
+                    if na(brokenLo) or targ.low_ < brokenLo
+                        brokenLo := targ.low_
+    [events, tookHigh, tookLow, brokenHi, brokenLo]
+
+var int  lastSweepBias    = 0
+var int  lastSweepBiasBar = na  // bar_index where lastSweepBias was last set
+var bool dojiConfirmedThisHour = false
+
+if isFirstBarOfQuarter() and quarterOfHour() == 1
+    lastSweepBias    := 0
+    lastSweepBiasBar := na
+    dojiConfirmedThisHour := false
+
+if gQStructOn and isLastBarOfQuarter() and HAS_LH
+    HourAgg curH_sw = LH
+    int byQ = quarterOfHour()
+    if not na(curH_sw) and byQ >= 2
+        [events, tookHigh, tookLow, brokenHi, brokenLo] = detectSweepsForQuarter(curH_sw, byQ)
+        if events != ""
+            // Doji-confirmed fires when the breaking quarter takes out the
+            // OPPOSITE side of the hour's prior bias. If both sides were
+            // taken in the same close (full range expansion), that also
+            // counts as a flip vs whichever side the prior bias was on.
+            // The "side broken" for marker purposes is the side opposite
+            // to the prior bias.
+            int flipDir = 0
+            if lastSweepBias > 0 and tookLow
+                flipDir := -1
+            else if lastSweepBias < 0 and tookHigh
+                flipDir := 1
+
+            if flipDir != 0 and not dojiConfirmedThisHour
+                dojiConfirmedThisHour := true
+                if gShowDojiConf
+                    QuarterAgg byQuarter_brk = byQ == 2 ? curH_sw.q2 : byQ == 3 ? curH_sw.q3 : curH_sw.q4
+                    color cLine = DOJI_LINE_COLOR
+                    color cX    = SWEEP_RED_COLOR
+                    // Walk targets newest-first (Q3 → Q2 → Q1) and pick
+                    // the most-recent broken quarter on the flip side.
+                    int firstLeftBar = na
+                    float firstYLevel = na
+                    int firstBrokenQ  = na
+                    if not na(byQuarter_brk)
+                        for tQ_brk = byQ - 1 to 1
+                            QuarterAgg targ_brk = tQ_brk == 1 ? curH_sw.q1 : tQ_brk == 2 ? curH_sw.q2 : curH_sw.q3
+                            if not na(targ_brk) and na(firstLeftBar)
+                                if flipDir < 0 and byQuarter_brk.low_ < targ_brk.low_
+                                    firstLeftBar := targ_brk.lowBar
+                                    firstYLevel  := targ_brk.low_
+                                    firstBrokenQ := tQ_brk
+                                if flipDir > 0 and byQuarter_brk.high_ > targ_brk.high_
+                                    firstLeftBar := targ_brk.highBar
+                                    firstYLevel  := targ_brk.high_
+                                    firstBrokenQ := tQ_brk
+                    if not na(firstLeftBar) and not na(firstYLevel)
+                        int rBar = flipDir < 0 ? byQuarter_brk.lowBar : byQuarter_brk.highBar
+                        line.new(firstLeftBar, firstYLevel, rBar, firstYLevel,
+                                 xloc=xloc.bar_index,
+                                 color=cLine, style=line.style_solid, width=1)
+                        int mBar = math.round((firstLeftBar + rBar) / 2.0)
+                        label.new(mBar, firstYLevel, "✕", xloc=xloc.bar_index,
+                                  style=label.style_none,
+                                  color=RED_TRANSPARENT,
+                                  textcolor=cX, size=size.normal,
+                                  tooltip="Q" + str.tostring(byQ) + " broke Q" + str.tostring(firstBrokenQ) + (flipDir < 0 ? " low" : " high") + " — doji-confirmed")
+                if gAlertsOn and gAlertDoji
+                    alert("Live Price Action: doji-confirmed in current hour", alert.freq_once_per_bar)
+
+            // Update lastSweepBias: prefer continuation of prior bias if
+            // both sides were taken; otherwise pick whichever side fired.
+            int newBias = 0
+            if tookHigh and not tookLow
+                newBias := 1
+            else if tookLow and not tookHigh
+                newBias := -1
+            else if tookHigh and tookLow
+                // Both sides taken — bias direction is ambiguous; preserve
+                // whichever existed previously (so a Q4 full-range expansion
+                // doesn't reset the bias state mid-hour).
+                newBias := lastSweepBias
+            if newBias != 0
+                lastSweepBias    := newBias
+                lastSweepBiasBar := bar_index
+
+            if gAlertsOn and gAlertSweep
+                alert("Live Price Action: sweeper Q" + str.tostring(int(byQ)), alert.freq_once_per_bar)
+
+
+// ── Live extreme lines (high/low markers, no labels) ─────────────────────
+// Two horizontal lines per hour, anchored at the candle that currently holds
+// the hour's high/low and extending right to :59. Updated in-place every
+// bar. The corresponding text labels (in-stat / out-of-stat) are rendered
+// once at hour close as a single centered label on top of the hour box.
+
+var line liveHighLine = na
+var line liveLowLine  = na
+
+if gQStructOn and isTfMin1() and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+    liveHighLine := na
+    liveLowLine  := na
+
+if gQStructOn and isTfMin1() and HAS_LH
+    HourAgg curH_live = LH
+    if not na(curH_live)
+        float curHi = hourHigh(curH_live)
+        float curLo = hourLow(curH_live)
+        if not na(curHi) and not na(curLo)
+            QuarterAgg qHiL = na
+            QuarterAgg qLoL = na
+            float epsL = extremeEps()
+            for q_idx_l = 1 to 4
+                QuarterAgg qxL = q_idx_l == 1 ? curH_live.q1 : q_idx_l == 2 ? curH_live.q2 : q_idx_l == 3 ? curH_live.q3 : curH_live.q4
+                if not na(qxL)
+                    if na(qHiL) and qxL.high_ >= curHi - epsL
+                        qHiL := qxL
+                    if na(qLoL) and qxL.low_ <= curLo + epsL
+                        qLoL := qxL
+            int hourEndBarLive = curH_live.anchorBar + BARS_PER_HOUR - 1
+
+            if not na(qHiL)
+                if na(liveHighLine)
+                    liveHighLine := line.new(qHiL.highBar, qHiL.high_, hourEndBarLive, qHiL.high_,
+                                             xloc=xloc.bar_index, color=HL_MARK_COLOR,
+                                             style=line.style_solid, width=1)
+                else
+                    line.set_xy1(liveHighLine, qHiL.highBar, qHiL.high_)
+                    line.set_xy2(liveHighLine, hourEndBarLive, qHiL.high_)
+
+            if not na(qLoL)
+                if na(liveLowLine)
+                    liveLowLine := line.new(qLoL.lowBar, qLoL.low_, hourEndBarLive, qLoL.low_,
+                                            xloc=xloc.bar_index, color=HL_MARK_COLOR,
+                                            style=line.style_solid, width=1)
+                else
+                    line.set_xy1(liveLowLine, qLoL.lowBar, qLoL.low_)
+                    line.set_xy2(liveLowLine, hourEndBarLive, qLoL.low_)
+
+
+// Release line refs at hour close so the next hour spawns fresh ones.
+if gQStructOn and isTfMin1() and isHourClose() and HAS_LH
+    liveHighLine := na
+    liveLowLine  := na
+
+
+// ── Hour-open line (live, extends to current bar) ─────────────────────────
+// Solid horizontal line at the open price of the hour, labelled "XXam Open".
+// One line + one label per hour, both updated in-place every bar so the line
+// extends to the current bar and the label sits at its right edge.
+
+format12h(int h24) =>
+    int h12 = h24 % 12 == 0 ? 12 : h24 % 12
+    string suffix = h24 < 12 ? "am" : "pm"
+    str.tostring(h12) + suffix
+
+// Track current + previous hour's open line/label so older ones get deleted
+// — only the two most-recent hours' open markers stay visible.
+var line  currentHourOpenLine  = na
+var label currentHourOpenLabel = na
+var line  priorHourOpenLine    = na
+var label priorHourOpenLabel   = na
+
+if gQStructOn and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+    // Shift current → prior, delete the older "prior" before overwriting.
+    if not na(priorHourOpenLine)
+        line.delete(priorHourOpenLine)
+    if not na(priorHourOpenLabel)
+        label.delete(priorHourOpenLabel)
+    priorHourOpenLine  := currentHourOpenLine
+    priorHourOpenLabel := currentHourOpenLabel
+    string hourTag = format12h(_H)
+    int hourEndBarOpen = bar_index + BARS_PER_HOUR - 1
+    currentHourOpenLine := line.new(bar_index, open, hourEndBarOpen, open,
+                                    xloc=xloc.bar_index, color=HOUR_OPEN_COLOR,
+                                    style=line.style_solid, width=2)
+    int hourMidBarOpen = bar_index + BARS_PER_HOUR / 2
+    currentHourOpenLabel := label.new(hourMidBarOpen, open, hourTag + " Open",
+                                      xloc=xloc.bar_index, style=label.style_label_down,
+                                      color=HOUR_OPEN_LABEL_BG, textcolor=HOUR_OPEN_COLOR, size=size.small)
+
+
+// ── Hour high/low marker (whichever is closer to current close) ───────────
+// At hour close, draw a horizontal line from the candle that printed the
+// hour's extreme to the closing bar, labelled "XXam High" or "XXam Low".
+// Selection: whichever extreme is **closer in price to the closing bar's close**
+// — that's the "active" reference the next hour is most likely to revisit.
+//
+// Sweep recolor: while the marker is live (next hour), if price pierces the
+// level and closes back inside, recolor the line + label — red for a swept
+// high, green for a swept low. Once recolored, the state is sticky.
+
+// Persistent refs for the most-recently-drawn hour H/L marker so the sweep
+// detector below can recolor it during the following hour.
+// Plus a "prior" pair so we can keep the previous hour's marker visible
+// alongside the current one — older markers get deleted when shifted out.
+var line  hlLine   = na
+var label hlLabel  = na
+var float hlLevel  = na
+var bool  hlIsHigh = false  // true → high marker; false → low marker
+var bool  hlSwept  = false  // sticky once a sweep+reclose is detected
+var line  hlLinePrev  = na
+var label hlLabelPrev = na
+
+if gQStructOn and isHourClose() and HAS_LH
+    HourAgg justClosedHL = LH
+    if not na(justClosedHL)
+        float hi = hourHigh(justClosedHL)
+        float lo = hourLow(justClosedHL)
+        if not na(hi) and not na(lo)
+            // Find earliest quarter holding the extremes (within one tick)
+            QuarterAgg qHiHL = na
+            QuarterAgg qLoHL = na
+            float epsHL = extremeEps()
+            for q_idx_hl = 1 to 4
+                QuarterAgg qxHL = q_idx_hl == 1 ? justClosedHL.q1 : q_idx_hl == 2 ? justClosedHL.q2 : q_idx_hl == 3 ? justClosedHL.q3 : justClosedHL.q4
+                if not na(qxHL)
+                    if na(qHiHL) and qxHL.high_ >= hi - epsHL
+                        qHiHL := qxHL
+                    if na(qLoHL) and qxHL.low_ <= lo + epsHL
+                        qLoHL := qxHL
+
+            // Pick whichever extreme is closer to current close
+            float distToHi = math.abs(close - hi)
+            float distToLo = math.abs(close - lo)
+            bool useHigh = distToHi <= distToLo
+
+            // Tag uses the just-closed hour. This fires on the :59 bar of that hour.
+            string hlTag = format12h(_H)
+
+            // Extend the H/L line through :59 of the next hour. The current bar
+            // is the :59 close of the just-closed hour, so a full hour (60 mins)
+            // forward lands on the :59 bar of the next hour.
+            int hlEndBar = bar_index + BARS_PER_HOUR
+
+            // Shift current → prior and drop the older prior so only the
+            // last two hour H/L markers remain on the chart.
+            if not na(hlLinePrev)
+                line.delete(hlLinePrev)
+            if not na(hlLabelPrev)
+                label.delete(hlLabelPrev)
+            hlLinePrev  := hlLine
+            hlLabelPrev := hlLabel
+
+            // Reset sweep state for the new marker
+            hlSwept := false
+            hlLine  := na
+            hlLabel := na
+            hlLevel := na
+
+            if useHigh and not na(qHiHL)
+                hlLine := line.new(qHiHL.highBar, hi, hlEndBar, hi, xloc=xloc.bar_index,
+                                   color=HL_MARK_COLOR, style=line.style_solid, width=1)
+                // Centered above the line: anchor at the midpoint of the
+                // line span with style_label_down so the box floats above.
+                int hlMidBar = math.round((qHiHL.highBar + hlEndBar) / 2.0)
+                hlLabel := label.new(hlMidBar, hi, hlTag + " High",
+                                     xloc=xloc.bar_index, style=label.style_label_down,
+                                     color=HL_MARK_LABEL_BG, textcolor=HL_MARK_COLOR, size=size.small)
+                hlLevel := hi
+                hlIsHigh := true
+            else if not na(qLoHL)
+                hlLine := line.new(qLoHL.lowBar, lo, hlEndBar, lo, xloc=xloc.bar_index,
+                                   color=HL_MARK_COLOR, style=line.style_solid, width=1)
+                // Centered above the line.
+                int hlMidBar = math.round((qLoHL.lowBar + hlEndBar) / 2.0)
+                hlLabel := label.new(hlMidBar, lo, hlTag + " Low",
+                                     xloc=xloc.bar_index, style=label.style_label_down,
+                                     color=HL_MARK_LABEL_BG, textcolor=HL_MARK_COLOR, size=size.small)
+                hlLevel := lo
+                hlIsHigh := false
+
+// Sweep + reclose detector. Runs every bar while a live marker exists and
+// hasn't already been flagged. High swept → red; low swept → green.
+if gQStructOn and not hlSwept and not na(hlLine) and not na(hlLevel)
+    bool fired = false
+    color cSwept = na
+    if hlIsHigh and high > hlLevel and close < hlLevel
+        fired := true
+        cSwept := SWEEP_RED_COLOR
+    else if not hlIsHigh and low < hlLevel and close > hlLevel
+        fired := true
+        cSwept := SWEEP_GREEN_COLOR
+    if fired
+        line.set_color(hlLine, cSwept)
+        if not na(hlLabel)
+            label.set_textcolor(hlLabel, cSwept)
+        hlSwept := true
+
+
+// ── Hour close summary label ──────────────────────────────────────────────
+// One label per closed hour, centered horizontally on top of the hour box.
+// Combines the stat-tagged extremes (Q# in-stat / out-of-stat high/low) and
+// the hour classifier (line-up / line-down / doji).
+//
+// Stat rule: a quarter's extreme is only labelled when a *later* quarter has
+// taken the holder's *opposite* side. If Q1 holds both high+low and nothing
+// breaks Q1's range, no stat tag fires. If Q2 takes Q1's high → Q2 = out-of-
+// stat high, Q1 retains the low → Q1 = in-stat low.
+quartersFor(HourAgg h, int idx) =>
+    QuarterAgg q = idx == 1 ? h.q1 : idx == 2 ? h.q2 : idx == 3 ? h.q3 : h.q4
+    q
+
+// True when some OTHER quarter (any qIdx != holderIdx) has a low strictly
+// below `holderLow`. Confirms the hour's range extended past the holder's
+// own low → the high holder isn't trivial.
+brokeBelow(HourAgg h, int holderIdx, float holderLow) =>
+    bool broke = false
+    for j = 1 to 4
+        if j != holderIdx
+            QuarterAgg qj = quartersFor(h, j)
+            if not na(qj) and qj.low_ < holderLow
+                broke := true
+    broke
+
+brokeAbove(HourAgg h, int holderIdx, float holderHigh) =>
+    bool broke = false
+    for j = 1 to 4
+        if j != holderIdx
+            QuarterAgg qj = quartersFor(h, j)
+            if not na(qj) and qj.high_ > holderHigh
+                broke := true
+    broke
+
+// Track the live hour pill. Optional second slot for the immediately-prior
+// hour's frozen pill (used when retention = "Current and previous"). When
+// retention = "All", neither ref retention nor deletion happens — every
+// closed-hour pill stays on chart, bounded only by TradingView's
+// max_labels_count cap.
+var label hourSummaryLabel      = na
+var label priorHourSummaryLabel = na
+
+// At hour open, age the live pill out per the user-selected retention mode.
+//   - "Current"              → delete the just-closed pill so only the new
+//                              hour's pill (once it spawns at the first
+//                              quarter close) is ever visible.
+//   - "Current and previous" → shift current → prior and delete the older
+//                              prior, so two pills remain.
+//   - "All"                  → drop the ref to the just-closed pill without
+//                              deleting it. It freezes in place; the next
+//                              hour spawns a fresh label object.
+if gVerdictsOn and gShowHourVerd and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+    if gPillRetention == "Current"
+        if not na(priorHourSummaryLabel)
+            label.delete(priorHourSummaryLabel)
+            priorHourSummaryLabel := na
+        if not na(hourSummaryLabel)
+            label.delete(hourSummaryLabel)
+        hourSummaryLabel := na
+    else if gPillRetention == "Current and previous"
+        if not na(priorHourSummaryLabel)
+            label.delete(priorHourSummaryLabel)
+        priorHourSummaryLabel := hourSummaryLabel
+        hourSummaryLabel := na
+    else
+        // "All" — drop ref only; keep the frozen label on chart.
+        hourSummaryLabel := na
+
+// Recompute the hour-summary pill only at quarter-close moments (extremes /
+// classification only update at quarter boundaries). Avoids per-bar rebuild
+// of 4-quarter walks + classifyHour + label composition during the live
+// portion of a quarter.
+if gVerdictsOn and gShowHourVerd and HAS_LH and isLastBarOfQuarter()
+    HourAgg justClosedV = LH
+    if not na(justClosedV)
+        float hiV = hourHigh(justClosedV)
+        float loV = hourLow(justClosedV)
+        // Latest quarter that actually prints the hour's extreme. Strict
+        // equality (no eps fuzz) — we don't want an early Q1 that happens
+        // to come within 1 tick of a later real high to steal the high
+        // holder slot, leaving the same quarter holding both extremes
+        // (which would prevent the opposite-side-break confirmation).
+        QuarterAgg qHiV = na
+        QuarterAgg qLoV = na
+        // Walk newest-first (Q4 → Q1) so a later quarter that prints the
+        // actual extreme wins over an early Q1 that happens to share the
+        // same exact value. Pine v6 `for ... to ...` only counts up, so we
+        // walk Q1→Q4 with a derived index (5 - qi) for newest-first order.
+        for qi = 1 to 4
+            int idx = 5 - qi
+            QuarterAgg qxV = quartersFor(justClosedV, idx)
+            if not na(qxV)
+                if na(qHiV) and not na(hiV) and qxV.high_ == hiV
+                    qHiV := qxV
+                if na(qLoV) and not na(loV) and qxV.low_ == loV
+                    qLoV := qxV
+
+        // Apply stat rule: high holder's tag depends on whether some later
+        // quarter broke the holder's LOW (confirming the hour moved past it).
+        // Symmetrically for low holder.
+        string hiTag = ""
+        bool   hasHiTag = false
+        if not na(qHiV) and brokeBelow(justClosedV, qHiV.qIdx, qHiV.low_)
+            bool hiInStat = qHiV.qIdx == 1 or qHiV.qIdx == 4
+            hiTag := "• Q" + str.tostring(qHiV.qIdx) + (hiInStat ? " In Stat High" : " Out of Stat High")
+            hasHiTag := true
+        string loTag = ""
+        bool   hasLoTag = false
+        if not na(qLoV) and brokeAbove(justClosedV, qLoV.qIdx, qLoV.high_)
+            bool loInStat = qLoV.qIdx == 1 or qLoV.qIdx == 4
+            loTag := "• Q" + str.tostring(qLoV.qIdx) + (loInStat ? " In Stat Low" : " Out of Stat Low")
+            hasLoTag := true
+
+        cls = classifyHour(justClosedV)
+        string clsTag = cls == "doji" ? "• Doji Hour" : ""
+
+        // Compose multi-line label: low / high / doji, each on its own line.
+        // Apex hour line is appended later only when the apex case fires
+        // (handled in the triad close block below — separate label).
+        //
+        // Left-alignment trick: anchor the label at the hour box's left edge
+        // and use style_label_lower_right so the label box extends RIGHT
+        // from the anchor — text inside is then visually left-flush against
+        // the box's left edge. Internal padding is added via leading spaces
+        // on every line and blank top/bottom lines.
+        bool showStats = gShowInStat or gShowOutStat
+        string parts = ""
+        if hasLoTag and showStats
+            parts := loTag
+        if hasHiTag and showStats
+            parts := parts == "" ? hiTag : parts + "\n" + hiTag
+        if clsTag != ""
+            parts := parts == "" ? clsTag : parts + "\n" + clsTag
+
+        if parts != ""
+            int midBar    = justClosedV.anchorBar + BARS_PER_HOUR / 2
+            float topY    = not na(currentHourBox) ? box.get_top(currentHourBox) : hiV
+            float labelY  = topY + atrOffset() * 0.15
+            // Mutate the live pill in place if it already exists; otherwise
+            // spawn it. Avoids per-bar new+delete churn during the hour.
+            if na(hourSummaryLabel)
+                hourSummaryLabel := label.new(midBar, labelY, parts, xloc=xloc.bar_index,
+                          style=label.style_label_down, color=PILL_BG,
+                          textcolor=PILL_TEXT, size=size.small)
+            else
+                label.set_xy(hourSummaryLabel, midBar, labelY)
+                label.set_text(hourSummaryLabel, parts)
+
+
+// ── Triad close verdicts + apex-hour highlight ────────────────────────────
+if gVerdictsOn and isTriadClose() and not na(activeTriad)
+    cls_t = classifyTriad(activeTriad)
+    if cls_t != "pending"
+        color ct = cls_t == "line-up" ? T.line_up :
+                   cls_t == "line-down" ? T.line_dn :
+                   cls_t == "apex-up" ? T.apex_up :
+                   cls_t == "apex-down" ? T.apex_dn :
+                   T.doji
+        // Show line/apex triad verdicts only — doji triads are not labelled.
+        if gShowTriadVerd and cls_t != "doji"
+            label.new(bar_index, triadLow(activeTriad), cls_t + " triad", xloc=xloc.bar_index,
+                      style=label.style_label_up, color=color.new(ct, 88),
+                      textcolor=ct, size=size.small)
+        if gShowApexHr and (cls_t == "apex-up" or cls_t == "apex-down") and not na(activeTriad.c2)
+            int c2Q1Bar = na(activeTriad.c2.q1) ? activeTriad.c2.anchorBar : activeTriad.c2.q1.anchorBar
+            int c2Q4Bar = na(activeTriad.c2.q4) ? bar_index : activeTriad.c2.q4.anchorBar + 14
+            float c2Hi = hourHigh(activeTriad.c2)
+            float c2Lo = hourLow(activeTriad.c2)
+            box.new(c2Q1Bar, c2Hi, c2Q4Bar, c2Lo,
+                    xloc=xloc.bar_index, bgcolor=APEX_HOUR_BG,
+                    border_color=APEX_HOUR_BORDER, border_width=1)
+            // Centered horizontally on top of the apex hour box.
+            int apexMidBar = activeTriad.c2.anchorBar + BARS_PER_HOUR / 2
+            label.new(apexMidBar, c2Hi, "• Apex Hour", xloc=xloc.bar_index,
+                      style=label.style_label_down, color=APEX_HOUR_LABEL_BG,
+                      textcolor=T.apex_hour, size=size.small)
+        if gAlertsOn and gAlertApex and (cls_t == "apex-up" or cls_t == "apex-down")
+            alert("Live Price Action: " + cls_t + " confirmed for triad " + activeTriad.blockId, alert.freq_once_per_bar)
+
+
+// ── Save prior hour / prior triad on close ────────────────────────────────
+if isHourClose() and HAS_LH
+    priorHour1h := LH
+if isTriadClose() and not na(activeTriad)
+    priorTriadHi := triadHigh(activeTriad)
+    priorTriadLo := triadLow(activeTriad)
+
+
+// ── Active hour & triad tints (bounded to their respective ranges) ────────
+// Use box.set_* on a single box per scope so the box dimensions update
+// in-place every bar — preventing a stale box from being shown when
+// triad/hour high/low expand into new territory.
+var box activeHourTint = na
+var box activeTriadTint = na
+
+// At hour/triad open, drop the reference (so existing closed-block boxes
+// freeze in place) and spawn a fresh one in the update block below.
+if isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+    activeHourTint := na
+if isFirstBarOfQuarter() and quarterOfHour() == 1 and hourIndexInTriad() == 1 and not na(blockId())
+    activeTriadTint := na
+
+// If toggle flipped off mid-session, delete the existing visible box.
+if not gShow1h and not na(activeHourTint)
+    box.delete(activeHourTint)
+    activeHourTint := na
+if not gShow3h and not na(activeTriadTint)
+    box.delete(activeTriadTint)
+    activeTriadTint := na
+
+// Active hour tint: works for triad hours AND the 3pm standalone hour.
+if isTfMin1or5() and HAS_LH
+    HourAgg curH_t = LH
+
+    // Active hour: bounded to current hour's running high/low
+    if gShow1h and not na(curH_t)
+        float curHi = hourHigh(curH_t)
+        float curLo = hourLow(curH_t)
+        if not na(curHi) and not na(curLo)
+            if na(activeHourTint)
+                activeHourTint := box.new(curH_t.anchorBar, curHi, bar_index, curLo,
+                                          xloc=xloc.bar_index, bgcolor=ACTIVE_HR_BG,
+                                          border_color=ACTIVE_HR_BORDER, border_width=0)
+            else
+                box.set_left(activeHourTint, curH_t.anchorBar)
+                box.set_right(activeHourTint, bar_index)
+                box.set_top(activeHourTint, curHi)
+                box.set_bottom(activeHourTint, curLo)
+
+// Active triad tint: triad-only (no 3pm). Skipped during 3pm hour.
+if isTfMin1or5() and not na(activeTriad)
+    if gShow3h
+        float trHi = triadHigh(activeTriad)
+        float trLo = triadLow(activeTriad)
+        if not na(trHi) and not na(trLo)
+            if na(activeTriadTint)
+                activeTriadTint := box.new(activeTriad.anchorBar, trHi, bar_index, trLo,
+                                           xloc=xloc.bar_index, bgcolor=T.active_triad,
+                                           border_color=ACTIVE_TRIAD_BORDER,
+                                           border_width=2)
+            else
+                box.set_left(activeTriadTint, activeTriad.anchorBar)
+                box.set_right(activeTriadTint, bar_index)
+                box.set_top(activeTriadTint, trHi)
+                box.set_bottom(activeTriadTint, trLo)
+
+
+
+// ── 9:30 candle range box + quartile lines ────────────────────────────────
+// At 9:30 NY each day, capture the 9:30 BAR's H/L and freeze a box at that
+// range from 9:30 through 16:00 (RTH close). Five horizontal lines mark the
+// 0 / .25 / .5 / .75 / 1.0 levels of that range with right-axis price tags.
+// One set of objects per session — refs are released at each new 9:30 so
+// prior sessions' boxes/lines freeze in place on the chart.
+//
+// Bar count: 9:30 → 16:00 = 390 minutes. On 1m the right edge is anchorBar
+// + 389 (inclusive of the 15:59 bar). On higher TFs we scale by TF_SEC.
+int BARS_930_TO_1600 = math.max(1, int(390 * 60 / TF_SEC))
+
+is930Bar() => _H == 9 and _M == 30
+
+var box   range930Box     = na
+var box   range930Candle  = na
+var line  range930Q25Line = na
+var line  range930Q50Line = na
+var line  range930Q75Line = na
+var int   range930Anchor  = na
+var float range930Hi      = na
+var float range930Lo      = na
+// Tracks the bar_index at which the current 9:30 box was created. We only
+// re-create the box objects when a NEW 9:30 bar arrives (different anchor),
+// not every tick of the live 9:30 bar. Without this guard, `box.new` fires
+// every tick and accumulates orphan box objects that can be garbage-collected
+// before the live update block runs — causing the box to flicker or vanish.
+var int   range930CreatedAt = na
+
+// At each NEW 9:30 NY bar, capture this session's anchor + initial H/L and
+// create the box / quartile lines once. Subsequent ticks of the same 9:30
+// bar update H/L via the live update block below — no re-creation needed.
+//
+// Render colors are derived from the user-input HUE but we clamp the
+// transparency to a guaranteed-visible value at draw time. This insulates
+// the rendered output from any prior saved input setting that may have
+// shipped with too-high transparency.
+if g930On and is930Bar()
+    range930Anchor := bar_index
+    range930Hi     := high
+    range930Lo     := low
+    // Pine v6: `na != X` evaluates to `na` (not `true`), so an unguarded
+    // `range930CreatedAt != bar_index` never enters the box.new branch on
+    // the first 9:30 bar of the dataset — the box never spawns.
+    if na(range930CreatedAt) or range930CreatedAt != bar_index
+        range930CreatedAt := bar_index
+        int rightBar = math.min(last_bar_index + 500, bar_index + BARS_930_TO_1600 - 1)
+        color fillC   = color.new(g930BoxColor, 88)
+        color borderC = color.new(g930BoxColor, 40)
+        if g930ShowBox
+            range930Box := box.new(bar_index, high, rightBar, low,
+                                   xloc=xloc.bar_index, bgcolor=fillC,
+                                   border_color=borderC, border_width=2)
+            // Separate-shade highlight covering ONLY the 9:30 candle itself.
+            // Width = 1 bar (the 9:30 minute). Top/bottom track the candle's
+            // wick via the live-update block below. Distinct from the session
+            // range box so the originating candle reads as its own object.
+            range930Candle := box.new(bar_index, high, bar_index + 1, low,
+                                      xloc=xloc.bar_index, bgcolor=g930CandleColor,
+                                      border_color=color.new(g930CandleColor, 30),
+                                      border_width=1)
+        if g930ShowQuart
+            float rng = high - low
+            float q25 = low + rng * 0.25
+            float q50 = low + rng * 0.50
+            float q75 = low + rng * 0.75
+            // .25 and .75 use a more transparent shade to stay visually
+            // subordinate to the solid .5 midline; all three are solid now.
+            color g930LineFaded = color.new(g930LineColor, math.min(95, color.t(g930LineColor) + 25))
+            range930Q25Line := line.new(bar_index, q25, rightBar, q25, xloc=xloc.bar_index,
+                                        color=g930LineFaded, style=line.style_solid, width=1)
+            range930Q50Line := line.new(bar_index, q50, rightBar, q50, xloc=xloc.bar_index,
+                                        color=g930LineColor, style=line.style_solid, width=1)
+            range930Q75Line := line.new(bar_index, q75, rightBar, q75, xloc=xloc.bar_index,
+                                        color=g930LineFaded, style=line.style_solid, width=1)
+
+// Live-update each bar from 9:30 onwards: keep right edge at last_bar_index
+// (clamped) so the box is always visible from anchor → 16:00. This guarantees
+// render even when the box.new'd future-projected right edge was rejected
+// (Pine silently caps `xloc.bar_index` future references at `last_bar_index +
+// 500` on first stamp, which on the live 9:30 bar is `bar_index + 500` —
+// usually fine for 1m but we re-clamp here to be safe).
+if g930On and not na(range930Anchor) and bar_index >= range930Anchor
+    int rightLive = math.min(last_bar_index + 500, range930Anchor + BARS_930_TO_1600 - 1)
+    if not na(range930Box)
+        box.set_left(range930Box, range930Anchor)
+        box.set_right(range930Box, rightLive)
+        box.set_top(range930Box, range930Hi)
+        box.set_bottom(range930Box, range930Lo)
+    // Sync the 9:30 candle highlight only WHILE the 9:30 minute is still
+    // live (so wick growth on tick updates is captured). Once we move past
+    // it, the candle box freezes at its locked range.
+    if not na(range930Candle) and is930Bar()
+        box.set_top(range930Candle, range930Hi)
+        box.set_bottom(range930Candle, range930Lo)
+    if not na(range930Q25Line)
+        float rngL = range930Hi - range930Lo
+        line.set_x1(range930Q25Line, range930Anchor)
+        line.set_x2(range930Q25Line, rightLive)
+        line.set_y1(range930Q25Line, range930Lo + rngL * 0.25)
+        line.set_y2(range930Q25Line, range930Lo + rngL * 0.25)
+        line.set_x1(range930Q50Line, range930Anchor)
+        line.set_x2(range930Q50Line, rightLive)
+        line.set_y1(range930Q50Line, range930Lo + rngL * 0.50)
+        line.set_y2(range930Q50Line, range930Lo + rngL * 0.50)
+        line.set_x1(range930Q75Line, range930Anchor)
+        line.set_x2(range930Q75Line, rightLive)
+        line.set_y1(range930Q75Line, range930Lo + rngL * 0.75)
+        line.set_y2(range930Q75Line, range930Lo + rngL * 0.75)
+
+// Right-axis price tags. plot() must live at script scope, not inside an if.
+// Show only while inside the 9:30→16:00 window and the toggle is on; outside
+// that, plot na so the line is hidden and no price tag renders.
+bool _r930_on  = g930On and g930ShowQuart and not na(range930Anchor) and not na(range930Hi) and not na(range930Lo) and bar_index >= range930Anchor and bar_index <= range930Anchor + BARS_930_TO_1600 - 1
+float _r930_rng = _r930_on ? range930Hi - range930Lo : na
+plot(_r930_on ? range930Lo                     : na, title="0",    color=color.new(g930LineColor, 30), linewidth=1, style=plot.style_linebr, display=display.none)
+plot(_r930_on ? range930Lo + _r930_rng * 0.25  : na, title="0.25", color=color.new(g930LineColor, 30), linewidth=1, style=plot.style_linebr, display=display.none)
+plot(_r930_on ? range930Lo + _r930_rng * 0.50  : na, title="0.5",  color=color.new(g930LineColor, 0),  linewidth=1, style=plot.style_linebr, display=display.none)
+plot(_r930_on ? range930Lo + _r930_rng * 0.75  : na, title="0.75", color=color.new(g930LineColor, 30), linewidth=1, style=plot.style_linebr, display=display.none)
+plot(_r930_on ? range930Hi                     : na, title="1",    color=color.new(g930LineColor, 30), linewidth=1, style=plot.style_linebr, display=display.none)
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ SESSION ANCHORS — fixed-window boxes + P12 lines + midnight verticals    ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+//
+// Four fixed-window session boxes per day (NY time):
+//   Asia    18:00 – 19:30
+//   London  02:30 – 03:30
+//   NY1     07:30 – 08:30
+//   NY2     11:30 – 12:30
+//
+// Each box: filled rectangle bounded by the session's running high/low,
+// plus a horizontal midline at the session's mid. Frozen at session close.
+//
+// P12 (overnight reference): 18:00 – 06:00 NY. At 06:00, three horizontal
+// lines (high / mid / low) are drawn extending to the right edge of the day.
+//
+// Midnight vertical: full-chart vertical line at 00:00 NY each day.
+//
+// Retention dropdown trims each per-day batch to Current / Current+previous /
+// All. Trim happens by COUNT (not by timestamp lookup) — each completed object
+// pushes into its retention queue, and the queue is shrunk to the configured
+// per-day cap × days-to-keep.
+
+// ── Session-window predicates ─────────────────────────────────────────────
+// Hours are NY-time integers; minutes use the cached _M from the time block.
+// Each session is a (startH, startM) → (endH, endM) half-open interval.
+//
+// Returns true while the bar's NY clock falls inside the window.
+inSession(int sH, int sM, int eH, int eM) =>
+    int curMinutes  = _H * 60 + _M
+    int startMin    = sH * 60 + sM
+    int endMin      = eH * 60 + eM
+    bool inside = false
+    if startMin < endMin
+        inside := curMinutes >= startMin and curMinutes < endMin
+    else
+        // window wraps midnight (e.g. 18:00 → 06:00)
+        inside := curMinutes >= startMin or curMinutes < endMin
+    inside
+
+// First-bar-of-window detector: minute matches start; works on 1m / 5m / 15m
+// because we lock session bounds to multiples of 5 minutes.
+isSessionStart(int sH, int sM) => _H == sH and _M == sM
+
+// ── Per-session aggregators ───────────────────────────────────────────────
+type SessionAgg
+    int   anchorBar = na
+    float hi        = na
+    float lo        = na
+
+resetSessionAgg(SessionAgg s) =>
+    s.anchorBar := na
+    s.hi := na
+    s.lo := na
+
+updateSessionAgg(SessionAgg s, int b, float h, float l) =>
+    if na(s.anchorBar)
+        s.anchorBar := b
+    s.hi := na(s.hi) ? h : math.max(s.hi, h)
+    s.lo := na(s.lo) ? l : math.min(s.lo, l)
+
+var SessionAgg sessAsia   = SessionAgg.new()
+var SessionAgg sessLondon = SessionAgg.new()
+var SessionAgg sessNY1    = SessionAgg.new()
+var SessionAgg sessNY2    = SessionAgg.new()
+var SessionAgg sessP12    = SessionAgg.new()
+
+// Reset at each session's start bar so the aggregator is fresh for the new day.
+if gSessOn and isSessionStart(18, 0)
+    resetSessionAgg(sessAsia)
+if gSessOn and isSessionStart(2, 30)
+    resetSessionAgg(sessLondon)
+if gSessOn and isSessionStart(7, 30)
+    resetSessionAgg(sessNY1)
+if gSessOn and isSessionStart(11, 30)
+    resetSessionAgg(sessNY2)
+if gSessOn and isSessionStart(18, 0)
+    resetSessionAgg(sessP12)
+
+// Accumulate inside each session window
+if gSessOn and inSession(18, 0, 19, 30)
+    updateSessionAgg(sessAsia, bar_index, high, low)
+if gSessOn and inSession(2, 30, 3, 30)
+    updateSessionAgg(sessLondon, bar_index, high, low)
+if gSessOn and inSession(7, 30, 8, 30)
+    updateSessionAgg(sessNY1, bar_index, high, low)
+if gSessOn and inSession(11, 30, 12, 30)
+    updateSessionAgg(sessNY2, bar_index, high, low)
+if gSessOn and inSession(18, 0, 6, 0)
+    updateSessionAgg(sessP12, bar_index, high, low)
+
+// ── Retention queues (one per object class) ──────────────────────────────
+// At session close we push the spawned box+line into the queue, then trim.
+// Per-day caps:
+//   sessBoxQ / sessMidQ : 4 each (Asia + London + NY1 + NY2)
+//   p12LineQ            : 3 (high / mid / low)
+//   midnightLineQ       : 1
+//
+// Days-to-keep: Current = 1, Current+previous = 2, All = a large cap so
+// TradingView's max_*_count is the only practical limit.
+var array<box>   sessBoxQ      = array.new<box>()
+var array<line>  sessMidQ      = array.new<line>()
+var array<line>  p12LineQ      = array.new<line>()
+var array<label> p12LabelQ     = array.new<label>()
+var array<line>  midnightLineQ  = array.new<line>()
+var array<label> midnightLabelQ = array.new<label>()
+
+retentionDays() =>
+    int d = 2
+    if gSessRetention == "Current"
+        d := 1
+    else if gSessRetention == "All"
+        d := 50      // soft cap — bounded by TradingView's max_*_count
+    d
+
+trimBoxQueue(array<box> q, int perDayCap) =>
+    int cap = perDayCap * retentionDays()
+    while array.size(q) > cap
+        box b = array.shift(q)
+        box.delete(b)
+
+trimLineQueue(array<line> q, int perDayCap) =>
+    int cap = perDayCap * retentionDays()
+    while array.size(q) > cap
+        line l = array.shift(q)
+        line.delete(l)
+
+trimLabelQueue(array<label> q, int perDayCap) =>
+    int cap = perDayCap * retentionDays()
+    while array.size(q) > cap
+        label lb = array.shift(q)
+        label.delete(lb)
+
+// ── Renderer: spawn box + midline at session close ────────────────────────
+// Called from the four session-close blocks below. Each session's "close" is
+// its end bar; we emit at the bar one step BEFORE the next minute would start
+// (i.e. at the last bar still inside the window). For 5-minute aligned
+// boundaries this is the bar where (_H, _M) == (endH - 1, endM + last-min-of-hour)
+// or simply the bar before the next session-start fires.
+//
+// Simpler: at the FIRST bar OUTSIDE the window (the bar after the session's
+// last accumulated bar), the aggregator is fully filled — emit then.
+
+emitSessionBox(SessionAgg s) =>
+    if not na(s.anchorBar) and not na(s.hi) and not na(s.lo)
+        box newBox = box.new(s.anchorBar, s.hi, bar_index - 1, s.lo,
+                             xloc=xloc.bar_index, bgcolor=gSessBoxColor,
+                             border_color=color.new(gSessBoxColor, 30), border_width=1)
+        array.push(sessBoxQ, newBox)
+        if gSessShowBoxes
+            float mid = (s.hi + s.lo) / 2.0
+            line newMid = line.new(s.anchorBar, mid, bar_index - 1, mid,
+                                   xloc=xloc.bar_index,
+                                   color=color.new(gSessBoxColor, 30),
+                                   style=line.style_solid, width=1)
+            array.push(sessMidQ, newMid)
+        trimBoxQueue(sessBoxQ, 4)
+        trimLineQueue(sessMidQ, 4)
+
+// "Just exited" detector: on the bar where (_H, _M) equals the session's end
+// time exactly. Because the inSession() check uses half-open intervals, the
+// bar at the end-time itself is NOT in the window — perfect signal to emit
+// the box for the session that just closed.
+//
+// Asia closes at 19:30, London at 03:30, NY1 at 08:30, NY2 at 12:30.
+if gSessOn and gSessShowBoxes and isSessionStart(19, 30)
+    emitSessionBox(sessAsia)
+if gSessOn and gSessShowBoxes and isSessionStart(3, 30)
+    emitSessionBox(sessLondon)
+if gSessOn and gSessShowBoxes and isSessionStart(8, 30)
+    emitSessionBox(sessNY1)
+if gSessOn and gSessShowBoxes and isSessionStart(12, 30)
+    emitSessionBox(sessNY2)
+
+// ── P12: lock at 06:00, draw 3 lines extending right through the day ─────
+// "Right edge" = the last bar of the trading day's coverage. Without a
+// well-defined day-end on overnight futures we extend to (anchor + 24h
+// worth of bars), clamped to last_bar_index + 500 like the 9:30 block.
+emitP12Lines() =>
+    if not na(sessP12.anchorBar) and not na(sessP12.hi) and not na(sessP12.lo)
+        float p12Hi  = sessP12.hi
+        float p12Lo  = sessP12.lo
+        float p12Mid = (p12Hi + p12Lo) / 2.0
+        // Extend to end of NY trading day (~16:00). 06:00 → 16:00 is 10h.
+        // Plus a small visible-padding tail past 16:00 so the lines don't
+        // end flush with the last printed candle.
+        int p12RightBar = math.min(last_bar_index + 500, bar_index + int(10 * 60 * 60 / TF_SEC) + RIGHT_EDGE_PAD_BARS)
+        line lHi  = line.new(bar_index, p12Hi,  p12RightBar, p12Hi,
+                             xloc=xloc.bar_index, color=gSessP12Color,
+                             style=line.style_solid, width=1)
+        // Mid uses a more faded shade so it stays visually subordinate to
+        // the solid high/low pair, but is now solid (no dash).
+        color p12MidFaded = color.new(gSessP12Color, math.min(95, color.t(gSessP12Color) + 25))
+        line lMid = line.new(bar_index, p12Mid, p12RightBar, p12Mid,
+                             xloc=xloc.bar_index, color=p12MidFaded,
+                             style=line.style_solid, width=1)
+        line lLo  = line.new(bar_index, p12Lo,  p12RightBar, p12Lo,
+                             xloc=xloc.bar_index, color=gSessP12Color,
+                             style=line.style_solid, width=1)
+        array.push(p12LineQ, lHi)
+        array.push(p12LineQ, lMid)
+        array.push(p12LineQ, lLo)
+        trimLineQueue(p12LineQ, 3)
+
+        // Right-edge labels. Solid text (alpha 0) matching the P12 hue so the
+        // text reads even if the line itself is heavily transparent. Pill bg
+        // is a faint match-tinted box for legibility.
+        color p12Solid = color.new(gSessP12Color, 0)
+        color p12LabelBg = color.new(gSessP12Color, 80)
+        label lblHi  = label.new(p12RightBar, p12Hi,  "P12 High",
+                                 xloc=xloc.bar_index, style=label.style_label_left,
+                                 color=p12LabelBg, textcolor=p12Solid, size=size.small)
+        label lblMid = label.new(p12RightBar, p12Mid, "P12 Mid",
+                                 xloc=xloc.bar_index, style=label.style_label_left,
+                                 color=p12LabelBg, textcolor=p12Solid, size=size.small)
+        label lblLo  = label.new(p12RightBar, p12Lo,  "P12 Low",
+                                 xloc=xloc.bar_index, style=label.style_label_left,
+                                 color=p12LabelBg, textcolor=p12Solid, size=size.small)
+        array.push(p12LabelQ, lblHi)
+        array.push(p12LabelQ, lblMid)
+        array.push(p12LabelQ, lblLo)
+        trimLabelQueue(p12LabelQ, 3)
+
+if gSessOn and gSessShowP12 and isSessionStart(6, 0)
+    emitP12Lines()
+
+// (Midnight horizontal anchor block lives after barsForward/hoursTo1700
+// helpers below — Pine v6 requires forward declarations for user fns.)
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ DAY-LEVEL ANCHORS — O/U lines, MDR-10, Asia fib projections              ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+//
+// Three families of horizontal references, all locked to specific time
+// triggers and extending right through 17:00 of the trading day.
+//
+//   O/U lines      — at each fixed-window session close (19:30 / 03:30 /
+//                    08:30 / 12:30), draw a horizontal line at the box's
+//                    midpoint labeled "Asia O/U" / "London O/U" / "NY1 O/U"
+//                    / "NY2 O/U". 4 lines per day total.
+//
+//   MDR-10 H/L     — at 18:00 NY (start of the new "trading day", which
+//                    runs 18:00 → 17:00 next day), use today's session_open
+//                    plus/minus  half of the avg(last 10 day-ranges, where
+//                    each day-range = high − low over its own 18:00→17:00
+//                    window, EXCLUDING today). `half` is rounded to the
+//                    nearest tick (`syminfo.mintick`). Per-day H/L tracking
+//                    requires a full rolling-day aggregator below.
+//
+//   Asia fib lines — at 19:30 (Asia close), project fib levels off the
+//                    locked 18:00–19:30 range. high=0, low=1, unit=range.
+//                    Lines: -1, -1.5, -2, -2.5 above the high; +1.5, +2,
+//                    +2.5 below the low. Extend to 17:00.
+//
+// All lines push into the existing per-class retention queues so the
+// "History retention" dropdown in 🌐 Session Anchors applies uniformly.
+
+// ── Shared retention queues for these new objects ────────────────────────
+// Each call class gets its own queue + per-day cap so trimming aligns
+// with the rest of the session-anchors block.
+var array<line>  ouLineQ   = array.new<line>()
+var array<label> ouLabelQ  = array.new<label>()
+var array<line>  mdrLineQ  = array.new<line>()
+var array<label> mdrLabelQ = array.new<label>()
+var array<line>  sdLineQ   = array.new<line>()
+var array<label> sdLabelQ  = array.new<label>()
+
+// ── Right-edge bar count: 17:00 NY of the trading day ────────────────────
+// We extend horizontal lines through the 17:00 bar of the same trading day.
+// Distance in bars depends on when we spawn:
+//   18:00 → 17:00 next day = 23h
+//   02:30 → 17:00 same day = 14.5h
+//   06:00 → 17:00 same day = 11h
+//   etc.
+// Simplest: pass the number of HOURS forward to the helper, convert to bars,
+// clamp to last_bar_index + 500.
+barsForward(float hoursForward) =>
+    int b = int(hoursForward * 60.0 * 60.0 / TF_SEC) + RIGHT_EDGE_PAD_BARS
+    math.min(last_bar_index + 500, bar_index + b)
+
+// Hours from current bar to the next 17:00 NY (today if before 17:00, else
+// tomorrow). Used so all anchored lines from a session emission terminate
+// at the upcoming 17:00 boundary regardless of which session emitted them.
+hoursTo1700() =>
+    int curMinutes = _H * 60 + _M
+    int targetMin  = 17 * 60
+    int diffMin    = curMinutes <= targetMin ? targetMin - curMinutes : (24 * 60) + targetMin - curMinutes
+    diffMin / 60.0
+
+// ── Midnight horizontal anchor ──────────────────────────────────────────
+// Drawn the same way as O/U / P12 / MDR-10 anchors: a horizontal line at
+// the midnight bar's close, extending right to 17:00 of the trading day,
+// with a right-edge "🦉 Midnight" label. Same visibility/retention/styling
+// as the rest of the day-level anchor family.
+if gSessOn and gSessShowMidnight and isSessionStart(0, 0)
+    float midY     = close
+    int   rightBar = barsForward(hoursTo1700())
+    color midSolidC  = color.new(gSessMidnightCol, 0)
+    color midLabelBg = color.new(gSessMidnightCol, 80)
+    line ml = line.new(bar_index, midY, rightBar, midY,
+                       xloc=xloc.bar_index,
+                       color=gSessMidnightCol,
+                       style=line.style_solid, width=1)
+    label midLbl = label.new(rightBar, midY, "🦉 Midnight",
+                             xloc=xloc.bar_index,
+                             style=label.style_label_left,
+                             color=midLabelBg,
+                             textcolor=midSolidC,
+                             size=size.small)
+    array.push(midnightLineQ, ml)
+    array.push(midnightLabelQ, midLbl)
+    trimLineQueue(midnightLineQ, 1)
+    trimLabelQueue(midnightLabelQ, 1)
+
+// ── O/U lines (4 per day) ────────────────────────────────────────────────
+// Spawn one horizontal line + right-edge label per session at its close bar.
+// Reuses the existing per-session aggregators (sessAsia/London/NY1/NY2) so
+// no new state is needed beyond the queues.
+emitOULine(SessionAgg s, string tag) =>
+    if gSessShowOU and not na(s.hi) and not na(s.lo)
+        float mid = (s.hi + s.lo) / 2.0
+        int rightBar = barsForward(hoursTo1700())
+        line ln = line.new(bar_index, mid, rightBar, mid,
+                           xloc=xloc.bar_index, color=gSessOUColor,
+                           style=line.style_solid, width=1)
+        color solidC = color.new(gSessOUColor, 0)
+        color labelBg = color.new(gSessOUColor, 80)
+        label lbl = label.new(rightBar, mid, tag,
+                              xloc=xloc.bar_index, style=label.style_label_left,
+                              color=labelBg, textcolor=solidC, size=size.small)
+        array.push(ouLineQ, ln)
+        array.push(ouLabelQ, lbl)
+        // 4 O/U lines + 4 labels per day → cap = 4 × retentionDays()
+        trimLineQueue(ouLineQ, 4)
+        trimLabelQueue(ouLabelQ, 4)
+
+if gSessOn and gSessShowOU and isSessionStart(19, 30)
+    emitOULine(sessAsia, "Asia O/U")
+if gSessOn and gSessShowOU and isSessionStart(3, 30)
+    emitOULine(sessLondon, "London O/U")
+if gSessOn and gSessShowOU and isSessionStart(8, 30)
+    emitOULine(sessNY1, "NY1 O/U")
+if gSessOn and gSessShowOU and isSessionStart(12, 30)
+    emitOULine(sessNY2, "NY2 O/U")
+
+// ── MDR-10 H/L: rolling 10-day H-L average around today's session open ──
+// "Trading day" = 18:00 NY → 17:00 NY of the next calendar date. We track
+// the high/low of the CURRENT trading day live; at the start of a new
+// trading day (18:00 NY), we push the just-completed day's range into a
+// rolling array of size 10, then spawn the MDR-10 lines off TODAY's open.
+//
+// Note on the boundary: bars between 17:00 and 18:00 NY belong to neither
+// day in this scheme. We simply don't update the live aggregator during
+// that hour; the just-completed day's H/L was already locked at the prior
+// 17:00 → 18:00 transition (when we last had bars).
+
+var float mdrCurDayHi   = na
+var float mdrCurDayLo   = na
+var float mdrTodayOpen  = na   // open price at 18:00 NY of today (anchor)
+var array<float> mdrRanges = array.new<float>()  // last 10 completed day-ranges
+
+// Bar belongs to the current trading day if 18:00 ≤ NY clock < 17:00 next.
+// Equivalent: hour ∉ [17, 18). We accept all bars except the 17:00 hour.
+inMdrTradingDay() => _H != 17
+
+// At each 18:00 bar, lock the prior day's range into mdrRanges, reset the
+// live aggregator, and stamp today's open. We push a range only if the
+// prior day's H/L are both populated (skips the first 18:00 of the dataset).
+if gSessShowMDR and isSessionStart(18, 0)
+    if not na(mdrCurDayHi) and not na(mdrCurDayLo)
+        float priorRange = mdrCurDayHi - mdrCurDayLo
+        if priorRange > 0
+            array.push(mdrRanges, priorRange)
+            while array.size(mdrRanges) > 10
+                array.shift(mdrRanges)
+    mdrCurDayHi := high
+    mdrCurDayLo := low
+    mdrTodayOpen := open
+
+// Update live H/L during the current trading day (18:00 → 17:00).
+if gSessShowMDR and inMdrTradingDay() and not na(mdrCurDayHi)
+    mdrCurDayHi := math.max(mdrCurDayHi, high)
+    mdrCurDayLo := math.min(mdrCurDayLo, low)
+
+// Spawn MDR-10 H/L lines once at 18:00 NY each day (right after the
+// shift+reset above) — but only when we have ≥10 completed days.
+emitMDRLines() =>
+    if gSessShowMDR and array.size(mdrRanges) >= 10 and not na(mdrTodayOpen)
+        float mdr10  = array.avg(mdrRanges)
+        float halfRaw = mdr10 / 2.0
+        // Round to nearest tick. syminfo.mintick auto-adapts (NQ/ES = 0.25).
+        float halfTk = math.round(halfRaw / syminfo.mintick) * syminfo.mintick
+        float mdrHi  = mdrTodayOpen + halfTk
+        float mdrLo  = mdrTodayOpen - halfTk
+        // Trading day spans 18:00 → 17:00 next day = 23h forward.
+        int rightBar = barsForward(23.0)
+        line lnHi = line.new(bar_index, mdrHi, rightBar, mdrHi,
+                             xloc=xloc.bar_index, color=gSessMDRColor,
+                             style=line.style_solid, width=1)
+        line lnLo = line.new(bar_index, mdrLo, rightBar, mdrLo,
+                             xloc=xloc.bar_index, color=gSessMDRColor,
+                             style=line.style_solid, width=1)
+        color solidC  = color.new(gSessMDRColor, 0)
+        color labelBg = color.new(gSessMDRColor, 80)
+        label lblHi = label.new(rightBar, mdrHi, "MDR-10 High",
+                                xloc=xloc.bar_index, style=label.style_label_left,
+                                color=labelBg, textcolor=solidC, size=size.small)
+        label lblLo = label.new(rightBar, mdrLo, "MDR-10 Low",
+                                xloc=xloc.bar_index, style=label.style_label_left,
+                                color=labelBg, textcolor=solidC, size=size.small)
+        array.push(mdrLineQ, lnHi)
+        array.push(mdrLineQ, lnLo)
+        array.push(mdrLabelQ, lblHi)
+        array.push(mdrLabelQ, lblLo)
+        // 2 lines + 2 labels per day → cap = 2 × retentionDays()
+        trimLineQueue(mdrLineQ, 2)
+        trimLabelQueue(mdrLabelQ, 2)
+
+if gSessOn and gSessShowMDR and isSessionStart(18, 0)
+    emitMDRLines()
+
+// ── Asia fib projections off the 18:00–19:30 range ─────────────────────
+// Anchor: high = 0, low = 1, unit = (asiaHi − asiaLo).
+// Levels:
+//   ABOVE high:  −1   (high + 1 unit), −1.5, −2, −2.5
+//   BELOW low :  +1.5 (low − 0.5 unit), +2, +2.5
+// (0 and 1 themselves are the Asia box top/bottom — already drawn by the
+// session box, so we don't redraw them.)
+emitAsiaSDBands() =>
+    if gSessShowSD and not na(sessAsia.hi) and not na(sessAsia.lo)
+        float asiaHi = sessAsia.hi
+        float asiaLo = sessAsia.lo
+        float unit   = asiaHi - asiaLo
+        int rightBar = barsForward(hoursTo1700())
+        color solidC  = color.new(gSessSDColor, 0)
+        color labelBg = color.new(gSessSDColor, 80)
+        // (fib level → y-price). Negative levels project above the high,
+        // positive >1 levels project below the low. Each row is [level, y].
+        float [] ys = array.from(
+             asiaHi + unit * 1.0,    // -1
+             asiaHi + unit * 1.5,    // -1.5
+             asiaHi + unit * 2.0,    // -2
+             asiaHi + unit * 2.5,    // -2.5
+             asiaLo - unit * 0.5,    // +1.5
+             asiaLo - unit * 1.0,    // +2
+             asiaLo - unit * 1.5)    // +2.5
+        string [] tags = array.from(
+             "-1", "-1.5", "-2", "-2.5",
+             "+1.5", "+2", "+2.5")
+        // All lines render solid; whole-unit levels keep the input color,
+        // halves use a more transparent shade so they read as subordinate.
+        bool [] wholes = array.from(true, false, true, false, false, true, false)
+        color sdFaded = color.new(gSessSDColor, math.min(95, color.t(gSessSDColor) + 20))
+        for i = 0 to 6
+            float yLvl  = array.get(ys, i)
+            string tag  = array.get(tags, i)
+            bool isWhole = array.get(wholes, i)
+            line ln = line.new(bar_index, yLvl, rightBar, yLvl,
+                               xloc=xloc.bar_index,
+                               color=isWhole ? gSessSDColor : sdFaded,
+                               style=line.style_solid,
+                               width=1)
+            label lbl = label.new(rightBar, yLvl, tag,
+                                  xloc=xloc.bar_index, style=label.style_label_left,
+                                  color=labelBg, textcolor=solidC, size=size.small)
+            array.push(sdLineQ, ln)
+            array.push(sdLabelQ, lbl)
+        // 7 lines + 7 labels per day → cap = 7 × retentionDays()
+        trimLineQueue(sdLineQ, 7)
+        trimLabelQueue(sdLabelQ, 7)
+
+if gSessOn and gSessShowSD and isSessionStart(19, 30)
+    emitAsiaSDBands()
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ SESSION STATUS TABLE                                                     ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+//
+// 3-row × 4-col table tracking each fixed-window session's interaction with
+// price after its window closes. Columns are Asia / London / NY1 / NY2.
+//
+//   Direction    — first side wicked after window close (Long if locked H is
+//                  wicked first, Short if locked L is wicked first; blank
+//                  until either is touched).
+//   Session      — True if the direction has held (only one side wicked so
+//                  far), False if the OPPOSITE side has subsequently been
+//                  wicked. Blank until Direction is set.
+//   Model Status — Broken if the session's MID is wicked during the NEXT
+//                  session's WINDOW. Blank otherwise.
+//                  (NY2's "next FC" is next-day Asia, which we don't track
+//                  cross-day; NY2's Model Status stays blank.)
+//
+// All cells reset at 18:00 NY (start of new Asia / new day). Table only
+// refreshes on the last bar to avoid per-bar table churn.
+
+// ── Per-session status state ──────────────────────────────────────────────
+type SessStatus
+    float boxHi      = na
+    float boxLo      = na
+    float boxMid     = na
+    bool  closed     = false   // window has ended → start watching breaches
+    string direction = ""      // "" / "Long" / "Short"
+    bool  oppTaken   = false   // opposite side wicked → Session = False
+    bool  midBroken  = false   // mid wicked during the NEXT session's window
+    label marker     = na      // ▲/▼ marker on the breaking candle
+
+var SessStatus statAsia   = SessStatus.new()
+var SessStatus statLondon = SessStatus.new()
+var SessStatus statNY1    = SessStatus.new()
+var SessStatus statNY2    = SessStatus.new()
+
+// Reset all status at 18:00 NY (start of new day).
+resetSessStatus(SessStatus s) =>
+    s.boxHi := na
+    s.boxLo := na
+    s.boxMid := na
+    s.closed := false
+    s.direction := ""
+    s.oppTaken := false
+    s.midBroken := false
+    if not na(s.marker)
+        label.delete(s.marker)
+        s.marker := na
+
+if gTblOn and isSessionStart(18, 0)
+    resetSessStatus(statAsia)
+    resetSessStatus(statLondon)
+    resetSessStatus(statNY1)
+    resetSessStatus(statNY2)
+
+// Lock each session's H/L/Mid + flip `closed=true` at the bar AFTER its
+// window ends. Mirrors the same end-time convention used by emitSessionBox.
+lockSessStatus(SessStatus s, SessionAgg src) =>
+    if not na(src.hi) and not na(src.lo)
+        s.boxHi := src.hi
+        s.boxLo := src.lo
+        s.boxMid := (src.hi + src.lo) / 2.0
+        s.closed := true
+
+if gTblOn and isSessionStart(19, 30)
+    lockSessStatus(statAsia, sessAsia)
+if gTblOn and isSessionStart(3, 30)
+    lockSessStatus(statLondon, sessLondon)
+if gTblOn and isSessionStart(8, 30)
+    lockSessStatus(statNY1, sessNY1)
+if gTblOn and isSessionStart(12, 30)
+    lockSessStatus(statNY2, sessNY2)
+
+// ── Per-bar breach detection (wick-based, option (a) from clarification) ──
+// Each bar after a session's `closed` flag flips, watch its locked H/L:
+//   - First high wicked → Direction = "Long"  → spawn ▲ above the bar
+//   - First low wicked  → Direction = "Short" → spawn ▼ below the bar
+//   - If direction set and the OPPOSITE side wicked later → oppTaken = true
+updateSessStatusBreach(SessStatus s) =>
+    if s.closed and not na(s.boxHi) and not na(s.boxLo)
+        bool hiTouched = high >= s.boxHi
+        bool loTouched = low  <= s.boxLo
+        if s.direction == ""
+            // First side to touch wins
+            if hiTouched and loTouched
+                // Both touched same bar — pick whichever side close is closer
+                // to (i.e. price spent more time on that side). Tie → Long.
+                float distHi = math.abs(close - s.boxHi)
+                float distLo = math.abs(close - s.boxLo)
+                s.direction := distHi <= distLo ? "Long" : "Short"
+                s.oppTaken := true
+            else if hiTouched
+                s.direction := "Long"
+            else if loTouched
+                s.direction := "Short"
+
+            // Spawn the breaking-candle marker the moment direction is set.
+            // Anchor at high+ATR offset for Long, low-ATR offset for Short.
+            if gTblShowBreakMark and s.direction != "" and na(s.marker)
+                bool isLong = s.direction == "Long"
+                float yAnchor = isLong ? high : low
+                color cMark   = isLong ? gTblLongColor : gTblShortColor
+                s.marker := label.new(bar_index, yAnchor,
+                                      isLong ? "▲" : "▼",
+                                      xloc=xloc.bar_index,
+                                      yloc=yloc.price,
+                                      style=isLong ? label.style_label_down : label.style_label_up,
+                                      color=color.new(cMark, 100),
+                                      textcolor=cMark,
+                                      size=size.normal)
+        else
+            if s.direction == "Long" and loTouched
+                s.oppTaken := true
+            else if s.direction == "Short" and hiTouched
+                s.oppTaken := true
+    // Explicit return so function has stable type
+    s.direction
+
+if gTblOn
+    updateSessStatusBreach(statAsia)
+    updateSessStatusBreach(statLondon)
+    updateSessStatusBreach(statNY1)
+    updateSessStatusBreach(statNY2)
+
+// ── Mid breach detection during the NEXT session's window ────────────────
+// "Next FC" mapping: Asia → London window, London → NY1 window,
+// NY1 → NY2 window, NY2 → (cross-day, unsupported, stays blank).
+updateMidBreach(SessStatus s, bool inNextWin) =>
+    if gTblOn and inNextWin and not s.midBroken and not na(s.boxMid) and s.closed
+        if high >= s.boxMid and low <= s.boxMid
+            s.midBroken := true
+
+if gTblOn
+    updateMidBreach(statAsia,   inSession(2, 30, 3, 30))   // London window
+    updateMidBreach(statLondon, inSession(7, 30, 8, 30))   // NY1 window
+    updateMidBreach(statNY1,    inSession(11, 30, 12, 30)) // NY2 window
+    // NY2 has no in-day next FC; stays blank.
+
+// ── Render the table (last bar only) ──────────────────────────────────────
+tablePosFor() =>
+    var p = position.top_right
+    p := gTblPos == "top_left"      ? position.top_left      :
+         gTblPos == "bottom_right"  ? position.bottom_right  :
+         gTblPos == "bottom_left"   ? position.bottom_left   :
+         gTblPos == "middle_right"  ? position.middle_right  :
+         gTblPos == "middle_left"   ? position.middle_left   :
+                                      position.top_right
+    p
+
+dirColor(string d) =>
+    color c = gTblTextColor
+    if d == "Long"
+        c := gTblLongColor
+    else if d == "Short"
+        c := gTblShortColor
+    c
+
+sessColor(SessStatus s) =>
+    color c = gTblTextColor
+    if s.direction != ""
+        c := s.oppTaken ? gTblFalseColor : gTblTrueColor
+    c
+
+sessText(SessStatus s) =>
+    string t = ""
+    if s.direction != ""
+        t := s.oppTaken ? "False" : "True"
+    t
+
+modelText(SessStatus s) => s.midBroken ? "Broken" : ""
+modelColor() => gTblBrokenColor
+
+var table sessStatusTbl = na
+
+if gTblOn and barstate.islast
+    if na(sessStatusTbl)
+        sessStatusTbl := table.new(tablePosFor(), 5, 4,
+                                   bgcolor=gTblBgColor,
+                                   border_color=color.new(gTblHdrColor, 50),
+                                   border_width=1,
+                                   frame_color=color.new(gTblHdrColor, 30),
+                                   frame_width=1)
+    // Header row
+    table.cell(sessStatusTbl, 0, 0, "",     text_color=gTblHdrColor, text_size=size.small)
+    table.cell(sessStatusTbl, 1, 0, "ASN",  text_color=gTblHdrColor, text_size=size.small)
+    table.cell(sessStatusTbl, 2, 0, "LDN",  text_color=gTblHdrColor, text_size=size.small)
+    table.cell(sessStatusTbl, 3, 0, "NY1",  text_color=gTblHdrColor, text_size=size.small)
+    table.cell(sessStatusTbl, 4, 0, "NY2",  text_color=gTblHdrColor, text_size=size.small)
+
+    // Direction row
+    table.cell(sessStatusTbl, 0, 1, "Direction", text_color=gTblHdrColor, text_size=size.small)
+    table.cell(sessStatusTbl, 1, 1, statAsia.direction,   text_color=dirColor(statAsia.direction),   text_size=size.small)
+    table.cell(sessStatusTbl, 2, 1, statLondon.direction, text_color=dirColor(statLondon.direction), text_size=size.small)
+    table.cell(sessStatusTbl, 3, 1, statNY1.direction,    text_color=dirColor(statNY1.direction),    text_size=size.small)
+    table.cell(sessStatusTbl, 4, 1, statNY2.direction,    text_color=dirColor(statNY2.direction),    text_size=size.small)
+
+    // Session row
+    table.cell(sessStatusTbl, 0, 2, "Session",   text_color=gTblHdrColor, text_size=size.small)
+    table.cell(sessStatusTbl, 1, 2, sessText(statAsia),   text_color=sessColor(statAsia),   text_size=size.small)
+    table.cell(sessStatusTbl, 2, 2, sessText(statLondon), text_color=sessColor(statLondon), text_size=size.small)
+    table.cell(sessStatusTbl, 3, 2, sessText(statNY1),    text_color=sessColor(statNY1),    text_size=size.small)
+    table.cell(sessStatusTbl, 4, 2, sessText(statNY2),    text_color=sessColor(statNY2),    text_size=size.small)
+
+    // Model Status row
+    table.cell(sessStatusTbl, 0, 3, "Model Status", text_color=gTblHdrColor, text_size=size.small)
+    table.cell(sessStatusTbl, 1, 3, modelText(statAsia),   text_color=modelColor(), text_size=size.small)
+    table.cell(sessStatusTbl, 2, 3, modelText(statLondon), text_color=modelColor(), text_size=size.small)
+    table.cell(sessStatusTbl, 3, 3, modelText(statNY1),    text_color=modelColor(), text_size=size.small)
+    table.cell(sessStatusTbl, 4, 3, modelText(statNY2),    text_color=modelColor(), text_size=size.small)
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ EMPIRICAL READOUTS                                                       ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+//
+// A1: live hour probability readout. Floats to the right of price. Looks up
+// EMPIRICAL_<sym>_HOUR by the live hour state vector and shows top outcomes.
+//
+// A2 / B / C / E to follow once A1 is validated visually on TradingView.
+
+// Symbol auto-detect: NQ if syminfo.ticker starts with "NQ", ES otherwise.
+empSym() =>
+    string s = "NQ"
+    if gDataSource == "NQ"
+        s := "NQ"
+    else if gDataSource == "ES"
+        s := "ES"
+    else
+        s := str.startswith(syminfo.ticker, "NQ") ? "NQ" : "ES"
+    s
+
+// Hour-key q token: live = current Q1/Q2/Q3/Q4, at hour close = "closed".
+liveQToken() =>
+    string q = isHourClose() ? "closed" : "Q" + str.tostring(quarterOfHour())
+    q
+
+// Per-quarter classification token, mirrors Python sampler's qcls list.
+qclsTokenFor(HourAgg h, int qi) =>
+    string token = "inside"
+    if not na(h)
+        QuarterAgg q = qi == 1 ? h.q1 : qi == 2 ? h.q2 : qi == 3 ? h.q3 : h.q4
+        if not na(q) and not na(q.high_) and not na(q.low_)
+            float hi = hourHigh(h)
+            float lo = hourLow(h)
+            bool is14 = (qi == 1 or qi == 4)
+            if is14 and q.high_ == hi
+                token := "in-stat-high"
+            else if is14 and q.low_ == lo
+                token := "in-stat-low"
+            else if (qi == 2 or qi == 3) and q.high_ == hi
+                token := "out-stat-high"
+            else if (qi == 2 or qi == 3) and q.low_ == lo
+                token := "out-stat-low"
+    token
+
+// Sweep-set token: comma-joined sorted set, "none" if empty. Re-walks
+// quarters and emits the same labels as Python detect_sweeps_in_hour.
+sweepSetTokenFor(HourAgg h) =>
+    string parts = ""
+    if not na(h)
+        for byQ = 2 to 4
+            QuarterAgg byq = byQ == 2 ? h.q2 : byQ == 3 ? h.q3 : h.q4
+            if not na(byq)
+                for tQ = 1 to byQ - 1
+                    QuarterAgg targ = tQ == 1 ? h.q1 : tQ == 2 ? h.q2 : h.q3
+                    if not na(targ)
+                        if byq.high_ > targ.high_
+                            string lbl1 = "Q" + str.tostring(byQ) + "_swept_Q" + str.tostring(tQ) + "_high"
+                            parts := parts == "" ? lbl1 : parts + "," + lbl1
+                        if byq.low_ < targ.low_
+                            string lbl2 = "Q" + str.tostring(byQ) + "_swept_Q" + str.tostring(tQ) + "_low"
+                            parts := parts == "" ? lbl2 : parts + "," + lbl2
+    parts == "" ? "none" : parts
+
+var label hourProbLabel = na
+
+if gReadoutsOn and gShowPath and HAS_LH and _EMP_ENABLED
+    HourAgg h_ro = LH
+    if not na(h_ro)
+        string sym = empSym()
+        string blockTok = na(blockId()) ? "12-15" : blockId()
+        string hourKey = buildHourKey(sym, blockTok, hourIndexInTriad(), liveQToken(),
+             qclsTokenFor(h_ro, 1), qclsTokenFor(h_ro, 2),
+             qclsTokenFor(h_ro, 3), qclsTokenFor(h_ro, 4),
+             sweepSetTokenFor(h_ro),
+             midhrState, boxReactState)
+        string lookupHash = canonicalHash(hourKey)
+        Probs empProbs = sym == "NQ" ? map.get(EMPIRICAL_NQ_HOUR, lookupHash) : map.get(EMPIRICAL_ES_HOUR, lookupHash)
+        array<float> empData = na(empProbs) ? na : empProbs.v
+
+        string roText = ""
+        if not na(empData) and array.size(empData) >= 4
+            float pLup  = array.get(empData, 0)
+            float pLdn  = array.get(empData, 1)
+            float pDoji = array.get(empData, 2)
+            int   nObs  = int(array.get(empData, 3))
+            roText := "▲ " + str.tostring(int(math.round(pLup * 100))) + "%  " +
+                      "▼ " + str.tostring(int(math.round(pLdn * 100))) + "%  " +
+                      "◇ " + str.tostring(int(math.round(pDoji * 100))) +
+                      "%" + (gShowN ? "   n=" + str.tostring(nObs) : "")
+        else
+            roText := "—"
+
+        if na(hourProbLabel)
+            hourProbLabel := label.new(bar_index + 2, close, roText,
+                xloc=xloc.bar_index, style=label.style_label_left,
+                color=PILL_BG, textcolor=PILL_TEXT, size=size.small)
+        else
+            label.set_xy(hourProbLabel, bar_index + 2, close)
+            label.set_text(hourProbLabel, roText)
+
+
+// ── A2: Triad probability readout (live) ─────────────────────────────────
+//
+// Floats above A1. Looks up EMPIRICAL_<sym>_TRIAD by live triad state.
+// Array layout: [p_lup, p_ldn, p_aup, p_adn, p_doji, n].
+
+// Live triad-state primitives mirroring engine/sampler.py _emit().
+c2qTokenLive() =>
+    string c = "Q1"
+    int hidx = hourIndexInTriad()
+    if hidx > 2
+        c := "closed"
+    else if hidx == 2
+        if isHourClose() and not na(activeTriad) and not na(activeTriad.c2) and not na(activeTriad.c2.q4)
+            c := "closed"
+        else
+            c := "Q" + str.tostring(quarterOfHour())
+    c
+
+var label triadProbLabel = na
+
+if gReadoutsOn and gShowPath and _EMP_ENABLED and not na(activeTriad)
+    HourAgg c1 = activeTriad.c1
+    if not na(c1)
+        string c1cls_t = classifyHour(c1)
+        if c1cls_t == "pending"
+            c1cls_t := "doji"
+        string c2qT  = c2qTokenLive()
+        string c2vhT = "na"
+        string c2vlT = "na"
+        bool c2sw_h = false
+        bool c2sw_l = false
+        bool c2_in  = false
+        HourAgg c2 = activeTriad.c2
+        int hidx_t = hourIndexInTriad()
+        if hidx_t >= 2 and not na(c1) and not na(c2)
+            float c1hi = hourHigh(c1)
+            float c1lo = hourLow(c1)
+            float c2hi = hourHigh(c2)
+            float c2lo = hourLow(c2)
+            if not na(c1hi) and not na(c1lo) and not na(c2hi) and not na(c2lo)
+                c2sw_h := c2hi > c1hi
+                c2sw_l := c2lo < c1lo
+                c2_in  := c2hi < c1hi and c2lo > c1lo
+                c2vhT := c2hi > c1hi ? "above" : (c2hi < c1hi ? "below" : "inside")
+                c2vlT := c2lo > c1lo ? "above" : (c2lo < c1lo ? "below" : "inside")
+        string symT = empSym()
+        string blockT = na(activeTriad.blockId) ? (na(blockId()) ? "12-15" : blockId()) : activeTriad.blockId
+        string triadKey = buildTriadKey(symT, blockT, c1cls_t, c2qT, c2vhT, c2vlT,
+             c2sw_h, c2sw_l, c2_in, midhrState, mid3hState, boxReactState)
+        string thash = canonicalHash(triadKey)
+        Probs tProbs = symT == "NQ" ? map.get(EMPIRICAL_NQ_TRIAD, thash) : map.get(EMPIRICAL_ES_TRIAD, thash)
+        array<float> tData = na(tProbs) ? na : tProbs.v
+
+        string tText = ""
+        if not na(tData) and array.size(tData) >= 6
+            float pLu = array.get(tData, 0)
+            float pLd = array.get(tData, 1)
+            float pAu = array.get(tData, 2)
+            float pAd = array.get(tData, 3)
+            float pDj = array.get(tData, 4)
+            int   nT  = int(array.get(tData, 5))
+            tText := "3h ▲" + str.tostring(int(math.round(pLu * 100))) + "% " +
+                     "▼" + str.tostring(int(math.round(pLd * 100))) + "% " +
+                     "△" + str.tostring(int(math.round(pAu * 100))) + "% " +
+                     "▽" + str.tostring(int(math.round(pAd * 100))) + "% " +
+                     "◇" + str.tostring(int(math.round(pDj * 100))) + "%" +
+                     (gShowN ? "  n=" + str.tostring(nT) : "")
+        else
+            tText := "3h —"
+
+        // Anchor above A1: shift up by ~0.4 ATR.
+        float tY = close + atrOffset() * 0.4
+        if na(triadProbLabel)
+            triadProbLabel := label.new(bar_index + 2, tY, tText,
+                xloc=xloc.bar_index, style=label.style_label_left,
+                color=PILL_BG, textcolor=PILL_TEXT, size=size.small)
+        else
+            label.set_xy(triadProbLabel, bar_index + 2, tY)
+            label.set_text(triadProbLabel, tText)
+
+
+// ── B: Sweep p% readout (hour close) ─────────────────────────────────────
+//
+// At hour close, draw two short labels at the just-closed hour's H and L
+// showing p(taken in next 60min). Replace each hour close.
+
+var label sweepHiLabel = na
+var label sweepLoLabel = na
+
+if gReadoutsOn and gShowPath and _EMP_ENABLED and isHourClose() and not na(priorHour1h)
+    HourAgg ph = priorHour1h
+    string symS = empSym()
+    string blockS = na(blockId()) ? "12-15" : blockId()
+    string hKeySw = buildHourKey(symS, blockS, hourIndexInTriad(), "closed",
+         qclsTokenFor(ph, 1), qclsTokenFor(ph, 2),
+         qclsTokenFor(ph, 3), qclsTokenFor(ph, 4),
+         sweepSetTokenFor(ph),
+         lastMidhrReaction == "none" ? "untouched" : lastMidhrReaction,
+         boxReactState)
+    string keyHi = rekeyHourFor(hKeySw, "sweep_h")
+    string keyLo = rekeyHourFor(hKeySw, "sweep_l")
+    Probs swHp = symS == "NQ" ? map.get(EMPIRICAL_NQ_SWEEP_H, canonicalHash(keyHi)) : map.get(EMPIRICAL_ES_SWEEP_H, canonicalHash(keyHi))
+    Probs swLp = symS == "NQ" ? map.get(EMPIRICAL_NQ_SWEEP_L, canonicalHash(keyLo)) : map.get(EMPIRICAL_ES_SWEEP_L, canonicalHash(keyLo))
+    array<float> swH = na(swHp) ? na : swHp.v
+    array<float> swL = na(swLp) ? na : swLp.v
+
+    float phHi = hourHigh(ph)
+    float phLo = hourLow(ph)
+    string txtHi = not na(swH) and array.size(swH) >= 2 ?
+         "swp H " + str.tostring(int(math.round(array.get(swH, 0) * 100))) + "%" +
+         (gShowN ? " n=" + str.tostring(int(array.get(swH, 1))) : "") : ""
+    string txtLo = not na(swL) and array.size(swL) >= 2 ?
+         "swp L " + str.tostring(int(math.round(array.get(swL, 0) * 100))) + "%" +
+         (gShowN ? " n=" + str.tostring(int(array.get(swL, 1))) : "") : ""
+
+    if not na(phHi) and txtHi != ""
+        if na(sweepHiLabel)
+            sweepHiLabel := label.new(bar_index + 1, phHi, txtHi, xloc=xloc.bar_index,
+                style=label.style_label_left, color=PILL_BG, textcolor=PILL_TEXT, size=size.tiny)
+        else
+            label.set_xy(sweepHiLabel, bar_index + 1, phHi)
+            label.set_text(sweepHiLabel, txtHi)
+    if not na(phLo) and txtLo != ""
+        if na(sweepLoLabel)
+            sweepLoLabel := label.new(bar_index + 1, phLo, txtLo, xloc=xloc.bar_index,
+                style=label.style_label_left, color=PILL_BG, textcolor=PILL_TEXT, size=size.tiny)
+        else
+            label.set_xy(sweepLoLabel, bar_index + 1, phLo)
+            label.set_text(sweepLoLabel, txtLo)
+
+
+// ── C: Extension readout (hour close) ────────────────────────────────────
+//
+// At hour close, project mean / median forward excursion in points above
+// and below the close. Lines extend right by 60 bars (1h on 1m). Re-drawn
+// each hour close.
+
+var line extUpMeanLine = na
+var line extUpMedLine  = na
+var line extDnMeanLine = na
+var line extDnMedLine  = na
+var label extUpLabel   = na
+var label extDnLabel   = na
+
+if gReadoutsOn and gShowPath and _EMP_ENABLED and isHourClose() and not na(priorHour1h)
+    HourAgg ph2 = priorHour1h
+    string symC = empSym()
+    string blockC = na(blockId()) ? "12-15" : blockId()
+    string hKeyEx = buildHourKey(symC, blockC, hourIndexInTriad(), "closed",
+         qclsTokenFor(ph2, 1), qclsTokenFor(ph2, 2),
+         qclsTokenFor(ph2, 3), qclsTokenFor(ph2, 4),
+         sweepSetTokenFor(ph2),
+         lastMidhrReaction == "none" ? "untouched" : lastMidhrReaction,
+         boxReactState)
+    string keyUp = rekeyHourFor(hKeyEx, "ext_up")
+    string keyDn = rekeyHourFor(hKeyEx, "ext_dn")
+    Probs exUp = symC == "NQ" ? map.get(EMPIRICAL_NQ_EXT_UP, canonicalHash(keyUp)) : map.get(EMPIRICAL_ES_EXT_UP, canonicalHash(keyUp))
+    Probs exDp = symC == "NQ" ? map.get(EMPIRICAL_NQ_EXT_DN, canonicalHash(keyDn)) : map.get(EMPIRICAL_ES_EXT_DN, canonicalHash(keyDn))
+    array<float> exU = na(exUp) ? na : exUp.v
+    array<float> exD = na(exDp) ? na : exDp.v
+
+    int rightX = bar_index + 60
+    // ext array layout: [mean, median, mode, n] in points
+    if not na(exU) and array.size(exU) >= 4
+        float meanU = array.get(exU, 0)
+        float medU  = array.get(exU, 1)
+        int   nU    = int(array.get(exU, 3))
+        float yMean = close + meanU
+        float yMed  = close + medU
+        if na(extUpMeanLine)
+            extUpMeanLine := line.new(bar_index, yMean, rightX, yMean, xloc=xloc.bar_index,
+                color=PILL_TEXT, width=1, style=line.style_solid)
+            extUpMedLine := line.new(bar_index, yMed, rightX, yMed, xloc=xloc.bar_index,
+                color=color.new(PILL_TEXT, 50), width=1, style=line.style_solid)
+        else
+            line.set_xy1(extUpMeanLine, bar_index, yMean)
+            line.set_xy2(extUpMeanLine, rightX, yMean)
+            line.set_xy1(extUpMedLine, bar_index, yMed)
+            line.set_xy2(extUpMedLine, rightX, yMed)
+        string txtU = "ext↑ μ" + str.tostring(meanU, "#.#") + " m" + str.tostring(medU, "#.#") +
+             (gShowN ? " n=" + str.tostring(nU) : "")
+        if na(extUpLabel)
+            extUpLabel := label.new(rightX, yMean, txtU, xloc=xloc.bar_index,
+                style=label.style_label_left, color=PILL_BG, textcolor=PILL_TEXT, size=size.tiny)
+        else
+            label.set_xy(extUpLabel, rightX, yMean)
+            label.set_text(extUpLabel, txtU)
+
+    if not na(exD) and array.size(exD) >= 4
+        float meanD = array.get(exD, 0)
+        float medD  = array.get(exD, 1)
+        int   nD    = int(array.get(exD, 3))
+        float yMeanD = close - meanD
+        float yMedD  = close - medD
+        if na(extDnMeanLine)
+            extDnMeanLine := line.new(bar_index, yMeanD, rightX, yMeanD, xloc=xloc.bar_index,
+                color=PILL_TEXT, width=1, style=line.style_solid)
+            extDnMedLine := line.new(bar_index, yMedD, rightX, yMedD, xloc=xloc.bar_index,
+                color=color.new(PILL_TEXT, 50), width=1, style=line.style_solid)
+        else
+            line.set_xy1(extDnMeanLine, bar_index, yMeanD)
+            line.set_xy2(extDnMeanLine, rightX, yMeanD)
+            line.set_xy1(extDnMedLine, bar_index, yMedD)
+            line.set_xy2(extDnMedLine, rightX, yMedD)
+        string txtD = "ext↓ μ" + str.tostring(meanD, "#.#") + " m" + str.tostring(medD, "#.#") +
+             (gShowN ? " n=" + str.tostring(nD) : "")
+        if na(extDnLabel)
+            extDnLabel := label.new(rightX, yMeanD, txtD, xloc=xloc.bar_index,
+                style=label.style_label_left, color=PILL_BG, textcolor=PILL_TEXT, size=size.tiny)
+        else
+            label.set_xy(extDnLabel, rightX, yMeanD)
+            label.set_text(extDnLabel, txtD)
+
+
+// ── E: Triad-pair continuation readout (triad close) ─────────────────────
+//
+// At triad close, look up p(next triad's classification == this triad's
+// classification) keyed by buildPairKey(triad_key, prior_class).
+
+var label pairLabel = na
+
+if gReadoutsOn and gShowPath and _EMP_ENABLED and isTriadClose() and not na(activeTriad)
+    string priorCls = classifyTriad(activeTriad)
+    if priorCls != "pending"
+        HourAgg c1p = activeTriad.c1
+        string c1clsP = na(c1p) ? "doji" : classifyHour(c1p)
+        if c1clsP == "pending"
+            c1clsP := "doji"
+        string c2qP  = "closed"
+        string c2vhP = "na"
+        string c2vlP = "na"
+        bool c2sw_hP = false
+        bool c2sw_lP = false
+        bool c2_inP  = false
+        HourAgg c2p = activeTriad.c2
+        if not na(c1p) and not na(c2p)
+            float c1hi2 = hourHigh(c1p)
+            float c1lo2 = hourLow(c1p)
+            float c2hi2 = hourHigh(c2p)
+            float c2lo2 = hourLow(c2p)
+            if not na(c1hi2) and not na(c1lo2) and not na(c2hi2) and not na(c2lo2)
+                c2sw_hP := c2hi2 > c1hi2
+                c2sw_lP := c2lo2 < c1lo2
+                c2_inP  := c2hi2 < c1hi2 and c2lo2 > c1lo2
+                c2vhP := c2hi2 > c1hi2 ? "above" : (c2hi2 < c1hi2 ? "below" : "inside")
+                c2vlP := c2lo2 > c1lo2 ? "above" : (c2lo2 < c1lo2 ? "below" : "inside")
+        string symP = empSym()
+        string blockP = na(activeTriad.blockId) ? (na(blockId()) ? "12-15" : blockId()) : activeTriad.blockId
+        string tKeyP = buildTriadKey(symP, blockP, c1clsP, c2qP, c2vhP, c2vlP,
+             c2sw_hP, c2sw_lP, c2_inP, midhrState, mid3hState, boxReactState)
+        string pairKey = buildPairKey(tKeyP, priorCls)
+        Probs prProbs = symP == "NQ" ? map.get(EMPIRICAL_NQ_PAIR, canonicalHash(pairKey)) : map.get(EMPIRICAL_ES_PAIR, canonicalHash(pairKey))
+        array<float> prData = na(prProbs) ? na : prProbs.v
+        string prText = not na(prData) and array.size(prData) >= 2 ?
+             "next ≡ " + str.tostring(int(math.round(array.get(prData, 0) * 100))) + "%" +
+             (gShowN ? " n=" + str.tostring(int(array.get(prData, 1))) : "") : "next ≡ —"
+
+        float yPair = triadHigh(activeTriad)
+        if not na(yPair)
+            if na(pairLabel)
+                pairLabel := label.new(bar_index + 1, yPair, prText, xloc=xloc.bar_index,
+                    style=label.style_label_down, color=PILL_BG, textcolor=PILL_TEXT, size=size.small)
+            else
+                label.set_xy(pairLabel, bar_index + 1, yPair)
+                label.set_text(pairLabel, prText)

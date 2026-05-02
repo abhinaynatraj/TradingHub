@@ -1,0 +1,92 @@
+// ── Empirical lookup helpers (pasted into quarter_theory.pine) ────────────
+//
+// Pine-side polynomial rolling hash + state-key builders. MUST produce the
+// same string as the Python-side `canonical_hash()` and `build_*_key()`
+// functions in `engine/state_vector.py`.
+//
+// Hash: h_{i+1} = (h_i * 131 + ord(c_i)) mod 2^32
+// Output: base36 string of the final 32-bit value.
+//
+// 32-bit modulus chosen so the running hash fits cleanly in float64
+// mantissa precision (53 bits). Pine has no native unsigned-int math but
+// `math.fmod` on doubles is bit-exact for values < 2^53, which 2^32 is.
+
+// Lookup table for ord() of printable ASCII (codes 32–126). Indexed by
+// position in this string. Pine strings are 0-indexed via str.substring.
+var string _ASCII = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+// _ASCII[0] = ' ' (32), _ASCII[i] = chr(i + 32).
+
+// Return the ASCII codepoint of the first char of `s`, or 32 (space) if
+// the char isn't printable ASCII. Linear scan — fine for our key lengths.
+ordOf(string s) =>
+    int code = 32
+    for i = 0 to str.length(_ASCII) - 1
+        if str.substring(_ASCII, i, i + 1) == s
+            code := i + 32
+            break
+    code
+
+// Return base36 string of `n` (must be ≥ 0).
+toBase36(float n) =>
+    string out = ""
+    string chars = "0123456789abcdefghijklmnopqrstuvwxyz"
+    float v = n
+    if v == 0
+        out := "0"
+    while v > 0
+        int digit = int(math.fmod(v, 36))
+        out := str.substring(chars, digit, digit + 1) + out
+        v := math.floor(v / 36)
+    out
+
+// Polynomial rolling hash modulo 2^32, base 131.
+// 2^32 = 4,294,967,296. After mul-by-131 and add-c the value stays under
+// 131 * (2^32 - 1) + 127 ≈ 5.6 * 10^11, well under float64's 2^53 limit.
+canonicalHash(string key) =>
+    float h = 0.0
+    float MOD = 4294967296.0  // 2^32
+    int n = str.length(key)
+    for i = 0 to n - 1
+        string ch = str.substring(key, i, i + 1)
+        int c = ordOf(ch)
+        h := math.fmod(h * 131.0 + c, MOD)
+    toBase36(h)
+
+
+// ── State-key builders ────────────────────────────────────────────────────
+
+// Build a hour state-key matching engine/state_vector.build_hour_key().
+//
+//   v1|sym=NQ|tf=hour|block=09-12|hour_idx=1|q=closed|
+//   q1cls=in-stat-low|q2cls=...|q3cls=...|q4cls=...|
+//   sweep_set=none|midhr=untouched|box_react=none
+buildHourKey(string sym, string block, int hour_idx, string q,
+             string q1cls, string q2cls, string q3cls, string q4cls,
+             string sweep_set, string midhr, string box_react) =>
+    "v1|sym=" + sym + "|tf=hour|block=" + block + "|hour_idx=" + str.tostring(hour_idx) + "|q=" + q +
+    "|q1cls=" + q1cls + "|q2cls=" + q2cls + "|q3cls=" + q3cls + "|q4cls=" + q4cls +
+    "|sweep_set=" + sweep_set + "|midhr=" + midhr + "|box_react=" + box_react
+
+// Build a triad state-key matching engine/state_vector.build_triad_key().
+//
+//   v1|sym=NQ|tf=triad|block=09-12|c1cls=line-up|c2q=Q1|
+//   c2vh=inside|c2vl=inside|c2sw_c1h=N|c2sw_c1l=N|c2_inside=N|
+//   midhr=untouched|mid3h=untouched|box_react=none
+buildTriadKey(string sym, string block, string c1cls, string c2q,
+              string c2vh, string c2vl, bool c2sw_c1h, bool c2sw_c1l,
+              bool c2_inside, string midhr, string mid3h, string box_react) =>
+    "v1|sym=" + sym + "|tf=triad|block=" + block + "|c1cls=" + c1cls + "|c2q=" + c2q +
+    "|c2vh=" + c2vh + "|c2vl=" + c2vl +
+    "|c2sw_c1h=" + (c2sw_c1h ? "Y" : "N") +
+    "|c2sw_c1l=" + (c2sw_c1l ? "Y" : "N") +
+    "|c2_inside=" + (c2_inside ? "Y" : "N") +
+    "|midhr=" + midhr + "|mid3h=" + mid3h + "|box_react=" + box_react
+
+// Re-key a hour-key string into one of the forward streams.
+// E.g. rekeyHourFor(k, "sweep_h") replaces "|tf=hour|" with "|tf=sweep_h|".
+rekeyHourFor(string hour_key, string tf) =>
+    str.replace(hour_key, "|tf=hour|", "|tf=" + tf + "|", 0)
+
+// Build a triad-pair key by re-keying tf and appending the prior class.
+buildPairKey(string triad_key, string prior_class) =>
+    str.replace(triad_key, "|tf=triad|", "|tf=pair|", 0) + "|prior_class=" + prior_class

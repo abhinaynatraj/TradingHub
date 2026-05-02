@@ -1,0 +1,130 @@
+// ── Empirical readouts (pasted into quarter_theory.pine) ─────────────────
+//
+// Five live readouts driven by EMPIRICAL_* maps. All anchored per-hour,
+// floating with live price.
+//
+// Helpers required (paste from _empirical_helpers.pine.snippet):
+//   canonicalHash(string)
+//   buildHourKey(...)
+//   buildTriadKey(...)
+//   rekeyHourFor(string, string)
+//   buildPairKey(string, string)
+
+
+// ── Live state-key inputs ────────────────────────────────────────────────
+//
+// The indicator already tracks most of these; the rest are derived live.
+
+// Symbol auto-detect: NQ if syminfo.ticker starts with "NQ", ES otherwise.
+// User can override via gDataSource ("Auto" | "NQ" | "ES").
+empSym() =>
+    string s = "NQ"
+    if gDataSource == "NQ"
+        s := "NQ"
+    else if gDataSource == "ES"
+        s := "ES"
+    else
+        s := str.startswith(syminfo.ticker, "NQ") ? "NQ" : "ES"
+    s
+
+// Which quarter token to use in the hour key: live = current Q1/Q2/Q3/Q4,
+// at hour close (minute 59) = "closed".
+liveQToken() =>
+    string q = isHourClose() ? "closed" : "Q" + str.tostring(quarterOfHour())
+    q
+
+// Per-quarter classification token, derived from running aggregations.
+// Mirrors the Python sampler's qcls list construction.
+qclsTokenFor(HourAgg h, int qi) =>
+    string token = "inside"
+    if not na(h)
+        QuarterAgg q = qi == 1 ? h.q1 : qi == 2 ? h.q2 : qi == 3 ? h.q3 : h.q4
+        if not na(q) and not na(q.high_) and not na(q.low_)
+            float hi = hourHigh(h)
+            float lo = hourLow(h)
+            bool is14 = (qi == 1 or qi == 4)
+            if is14 and q.high_ == hi
+                token := "in-stat-high"
+            else if is14 and q.low_ == lo
+                token := "in-stat-low"
+            else if (qi == 2 or qi == 3) and q.high_ == hi
+                token := "out-stat-high"
+            else if (qi == 2 or qi == 3) and q.low_ == lo
+                token := "out-stat-low"
+    token
+
+// Sweep set serializer: comma-joined sorted set, "none" if empty. The
+// indicator's existing dojiConfirmedThisHour / lastSweepBias state isn't
+// granular enough — for parity we need the per-event labels emitted by
+// the Python detect_sweeps_in_hour. Simplest live approximation: re-walk
+// quarters and emit the same labels.
+sweepSetTokenFor(HourAgg h) =>
+    string parts = ""
+    if not na(h)
+        for byQ = 2 to 4
+            QuarterAgg by = byQ == 2 ? h.q2 : byQ == 3 ? h.q3 : h.q4
+            if not na(by)
+                for tQ = 1 to byQ - 1
+                    QuarterAgg targ = tQ == 1 ? h.q1 : tQ == 2 ? h.q2 : h.q3
+                    if not na(targ)
+                        if by.high_ > targ.high_
+                            parts := parts == "" ? ("Q" + str.tostring(byQ) + "_swept_Q" + str.tostring(tQ) + "_high") :
+                                                   parts + "," + ("Q" + str.tostring(byQ) + "_swept_Q" + str.tostring(tQ) + "_high")
+                        if by.low_ < targ.low_
+                            parts := parts == "" ? ("Q" + str.tostring(byQ) + "_swept_Q" + str.tostring(tQ) + "_low") :
+                                                   parts + "," + ("Q" + str.tostring(byQ) + "_swept_Q" + str.tostring(tQ) + "_low")
+    parts == "" ? "none" : parts
+
+
+// ── A1: Hour probability readout (live) ──────────────────────────────────
+//
+// Floats to the right of price, updates every bar. Shows top outcomes from
+// EMPIRICAL_<sym>_HOUR keyed by the live hour state vector.
+
+var label hourProbLabel = na
+
+if gReadoutsOn and gShowPath and hasLiveHour()
+    HourAgg h = liveHour()
+    if not na(h)
+        string sym = empSym()
+        string blockTok = na(blockId()) ? "12-15" : blockId()
+        string hourKey = buildHourKey(
+            sym, blockTok, hourIndexInTriad(), liveQToken(),
+            qclsTokenFor(h, 1), qclsTokenFor(h, 2),
+            qclsTokenFor(h, 3), qclsTokenFor(h, 4),
+            sweepSetTokenFor(h), lastMidhrReaction == "none" ? "untouched" : lastMidhrReaction,
+            boxReactState
+        )
+        string lookupHash = canonicalHash(hourKey)
+
+        // Map.get returns na if absent; pick the right per-symbol map.
+        array<float> empData = sym == "NQ" ? map.get(EMPIRICAL_NQ_HOUR, lookupHash) :
+                                              map.get(EMPIRICAL_ES_HOUR, lookupHash)
+
+        string text = ""
+        if not na(empData) and array.size(empData) >= 4
+            float pLup = array.get(empData, 0)
+            float pLdn = array.get(empData, 1)
+            float pDoji= array.get(empData, 2)
+            int   nObs = int(array.get(empData, 3))
+            text := "▲ " + str.tostring(int(math.round(pLup * 100))) + "%  " +
+                    "▼ " + str.tostring(int(math.round(pLdn * 100))) + "%  " +
+                    "◇ " + str.tostring(int(math.round(pDoji * 100))) + "%" +
+                    (gShowN ? "   n=" + str.tostring(nObs) : "")
+        else
+            text := "—"  // not enough data for this state
+
+        // Position: just to the right of the live close, hourly midline
+        // height for stable y-coord.
+        float anchorY = close
+        if na(hourProbLabel)
+            hourProbLabel := label.new(bar_index + 2, anchorY, text,
+                xloc=xloc.bar_index, style=label.style_label_left,
+                color=PILL_BG, textcolor=PILL_TEXT, size=size.small)
+        else
+            label.set_xy(hourProbLabel, bar_index + 2, anchorY)
+            label.set_text(hourProbLabel, text)
+
+
+// TODO (next iteration): triad readout (A2), sweep p% (B), extension (C),
+// pair (E). Same lookup pattern, different keys / map names / array slots.
