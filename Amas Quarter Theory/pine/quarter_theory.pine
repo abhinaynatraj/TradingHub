@@ -95,7 +95,7 @@ gSessShowMidnight= input.bool(true,  "Show midnight vertical line (00:00 NY)", g
 gSessRetention   = input.string("Current and previous", "History retention",
                                  options=["Current", "Current and previous", "All"], group=G_SESS,
                                  tooltip="How many days of session anchors stay on chart. Applies to session boxes, P12 lines, and midnight verticals.")
-gSessBoxColor    = input.color(color.new(#f59e0b, 75), "Session box color (4 boxes share)", group=G_SESS)
+gSessBoxColor    = input.color(color.new(#f59e0b, 90), "Session box color (4 boxes share)", group=G_SESS)
 gSessP12Color    = input.color(color.new(#14b8a6, 20), "P12 line color (high / mid / low share)", group=G_SESS)
 gSessMidnightCol = input.color(color.new(#94a3b8, 60), "Midnight line color", group=G_SESS)
 gSessShowOU      = input.bool(true,  "Show O/U lines (mid of each session box)", group=G_SESS,
@@ -149,8 +149,8 @@ gColDojiRO    = input.color(color.new(#f59e0b, 0),  "Doji readout",         grou
 gColMid1h     = input.color(color.new(#f59e0b, 0),  "1h midline",           group=G_COL)
 gColMid3h     = input.color(color.new(#e2eaf4, 0),  "3h midline",           group=G_COL)
 gColBand05    = input.color(color.new(#ffffff, 75), "0.05% band",           group=G_COL)
-gColBand10    = input.color(color.new(#ffffff, 50), "0.10% band",           group=G_COL)
-gColBoxTint   = input.color(color.new(#ffffff, 94), "05 box tint",          group=G_COL)
+gColBand10    = input.color(color.new(#ffffff, 75), "0.10% band",           group=G_COL)
+gColBoxTint   = input.color(color.new(#ffffff, 96), "05 box tint",          group=G_COL)
 gColActiveHr  = input.color(color.new(#06b6d4, 95), "Active hour tint",     group=G_COL)
 gColActiveTr  = input.color(color.new(#06b6d4, 97), "Active triad tint",    group=G_COL)
 gColQDiv      = input.color(color.new(#ffffff, 88), "Quarter divider",      group=G_COL)
@@ -207,8 +207,8 @@ resolveTheme() =>
           mid_1h               = color.new(#f59e0b, 0),       // amber
           mid_3h               = color.new(#06b6d4, 0),       // cyan, distinct from amber
           band_05              = color.new(#ffffff, 60),
-          band_10              = color.new(#ffffff, 30),
-          box_tint             = color.new(#06b6d4, 82),       // 05 box bg: vivid cyan (distinct from amber Q3)
+          band_10              = color.new(#ffffff, 60),
+          box_tint             = color.new(#06b6d4, 92),       // 05 box bg: vivid cyan (distinct from amber Q3)
           active_hr            = color.new(#cbd5e1, 100),      // clear by default
           active_triad         = color.new(#cbd5e1, 88),       // slightly more visible than active hour
           q_div                = color.new(#ffffff, 100),     // hour box bg: clear by default
@@ -235,8 +235,8 @@ resolveTheme() =>
           mid_1h               = color.new(#d97706, 0),       // amber
           mid_3h               = color.new(#0891b2, 0),       // cyan, distinct from amber
           band_05              = color.new(#000000, 55),
-          band_10              = color.new(#000000, 25),
-          box_tint             = color.new(#0891b2, 78),       // 05 box bg: vivid cyan (distinct from amber Q3)
+          band_10              = color.new(#000000, 55),
+          box_tint             = color.new(#0891b2, 90),       // 05 box bg: vivid cyan (distinct from amber Q3)
           active_hr            = color.new(#94a3b8, 100),      // clear by default
           active_triad         = color.new(#94a3b8, 86),       // more opaque than active hour
           q_div                = color.new(#94a3b8, 100),      // hour box bg: clear by default
@@ -621,8 +621,8 @@ color HOUR_BOX_BG          = color.t(T.q_div) >= 95 ? color(na) : T.q_div
 // doesn't match the user's TradingView chart skin.
 // `color.r/g/b` give 0–255; pick light text on dark bg and vice versa.
 bool _CHART_IS_LIGHT       = (color.r(chart.bg_color) + color.g(chart.bg_color) + color.b(chart.bg_color)) / 3.0 > 127
-color HOUR_BOX_BORDER      = _CHART_IS_LIGHT ? color.new(#475569, 70) : color.new(#cbd5e1, 70)
-color HOUR_DIV_LINE        = _CHART_IS_LIGHT ? color.new(#475569, 80) : color.new(#cbd5e1, 80)
+color HOUR_BOX_BORDER      = _CHART_IS_LIGHT ? color.new(#475569, 85) : color.new(#cbd5e1, 85)
+color HOUR_DIV_LINE        = _CHART_IS_LIGHT ? color.new(#475569, 85) : color.new(#cbd5e1, 85)
 // Hour-open line color: distinct orange so it doesn't blend with candle
 // wicks or other price-action markers. Same hue in light/dark for consistency.
 color HOUR_OPEN_COLOR      = _CHART_IS_LIGHT ? color.new(#c2410c, 0)  : color.new(#fb923c, 0)
@@ -814,8 +814,8 @@ if gBoxOn and HAS_LH
         // minute :14 of the hour. They are NOT drawn through Q2/Q3/Q4.
         int q1EndBar = curH.anchorBar + BARS_PER_QUARTER - 1
         if gShowBand10
-            line.new(hourStartBar, u10, q1EndBar, u10, xloc=xloc.bar_index, color=T.band_10, style=line.style_solid, width=2)
-            line.new(hourStartBar, l10, q1EndBar, l10, xloc=xloc.bar_index, color=T.band_10, style=line.style_solid, width=2)
+            line.new(hourStartBar, u10, q1EndBar, u10, xloc=xloc.bar_index, color=T.band_10, style=line.style_solid, width=1)
+            line.new(hourStartBar, l10, q1EndBar, l10, xloc=xloc.bar_index, color=T.band_10, style=line.style_solid, width=1)
             if gShowBandLbl
                 label.new(q1EndBar, u10, ".1%", xloc=xloc.bar_index, color=BAND_10_BG, textcolor=T.band_10, style=label.style_label_left, size=size.small)
                 label.new(q1EndBar, l10, ".1%", xloc=xloc.bar_index, color=BAND_10_BG, textcolor=T.band_10, style=label.style_label_left, size=size.small)
@@ -1875,7 +1875,7 @@ emitSessionBox(SessionAgg s) =>
     if not na(s.anchorBar) and not na(s.hi) and not na(s.lo)
         box newBox = box.new(s.anchorBar, s.hi, bar_index - 1, s.lo,
                              xloc=xloc.bar_index, bgcolor=gSessBoxColor,
-                             border_color=color.new(gSessBoxColor, 30), border_width=1)
+                             border_color=color.new(gSessBoxColor, 60), border_width=1)
         array.push(sessBoxQ, newBox)
         if gSessShowBoxes
             float mid = (s.hi + s.lo) / 2.0
