@@ -3,3 +3,5 @@ __pycache__/
 npg_stats.json
 *.duckdb
 .pytest_cache/
+.DS_Store
+.venv/
