@@ -109,3 +109,46 @@ def resolve_series_multi(o, h, l, c, ts, entry_idx, entry_price, sl_price,
         mae_pts=mae_pts,
         mfe_pts=mfe_pts,
     )
+
+
+def resolve_raw_measure(o, h, l, c, ts, entry_idx, entry_price, direction,
+                        targets, max_bars=1440):
+    """No SL, no TP. Walk full session, record MAE/MFE + which targets reached.
+
+    Returns dict(hits, hit_ts_ns, mae_pts, mfe_pts, exit_idx).
+    Composite R is not meaningful here; outcome is 'MEASURED'.
+    """
+    n = len(o)
+    n_levels = len(targets)
+    hits = [False] * n_levels
+    hit_ts = [0] * n_levels
+    mae_pts = 0.0
+    mfe_pts = 0.0
+    exit_idx = entry_idx
+
+    for i in range(entry_idx, min(n, entry_idx + max_bars)):
+        bar_h, bar_l = h[i], l[i]
+
+        if direction == 'SHORT':
+            adverse = bar_h - entry_price
+            favorable = entry_price - bar_l
+        else:
+            adverse = entry_price - bar_l
+            favorable = bar_h - entry_price
+        mae_pts = max(mae_pts, adverse)
+        mfe_pts = max(mfe_pts, favorable)
+
+        for k, tgt in enumerate(targets):
+            if hits[k]:
+                continue
+            if direction == 'SHORT' and bar_l <= tgt:
+                hits[k] = True
+                hit_ts[k] = int(ts[i])
+            elif direction == 'LONG' and bar_h >= tgt:
+                hits[k] = True
+                hit_ts[k] = int(ts[i])
+
+        exit_idx = i
+
+    return dict(hits=hits, hit_ts_ns=hit_ts, mae_pts=mae_pts, mfe_pts=mfe_pts,
+                exit_idx=exit_idx, composite_r=0.0, sl_hit=False)

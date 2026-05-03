@@ -119,3 +119,25 @@ class TestSameBarTie:
         )
         assert outcome['hits'] == [False, False, False, False]
         assert outcome['sl_hit'] is True
+
+
+class TestRawMeasure:
+    def test_records_mae_mfe_and_target_reach_flags(self):
+        bars = [
+            (100, 102, 99, 101),    # MFE=1 down (favorable=1 going up, adverse=2)
+            (101, 105, 95, 96),     # mfe(SHORT) → 100-95=5, mae=5
+            (96,  97,  88, 90),     # mfe → 12, mae unchanged
+        ]
+        arrs = make_ltf_arrs(bars)
+        outcome = p.resolve_raw_measure(
+            o=arrs['open'], h=arrs['high'], l=arrs['low'], c=arrs['close'],
+            ts=arrs['ts_ns'], entry_idx=0, entry_price=100.0,
+            direction='SHORT', targets=[95.0, 90.0, 85.0, 80.0],
+            max_bars=100,
+        )
+        # MFE for SHORT = max(entry - bar_low) over all bars = 100 - 88 = 12
+        # MAE for SHORT = max(bar_high - entry) = 105 - 100 = 5
+        assert outcome['mfe_pts'] == 12.0
+        assert outcome['mae_pts'] == 5.0
+        # Target reach: 95 hit on bar 1, 90 hit on bar 2; 85, 80 not reached
+        assert outcome['hits'] == [True, True, False, False]
