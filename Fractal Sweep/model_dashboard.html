@@ -4441,6 +4441,8 @@ function getFilteredD(D) {
     : (D?.meta?.date_range || '');
 
   // Build overridden D with recomputed aggregates and updated meta
+  const avgWinR = wins.length > 0 ? sumWinR / wins.length : null;
+  const avgLossR = losses.length > 0 ? -(sumLossR / losses.length) : null;
   const origMeta = D?.meta || {};
   const newMeta = { ...origMeta,
     win_rate: +wr.toFixed(3), ev_per_trade: +ev.toFixed(3),
@@ -4453,9 +4455,28 @@ function getFilteredD(D) {
     max_dd_pct: maxDDPct, max_dd_usd: Math.round(maxDD * ACCT),
     total_pnl_usd: Math.round(totalPnl),
     ce: +ce.toFixed(3), max_consec_wins: mcw, max_consec_losses: mcl,
+    avg_win_r: avgWinR, avg_loss_r: avgLossR,
   };
 
-  return { ...D, meta: newMeta, risk_stats: newRS, by_hour, by_session, by_dow, dir_summary };
+  // Build by_year from filtered trades
+  const yearMap = {};
+  trades.forEach(t => {
+    const yr = parseInt(t.date.slice(0, 4));
+    if (!yearMap[yr]) yearMap[yr] = { yr, n: 0, wins: 0, sumR: 0 };
+    yearMap[yr].n++;
+    yearMap[yr].sumR += t.r;
+    if (t.outcome === 'WIN') yearMap[yr].wins++;
+  });
+  const by_year = Object.values(yearMap).sort((a, b) => a.yr - b.yr).map(y => ({
+    yr: y.yr,
+    n: y.n,
+    wins: y.wins,
+    wr: +(y.wins / y.n).toFixed(4),
+    ev: +(y.sumR / y.n).toFixed(4),
+    pf: 1,
+  }));
+
+  return { ...D, meta: newMeta, risk_stats: newRS, by_hour, by_session, by_dow, dir_summary, by_year };
 }
 
 // Back-compat alias — legacy call sites use getSmtD
