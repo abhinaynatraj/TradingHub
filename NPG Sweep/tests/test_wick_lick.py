@@ -39,3 +39,49 @@ class TestBearishWickLick:
         ]
         events = wl.detect_wick_licks(make_htf_arrs(candles))
         assert events == []
+
+
+class TestBullishWickLick:
+    def test_basic_bullish_sweep_close_back_inside(self):
+        # prev: high=110, low=100; sweep candle: high=109 (no high sweep), low=95<100, close=102>100 → bullish WL
+        candles = [
+            (105, 110, 100, 108),   # 0: prior, low=100
+            (108, 109, 95,  102),   # 1: low<prev.low, close>prev.low, high<prev.high → bullish WL
+        ]
+        arrs = make_htf_arrs(candles)
+        events = wl.detect_wick_licks(arrs)
+        assert len(events) == 1
+        e = events[0]
+        assert e['direction'] == 'LONG'
+        assert e['sweep_extreme'] == 95.0
+        assert e['prev_extreme'] == 100.0
+        assert e['sweep_idx'] == 1
+
+
+class TestDoubleSweepExclusion:
+    def test_swept_both_extremes_excluded(self):
+        """Double-sweep candle: swept high AND low, closed inside prev range → excluded."""
+        candles = [
+            (95, 100, 90,  98),         # prev: range [90, 100]
+            (98, 105, 85,  95),         # sweep both: h>100, l<90, c=95 in (90,100)
+        ]
+        events = wl.detect_wick_licks(make_htf_arrs(candles))
+        assert events == []
+
+
+class TestMultipleEvents:
+    def test_two_setups_in_sequence(self):
+        # Candle 1 bearish WL: high=105>100, close=99<100. prev_low stays 90.
+        # Candle 2: high=104<105, low=97>90 — neither extreme swept → no event.
+        # Candle 3 bullish WL: low=89<90 (prev low of candle 2=97... wait)
+        # Use explicit prev extremes: c2 low=97; c3 sweeps low=89<97, close=101>97 → LONG.
+        candles = [
+            (95,  100, 90,  98),     # 0: baseline; high=100, low=90
+            (98,  105, 97,  99),     # 1: bearish WL: h=105>100, c=99<100 (event 1 SHORT)
+            (99,  104, 98, 100),     # 2: h=104<105, l=98>97 → no event
+            (100, 103, 89, 101),     # 3: bullish WL: l=89<98 (prev low), c=101>98 (event 2 LONG)
+        ]
+        events = wl.detect_wick_licks(make_htf_arrs(candles))
+        assert len(events) == 2
+        assert events[0]['direction'] == 'SHORT'
+        assert events[1]['direction'] == 'LONG'
