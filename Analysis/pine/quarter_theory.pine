@@ -666,11 +666,10 @@ var line currentQ3Line = na
 var line currentQ4Line = na
 
 // Reset / create at hour open (first bar of Q1 with valid block).
-// Hour box (with border) renders on 1m, 5m, AND 15m. Quarter divider verticals
-// at :15 / :30 / :45 only render on 1m — on 5m there are 3 bars per quarter
-// and on 15m each quarter IS a single bar, so dividers add no information and
-// just clutter the candles.
-if gQStructOn and gShowQDiv and IS_TF_MIN1TO15 and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+// Hour box + quarter divider verticals render on 1m only. On 5m+ the chart
+// keeps only the right-extended anchor lines (midnight, P12, O/U, MDR-10,
+// fib) plus the session/9:30 boxes — all hourly framing is suppressed.
+if gQStructOn and gShowQDiv and IS_TF_MIN1 and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
     currentHourBox := box.new(left=bar_index, top=high, right=bar_index + BARS_PER_HOUR - 1, bottom=low,
                               xloc=xloc.bar_index, bgcolor=HOUR_BOX_BG,
                               border_color=HOUR_BOX_BORDER, border_width=2)
@@ -686,7 +685,7 @@ if gQStructOn and gShowQDiv and IS_TF_MIN1TO15 and isFirstBarOfQuarter() and qua
                                   color=HOUR_DIV_LINE, style=line.style_solid, width=2)
 
 // Update every bar inside the active hour: expand top/bottom to running range
-if gQStructOn and gShowQDiv and isTfMin1to15() and not na(currentHourBox) and inTrackedHour()
+if gQStructOn and gShowQDiv and IS_TF_MIN1 and not na(currentHourBox) and inTrackedHour()
     new_top    = math.max(box.get_top(currentHourBox),    high)
     new_bottom = math.min(box.get_bottom(currentHourBox), low)
     box.set_top(currentHourBox, new_top)
@@ -788,14 +787,14 @@ if gQStructOn and gShowHourOpenBox and isTfMin1() and not na(currentHourOpenBox)
 // at minute :04; the rectangle extends horizontally to the end of the hour.
 var box current05Box = na
 
-if gBoxOn and gShowBoxCol and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+if gBoxOn and gShowBoxCol and IS_TF_MIN1 and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
     current05Box := box.new(left=bar_index, top=high, right=bar_index + BARS_PER_HOUR - 1, bottom=low,
                             xloc=xloc.bar_index, bgcolor=T.box_tint,
                             border_color=BOX_05_BORDER,
                             border_width=1, border_style=line.style_solid)
 
 // Update 05-box bounds during minutes :00–:04 (box high/low locks after :04)
-if gBoxOn and gShowBoxCol and isBoxBar() and not na(current05Box) and inTrackedHour()
+if gBoxOn and gShowBoxCol and IS_TF_MIN1 and isBoxBar() and not na(current05Box) and inTrackedHour()
     new_top_05    = math.max(box.get_top(current05Box),    high)
     new_bottom_05 = math.min(box.get_bottom(current05Box), low)
     box.set_top(current05Box, new_top_05)
@@ -805,7 +804,7 @@ if gBoxOn and gShowBoxCol and isBoxBar() and not na(current05Box) and inTrackedH
 bandLevels(float boxHi, float boxLo) =>
     [boxHi * 1.0010, boxHi * 1.0005, boxLo * 0.9995, boxLo * 0.9990]
 
-if gBoxOn and HAS_LH
+if gBoxOn and IS_TF_MIN1 and HAS_LH
     HourAgg curH = LH
     if not na(curH) and curH.box05Locked and _M == 4 and not na(curH.box05Hi)
         [u10, u05, l05_, l10] = bandLevels(curH.box05Hi, curH.box05Lo)
@@ -880,7 +879,7 @@ if gBoxOn and HAS_LH
                     rejFired05Dn := true
 
                 // Only render the 10% band rejections; 05% rejections suppressed.
-                if gShowBandRej and level == "10"
+                if gShowBandRej and level == "10" and IS_TF_MIN1
                     color cMark = T.band_10
                     float anchorY = side == "upper" ? high : low
                     label.new(bar_index, anchorY, "rej " + level,
@@ -1007,7 +1006,7 @@ var line currentMid3hLine = na
 // hour's line — its right edge is already pinned at the prior hour's :59 bar
 // so it freezes there visually. Only the current line keeps moving (the
 // per-bar y-update block below writes to `currentMid1hLine` only).
-if gMidOn and gShowMid1h and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+if gMidOn and gShowMid1h and IS_TF_MIN1 and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
     currentMid1hLine := line.new(bar_index, na, bar_index + BARS_PER_HOUR - 1, na,
                                  xloc=xloc.bar_index, color=T.mid_1h,
                                  width=gMid1hWidth, style=line.style_solid)
@@ -1017,13 +1016,13 @@ if gMidOn and gShowMid1h and isFirstBarOfQuarter() and quarterOfHour() == 1 and 
 // Lazy-spawn fallback: if activeTriad exists but no line yet (chart loaded
 // mid-block), create one anchored at the triad's start bar.
 // 3h midline is solid; right-edge tracks the current bar (not the full triad).
-if gMidOn and gShowMid3h and isFirstBarOfQuarter() and quarterOfHour() == 1 and hourIndexInTriad() == 1 and not na(blockId())
+if gMidOn and gShowMid3h and IS_TF_MIN1 and isFirstBarOfQuarter() and quarterOfHour() == 1 and hourIndexInTriad() == 1 and not na(blockId())
     if not na(currentMid3hLine)
         line.delete(currentMid3hLine)
     currentMid3hLine := line.new(bar_index, na, bar_index, na,
                                  xloc=xloc.bar_index, color=MID_3H_LINE,
                                  width=gMid3hWidth, style=line.style_solid)
-else if gMidOn and gShowMid3h and not na(activeTriad) and na(currentMid3hLine)
+else if gMidOn and gShowMid3h and IS_TF_MIN1 and not na(activeTriad) and na(currentMid3hLine)
     currentMid3hLine := line.new(activeTriad.anchorBar, na, activeTriad.anchorBar, na,
                                  xloc=xloc.bar_index, color=MID_3H_LINE,
                                  width=gMid3hWidth, style=line.style_solid)
@@ -1104,7 +1103,7 @@ if gQStructOn and isLastBarOfQuarter() and HAS_LH
 
             if flipDir != 0 and not dojiConfirmedThisHour
                 dojiConfirmedThisHour := true
-                if gShowDojiConf
+                if gShowDojiConf and IS_TF_MIN1
                     QuarterAgg byQuarter_brk = byQ == 2 ? curH_sw.q2 : byQ == 3 ? curH_sw.q3 : curH_sw.q4
                     color cLine = DOJI_LINE_COLOR
                     color cX    = SWEEP_RED_COLOR
@@ -1232,7 +1231,7 @@ var label currentHourOpenLabel = na
 var line  priorHourOpenLine    = na
 var label priorHourOpenLabel   = na
 
-if gQStructOn and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+if gQStructOn and IS_TF_MIN1 and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
     // Shift current → prior, delete the older "prior" before overwriting.
     if not na(priorHourOpenLine)
         line.delete(priorHourOpenLine)
@@ -1273,7 +1272,7 @@ var bool  hlSwept  = false  // sticky once a sweep+reclose is detected
 var line  hlLinePrev  = na
 var label hlLabelPrev = na
 
-if gQStructOn and isHourClose() and HAS_LH
+if gQStructOn and IS_TF_MIN1 and isHourClose() and HAS_LH
     HourAgg justClosedHL = LH
     if not na(justClosedHL)
         float hi = hourHigh(justClosedHL)
@@ -1410,7 +1409,7 @@ var label priorHourSummaryLabel = na
 //   - "All"                  → drop the ref to the just-closed pill without
 //                              deleting it. It freezes in place; the next
 //                              hour spawns a fresh label object.
-if gVerdictsOn and gShowHourVerd and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+if gVerdictsOn and gShowHourVerd and IS_TF_MIN1 and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
     if gPillRetention == "Current"
         if not na(priorHourSummaryLabel)
             label.delete(priorHourSummaryLabel)
@@ -1431,7 +1430,7 @@ if gVerdictsOn and gShowHourVerd and isFirstBarOfQuarter() and quarterOfHour() =
 // classification only update at quarter boundaries). Avoids per-bar rebuild
 // of 4-quarter walks + classifyHour + label composition during the live
 // portion of a quarter.
-if gVerdictsOn and gShowHourVerd and HAS_LH and isLastBarOfQuarter()
+if gVerdictsOn and gShowHourVerd and IS_TF_MIN1 and HAS_LH and isLastBarOfQuarter()
     HourAgg justClosedV = LH
     if not na(justClosedV)
         float hiV = hourHigh(justClosedV)
@@ -1509,7 +1508,7 @@ if gVerdictsOn and gShowHourVerd and HAS_LH and isLastBarOfQuarter()
 
 
 // ── Triad close verdicts + apex-hour highlight ────────────────────────────
-if gVerdictsOn and isTriadClose() and not na(activeTriad)
+if gVerdictsOn and IS_TF_MIN1 and isTriadClose() and not na(activeTriad)
     cls_t = classifyTriad(activeTriad)
     if cls_t != "pending"
         color ct = cls_t == "line-up" ? T.line_up :
@@ -1570,7 +1569,7 @@ if not gShow3h and not na(activeTriadTint)
     activeTriadTint := na
 
 // Active hour tint: works for triad hours AND the 3pm standalone hour.
-if isTfMin1or5() and HAS_LH
+if IS_TF_MIN1 and HAS_LH
     HourAgg curH_t = LH
 
     // Active hour: bounded to current hour's running high/low
@@ -1589,7 +1588,7 @@ if isTfMin1or5() and HAS_LH
                 box.set_bottom(activeHourTint, curLo)
 
 // Active triad tint: triad-only (no 3pm). Skipped during 3pm hour.
-if isTfMin1or5() and not na(activeTriad)
+if IS_TF_MIN1 and not na(activeTriad)
     if gShow3h
         float trHi = triadHigh(activeTriad)
         float trLo = triadLow(activeTriad)
