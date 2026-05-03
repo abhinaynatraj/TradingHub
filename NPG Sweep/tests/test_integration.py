@@ -19,21 +19,24 @@ def _make_synthetic_1m_with_setup():
 
     Layout (using 60-min HTF, 5m CISD-TF):
       Bars 0-59: prior HTF candle, range [24000, 24050]
-      Bars 60-119: sweep HTF candle - sweeps 24050 to 24070, closes well below 24050
+      Bars 60-119: sweep HTF candle - sweeps prior high 24050 up to 24070,
+          then bears take over and crash down well below series_low
 
-    5m structure within sweep candle (24 bars 60-119 → 12 5m bars indexed 12-23):
+    5m structure within sweep candle (60 1m bars → 12 5m bars indexed 12-23):
       5m bars 12-13: bullish run (closes 24040, 24055)
-      5m bar 14 (bars 70-74): sweep bucket, bullish close - poke high 24070,
-          recovery close at 24056 (above body high of bar 13 -> CISD-relevant)
-      5m bar 15 (bars 75-79): brief continuation up - closes 24062 (>series_high
-          of 24060 from bar 14's body) -> CISD FIRES here
-      5m bar 16 (bars 80-84): entry bucket - opens 24062
-      5m bars 17-23: crash down to ~23985 -> hits all short targets
+      5m bar 14 (bars 70-74): SWEEP bucket - poke high 24070, recovery close
+          at 24056 (bullish bucket; this is c2 in CISD-TF since high == sweep_extreme)
+      5m bar 15 (bars 75-79): bears take over, close DROPS below series_low
+          (close ~ 23980 << series_low 24025) -> CISD FIRES here
+      5m bar 16 (bars 80-84): entry bucket - opens at continuation lower
+      5m bars 17-23: continued slide down to ~23900 -> hits all 4 SHORT targets
 
-    cisd_npg fire rule for SHORT (per existing module): bullish series is broken
-    when forward close > series_high. Entry on bar 16 open = 24062.
-    SL = sweep_extreme = 24070. Risk = 8pts. Targets are series_range * mult below
-    entry, so price falling far below 24062 hits all targets - composite_r > 0.
+    cisd_npg fire rule for SHORT (correct semantics): bullish series is broken
+    when a forward close < series_low. With break_price = series_low = 24025
+    and series_range = 31, the 4 SHORT targets are at:
+      [24009.5, 23994, 23978.5, 23963]
+    Price reaches ~23900 by end -> all 4 targets hit -> composite_r > 0.
+    SL = sweep_extreme = 24070.
     """
     n = 120
     ts_ns = np.array([START_TS + i * NS_PER_MIN for i in range(n)], dtype='int64')
@@ -49,65 +52,67 @@ def _make_synthetic_1m_with_setup():
         h[i] = 24050 if i == 30 else 24030  # high printed at bar 30
         l[i] = 24000 if i == 45 else 24020
 
-    # 5m bars 12-13 (1m bars 60-69): bullish run building toward sweep
-    # 5m bar 12 (bars 60-64): open 24025 -> close 24040 (bullish, body high 24040)
+    # 5m bar 12 (bars 60-64): open 24025 -> close 24040 (bullish, body=[24025,24040])
     for i in range(60, 65):
         o[i] = 24025 + (i - 60) * 3
         c[i] = o[i] + 3
         h[i] = c[i] + 1
         l[i] = o[i] - 1
-    # 5m bar 13 (bars 65-69): open 24040 -> close 24055 (bullish, body high 24055)
+    # 5m bar 13 (bars 65-69): open 24040 -> close 24055 (bullish, body=[24040,24055])
     for i in range(65, 70):
         o[i] = 24040 + (i - 65) * 3
         c[i] = o[i] + 3
         h[i] = c[i] + 1
         l[i] = o[i] - 1
 
-    # 5m bar 14 (bars 70-74): the sweep bucket, MUST close bullish so it joins the
-    # CISD series. Open=24050 (from bar 70). Bar 70 pokes high to 24070 then closes
-    # back to 24050. Bars 71-74 drift up to close at 24056 -> bucket close = 24056.
+    # 5m bar 14 (bars 70-74): SWEEP bucket. Must close bullish so it joins the
+    # bullish CISD series. Open=24050. Bar 70 pokes high to 24070 then closes
+    # back to 24050. Bars 71-74 drift up so bucket close = 24056.
     o[70] = 24050
     h[70] = 24070
     l[70] = 24050
     c[70] = 24050
-    # bars 71-74 drift up
     for k, i in enumerate(range(71, 75)):
         o[i] = 24050 + k * 1.5
         c[i] = o[i] + 1.5
         h[i] = c[i] + 0.5
         l[i] = o[i] - 0.5
-    # 5m bar 14 effective: open=24050, high=24070, low=24049.5, close=24056
-    # body high = 24056. So series_high (across body of bars 12,13,14) = 24056.
+    # 5m bar 14 resampled: open=24050, high=24070, low~24049.5, close=24056.
+    # Body of 5m bars in the bullish series:
+    #   bar 12: o=24025, c=24040 → body = [24025, 24040]
+    #   bar 13: o=24040, c=24055 → body = [24040, 24055]
+    #   bar 14: o=24050, c=24056 → body = [24050, 24056]
+    # series_high = 24056, series_low = 24025, series_range = 31.
 
-    # 5m bar 15 (bars 75-79): brief continuation up that BREAKS series_high
-    # bucket needs close > 24056 to fire CISD
-    for k, i in enumerate(range(75, 80)):
-        o[i] = 24056 + k * 1.0
-        c[i] = o[i] + 1.0
-        h[i] = c[i] + 0.5
-        l[i] = o[i] - 0.5
-    # 5m bar 15: open=24056, close=24061 (last bar = bar 79: c=24061+1=close of bar 79)
-    # Actually bar 79: o=24056+4=24060, c=24061. So bucket close = 24061 > 24056. FIRES.
+    # 5m bar 15 (bars 75-79): bears reverse — close DROPS far below series_low.
+    # Need close of 1m bar 79 (= bucket close) << 24025. Crash to ~23980.
+    o[75] = 24056
+    h[75] = 24056.5
+    l[75] = 24010
+    c[75] = 24010
+    for k, i in enumerate(range(76, 80)):
+        o[i] = 24010 - k * 7.5
+        c[i] = o[i] - 7.5
+        h[i] = o[i] + 0.25
+        l[i] = c[i] - 0.25
+    # 5m bar 15 resampled: open=24056, close = c[79] = 24010 - 4*7.5 - 7.5 = 23972.5
+    # 23972.5 < 24025 → CISD FIRES on 5m bar 15.
 
-    # 5m bar 16 (bars 80-84): entry bucket. Open of bar 80 = 24061 (continuation).
-    # Then immediately reverse and crash. Entry will be at open of bar 80.
-    o[80] = 24061
-    h[80] = 24061.5
-    l[80] = 24050
-    c[80] = 24050
-    for k, i in enumerate(range(81, 85)):
-        o[i] = 24050 - k * 2.5
-        c[i] = o[i] - 2.5
-        h[i] = o[i] + 0.5
-        l[i] = c[i] - 0.5
+    # 5m bar 16 (bars 80-84): entry bucket. Entry = open of 1m bar 80.
+    # Continue the slide.
+    for k, i in enumerate(range(80, 85)):
+        o[i] = 23965 - k * 5
+        c[i] = o[i] - 5
+        h[i] = o[i] + 0.25
+        l[i] = c[i] - 0.25
 
-    # 5m bars 17-23 (bars 85-119): crash downward to ~23985
-    for i in range(85, n):
-        base = 24040 - (i - 85) * 1.5
+    # 5m bars 17-23 (bars 85-119): continued slide to ~23900
+    for k, i in enumerate(range(85, n)):
+        base = 23940 - k * 1.2
         o[i] = base
-        c[i] = base - 1.5
-        h[i] = o[i] + 0.5
-        l[i] = c[i] - 0.5
+        c[i] = base - 1.2
+        h[i] = o[i] + 0.25
+        l[i] = c[i] - 0.25
 
     return dict(ts_ns=ts_ns, open=o, high=h, low=l, close=c)
 

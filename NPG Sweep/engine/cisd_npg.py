@@ -8,9 +8,9 @@ For a bearish setup (direction='SHORT'):
   - Stop on the first bearish candle (close <= open) — no doji handling
   - Cap at max_series bars
   - Track series_high / series_low across the run (body if body_confirm else wick)
-  - Walk FORWARD from c2_idx + 1: fire when close > series_high
+  - Walk FORWARD from c2_idx + 1: fire when close < series_low (bears break the bull series)
 
-For LONG: mirror — walk back collecting bearish, fire on close < series_low.
+For LONG: mirror — walk back collecting bearish, fire on close > series_high.
 
 Returns None if no series + break is found within max_forward bars.
 """
@@ -65,9 +65,11 @@ def find_cisd_npg(o, c, h, l, ts, c2_idx, direction, body_confirm=True,
         series_low = float(l[series_indices].min())
 
     # Forward scan: first close that breaks the opposing extreme
-    extreme = series_high if direction == 'SHORT' else series_low
+    # SHORT (bearish setup): bullish series collected; fires DOWN through series_low
+    # LONG  (bullish setup): bearish series collected; fires UP through series_high
+    extreme = series_low if direction == 'SHORT' else series_high
     for j in range(c2_idx + 1, min(n, c2_idx + 1 + max_forward)):
-        if direction == 'SHORT' and c[j] > series_high:
+        if direction == 'SHORT' and c[j] < series_low:
             return dict(
                 fire_idx=j,
                 fire_ts_ns=int(ts[j]),
@@ -77,7 +79,7 @@ def find_cisd_npg(o, c, h, l, ts, c2_idx, direction, body_confirm=True,
                 series_extreme_broken=extreme,
                 series_count=len(series_indices),
             )
-        if direction == 'LONG' and c[j] < series_low:
+        if direction == 'LONG' and c[j] > series_high:
             return dict(
                 fire_idx=j,
                 fire_ts_ns=int(ts[j]),

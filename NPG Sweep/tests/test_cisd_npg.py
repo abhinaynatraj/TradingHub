@@ -18,13 +18,13 @@ class TestBackwardSeriesScan:
         #
         # We model: c2_bar = 3 (the sweep candle, bullish close).
         # Walking backward: bar 3 bullish, bar 2 bullish, bar 1 bullish,
-        # bar 0 bearish → series = bars [1,2,3], series_high = max body high.
+        # bar 0 bearish → series = bars [1,2,3], series_low = min body low.
         bars = [
             (100, 99),   # 0: bearish — STOPS the backward walk
             (99, 102),   # 1: bullish (earliest in series)
             (102, 104),  # 2: bullish
             (104, 107),  # 3: bullish (c2_bar, the sweep candle for bearish setup)
-            (107, 105),  # 4: forward bar — close < series_high?
+            (107, 105),  # 4: forward bar — close > series_low?
         ]
         arrs = make_oc_arrs(bars, tf_min=5)
         result = cn.find_cisd_npg(
@@ -32,19 +32,19 @@ class TestBackwardSeriesScan:
             ts=arrs['ts_ns'], c2_idx=3, direction='SHORT', body_confirm=True,
             max_series=20, max_forward=100,
         )
-        # Series bodies: max(o,c) → bars 1,2,3 → 102, 104, 107 → series_high = 107
-        # Bar 4 close = 105, NOT > 107 → no fire on bar 4
-        # Need a bar with close > 107
+        # Series bodies: min(o,c) → bars 1,2,3 → 99, 102, 104 → series_low = 99
+        # Bar 4 close = 105, NOT < 99 → no fire on bar 4
+        # Need a bar with close < 99
         assert result is None  # no break yet
 
-    def test_break_above_series_high_fires(self):
+    def test_break_below_series_low_fires(self):
         bars = [
             (100, 99),    # 0: bearish — stops backward walk
             (99, 102),    # 1: bullish
             (102, 104),   # 2: bullish
             (104, 107),   # 3: bullish (c2_bar)
-            (107, 106),   # 4: bearish, close 106 < 107
-            (106, 108),   # 5: bullish, close 108 > 107 → FIRE
+            (107, 100),   # 4: bearish, close 100 > 99
+            (100, 95),    # 5: bearish, close 95 < 99 → FIRE
         ]
         arrs = make_oc_arrs(bars, tf_min=5)
         result = cn.find_cisd_npg(
@@ -58,13 +58,14 @@ class TestBackwardSeriesScan:
         assert result['series_low'] == 99.0        # min of (min(o,c)) over bars 1,2,3
         assert result['series_range'] == 8.0
         assert result['fire_ts_ns'] == arrs['ts_ns'][5]
-        assert result['series_extreme_broken'] == 107.0  # what was crossed
+        assert result['series_extreme_broken'] == 99.0  # series_low (what was crossed)
 
     def test_max_series_cap_at_20(self):
         # 25 consecutive bullish bars; series should cap at 20 going backward
         bars = [(100 + i, 100 + i + 1) for i in range(25)]   # all bullish
-        # Add a forward break bar at the end
-        bars.append((125, 130))   # close 130 > anything in series
+        # Add a forward break bar at the end that closes BELOW series_low
+        # Series: indices 5..24, min(o,c) = 100+5 = 105 → series_low = 105.
+        bars.append((125, 100))   # close 100 < 105 → fire
         arrs = make_oc_arrs(bars, tf_min=5)
         result = cn.find_cisd_npg(
             o=arrs['open'], c=arrs['close'], h=arrs['high'], l=arrs['low'],
@@ -72,30 +73,31 @@ class TestBackwardSeriesScan:
             max_series=20, max_forward=100,
         )
         assert result is not None
-        # Series bars: indices 5..24 (20 bars). series_high = max(c[5..24]) = 25 → close = 5+1 to 24+1
-        # Actually bars[i] = (100+i, 100+i+1). max(o,c) = 100+i+1.
-        # Series goes from c2_idx=24 backward 20 bars → indices 5..24
-        # max body high over those = 100+24+1 = 125
+        # Series bars: indices 5..24 (20 bars). bars[i] = (100+i, 100+i+1).
+        # max(o,c) = 100+i+1, min(o,c) = 100+i.
+        # series_high = 100+24+1 = 125, series_low = 100+5 = 105
         assert result['series_high'] == 125.0
+        assert result['series_low'] == 105.0
         assert result['fire_idx'] == 25
 
 
 class TestWickConfirmation:
     def test_body_confirm_false_uses_wick(self):
         # When body_confirm=False, series extremes use high/low not max/min(o,c)
+        # Series bars 1,2: body lows = 99 (bar 1), 102 (bar 2). Wick lows (from
+        # make_oc_arrs: low = min(o,c) - 1) = 98 (bar 1), 101 (bar 2).
+        # So body series_low = 99, wick series_low = 98.
+        # Forward bar that fires on body (close < 99) but not wick (close >= 98):
+        # Use close = 98.5.
         bars = [
             (100, 99),     # 0: bearish (stops walk)
-            (99, 102),     # 1: bullish, body high=102, wick high=103
-            (102, 107),    # 2: bullish, body high=107, c2_bar
+            (99, 102),     # 1: bullish, body low=99, wick low=98
+            (102, 107),    # 2: bullish, body low=102, wick low=101 (c2_bar)
+            (107, 98.5),   # 3: forward bar — close 98.5 < 99 (body) but not < 98 (wick)
         ]
         arrs = make_oc_arrs(bars, tf_min=5)
-        # In make_oc_arrs, high = max(o,c)+1, so highs[1]=103, highs[2]=108
-        # Forward bar that would fire on body but not wick:
-        # Need close > 108 with body_confirm=False, but close > 107 with body_confirm=True
-        bars.append((107, 107.5))   # close 107.5 > 107 (body) but not > 108 (wick)
-        arrs = make_oc_arrs(bars, tf_min=5)
 
-        # body_confirm=True → fires
+        # body_confirm=True → series_low=99, fires (98.5 < 99)
         r_body = cn.find_cisd_npg(
             o=arrs['open'], c=arrs['close'], h=arrs['high'], l=arrs['low'],
             ts=arrs['ts_ns'], c2_idx=2, direction='SHORT', body_confirm=True,
@@ -104,7 +106,7 @@ class TestWickConfirmation:
         assert r_body is not None
         assert r_body['fire_idx'] == 3
 
-        # body_confirm=False (use wick highs) → no fire
+        # body_confirm=False (use wick lows) → series_low=98, no fire (98.5 not < 98)
         r_wick = cn.find_cisd_npg(
             o=arrs['open'], c=arrs['close'], h=arrs['high'], l=arrs['low'],
             ts=arrs['ts_ns'], c2_idx=2, direction='SHORT', body_confirm=False,
@@ -120,7 +122,7 @@ class TestNoSeries:
         bars = [
             (100, 99),     # 0: bearish (same direction as setup → ends walk)
             (99, 105),     # 1: bullish (c2_bar)
-            (105, 110),    # 2: bullish, close 110 > 105 → FIRE
+            (105, 95),     # 2: bearish, close 95 < 99 → FIRE
         ]
         arrs = make_oc_arrs(bars, tf_min=5)
         result = cn.find_cisd_npg(
@@ -139,7 +141,7 @@ class TestAnchorWindow:
         bars = [
             (100, 99),    # 0: bearish (stops walk)
             (99, 105),    # 1: bullish (c2_bar)
-            (105, 110),   # 2: bullish, close 110 > 105 → would fire
+            (105, 95),    # 2: bearish, close 95 < 99 → would fire
         ]
         arrs = make_oc_arrs(bars, tf_min=5)
         # Set anchor_close_ts BEFORE bar 2's timestamp → reject
@@ -155,7 +157,7 @@ class TestAnchorWindow:
         bars = [
             (100, 99),
             (99, 105),
-            (105, 110),
+            (105, 95),
         ]
         arrs = make_oc_arrs(bars, tf_min=5)
         anchor_close_ts = int(arrs['ts_ns'][2]) + 60_000_000_000  # well after bar 2

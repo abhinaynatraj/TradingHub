@@ -119,8 +119,9 @@ def run_pairing(m1, sweep_tf_min, cisd_tf_min, profile='series_multi',
         if risk_pts < MIN_RISK_PTS or risk_pts > MAX_RISK_PTS:
             continue
 
-        # Targets from CISD series range
-        break_price = entry_price  # break_price ~= CISD level; using entry for cleanliness
+        # Targets from CISD series range, anchored to the structural break level
+        # Per Pine source line 707: bearish → series_low, bullish → series_high
+        break_price = cisd['series_low'] if ev['direction'] == 'SHORT' else cisd['series_high']
         targets = compute_targets(ev['direction'], break_price, cisd['series_range'], multipliers)
 
         # Outcome resolution on 1m bars starting from entry
