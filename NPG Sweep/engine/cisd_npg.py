@@ -88,3 +88,27 @@ def find_cisd_npg(o, c, h, l, ts, c2_idx, direction, body_confirm=True,
                 series_count=len(series_indices),
             )
     return None
+
+
+def find_cisd_npg_in_window(o, c, h, l, ts, c2_idx, direction,
+                            anchor_close_ts, body_confirm=True, max_series=20):
+    """Same as find_cisd_npg but rejects fires past anchor_close_ts.
+
+    The anchor window is the HTF candle bucket that contains the sweep candle.
+    Fires must occur strictly before the next HTF candle opens (i.e., fire_ts < anchor_close_ts).
+    """
+    # Compute max_forward as the number of LTF bars left in the window
+    n = len(o)
+    j = c2_idx + 1
+    max_forward = 0
+    while j < n and ts[j] < anchor_close_ts:
+        max_forward += 1
+        j += 1
+
+    if max_forward == 0:
+        return None
+
+    return find_cisd_npg(o, c, h, l, ts, c2_idx, direction,
+                         body_confirm=body_confirm,
+                         max_series=max_series,
+                         max_forward=max_forward)

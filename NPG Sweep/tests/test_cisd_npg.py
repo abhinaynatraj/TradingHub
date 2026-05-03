@@ -131,3 +131,38 @@ class TestNoSeries:
         assert result is not None
         assert result['series_high'] == 105.0   # just c2_bar's body high
         assert result['series_low'] == 99.0     # just c2_bar's body low
+
+
+class TestAnchorWindow:
+    def test_cisd_outside_anchor_window_rejected(self):
+        """If the CISD fire bar's timestamp is past anchor_close_ts, reject."""
+        bars = [
+            (100, 99),    # 0: bearish (stops walk)
+            (99, 105),    # 1: bullish (c2_bar)
+            (105, 110),   # 2: bullish, close 110 > 105 → would fire
+        ]
+        arrs = make_oc_arrs(bars, tf_min=5)
+        # Set anchor_close_ts BEFORE bar 2's timestamp → reject
+        anchor_close_ts = int(arrs['ts_ns'][1])  # equals bar 1's ts
+        result = cn.find_cisd_npg_in_window(
+            o=arrs['open'], c=arrs['close'], h=arrs['high'], l=arrs['low'],
+            ts=arrs['ts_ns'], c2_idx=1, direction='SHORT', body_confirm=True,
+            max_series=20, anchor_close_ts=anchor_close_ts,
+        )
+        assert result is None
+
+    def test_cisd_within_anchor_window_accepted(self):
+        bars = [
+            (100, 99),
+            (99, 105),
+            (105, 110),
+        ]
+        arrs = make_oc_arrs(bars, tf_min=5)
+        anchor_close_ts = int(arrs['ts_ns'][2]) + 60_000_000_000  # well after bar 2
+        result = cn.find_cisd_npg_in_window(
+            o=arrs['open'], c=arrs['close'], h=arrs['high'], l=arrs['low'],
+            ts=arrs['ts_ns'], c2_idx=1, direction='SHORT', body_confirm=True,
+            max_series=20, anchor_close_ts=anchor_close_ts,
+        )
+        assert result is not None
+        assert result['fire_idx'] == 2
