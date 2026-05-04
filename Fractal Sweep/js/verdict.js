@@ -13,7 +13,7 @@ function getSmtFilteredTrades(trades) {
 }
 
 function renderProfileComparison(){
-  const el = document.getElementById('profile-compare');
+  const el = document.getElementById('profile-comparison-panel');
   if (!el) return;
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
 

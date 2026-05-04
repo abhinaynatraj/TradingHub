@@ -3,7 +3,7 @@ import { pct, evFmt, pfFmt, evCls, wrHeatClr, wrHeatTxt, fmtDateRange, _tradingD
 import { C, lineChart, rDistChart, filterWaterfall, dirCards, drawSetupViz, _buildEquityPts, renderEquityCurveFS, renderOverviewEquityCurve } from '../charts.js';
 import { getProfileData, getActiveTFData, getFilteredD, getSmtD, getAvailableProfiles } from '../data.js';
 import { renderEdgeStudy } from './edge.js';
-import { renderFilterVariants } from '../verdict.js';
+import { renderFilterVariants, renderProfileComparison, renderVerdict } from '../verdict.js';
 import { renderMAEStudy, renderMFEStudy } from './excursion.js';
 import { updateFilterChipDeltas } from './filters.js';
 import { switchSMT, switchF3, switchF4, customRanges, applyCustomRanges } from '../walkforward.js';
@@ -51,7 +51,7 @@ function renderModelDropdown(){
 }
 function switchModel(k){
   setActiveModel(k);
-  render();
+  window.render();
 }
 
 function renderProfileDropdown(){
@@ -63,7 +63,7 @@ function renderProfileDropdown(){
 }
 function switchProfile(pk){
   setActiveProfile(pk);
-  render();
+  window.render();
 }
 
 function switchTF(tf){
@@ -75,8 +75,8 @@ function switchTF(tf){
     renderRangeSlots();
   }
   localStorage.setItem('fractal-active-tf', tf);
-  renderActive();
-  updateTabVisibility();
+  window.renderActive();
+  window.updateTabVisibility();
   drawSetupViz();
 }
 
@@ -160,6 +160,8 @@ function renderModel(D){
 
   renderOverviewEquityCurve(D);
   renderClassificationBreakdown();
+  renderProfileComparison();
+  renderVerdict(document.getElementById('overview-verdict-panel'));
 }
 
-export { renderModel, renderModelDropdown, switchProfile, switchTF, renderControls, switchModel, renderClassificationBreakdown };
+export { renderModel, renderModelDropdown, renderProfileDropdown, switchProfile, switchTF, renderControls, switchModel, renderClassificationBreakdown };

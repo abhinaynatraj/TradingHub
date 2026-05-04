@@ -38,77 +38,79 @@
   </div>
 </header>
 
-<!-- Model + Profile + Timeframe selectors -->
-<div class="sel-bar">
-  <div class="sel-group">
-    <label class="sel-label">Period</label>
-    <select id="tf-select" class="sel-drop" onchange="switchTF(this.value)">
-      <option value="all" selected>All Time (2014–2026)</option>
-      <option value="2y">Last 2 Years</option>
-      <option value="1y">Last 1 Year</option>
-      <option value="6m">Last 6 Months</option>
-      <option value="3m">Last 3 Months</option>
-      <option value="1m">Last 1 Month</option>
-      <option value="custom">Custom Ranges</option>
-    </select>
-  </div>
-  <div class="sel-group">
-    <label class="sel-label">Time Frame Combination</label>
-    <select id="model-select" class="sel-drop" onchange="switchModel(this.value)"></select>
-  </div>
-  <div class="sel-group">
-    <label class="sel-label">Risk Profile</label>
-    <select id="profile-select" class="sel-drop" onchange="switchProfile(this.value)"></select>
-  </div>
-</div>
-
-<!-- Filter bar -->
-<div class="filter-bar">
-  <div class="filter-group">
-    <label class="sel-label">Setup Quality &nbsp;<span class="sel-label-hint">— check to narrow</span></label>
-    <div class="filter-row">
-      <label class="filter-chk" title="Sweep depth ≤ 50% of prior range. Moderate +3-4% WR standalone edge.">
-        <input type="checkbox" id="f3-checkbox" onchange="switchF3(this.checked)">
-        <span>Shallow Sweep</span>
-      </label>
-      <label class="filter-chk" title="Price closed back inside the prior HTF range on the return bar. Useful in combination.">
-        <input type="checkbox" id="f4-checkbox" onchange="switchF4(this.checked)">
-        <span>Closed Back Inside</span>
-      </label>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sb-section">
+      <label class="sb-label">Period</label>
+      <select id="tf-select" class="sel-drop" onchange="switchTF(this.value)">
+        <option value="all" selected>All Time</option>
+        <option value="2y">Last 2 Years</option>
+        <option value="1y">Last 1 Year</option>
+        <option value="6m">Last 6 Months</option>
+        <option value="3m">Last 3 Months</option>
+        <option value="1m">Last 1 Month</option>
+        <option value="custom">Custom Ranges</option>
+      </select>
     </div>
-  </div>
-  <div class="filter-group filter-group-confirm">
-    <label class="sel-label">Add Confirmation &nbsp;<span class="sel-label-hint">— check to narrow</span></label>
-    <div class="filter-row">
-      <label class="filter-chk" title="NQ swept the prior level but ES did not sweep its corresponding level. Indicates one index is leading the other — historically a much higher-WR setup.">
-        <input type="checkbox" id="smt-checkbox" onchange="switchSMT(this.checked)">
-        <span>NQ-ES Divergence</span>
-      </label>
-    </div>
-  </div>
-</div>
 
-<div id="custom-range-builder" style="display:none;background:var(--bg-card);border-bottom:1px solid var(--border);padding:14px 28px;">
-  <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
-    <span style="font-family:var(--font-data);font-size:10px;font-weight:600;letter-spacing:0.06em;color:var(--text-muted);text-transform:uppercase;">Date Ranges</span>
-    <button id="add-range-btn" onclick="addCustomRange()" style="font-family:var(--font-data);font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-secondary);cursor:pointer;">+ Add Range</button>
-    <button onclick="applyCustomRanges()" style="font-family:var(--font-data);font-size:11px;font-weight:600;padding:4px 14px;border-radius:6px;border:1px solid var(--green);background:rgba(52,211,153,0.1);color:var(--green);cursor:pointer;">Apply</button>
-  </div>
-  <div id="range-slots" style="display:flex;flex-wrap:wrap;gap:10px;"></div>
-</div>
+    <div class="sb-section">
+      <label class="sb-label">Timeframes</label>
+      <select id="model-select" class="sel-drop" onchange="switchModel(this.value)"></select>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">Risk Profile</label>
+      <select id="profile-select" class="sel-drop" onchange="switchProfile(this.value)"></select>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">Setup Quality</label>
+      <div class="sb-chk-group">
+        <label class="filter-chk" title="Sweep depth ≤ 50% of prior range">
+          <input type="checkbox" id="f3-checkbox" onchange="switchF3(this.checked)">
+          <span>Shallow Sweep</span>
+        </label>
+        <label class="filter-chk" title="Price closed back inside the prior HTF range on the return bar">
+          <input type="checkbox" id="f4-checkbox" onchange="switchF4(this.checked)">
+          <span>Closed Back Inside</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">Confirmation</label>
+      <div class="sb-chk-group">
+        <label class="filter-chk" title="NQ swept but ES did not">
+          <input type="checkbox" id="smt-checkbox" onchange="switchSMT(this.checked)">
+          <span>NQ-ES Divergence</span>
+        </label>
+      </div>
+    </div>
+
+    <div id="custom-range-builder" style="display:none;margin-top:4px;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+        <button id="add-range-btn" onclick="addCustomRange()" style="font-family:var(--font-data);font-size:10px;padding:3px 8px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg-raised);color:var(--text-secondary);cursor:pointer;">+ Range</button>
+        <button onclick="applyCustomRanges()" style="font-family:var(--font-data);font-size:10px;font-weight:600;padding:3px 10px;border-radius:6px;border:1px solid var(--green);background:rgba(52,211,153,0.1);color:var(--green);cursor:pointer;">Apply</button>
+      </div>
+      <div id="range-slots" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+    </div>
+
+    <div class="sb-nav">
+      <button class="sb-nav-btn active" onclick="switchPageTab('overview')">Overview</button>
+      <button class="sb-nav-btn" onclick="switchPageTab('edge')">Edge</button>
+      <button class="sb-nav-btn" onclick="switchPageTab('risk')">Risk</button>
+      <button class="sb-nav-btn" onclick="switchPageTab('excursion')">MAE/MFE</button>
+      <button class="sb-nav-btn" onclick="switchPageTab('filters')">Filters</button>
+      <button class="sb-nav-btn" onclick="switchPageTab('trades')">Trades</button>
+    </div>
+  </aside>
+
+  <div class="content">
+
 
 <span class="mode-strip-note" id="mode-note" style="display:none;"></span>
 <div id="mode-pills" style="display:none;"></div>
 <div id="cisd-pills" style="display:none;"></div>
-
-<div class="page-nav">
-  <button class="page-tab active" onclick="switchPageTab('overview')">Overview</button>
-  <button class="page-tab" onclick="switchPageTab('edge')">Edge</button>
-  <button class="page-tab" onclick="switchPageTab('risk')">Risk</button>
-  <button class="page-tab" onclick="switchPageTab('excursion')">MAE / MFE Study</button>
-  <button class="page-tab" onclick="switchPageTab('filters')">Filters</button>
-  <button class="page-tab" onclick="switchPageTab('trades')">Trades</button>
-</div>
 
 <main class="main">
   <div class="infobar" id="infobar" style="display:none">
@@ -346,6 +348,9 @@
   <div id="custom-view" style="display:none;padding:0 28px 40px;"></div>
 
 </main>
+
+  </div><!-- /.content -->
+</div><!-- /.layout -->
 
 <script type="module" src="js/app.js"></script>
 </body>

@@ -6,10 +6,10 @@ import { activePageTab, RAW_TABS, RAW_TAB_LABELS,
          DASHBOARD_SCHEMA_VERSION,
          setActiveTF, setIsDemo, setActivePageTab, setCurrentTheme } from './state.js';
 import { applyTheme, _savedTheme } from './theme.js';
-import { fmtDateRange, triggerCSVDownload, csvEscape } from './utils.js';
+import { fmtDateRange, triggerCSVDownload, csvEscape, showTip, hideTip } from './utils.js';
 import { getProfileData, getActiveTFData, getSmtD, applyLoadedData, DEMO, DATA, setData } from './data.js';
 import { drawSetupViz, renderOverviewEquityCurve, lineChart, rDistChart, renderEquityCurveFS } from './charts.js';
-import { renderModel, renderModelDropdown, switchProfile, switchTF, renderControls, switchModel } from './tabs/overview.js';
+import { renderModel, renderModelDropdown, renderProfileDropdown, switchProfile, switchTF, renderControls, switchModel } from './tabs/overview.js';
 import { renderEdgeStudy } from './tabs/edge.js';
 import { updateFilterChipDeltas } from './tabs/filters.js';
 import { renderRecentTrades } from './tabs/trades.js';
@@ -40,8 +40,11 @@ function switchPageTab(tab){
   const pane = document.getElementById('pane-' + tab);
   if(pane){ pane.classList.add('active'); pane.style.display = ''; }
   document.querySelectorAll('.page-tab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.sb-nav-btn').forEach(b => b.classList.remove('active'));
   const btn = [...document.querySelectorAll('.page-tab')].find(b => b.textContent.toLowerCase().replace(/\s+/g,'').includes(tab.replace('-','')));
+  const sbBtn = [...document.querySelectorAll('.sb-nav-btn')].find(b => b.textContent.toLowerCase().replace(/\s+/g,'').includes(tab.replace('-','')));
   if(btn) btn.classList.add('active');
+  if(sbBtn) sbBtn.classList.add('active');
   window.scrollTo({top:0,behavior:'smooth'});
   // Re-render canvases that need sizing when tab becomes visible
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
@@ -105,6 +108,7 @@ function render(){
   const D = getProfileData(`${activeModel}_${activeMode}_${activeCisd}`, activeProfile);
   document.getElementById('hdr-sub').textContent=`Multi-TF Probability Engine · ${D?.meta?.instrument||'NQ'} · ${fmtDateRange(D?.meta?.date_range)}`;
   renderModelDropdown();
+  renderProfileDropdown();
   renderControls();
   renderActive();
 }
@@ -191,6 +195,10 @@ window.updateRange = updateRange;
 window.saveAndRenderRanges = saveAndRenderRanges;
 window.switchCustomTab = switchCustomTab;
 window.downloadFSTrades = downloadFSTrades;
+window.showTip = showTip;
+window.hideTip = hideTip;
+window.render = render;
+window.updateTabVisibility = updateTabVisibility;
 
 // ── INIT ────────────────────────────────────────────────────────────────────
 setRenderActive(renderActive);
