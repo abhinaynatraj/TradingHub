@@ -1,5 +1,8 @@
+import { activeModel, activeMode, activeCisd, activeProfile, activeTF } from '../state.js';
 import { C, dirCards } from '../charts.js';
 import { csvEscape, triggerCSVDownload, evFmt, evCls, pfFmt, pct } from '../utils.js';
+import { getProfileData, getActiveTFData } from '../data.js';
+import { getSmtFilteredTrades } from '../walkforward.js';
 
 let _tradesPage = 0;
 const TRADES_PER_PAGE = 40;
