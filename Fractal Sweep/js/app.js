@@ -220,6 +220,7 @@ if(savedTF){
 setData({
   '1H_5M_PREV_CISD': DEMO['1H_5M_PREV_CISD'],
   '30M_3M_PREV_CISD': DEMO['30M_3M_PREV_CISD'],
+  '15M_1M_PREV_CISD': DEMO['15M_1M_PREV_CISD'],
 });
 
 // Restore saved theme

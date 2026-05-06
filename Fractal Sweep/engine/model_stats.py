@@ -132,6 +132,12 @@ MODELS = {
         cisd_tf_min  = 3,
         session_hrs  = None,
     ),
+    '15M_1M': dict(
+        label        = '15M Sweep · 1M CISD',
+        sweep_tf_min = 15,
+        cisd_tf_min  = 1,
+        session_hrs  = None,
+    ),
 }
 SWEEP_MODES = ['PREV']
 CISD_MODES  = ['CISD']

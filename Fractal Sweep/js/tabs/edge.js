@@ -1,4 +1,4 @@
-import { SVG_FONT, isDark } from '../state.js';
+import { SVG_FONT, isDark, activeModel, activeSmt, activeF3, activeF4 } from '../state.js';
 import { C, lineChart } from '../charts.js';
 
 function _wilsonCI(wins, n, z=1.96) {
@@ -303,6 +303,108 @@ function renderEdgeStudy(D) {
     renderCombo(topEl, combos.slice(0, 10));
     renderCombo(worstEl, [...combos].reverse().slice(0, 8));
   }
+
+  // Sub-hour detail — based on active model
+  renderSubHourEl(D);
+}
+
+function renderSubHourEl(D) {
+  const el = document.getElementById('edge-subhour');
+  if (!el) return;
+
+  const segmentMin = activeModel === '15M_1M' ? 15 : activeModel === '30M_3M' ? 30 : null;
+  const segLabel = document.getElementById('subhour-label');
+  const titleLabel = document.getElementById('subhour-title');
+  if (!segmentMin) {
+    if (segLabel) segLabel.textContent = 'Sub-Hour Detail';
+    if (titleLabel) titleLabel.textContent = 'Performance by Hour';
+    el.innerHTML = '<div style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);padding:8px">Select 30M_3M or 15M_1M model for half-hour or quarter-hour breakdowns.</div>';
+    return;
+  }
+  const segCount = 60 / segmentMin;
+  const segNames = segCount === 2 ? ['0\u201329', '30\u201359']
+    : ['0\u201314', '15\u201329', '30\u201344', '45\u201359'];
+
+  if (segLabel) segLabel.textContent = `Sub-Hour Detail \u00b7 ${segmentMin}-Minute Segments`;
+  if (titleLabel) titleLabel.textContent = `Performance by ${segmentMin}-Minute Segment`;
+
+  let trades = D?.recent_trades;
+  if (!trades || !trades.length) {
+    el.innerHTML = '<div style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);padding:8px">No trade data available.</div>';
+    return;
+  }
+  // Apply active filters
+  if (activeSmt) trades = trades.filter(t => t.smt === true);
+  if (activeF3)  trades = trades.filter(t => t.passes_f3 === true);
+  if (activeF4)  trades = trades.filter(t => t.passes_f4 === true);
+  if (!trades.length) {
+    el.innerHTML = '<div style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);padding:8px">No trades match active filters.</div>';
+    return;
+  }
+
+  const allHours = [];
+  for (let h = 0; h < 24; h++) allHours.push(h);
+
+  const map = {};
+  allHours.forEach(h => {
+    map[h] = {};
+    for (let s = 0; s < segCount; s++) {
+      map[h][s] = { n:0, wins:0, sumR:0 };
+    }
+  });
+  trades.forEach(t => {
+    const h = t.hr, mn = t.mn;
+    if (h == null || mn == null || !map[h]) return;
+    const seg = Math.min(Math.floor(mn / segmentMin), segCount - 1);
+    const b = map[h][seg];
+    b.n++;
+    b.sumR += t.r;
+    if (t.outcome === 'WIN') b.wins++;
+  });
+
+  const allN = Object.values(map).flatMap(h => Object.values(h)).map(s => s.n);
+  const maxN = Math.max(...allN, 1);
+  const bgIntensity = n => {
+    const t = Math.sqrt(n / maxN);
+    return `rgba(59,130,246,${0.05 + t * 0.28})`;
+  };
+  const wCol = wr => wr >= 0.55 ? '#10b981' : wr >= 0.45 ? '#f59e0b' : '#ef4444';
+
+  // Only show hours with at least 1 trade
+  const activeHours = allHours.filter(h => Object.values(map[h]).some(s => s.n > 0));
+  if (!activeHours.length) {
+    el.innerHTML = '<div style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);padding:8px">No trade data for active filters.</div>';
+    return;
+  }
+
+  let html = '<div style="overflow-x:auto"><table style="border-collapse:separate;border-spacing:3px;font-family:var(--font-data);font-size:11px;width:100%">';
+  html += `<thead><tr><th style="padding:6px 10px;text-align:left;color:var(--text-muted);font-size:10px">Hour</th>`;
+  segNames.forEach(n => {
+    html += `<th style="padding:6px 4px;text-align:center;color:var(--text-muted);font-weight:600;font-size:10px;min-width:80px">Min ${n}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  activeHours.forEach(h => {
+    html += `<tr><td style="padding:8px 10px;color:var(--text-secondary);font-weight:700;font-size:12px;text-align:left">${String(h).padStart(2,'0')}:00</td>`;
+    for (let s = 0; s < segCount; s++) {
+      const b = map[h][s];
+      if (b.n < 3) {
+        html += `<td style="background:var(--bg-raised);border-radius:6px;padding:10px 6px;text-align:center;color:var(--text-muted);font-size:10px">\u2014</td>`;
+      } else {
+        const wr = b.wins / b.n;
+        const ev = b.sumR / b.n;
+        const bg = bgIntensity(b.n);
+        html += `<td style="background:${bg};border-radius:6px;padding:8px 6px;text-align:center;line-height:1.4">
+          <div style="font-weight:700;font-size:12px;color:${wCol(wr)}">${(wr*100).toFixed(0)}<span style="font-size:9px">%</span></div>
+          <div style="font-size:10px;color:${ev>=0?'var(--green)':'var(--red)'}">${ev>=0?'+':''}${ev.toFixed(3)}R</div>
+          <div style="font-size:9px;color:var(--text-muted);margin-top:2px">n=${b.n}</div>
+        </td>`;
+      }
+    }
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
 }
 
 export { _wilsonCI, _linearReg, renderEdgeStudy };

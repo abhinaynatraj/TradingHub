@@ -90,6 +90,7 @@ function makeDemoModel(key, label, mode, cisd, wrBase, evBase, pfBase, riskMed, 
 const DEMO = {
   '1H_5M_PREV_CISD':   makeDemoModel('1H_5M','1H Sweep · 5M CISD','PREV','CISD',0.557,0.671,1.82,18,1.82),
   '30M_3M_PREV_CISD':  makeDemoModel('30M_3M','30M Sweep · 3M CISD','PREV','CISD',0.551,0.652,1.78,10,2.80),
+  '15M_1M_PREV_CISD':  makeDemoModel('15M_1M','15M Sweep · 1M CISD','PREV','CISD',0.545,0.635,1.72,8,3.50),
 };
 
 let DATA = DEMO;
@@ -302,7 +303,7 @@ function getFilteredD(D) {
     pf: 1,
   }));
 
-  return { ...D, meta: newMeta, risk_stats: newRS, by_hour, by_session, by_dow, dir_summary, by_year };
+  return { ...D, meta: newMeta, risk_stats: newRS, by_hour, by_session, by_dow, dir_summary, by_year, recent_trades: trades };
 }
 
 // Back-compat alias — legacy call sites use getSmtD
