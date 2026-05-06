@@ -27,8 +27,8 @@ export let activePageTab = 'overview';
 export const RAW_TABS = ['excursion', 'trades'];
 export const RAW_TAB_LABELS = {excursion:'mae/mfestudy', trades:'trades'};
 export const SVG_FONT = "'JetBrains Mono',monospace";
-export const MODEL_KEYS = ['1H_5M','30M_3M'];
-export const MODEL_LABELS = {'1H_5M':'1H \u00b7 5M CISD', '30M_3M':'30M \u00b7 3M CISD'};
+export const MODEL_KEYS = ['1H_5M','30M_3M','15M_1M'];
+export const MODEL_LABELS = {'1H_5M':'1H \u00b7 5M CISD', '30M_3M':'30M \u00b7 3M CISD', '15M_1M':'15M \u00b7 1M CISD'};
 
 export let isDemo = true;
 export function setIsDemo(v) { isDemo = v; }
