@@ -19,10 +19,10 @@
  */
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
-// Set this to a long random string. The indicator's alert payload must include
-// "token":"<this value>" to be accepted. Leave as empty string to disable auth
-// (NOT recommended; the deployment URL is unguessable but not secret).
-const SHARED_SECRET = "";
+// REQUIRED: generate with `openssl rand -hex 32` and paste the result here.
+// The TradingView alert message must include "token":"<this value>".
+// To set: Extensions → Apps Script → update SHARED_SECRET → Save → re-Deploy.
+const SHARED_SECRET = "REPLACE_WITH_YOUR_SECRET";
 
 const SHEET_NAME = "Trades";
 
@@ -54,7 +54,10 @@ function doPost(e) {
       return jsonResponse_(400, { ok: false, error: "no payload" });
     }
 
-    if (SHARED_SECRET && payload.token !== SHARED_SECRET) {
+    if (!SHARED_SECRET || SHARED_SECRET === "REPLACE_WITH_YOUR_SECRET") {
+      return jsonResponse_(503, { ok: false, error: "webhook not configured: set SHARED_SECRET" });
+    }
+    if (payload.token !== SHARED_SECRET) {
       return jsonResponse_(401, { ok: false, error: "auth failed" });
     }
 
@@ -96,7 +99,7 @@ function doGet(e) {
     ok: true,
     service: "Fractal Sweep webhook receiver",
     sheet: SHEET_NAME,
-    auth_enabled: !!SHARED_SECRET,
+    auth_enabled: !!SHARED_SECRET && SHARED_SECRET !== "REPLACE_WITH_YOUR_SECRET",
     hint: "POST a JSON payload to this URL from TradingView's alert webhook.",
   });
 }

@@ -29,7 +29,7 @@ Fractal Sweep/
 ├── data/                       raw Databento dumps (gitignored)
 ├── docs/                       standalone notes (indicator description, analysis write-ups)
 ├── assets/                     images used by the dashboard/hub
-└── tests/                      pytest suite — 195 pass · 20 skip as of 2026-04-24
+└── tests/                      pytest suite — 215 pass · 0 skip as of 2026-04-29
 ```
 
 ## Running

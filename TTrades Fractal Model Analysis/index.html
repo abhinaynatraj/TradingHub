@@ -416,6 +416,7 @@
     <a href="#backtest">Backtest</a>
   </div>
   <a href="../index.html" style="font-size:12px;color:var(--faint);text-decoration:none;padding:4px 10px;border:1px solid var(--border);border-radius:6px;transition:color .15s,border-color .15s" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--faint)'">← Hub</a>
+  <button id="recalc-btn" onclick="triggerRecalc()" title="Requires server.py running" style="font-size:11px;font-family:inherit;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--faint);cursor:pointer;transition:color .15s,border-color .15s" onmouseover="this.style.color='var(--text)'" onmouseout="if(!this.disabled)this.style.color='var(--faint)'">⟳ Recalculate</button>
   <button class="theme-toggle" id="themeToggle" title="Toggle theme">☀</button>
 </nav>
 
@@ -2444,6 +2445,42 @@ new MutationObserver(() => {
     _renderDowQuarter(_btData, BE);
   }
 }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+// ── Recalc button (calls local server.py) ────────────────────────────────────
+async function triggerRecalc(){
+  const btn=document.getElementById('recalc-btn');
+  if(!btn||btn.disabled)return;
+  btn.disabled=true;
+  btn.textContent='⟳ Running…';
+  try{
+    const r=await fetch('http://localhost:8001/recalc?engine=ttfm',{method:'POST'});
+    if(r.status===409){btn.textContent='⟳ Already running';setTimeout(()=>{btn.textContent='⟳ Recalculate';btn.disabled=false;},2000);return;}
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    pollRecalc();
+  }catch(e){
+    btn.textContent='⚠ Server not running';
+    btn.title='Start server.py first: python3 server.py';
+    setTimeout(()=>{btn.textContent='⟳ Recalculate';btn.disabled=false;btn.title='Requires server.py running';},3000);
+  }
+}
+function pollRecalc(){
+  const btn=document.getElementById('recalc-btn');
+  const iv=setInterval(async()=>{
+    try{
+      const r=await fetch('http://localhost:8001/recalc/status?engine=ttfm');
+      const s=await r.json();
+      if(s.status==='ok'){
+        clearInterval(iv);
+        btn.textContent='✓ Done — reloading…';
+        setTimeout(()=>location.reload(),600);
+      } else if(s.status==='error'){
+        clearInterval(iv);
+        btn.textContent='⚠ Engine error';
+        setTimeout(()=>{btn.textContent='⟳ Recalculate';btn.disabled=false;},3000);
+      }
+    }catch{clearInterval(iv);btn.textContent='⟳ Recalculate';btn.disabled=false;}
+  },2000);
+}
 </script>
 
 </body>
