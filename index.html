@@ -4,14 +4,17 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Statistic.ally</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 /* ── Reset & base ──────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
   --ease: cubic-bezier(.4,0,.2,1);
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-mono: 'DM Mono', 'Fira Code', monospace;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
 }
 
 [data-theme="dark"] {
@@ -781,6 +784,18 @@ const PROJECTS = [
     stats:    null,
   },
   {
+    id:       'npg',
+    title:    'NPG Sweep',
+    subtitle: 'Wick Lick + CISD · 3 Pairings',
+    desc:     'Statistical engine for the npg "Sweep · CISD · FVG · Key Levels" model. 3 HTF/LTF pairings (1H_5M, 4H_15M, D_1H), 4-leg partial-exit profile, Silver late-week timing filter. Companion to Fractal Sweep — same data, different model spec.',
+    json:     'NPG Sweep/npg_stats.json',
+    link:     'NPG Sweep/npg_dashboard.html',
+    color:    '#f59e0b',
+    icon:     '⚡',
+    type:     'npg',
+    stats:    null,
+  },
+  {
     id:       'hourly',
     title:    'NQ Hourly Analysis',
     subtitle: 'Breakout follow-through · Quarter-of-the-hour study',
@@ -847,6 +862,24 @@ async function loadStats(project) {
         label2: 'Bull breakouts', val2: num(d.n_bullish_breakouts),   cls2: 'pos',
         label3: 'Bear breakouts', val3: num(d.n_bearish_breakouts),   cls3: 'neg',
         dateRange: dr,
+      };
+    }
+
+    if (project.type === 'npg') {
+      // npg_stats.json shape: { summary: { '<pairing>/<profile>': { n_trades, agg: {n,wr,ev,pf,...}, reach_rates, ... } }, manifest: {...} }
+      // Headline: 1H_5M/series_multi (the most active pairing).
+      const s = (d.summary || {})['1H_5M/series_multi'];
+      if (!s) return null;
+      const a = s.agg || {};
+      const n = a.n != null ? a.n : s.n_trades;
+      const wr = a.wr != null ? a.wr : null;        // already a percentage (0-100)
+      const ev = a.ev != null ? a.ev : null;        // signed R per trade
+      return {
+        label1: '1H trades', val1: num(n),                                  cls1: 'neutral',
+        label2: 'Reach 1.0×', val2: wr != null ? wr.toFixed(1) + '%' : '—',  cls2: 'pos',
+        label3: 'EV (R)',     val3: ev != null ? (ev >= 0 ? '+' : '') + ev.toFixed(3) : '—',
+                              cls3: ev != null && ev > 0 ? 'pos' : ev != null && ev < 0 ? 'neg' : 'neutral',
+        dateRange: '—',
       };
     }
 

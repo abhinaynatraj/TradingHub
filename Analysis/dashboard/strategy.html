@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Breakout Trade Model · NQ Hourly</title>
+  <link rel="stylesheet" href="shared.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div class="theme-picker" role="radiogroup" aria-label="Theme">
+    <button class="theme-opt" data-theme="dark"   title="Dark"   aria-label="Dark theme">☀</button>
+    <button class="theme-opt" data-theme="light"  title="Light"  aria-label="Light theme">☾</button>
+    <button class="theme-opt" data-theme="gold"   title="Gold"   aria-label="Gold theme">✦</button>
+    <button class="theme-opt" data-theme="indigo" title="Indigo" aria-label="Indigo theme">◆</button>
+  </div>
+  <div class="container">
+    <nav><a href="index.html">← Hourly Analysis</a></nav>
+    <h1>Breakout Trade Model</h1>
+
+    <div class="intro">
+      <div class="intro-eyebrow">From analysis to a tradeable model</div>
+      <div class="intro-title">What does the breakout edge look like with realistic stops, sizing, and slippage rules?</div>
+      <div class="intro-body">
+        The headline analysis says the next hour follows through ~70% of the time. That's a <strong>wick statistic</strong> — not a trade. This page resolves every breakout into an actual trade under three different stop-placement rules, sized for <strong>MNQ ($2/pt, $225 risk per trade)</strong>, with same-bar tie-breaks resolving to the stop. <em>Most setups get rejected by the risk gate</em> — that's the honest tradeoff between structural stops and capital efficiency.
+      </div>
+      <div class="coverage-strip" id="coverage-strip">
+        <div class="coverage-cell"><div class="cc-label">Loading…</div></div>
+      </div>
+    </div>
+
+    <div class="tab-nav" id="tabs">
+      <button class="tab-btn" data-tab="structural_1r" data-active="true"><span class="tab-letter">A</span>Structural 1R</button>
+      <button class="tab-btn" data-tab="breakout_bar"  data-active="false"><span class="tab-letter">B</span>Breakout-bar stop</button>
+      <button class="tab-btn" data-tab="time_bounded"  data-active="false"><span class="tab-letter">C</span>Time-bounded</button>
+      <button class="tab-btn" data-tab="compare"       data-active="false"><span class="tab-letter">∑</span>Compare</button>
+    </div>
+
+    <div class="tab-panel" data-tab="structural_1r" data-active="true"><div id="panel-structural_1r"></div></div>
+    <div class="tab-panel" data-tab="breakout_bar"  data-active="false"><div id="panel-breakout_bar"></div></div>
+    <div class="tab-panel" data-tab="time_bounded"  data-active="false"><div id="panel-time_bounded"></div></div>
+    <div class="tab-panel" data-tab="compare"       data-active="false"><div id="panel-compare"></div></div>
+  </div>
+
+  <script src="shared.js"></script>
+  <script>
+    const VARIANTS = ['structural_1r', 'breakout_bar', 'time_bounded'];
+    const DOW_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    let MANIFEST = null;
+
+    function fmtUsd(x) {
+      if (x == null || isNaN(x)) return '—';
+      const sign = x < 0 ? '-' : '';
+      return sign + '$' + Math.abs(x).toLocaleString(undefined, { maximumFractionDigits: 0 });
+    }
+    function fmtR(x, digits = 3) {
+      if (x == null || isNaN(x)) return '—';
+      return (x >= 0 ? '+' : '') + x.toFixed(digits) + 'R';
+    }
+    function fmtPctRaw(x) {
+      if (x == null || isNaN(x)) return '—';
+      return (x * 100).toFixed(1) + '%';
+    }
+
+    async function init() {
+      // Load manifest
+      try {
+        const resp = await fetch('../data/strategy/manifest.json');
+        MANIFEST = await resp.json();
+      } catch (e) {
+        document.querySelector('.container').innerHTML +=
+          `<div class="card" style="margin-top:14px;">
+             <strong>Strategy backtest not found.</strong> Run
+             <code>python3 Analysis/strategy/run_strategy.py</code> to generate.
+           </div>`;
+        return;
+      }
+
+      renderCoverage();
+
+      // Pre-load all per-variant parquets via DuckDB-Wasm so cross-tab queries are fast.
+      for (const v of VARIANTS) {
+        try {
+          await loadParquet(`../data/strategy/${v}_trades.parquet`,    `t_${v}`);
+          await loadParquet(`../data/strategy/${v}_by_year.parquet`,   `y_${v}`);
+          await loadParquet(`../data/strategy/${v}_by_hour.parquet`,   `h_${v}`);
+          await loadParquet(`../data/strategy/${v}_by_dow.parquet`,    `d_${v}`);
+          await loadParquet(`../data/strategy/${v}_equity.parquet`,    `e_${v}`);
+          await loadParquet(`../data/strategy/${v}_by_direction.parquet`, `dir_${v}`);
+        } catch (e) {
+          console.warn(`Could not load ${v}:`, e.message);
+        }
+      }
+
+      // Tab wiring
+      document.querySelectorAll('#tabs .tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const t = btn.dataset.tab;
+          document.querySelectorAll('#tabs .tab-btn').forEach(b => b.dataset.active = String(b.dataset.tab === t));
+          document.querySelectorAll('.tab-panel').forEach(p => p.dataset.active = String(p.dataset.tab === t));
+        });
+      });
+
+      for (const v of VARIANTS) await renderVariantPanel(v);
+      await renderComparePanel();
+    }
+
+    function renderCoverage() {
+      const c = MANIFEST.constants;
+      document.getElementById('coverage-strip').innerHTML = `
+        <div class="coverage-cell">
+          <div class="cc-label">Period</div>
+          <div class="cc-val" style="font-size:14px;">${(MANIFEST.date_range_start || '').slice(0,10)} → ${(MANIFEST.date_range_end || '').slice(0,10)}</div>
+        </div>
+        <div class="coverage-cell">
+          <div class="cc-label">Risk per trade</div>
+          <div class="cc-val">$${c.RISK_PER_TRADE_USD}</div>
+          <div class="cc-sub">MNQ @ $${c.POINT_VALUE_USD}/pt</div>
+        </div>
+        <div class="coverage-cell">
+          <div class="cc-label">Risk gate</div>
+          <div class="cc-val" style="font-size:14px;">${c.MIN_RISK_PTS} – ${c.MAX_RISK_PTS_STRUCT} pts</div>
+          <div class="cc-sub">tighter for variant B (${c.MAX_RISK_PTS_TIGHT} pts)</div>
+        </div>
+        <div class="coverage-cell">
+          <div class="cc-label">Time stop</div>
+          <div class="cc-val">${c.TIME_STOP_BARS} min</div>
+          <div class="cc-sub">variant C only</div>
+        </div>
+        <div class="coverage-cell">
+          <div class="cc-label">Last refreshed</div>
+          <div class="cc-val" style="font-size:14px;">${(MANIFEST.run_timestamp_utc || '').slice(0,10)}</div>
+          <div class="cc-sub">${(MANIFEST.run_timestamp_utc || '').slice(11,16)} UTC</div>
+        </div>
+      `;
+    }
+
+    async function renderVariantPanel(v) {
+      const meta = MANIFEST.variants[v];
+      if (!meta) return;
+      const a = meta.aggregate, r = meta.rejection, ex = meta.exits;
+      const pnlClass = a.total_pnl_usd >= 0 ? 'green' : 'red';
+      const evClass  = a.avg_r >= 0 ? 'green' : 'red';
+
+      const exitRows = Object.entries(ex.by_reason || {})
+        .sort((x, y) => y[1] - x[1])
+        .map(([reason, n]) => {
+          const pct = ex.by_reason_pct[reason];
+          const color = reason === 'tp' ? 'green' : reason === 'sl' ? 'red' : reason === 'time' ? 'amber' : 'blue';
+          return `<div class="bar-row">
+            <div class="br-label">${reason.toUpperCase()}</div>
+            <div class="br-track"><div class="br-fill bar-${color}" style="width:${(pct*100).toFixed(1)}%"></div></div>
+            <div class="br-val">${fmtPctRaw(pct)} · ${n.toLocaleString()}</div>
+          </div>`;
+        }).join('');
+
+      const html = `
+        <div class="card">
+          <div class="sh">
+            <div class="sh-title">${meta.label}</div>
+            <div class="sh-desc">${meta.description}</div>
+          </div>
+
+          <div class="kpi-strip">
+            <div class="kpi"><div class="kpi-label">Trades taken</div>
+              <div class="kpi-val">${(a.n||0).toLocaleString()}</div>
+              <div class="kpi-sub">of ${(r.n_total_events||0).toLocaleString()} events (${fmtPctRaw(r.taken_rate)})</div>
+            </div>
+            <div class="kpi"><div class="kpi-label">Win rate</div>
+              <div class="kpi-val">${fmtPctRaw(a.wr)}</div>
+              <div class="kpi-sub">95% LB: ${fmtPctRaw(a.wr_lo95)}</div>
+            </div>
+            <div class="kpi"><div class="kpi-label">EV per trade</div>
+              <div class="kpi-val ${evClass}">${fmtR(a.avg_r)}</div>
+              <div class="kpi-sub">avg win ${fmtR(a.avg_win_r)} · loss ${fmtR(a.avg_loss_r)}</div>
+            </div>
+            <div class="kpi"><div class="kpi-label">Profit factor</div>
+              <div class="kpi-val">${a.pf == null ? '—' : a.pf}</div>
+              <div class="kpi-sub">gross gain / gross loss</div>
+            </div>
+            <div class="kpi"><div class="kpi-label">Total P&L</div>
+              <div class="kpi-val ${pnlClass}">${fmtUsd(a.total_pnl_usd)}</div>
+              <div class="kpi-sub">cumulative across all trades</div>
+            </div>
+            <div class="kpi"><div class="kpi-label">Max drawdown</div>
+              <div class="kpi-val red">${fmtUsd(-a.max_dd_usd)}</div>
+              <div class="kpi-sub">peak-to-trough $</div>
+            </div>
+            <div class="kpi"><div class="kpi-label">Avg hold</div>
+              <div class="kpi-val">${a.avg_hold_min} min</div>
+              <div class="kpi-sub">per trade</div>
+            </div>
+            <div class="kpi"><div class="kpi-label">Sharpe / trade</div>
+              <div class="kpi-val">${a.sharpe_per_trade}</div>
+              <div class="kpi-sub">avg R / std R (per-trade)</div>
+            </div>
+          </div>
+
+          <div class="headline" id="hl-${v}"></div>
+
+          <div class="section">
+            <div class="section-label"><span class="marker"></span>Where exits land</div>
+            <div class="bar-rows">${exitRows}</div>
+          </div>
+
+          <div class="section">
+            <div class="section-label"><span class="marker"></span>Equity curve (cumulative $)</div>
+            <canvas id="eq-${v}" width="900" height="240" style="width:100%;height:240px;background:var(--bg-elev-2);border-radius:6px;"></canvas>
+          </div>
+
+          <div class="section">
+            <div class="section-label"><span class="marker green"></span>By year</div>
+            <div id="ty-${v}"></div>
+          </div>
+
+          <div class="section">
+            <div class="section-label"><span class="marker blue"></span>By hour-of-day (NY)</div>
+            <div id="th-${v}"></div>
+          </div>
+
+          <div class="section">
+            <div class="section-label"><span class="marker amber"></span>By day-of-week</div>
+            <div id="td-${v}"></div>
+          </div>
+
+          <div class="section">
+            <div class="section-label"><span class="marker"></span>By direction</div>
+            <div id="tdir-${v}"></div>
+          </div>
+        </div>
+      `;
+      document.getElementById(`panel-${v}`).innerHTML = html;
+
+      // Auto-headline based on the numbers
+      const evBetterThan = a.avg_r > 0 ? 'positive' : 'flat';
+      const wrText = `${fmtPctRaw(a.wr)} (95% LB ${fmtPctRaw(a.wr_lo95)})`;
+      const survives = a.wr_lo95 >= 0.5
+        ? `<strong>The win-rate lower bound stays ≥ 50%</strong> — the edge is statistically distinguishable from chance at 95% confidence.`
+        : `<strong>The lower-bound win rate is below 50%</strong> — random chance is inside the 95% confidence interval, edge is not statistically robust.`;
+      document.getElementById(`hl-${v}`).innerHTML =
+        `Out of ${(r.n_total_events||0).toLocaleString()} breakout events, only <strong>${(a.n||0).toLocaleString()} (${fmtPctRaw(r.taken_rate)})</strong> have a stop tight enough to qualify. Of those, <strong>${wrText}</strong> are profitable, with EV of <strong>${fmtR(a.avg_r)}</strong> per trade and total ${a.total_pnl_usd >= 0 ? 'profit' : 'loss'} of <strong>${fmtUsd(a.total_pnl_usd)}</strong>. ${survives}`;
+
+      // Tables + equity
+      await renderSliceTable(`y_${v}`, `ty-${v}`, 'year', 'Year');
+      await renderSliceTable(`h_${v}`, `th-${v}`, 'hour_of_day_et', 'Hour ET',
+        (k) => String(k).padStart(2, '0') + ' ET');
+      await renderSliceTable(`d_${v}`, `td-${v}`, 'dow', 'Day',
+        (k) => DOW_NAMES[Number(k)] || k);
+      await renderSliceTable(`dir_${v}`, `tdir-${v}`, 'direction', 'Direction');
+      await drawEquity(`e_${v}`, `eq-${v}`);
+    }
+
+    async function renderSliceTable(view, targetId, keyCol, keyLabel, fmtKey) {
+      try {
+        const rows = await query(`SELECT * FROM ${view} ORDER BY ${keyCol}`);
+        const cols = [
+          { key: keyCol, label: keyLabel, type: 'label',
+            formatter: (v) => fmtKey ? fmtKey(v) : v },
+          { key: 'n',        label: 'n',        type: 'count' },
+          { key: 'wr',       label: 'WR',       type: 'baseline', baseline: 0.5, maxPct: 1.0,
+            colorAbove: 'green', colorBelow: 'red' },
+          { key: 'avg_r',    label: 'EV (R)',   type: 'inlineBar',
+            maxPct: 0.5, color: 'blue',
+            formatter: (v) => (v >= 0 ? '+' : '') + Number(v).toFixed(3) + 'R' },
+          { key: 'pf',       label: 'PF',       type: 'num', digits: 2 },
+          { key: 'total_pnl_usd', label: 'P&L $', type: 'num', digits: 0,
+            formatter: (v) => fmtUsd(v) },
+          { key: 'max_dd_usd',    label: 'Max DD $', type: 'num', digits: 0,
+            formatter: (v) => fmtUsd(-v) },
+          { key: 'avg_hold_min',  label: 'Hold (m)', type: 'num', digits: 0 },
+        ];
+        renderInlineBarTable(document.getElementById(targetId), rows, cols, { minCount: 30 });
+      } catch (e) {
+        document.getElementById(targetId).innerHTML =
+          `<div class="prose" style="color:var(--text-muted);">No data: ${e.message}</div>`;
+      }
+    }
+
+    async function drawEquity(view, canvasId) {
+      const rows = await query(`SELECT entry_ts, equity_usd, dd_usd FROM ${view} ORDER BY entry_ts`);
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+      // Resize for retina
+      const dpr = window.devicePixelRatio || 1;
+      const cssW = canvas.clientWidth, cssH = canvas.clientHeight;
+      canvas.width = cssW * dpr; canvas.height = cssH * dpr;
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, cssW, cssH);
+      if (!rows.length) return;
+      const eq = rows.map(r => Number(r.equity_usd));
+      const dd = rows.map(r => -Number(r.dd_usd));
+      const minV = Math.min(...eq, ...dd, 0);
+      const maxV = Math.max(...eq, ...dd, 0);
+      const pad = 12;
+      const w = cssW - pad * 2, h = cssH - pad * 2;
+      const xStep = w / Math.max(1, eq.length - 1);
+      const yScale = (v) => pad + h - ((v - minV) / (maxV - minV || 1)) * h;
+
+      // Zero line
+      const styles = getComputedStyle(document.documentElement);
+      const accent = styles.getPropertyValue('--accent').trim() || '#22c55e';
+      const red = styles.getPropertyValue('--red').trim() || '#ef4444';
+      const muted = styles.getPropertyValue('--text-faint').trim() || '#888';
+      ctx.strokeStyle = muted; ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(pad, yScale(0)); ctx.lineTo(pad + w, yScale(0)); ctx.stroke();
+
+      // Drawdown band (under zero, red)
+      ctx.fillStyle = red + '22';
+      ctx.beginPath();
+      ctx.moveTo(pad, yScale(0));
+      for (let i = 0; i < dd.length; i++) ctx.lineTo(pad + i * xStep, yScale(dd[i]));
+      ctx.lineTo(pad + (dd.length - 1) * xStep, yScale(0));
+      ctx.fill();
+
+      // Equity line
+      ctx.strokeStyle = accent; ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      for (let i = 0; i < eq.length; i++) {
+        const x = pad + i * xStep, y = yScale(eq[i]);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      // Axis labels
+      ctx.fillStyle = muted; ctx.font = "10px 'JetBrains Mono', monospace";
+      ctx.fillText(fmtUsd(maxV), pad + 4, pad + 10);
+      ctx.fillText(fmtUsd(minV), pad + 4, pad + h - 2);
+    }
+
+    async function renderComparePanel() {
+      const aggs = VARIANTS.map(v => ({ v, ...MANIFEST.variants[v] }));
+      const rows = aggs.map(({ v, label, aggregate: a, rejection: r }) => `
+        <tr>
+          <td class="label">${label}</td>
+          <td>${(r.n_taken||0).toLocaleString()}</td>
+          <td>${fmtPctRaw(r.taken_rate)}</td>
+          <td>${fmtPctRaw(a.wr)}</td>
+          <td>${fmtPctRaw(a.wr_lo95)}</td>
+          <td>${fmtR(a.avg_r)}</td>
+          <td>${a.pf}</td>
+          <td>${fmtUsd(a.total_pnl_usd)}</td>
+          <td>${fmtUsd(-a.max_dd_usd)}</td>
+          <td>${a.avg_hold_min} min</td>
+        </tr>
+      `).join('');
+
+      document.getElementById('panel-compare').innerHTML = `
+        <div class="card">
+          <div class="sh">
+            <div class="sh-title">Side-by-side comparison</div>
+            <div class="sh-desc">All three variants on the same dataset, same gates, same sizing.</div>
+          </div>
+          <table class="ibt">
+            <thead><tr>
+              <th class="label">Variant</th>
+              <th>Taken</th><th>Take rate</th>
+              <th>WR</th><th>WR LB95</th>
+              <th>EV (R)</th><th>PF</th>
+              <th>P&L $</th><th>Max DD $</th>
+              <th>Avg hold</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+
+          <div class="prose">
+            <strong>How to read this.</strong> A useful trade model needs <em>all</em> of:
+            <ul>
+              <li><strong>WR LB95 ≥ 50%</strong> — the edge is unlikely to be a fluke.</li>
+              <li><strong>EV &gt; 0R</strong> — positive expectancy after sizing-realistic risk.</li>
+              <li><strong>PF &gt; 1.2</strong> — gross winners meaningfully exceed gross losers.</li>
+              <li><strong>Max-DD &lt; ~5× per-trade risk × N/100</strong> — the equity curve is survivable.</li>
+            </ul>
+            If a variant fails any of those, it isn't tradeable as-is — even if the underlying analysis showed an edge in raw probabilities. The 70% follow-through stat is real, but ~60% of breakouts have stops too wide to take, and same-bar tie-breaks + slippage kill more of the headline edge.
+          </div>
+
+          <div class="prose">
+            <strong>Where to go from here.</strong> The dashboard's "Conditions" tab on the Breakout study showed an edge when H+1 opens above prev-mid. A natural next variant: <strong>structural-1R + open-above-prev-mid filter</strong>, which trades only on the half of breakouts where the open already confirms direction. That should lift WR by 3–5 percentage points if the analysis edge translates — but again, only the backtest will tell.
+          </div>
+        </div>
+      `;
+    }
+
+    init().catch(e => { console.error(e); alert('Failed to load: ' + e.message); });
+  </script>
+</body>
+</html>

@@ -1,6 +1,93 @@
 //@version=6
 indicator("Abhi's Live Price Action", overlay=true,
-         max_labels_count=500, max_lines_count=500, max_boxes_count=500)
+         max_labels_count=500, max_lines_count=500, max_boxes_count=500,
+         max_bars_back=5000)
+
+// ── 🎨 PALETTE — keep in sync with palette-block reference ────────────────────
+// Source of truth: docs/superpowers/specs/2026-05-06-unified-pine-palette-block.pine
+// When that file changes, copy verbatim into the block below.
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 🎨 CANONICAL PALETTE BLOCK                                                ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+G_THEME = "🎨 Theme"
+gTheme = input.string("Auto", "Theme",
+                      options=["Auto", "Dark", "Light"],
+                      group=G_THEME,
+                      tooltip="Auto reads chart bg brightness; Dark/Light forces the palette.")
+
+// All palette state assigned ONCE on the first bar via barstate.isfirst gate.
+// `chart.bg_color` is a series in Pine v6, so any expression that reads it
+// (even inside a `var`) makes the result series-typed and grows the historical
+// buffer requirement on every live bar. The barstate.isfirst gate confines
+// the read to a single bar; the `var` declarations preserve the values
+// thereafter without re-reading the series.
+var bool _AUTO_IS_LIGHT = false
+var bool IS_LIGHT_MODE  = false
+var color P_LONG_BASE   = #34d399
+var color P_SHORT_BASE  = #f87171
+var color P_WARN_BASE   = #fbbf24
+var color P_INFO_BASE   = #38bdf8
+var color P_ACCENT_BASE = #a78bfa
+var color P_STRUCT_BASE = #cbd5e1
+var color P_INK         = #f1f5f9
+var color P_SURFACE     = #334155
+var color P_ON_SURFACE  = #f1f5f9
+
+if barstate.isfirst
+    _AUTO_IS_LIGHT := (color.r(chart.bg_color) + color.g(chart.bg_color) + color.b(chart.bg_color)) / 3.0 > 127
+    IS_LIGHT_MODE  := gTheme == "Light" or (gTheme == "Auto" and _AUTO_IS_LIGHT)
+    P_LONG_BASE    := IS_LIGHT_MODE ? #047857 : #34d399
+    P_SHORT_BASE   := IS_LIGHT_MODE ? #b91c1c : #f87171
+    P_WARN_BASE    := IS_LIGHT_MODE ? #b45309 : #fbbf24
+    P_INFO_BASE    := IS_LIGHT_MODE ? #0369a1 : #38bdf8
+    P_ACCENT_BASE  := IS_LIGHT_MODE ? #6d28d9 : #a78bfa
+    P_STRUCT_BASE  := IS_LIGHT_MODE ? #475569 : #cbd5e1
+    P_INK          := IS_LIGHT_MODE ? #0f172a : #f1f5f9
+    // P_SURFACE / P_ON_SURFACE are mode-independent (always-dark pill cards
+    // with always-light text — see "elevated card" pattern in palette spec).
+
+tier_ink(color c)     => color.new(c, 0)
+tier_strong(color c)  => color.new(c, 25)
+tier_mid(color c)     => color.new(c, 60)
+tier_soft(color c)    => color.new(c, 85)
+tier_whisper(color c) => color.new(c, 95)
+
+pal_long_ink()       => tier_ink(P_LONG_BASE)
+pal_long_strong()    => tier_strong(P_LONG_BASE)
+pal_long_mid()       => tier_mid(P_LONG_BASE)
+pal_long_soft()      => tier_soft(P_LONG_BASE)
+pal_long_whisper()   => tier_whisper(P_LONG_BASE)
+pal_short_ink()      => tier_ink(P_SHORT_BASE)
+pal_short_strong()   => tier_strong(P_SHORT_BASE)
+pal_short_mid()      => tier_mid(P_SHORT_BASE)
+pal_short_soft()     => tier_soft(P_SHORT_BASE)
+pal_short_whisper()  => tier_whisper(P_SHORT_BASE)
+pal_warn_ink()       => tier_ink(P_WARN_BASE)
+pal_warn_strong()    => tier_strong(P_WARN_BASE)
+pal_warn_mid()       => tier_mid(P_WARN_BASE)
+pal_warn_soft()      => tier_soft(P_WARN_BASE)
+pal_warn_whisper()   => tier_whisper(P_WARN_BASE)
+pal_info_ink()       => tier_ink(P_INFO_BASE)
+pal_info_strong()    => tier_strong(P_INFO_BASE)
+pal_info_mid()       => tier_mid(P_INFO_BASE)
+pal_info_soft()      => tier_soft(P_INFO_BASE)
+pal_info_whisper()   => tier_whisper(P_INFO_BASE)
+pal_accent_ink()     => tier_ink(P_ACCENT_BASE)
+pal_accent_strong()  => tier_strong(P_ACCENT_BASE)
+pal_accent_mid()     => tier_mid(P_ACCENT_BASE)
+pal_accent_soft()    => tier_soft(P_ACCENT_BASE)
+pal_accent_whisper() => tier_whisper(P_ACCENT_BASE)
+pal_struct_ink()     => tier_ink(P_STRUCT_BASE)
+pal_struct_strong()  => tier_strong(P_STRUCT_BASE)
+pal_struct_mid()     => tier_mid(P_STRUCT_BASE)
+pal_struct_soft()    => tier_soft(P_STRUCT_BASE)
+pal_struct_whisper() => tier_whisper(P_STRUCT_BASE)
+pal_ink()            => P_INK
+pal_surface()        => P_SURFACE
+pal_surface_strong() => tier_strong(P_SURFACE)
+pal_surface_soft()   => tier_soft(P_SURFACE)
+pal_on_surface()     => P_ON_SURFACE
+// ╚══════════════════════════════════════════════════════════════════════════╝
 
 // ╔══════════════════════════════════════════════════════════════════════════╗
 // ║ Abhi's Live Price Action — intraday price-action structure overlay       ║
@@ -14,8 +101,10 @@ indicator("Abhi's Live Price Action", overlay=true,
 
 // ── ⚙ General ─────────────────────────────────────────────────────────────
 G_GENERAL = "⚙ General"
-gTheme        = input.string("Dark", "Theme",        options=["Dark","Light","Custom"], group=G_GENERAL)
 gTzNote       = input.string("America/New_York", "Time zone (read-only)", options=["America/New_York"], group=G_GENERAL)
+gDisplayMode  = input.string("Full", "Display Mode", options=["Live Action", "Full"], group=G_GENERAL,
+                              tooltip="Live Action: minimal chart focused on current price action — hour boxes, quarter dividers, midlines, 3h triad tint, 9:30 box, session boxes, band labels, 05-box tint. Hides every horizontal session line (P12, Midnight, O/U, MDR-10, Asia fib) and every per-hour pill / verdict / apex / sweeper / band-rejection / hour-open-label / hour-H-L marker. Full: everything on (current default).")
+bool LIVE_MODE = gDisplayMode == "Live Action"
 
 // ── 📊 Active Block Tints ────────────────────────────────────────────────
 G_RO = "📊 Active Block Tints"
@@ -37,14 +126,6 @@ gShowBiasShift= input.bool(true,  "Show bias-shift markers", group=G_QS)
 gShowDojiConf = input.bool(true,  "Show doji-confirmed marker", group=G_QS)
 gShowQBgs     = input.bool(true,  "Show per-quarter background tints", group=G_QS)
 gShowHourOpenBox = input.bool(true, "Show hour-open minute box (gray strip at :00)", group=G_QS)
-gColHourOpenBox  = input.color(color.new(#94a3b8, 75), "Hour-open minute box color", group=G_QS)
-// Per-quarter background colors. Q1/Q2/Q4 default to fully transparent so the
-// hour shows as clear; Q3 defaults to a faint cyan/teal wash so the eye picks
-// it out (cyan kept distinct from the amber 05 box). All user-configurable.
-gColQ1Bg      = input.color(color.new(color.white, 100), "Q1 background", group=G_QS)
-gColQ2Bg      = input.color(color.new(color.white, 100), "Q2 background", group=G_QS)
-gColQ3Bg      = input.color(color.new(#64748b, 88),       "Q3 background", group=G_QS)
-gColQ4Bg      = input.color(color.new(color.white, 100), "Q4 background", group=G_QS)
 
 // ── 🕒 Hour & Triad Verdicts ─────────────────────────────────────────────
 G_VER = "🕒 Hour & Triad Verdicts"
@@ -80,33 +161,38 @@ G_930 = "🟦 9:30 Range Box"
 g930On        = input.bool(true,  "▶ Enable group", group=G_930)
 g930ShowBox   = input.bool(true,  "Show 9:30 candle range box (9:30 → 16:00)", group=G_930)
 g930ShowQuart = input.bool(true,  "Show .25 / .5 / .75 lines", group=G_930)
-g930BoxColor  = input.color(color.new(#94a3b8, 85), "Box fill (9:30 → 16:00)", group=G_930)
-g930LineColor = input.color(color.new(#94a3b8, 50), "Quartile line color", group=G_930)
-g930CandleColor = input.color(color.new(#fbbf24, 60), "9:30 candle highlight (separate shade)", group=G_930,
-                              tooltip="Distinct color overlay on just the 9:30 bar so the originating candle stands apart from the session range box.")
 
-// ── 🌐 Session Anchors (Asia / London / NY1 / NY2 + P12 + midnight) ──────
-G_SESS = "🌐 Session Anchors"
-gSessOn          = input.bool(true,  "▶ Enable group", group=G_SESS)
+// ── 🌐 Session Anchors — split into 4 sub-groups so each family has its own
+// collapsible toggle in the indicator settings panel. Master switch lives
+// in 🌐 Session Anchors · Boxes; the other groups inherit it via gSessOn.
+G_SESS         = "🌐 Session Anchors · Boxes"
+G_SESS_LEVELS  = "🌐 Session Anchors · Reference Levels (P12 / Midnight / MDR-10)"
+G_SESS_OU      = "🌐 Session Anchors · Mid Lines (O/U)"
+G_SESS_FIB     = "🌐 Session Anchors · Asia Fib Projections"
+
+gSessOn          = input.bool(true,  "▶ Enable all session anchors", group=G_SESS,
+                               tooltip="Master switch. When off, every session-anchor family below is hidden regardless of its own toggle.")
 gSessShowBoxes   = input.bool(true,  "Show fixed-window session range boxes (4/day)", group=G_SESS,
                                tooltip="Draws a range box + midline for each fixed window: Asia 18:00-19:30, London 02:30-03:30, NY1 07:30-08:30, NY2 11:30-12:30 (NY time).")
-gSessShowP12     = input.bool(true,  "Show P12 high / mid / low lines (18:00-06:00 range)", group=G_SESS)
-gSessShowMidnight= input.bool(true,  "Show midnight vertical line (00:00 NY)", group=G_SESS)
-gSessRetention   = input.string("Current and previous", "History retention",
+gSessRetention   = input.string("Current", "History retention",
                                  options=["Current", "Current and previous", "All"], group=G_SESS,
-                                 tooltip="How many days of session anchors stay on chart. Applies to session boxes, P12 lines, and midnight verticals.")
-gSessBoxColor    = input.color(color.new(#f59e0b, 90), "Session box color (4 boxes share)", group=G_SESS)
-gSessP12Color    = input.color(color.new(#14b8a6, 20), "P12 line color (high / mid / low share)", group=G_SESS)
-gSessMidnightCol = input.color(color.new(#94a3b8, 60), "Midnight line color", group=G_SESS)
-gSessShowOU      = input.bool(true,  "Show O/U lines (mid of each session box)", group=G_SESS,
-                               tooltip="At each session close, draws a horizontal line at the session's MID extending to 17:00 of the trading day. Labels: Asia O/U, London O/U, NY1 O/U, NY2 O/U.")
-gSessOUColor     = input.color(color.new(#a78bfa, 60), "O/U line color (4 share)", group=G_SESS)
-gSessShowMDR     = input.bool(true,  "Show MDR-10 High / Low", group=G_SESS,
+                                 tooltip="How many days of session anchors stay on chart. Applies to session boxes, P12 lines, midnight verticals, O/U, MDR-10, and fib projections. Default is 'Current' (today only) for a clean chart.")
+
+// Reference levels: P12, midnight, MDR-10. Default ON; toggle individually.
+gSessShowP12     = input.bool(true,  "Show P12 high / mid / low lines (18:00-06:00 range)", group=G_SESS_LEVELS)
+gSessShowMidnight= input.bool(true,  "Show midnight horizontal anchor (00:00 NY close)", group=G_SESS_LEVELS)
+gSessShowMDR     = input.bool(true,  "Show MDR-10 High / Low", group=G_SESS_LEVELS,
                                tooltip="At 18:00 NY (new trading day), spawns High/Low lines at session_open ± round(avg(last 10 day-ranges) / 2). Day = 18:00 → 17:00 NY. Excludes today.")
-gSessMDRColor    = input.color(color.new(#f87171, 20), "MDR-10 line color (high / low share)", group=G_SESS)
-gSessShowSD      = input.bool(true,  "Show Asia fib projections (-2.5 / -2 / -1.5 / -1 / +1.5 / +2 / +2.5)", group=G_SESS,
-                               tooltip="At 19:30 (Asia close), projects fib levels off the Asia 18:00–19:30 range. Anchor: high = 0, low = 1, unit = (asiaHi − asiaLo). Lines above the high (-1, -1.5, -2, -2.5) and below the low (+1.5, +2, +2.5) extend to 17:00. The 0/1 levels themselves are the Asia box edges and are not redrawn.")
-gSessSDColor     = input.color(color.new(#fbbf24, 65), "Fib projection color (all 7 share)", group=G_SESS)
+
+// O/U session midpoints — separate group because they're a distinct concept
+// (mid of each fixed-window session, not a level reference).
+gSessShowOU      = input.bool(true,  "Show O/U lines (mid of each session box)", group=G_SESS_OU,
+                               tooltip="At each session close, draws a horizontal line at the session's MID extending to 17:00 of the trading day. Labels: Asia O/U, London O/U, NY1 O/U, NY2 O/U.")
+
+// Fib projections off the Asia range — busiest line family (7 lines/day),
+// default OFF for a cleaner default chart. Toggle on when relevant.
+gSessShowSD      = input.bool(false, "Show Asia fib projections (-2.5 / -2 / -1.5 / -1 / +1.5 / +2 / +2.5)", group=G_SESS_FIB,
+                               tooltip="At 19:30 (Asia close), projects fib levels off the Asia 18:00–19:30 range. Anchor: high = 0, low = 1, unit = (asiaHi − asiaLo). Lines above the high (-1, -1.5, -2, -2.5) and below the low (+1.5, +2, +2.5) extend to 17:00. The 0/1 levels themselves are the Asia box edges and are not redrawn. Off by default — 7 lines per day adds clutter.")
 
 // ── 🔔 Alerts ─────────────────────────────────────────────────────────────
 G_AL = "🔔 Alerts"
@@ -123,163 +209,15 @@ gTblOn          = input.bool(true,  "▶ Show session status table", group=G_TBL
                              tooltip="3-row × 4-col table tracking how price reacts to each fixed-window session box (Asia / London / NY1 / NY2). Rows: Direction (Long/Short on first wick of locked H or L), Session (True if direction holds, False if opposite side later wicked), Model Status (Broken if the session's MID is wicked during the next session's window).")
 gTblPos         = input.string("top_right", "Table position",
                                 options=["top_right","top_left","bottom_right","bottom_left","middle_right","middle_left"], group=G_TBL)
-gTblBgColor     = input.color(color.new(#1a2235, 15), "Table bg color", group=G_TBL)
-gTblTextColor   = input.color(color.new(#e2eaf4, 0),  "Table text color", group=G_TBL)
-gTblHdrColor    = input.color(color.new(#94a3b8, 0),  "Header text color (row/col labels)", group=G_TBL)
-gTblLongColor   = input.color(color.new(#10b981, 0),  "Long color", group=G_TBL)
-gTblShortColor  = input.color(color.new(#ef4444, 0),  "Short color", group=G_TBL)
-gTblTrueColor   = input.color(color.new(#10b981, 0),  "True color", group=G_TBL)
-gTblFalseColor  = input.color(color.new(#ef4444, 0),  "False color", group=G_TBL)
-gTblBrokenColor = input.color(color.new(#ef4444, 0),  "Broken color", group=G_TBL)
 gTblShowBreakMark = input.bool(true, "Mark breaking candle (▲ Long above / ▼ Short below)", group=G_TBL,
                                tooltip="On the bar where price first wicks one side of an FC's locked H/L, draws a small triangle on the broken side. Same color palette as the Long/Short cells in the table. One marker per FC per day.")
-
-// ── 🎨 Custom Colors (only used when Theme = Custom) ─────────────────────
-G_COL = "🎨 Custom Colors (active when Theme = Custom)"
-gColInStat    = input.color(color.new(#7eb6ff, 0),  "In-stat extreme (navy)", group=G_COL)
-gColOutStat   = input.color(color.new(#f59e0b, 0),  "Out-of-stat extreme",  group=G_COL)
-gColSweeper   = input.color(color.new(#8b5cf6, 0),  "Sweeper",              group=G_COL)
-gColDojiConf  = input.color(color.new(#f59e0b, 0),  "Doji-confirmed",       group=G_COL)
-gColApexHr    = input.color(color.new(#ef4444, 0),  "Apex-hour highlight",  group=G_COL)
-gColLineUp    = input.color(color.new(#10b981, 0),  "Line-up readout",      group=G_COL)
-gColLineDn    = input.color(color.new(#ef4444, 0),  "Line-down readout",    group=G_COL)
-gColApexUp    = input.color(color.new(#3b82f6, 0),  "Apex-up readout",      group=G_COL)
-gColApexDn    = input.color(color.new(#8b5cf6, 0),  "Apex-down readout",    group=G_COL)
-gColDojiRO    = input.color(color.new(#f59e0b, 0),  "Doji readout",         group=G_COL)
-gColMid1h     = input.color(color.new(#f59e0b, 0),  "1h midline",           group=G_COL)
-gColMid3h     = input.color(color.new(#e2eaf4, 0),  "3h midline",           group=G_COL)
-gColBand05    = input.color(color.new(#ffffff, 75), "0.05% band",           group=G_COL)
-gColBand10    = input.color(color.new(#ffffff, 75), "0.10% band",           group=G_COL)
-gColBoxTint   = input.color(color.new(#ffffff, 96), "05 box tint",          group=G_COL)
-gColActiveHr  = input.color(color.new(#06b6d4, 95), "Active hour tint",     group=G_COL)
-gColActiveTr  = input.color(color.new(#06b6d4, 97), "Active triad tint",    group=G_COL)
-gColQDiv      = input.color(color.new(#ffffff, 88), "Quarter divider",      group=G_COL)
 
 
 // ╔══════════════════════════════════════════════════════════════════════════╗
 // ║ 2. THEME RESOLVER                                                        ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
 
-type Theme
-    color in_stat
-    color out_stat
-    color sweeper
-    color doji_conf
-    color apex_hour
-    color line_up
-    color line_dn
-    color apex_up
-    color apex_dn
-    color doji
-    color mid_1h
-    color mid_3h
-    color band_05
-    color band_10
-    color box_tint
-    color active_hr
-    color active_triad
-    color q_div
-    color readout_bg
-    color readout_border
-    color readout_text
-    color readout_text_dim
-    color readout_active_accent
-    color conf_high
-    color conf_med
-    color conf_low
-
-resolveTheme() =>
-    Theme t = na
-    if gTheme == "Dark"
-        t := Theme.new(
-          // In-stat: light navy in Dark mode for legibility against dark bg
-          // (the user spec said "dark navy"; we keep navy hue, lighten value)
-          in_stat              = color.new(#7eb6ff, 0),
-          out_stat             = color.new(#f59e0b, 0),
-          sweeper              = color.new(#8b5cf6, 0),
-          doji_conf            = color.new(#f59e0b, 0),
-          apex_hour            = color.new(#ef4444, 0),
-          line_up              = color.new(#10b981, 0),
-          line_dn              = color.new(#ef4444, 0),
-          apex_up              = color.new(#3b82f6, 0),
-          apex_dn              = color.new(#8b5cf6, 0),
-          doji                 = color.new(#a78bfa, 0),       // violet (distinct from amber)
-          mid_1h               = color.new(#f59e0b, 0),       // amber
-          mid_3h               = color.new(#06b6d4, 0),       // cyan, distinct from amber
-          band_05              = color.new(#ffffff, 60),
-          band_10              = color.new(#ffffff, 60),
-          box_tint             = color.new(#06b6d4, 92),       // 05 box bg: vivid cyan (distinct from amber Q3)
-          active_hr            = color.new(#cbd5e1, 100),      // clear by default
-          active_triad         = color.new(#cbd5e1, 88),       // slightly more visible than active hour
-          q_div                = color.new(#ffffff, 100),     // hour box bg: clear by default
-          readout_bg           = color.new(#1a2235, 5),        // bg-raised, near-opaque
-          readout_border       = color.new(#ffffff, 75),
-          readout_text         = color.new(#e2eaf4, 0),
-          readout_text_dim     = color.new(#8ba4bc, 0),
-          readout_active_accent= color.new(#06b6d4, 65),
-          conf_high            = color.new(#10b981, 0),
-          conf_med             = color.new(#f59e0b, 0),
-          conf_low             = color.new(#ef4444, 0))
-    else if gTheme == "Light"
-        t := Theme.new(
-          in_stat              = color.new(#0a2540, 0),  // dark navy
-          out_stat             = color.new(#d97706, 0),
-          sweeper              = color.new(#7c3aed, 0),
-          doji_conf            = color.new(#d97706, 0),
-          apex_hour            = color.new(#dc2626, 0),
-          line_up              = color.new(#059669, 0),
-          line_dn              = color.new(#dc2626, 0),
-          apex_up              = color.new(#2563eb, 0),
-          apex_dn              = color.new(#7c3aed, 0),
-          doji                 = color.new(#7c3aed, 0),       // violet (distinct from amber)
-          mid_1h               = color.new(#d97706, 0),       // amber
-          mid_3h               = color.new(#0891b2, 0),       // cyan, distinct from amber
-          band_05              = color.new(#000000, 55),
-          band_10              = color.new(#000000, 55),
-          box_tint             = color.new(#0891b2, 90),       // 05 box bg: vivid cyan (distinct from amber Q3)
-          active_hr            = color.new(#94a3b8, 100),      // clear by default
-          active_triad         = color.new(#94a3b8, 86),       // more opaque than active hour
-          q_div                = color.new(#94a3b8, 100),      // hour box bg: clear by default
-          readout_bg           = color.new(#f1f5f9, 5),        // slate-100 fill, near-opaque
-          readout_border       = color.new(#475569, 50),
-          readout_text         = color.new(#0f172a, 0),        // near-black for readability
-          readout_text_dim     = color.new(#475569, 0),
-          readout_active_accent= color.new(#0891b2, 55),
-          conf_high            = color.new(#059669, 0),
-          conf_med             = color.new(#d97706, 0),
-          conf_low             = color.new(#dc2626, 0))
-    else
-        t := Theme.new(
-          in_stat              = gColInStat,
-          out_stat             = gColOutStat,
-          sweeper              = gColSweeper,
-          doji_conf            = gColDojiConf,
-          apex_hour            = gColApexHr,
-          line_up              = gColLineUp,
-          line_dn              = gColLineDn,
-          apex_up              = gColApexUp,
-          apex_dn              = gColApexDn,
-          doji                 = gColDojiRO,
-          mid_1h               = gColMid1h,
-          mid_3h               = gColMid3h,
-          band_05              = gColBand05,
-          band_10              = gColBand10,
-          box_tint             = gColBoxTint,
-          active_hr            = gColActiveHr,
-          active_triad         = gColActiveTr,
-          q_div                = gColQDiv,
-          readout_bg           = color.new(#111827, 15),
-          readout_border       = color.new(#ffffff, 90),
-          readout_text         = color.new(#e2eaf4, 0),
-          readout_text_dim     = color.new(#8ba4bc, 0),
-          readout_active_accent= color.new(#06b6d4, 65),
-          conf_high            = color.new(#10b981, 0),
-          conf_med             = color.new(#f59e0b, 0),
-          conf_low             = color.new(#ef4444, 0))
-    t
-
-var Theme T = na
-T := resolveTheme()
+// (Theme UDT and resolveTheme() removed in palette refactor — see palette block above)
 
 
 // ╔══════════════════════════════════════════════════════════════════════════╗
@@ -609,55 +547,56 @@ inTrackedHour() => not na(blockId()) or is3pmHour()
 // with each bar. Quarter verticals at :15, :30, :45 are thin solid lines
 // confined to within the active hour's price range.
 
-// Hour box bg: clear by default. Pass `na` when q_div is at alpha ≥95 so
-// the fill is truly invisible (Pine's `color.new(c, 100)` can paint a faint
-// wash on some renderers).
-// Quarter divider verticals always render visibly regardless of bg opacity —
-// pinned to a moderate gray that shows on both light and dark themes.
-// Resolve once: theme is constant across a script run.
-color HOUR_BOX_BG          = color.t(T.q_div) >= 95 ? color(na) : T.q_div
-// Detect the actual chart background brightness so contrast-sensitive colors
-// (text, frame borders) stay readable even if the indicator's theme input
-// doesn't match the user's TradingView chart skin.
-// `color.r/g/b` give 0–255; pick light text on dark bg and vice versa.
-bool _CHART_IS_LIGHT       = (color.r(chart.bg_color) + color.g(chart.bg_color) + color.b(chart.bg_color)) / 3.0 > 127
-color HOUR_BOX_BORDER      = _CHART_IS_LIGHT ? color.new(#475569, 85) : color.new(#cbd5e1, 85)
-color HOUR_DIV_LINE        = _CHART_IS_LIGHT ? color.new(#475569, 85) : color.new(#cbd5e1, 85)
-// Hour-open line color: distinct orange so it doesn't blend with candle
-// wicks or other price-action markers. Same hue in light/dark for consistency.
-color HOUR_OPEN_COLOR      = _CHART_IS_LIGHT ? color.new(#c2410c, 0)  : color.new(#fb923c, 0)
-color HL_MARK_COLOR        = _CHART_IS_LIGHT ? color.new(#0f172a, 0)  : color.new(#f1f5f9, 0)
-color SWEEP_RED_COLOR      = gTheme == "Light" ? color.new(#dc2626, 0)  : color.new(#ef4444, 0)
-color SWEEP_GREEN_COLOR    = gTheme == "Light" ? color.new(#059669, 0)  : color.new(#10b981, 0)
-color DOJI_LINE_COLOR      = gTheme == "Light" ? color.new(#000000, 0)  : color.new(#ffffff, 0)
-color IN_STAT_BG           = color.new(T.in_stat, 80)
-color OUT_STAT_BG          = color.new(T.out_stat, 80)
-color ACTIVE_TRIAD_BORDER  = color.new(T.active_triad, math.max(0, color.t(T.active_triad) - 40))
-color BOX_05_BORDER        = color.new(T.box_tint, math.max(0, color.t(T.box_tint) - 10))
-color ACTIVE_HR_BG         = color.t(T.active_hr) >= 95 ? color(na) : T.active_hr
+// Hour box bg: clear by default — palette uses na so the fill is truly invisible.
+// Quarter divider verticals always render visibly regardless of bg opacity.
+// Hour-open line color: distinct warn tone so it doesn't blend with candle wicks.
+// Pill palette for hour-close summary label: solid surface fill with ink text.
+// Session anchor lines (P12 / O/U / MDR-10 / midnight / fib) routed through palette.
+// Per-quarter background border (na-color = invisible); Q1-Q4 share the palette.
+color HOUR_BOX_BG          = color(na)
+color HOUR_BOX_BORDER      = pal_struct_strong()
+color HOUR_DIV_LINE        = pal_struct_strong()
+// HOUR_OPEN line color (chart): warn-ink reads as amber against the chart bg.
+// The HOUR_OPEN_COLOR is also used as textcolor on the hour-open pill — but pills
+// route through their own surface tokens at the call site (see line ~1151), so we
+// can keep this as the line color.
+color HOUR_OPEN_COLOR      = pal_warn_ink()
+// HL_MARK line color (chart): ink reads as default text color against chart bg.
+color HL_MARK_COLOR        = pal_ink()
+color SWEEP_RED_COLOR      = pal_short_ink()
+color SWEEP_GREEN_COLOR    = pal_long_ink()
+color DOJI_LINE_COLOR      = pal_ink()
+color IN_STAT_BG           = pal_surface()
+color OUT_STAT_BG          = pal_surface()
+color ACTIVE_TRIAD_BORDER  = pal_struct_mid()
+color BOX_05_BORDER        = pal_info_soft()
+color ACTIVE_HR_BG         = pal_struct_whisper()
 color ACTIVE_HR_BORDER     = color(na)
-color BAND_05_BG           = color.new(T.band_05, 100)
-color BAND_10_BG           = color.new(T.band_10, 100)
-color APEX_HOUR_BG         = color.new(T.apex_hour, 97)
-color APEX_HOUR_BORDER     = color.new(T.apex_hour, 85)
-color APEX_HOUR_LABEL_BG   = color.new(T.apex_hour, 88)
-color MID_1H_BG            = color.new(T.mid_1h, 90)
-color MID_3H_LINE          = color.new(T.mid_3h, 50)
-color HOUR_OPEN_LABEL_BG   = color.new(HOUR_OPEN_COLOR, 100)
-color HL_MARK_LABEL_BG     = color.new(HL_MARK_COLOR, 100)
+color BAND_05_BG           = pal_surface()
+color BAND_10_BG           = pal_surface()
+color APEX_HOUR_BG         = pal_warn_whisper()
+color APEX_HOUR_BORDER     = pal_warn_soft()
+color APEX_HOUR_LABEL_BG   = pal_surface()
+color MID_1H_BG            = pal_surface()
+color MID_3H_LINE          = pal_info_mid()
+color HOUR_OPEN_LABEL_BG   = pal_surface()
+color HL_MARK_LABEL_BG     = pal_surface()
 color RED_TRANSPARENT      = color.new(color.red, 100)
-// Formal "pill" palette for hour-close summary label. Solid fill so the box
-// reads clearly against any chart bg. Light-mode pills use a dark slate fill
-// with light text for inverse contrast (more legible against bright charts).
-color PILL_BG              = gTheme == "Light" ? color.new(#1e293b, 0)  : color.new(#334155, 0)
-color PILL_BORDER          = gTheme == "Light" ? color.new(#475569, 30) : color.new(#64748b, 30)
-color PILL_TEXT            = gTheme == "Light" ? color.new(#f1f5f9, 0)  : color.new(#f1f5f9, 0)
-// Per-quarter background border (100-alpha = invisible). qC differs per
-// quarter (Q1/Q2/Q3/Q4 user-configurable), so we resolve all four.
-color Q1_BG_BORDER         = color.new(gColQ1Bg, 100)
-color Q2_BG_BORDER         = color.new(gColQ2Bg, 100)
-color Q3_BG_BORDER         = color.new(gColQ3Bg, 100)
-color Q4_BG_BORDER         = color.new(gColQ4Bg, 100)
+color PILL_BG              = pal_surface()
+color PILL_BORDER          = pal_surface_strong()
+color PILL_TEXT            = pal_on_surface()
+// Session-anchor lines bumped one tier lighter (ink→strong, strong→mid) so
+// they read as background reference, not foreground signal. Keeps them
+// visible at a glance without competing with price-action markers.
+color SESS_P12_LINE        = pal_info_strong()
+color SESS_OU_LINE         = pal_struct_mid()
+color SESS_MDR_LINE        = pal_struct_mid()
+color SESS_MIDNIGHT_LINE   = pal_info_mid()
+color SESS_SD_LINE         = pal_warn_mid()
+color Q1_BG_BORDER         = color(na)
+color Q2_BG_BORDER         = color(na)
+color Q3_BG_BORDER         = color(na)
+color Q4_BG_BORDER         = color(na)
 
 // One box + 3 quarter-divider lines per hour, updated live as range expands
 var box currentHourBox = na
@@ -712,7 +651,7 @@ var box currentQ3Bg = na
 var box currentQ4Bg = na
 
 qBgColorFor(int qIdx) =>
-    qIdx == 1 ? gColQ1Bg : qIdx == 2 ? gColQ2Bg : qIdx == 3 ? gColQ3Bg : gColQ4Bg
+    qIdx == 3 ? pal_struct_whisper() : color(na)
 
 // Reset references at hour open so closed-hour quarter tints freeze in place
 if gQStructOn and gShowQBgs and isTfMin1() and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
@@ -729,7 +668,7 @@ if gQStructOn and gShowQBgs and IS_TF_MIN1 and isFirstBarOfQuarter() and inTrack
     int qNewBg = quarterOfHour()
     int qLeft  = bar_index
     int qRight = bar_index + BARS_PER_QUARTER
-    color qC      = qNewBg == 1 ? gColQ1Bg     : qNewBg == 2 ? gColQ2Bg     : qNewBg == 3 ? gColQ3Bg     : gColQ4Bg
+    color qC      = qNewBg == 3 ? pal_struct_whisper() : color(na)
     color qBorder = qNewBg == 1 ? Q1_BG_BORDER : qNewBg == 2 ? Q2_BG_BORDER : qNewBg == 3 ? Q3_BG_BORDER : Q4_BG_BORDER
     box newQBox = box.new(qLeft, box.get_top(currentHourBox), qRight, box.get_bottom(currentHourBox),
                           xloc=xloc.bar_index, bgcolor=qC,
@@ -770,8 +709,8 @@ var box currentHourOpenBox = na
 
 if gQStructOn and gShowHourOpenBox and IS_TF_MIN1 and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
     currentHourOpenBox := box.new(bar_index, high, bar_index + 4, low,
-                                  xloc=xloc.bar_index, bgcolor=gColHourOpenBox,
-                                  border_color=color.new(gColHourOpenBox, 100), border_width=0)
+                                  xloc=xloc.bar_index, bgcolor=pal_struct_soft(),
+                                  border_color=color(na), border_width=0)
 
 // During minutes :00–:04, expand top/bottom to track the running 5-bar H/L.
 // At :05+ the box freezes at the locked range. We piggy-back on the
@@ -789,7 +728,7 @@ var box current05Box = na
 
 if gBoxOn and gShowBoxCol and IS_TF_MIN1 and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
     current05Box := box.new(left=bar_index, top=high, right=bar_index + BARS_PER_HOUR - 1, bottom=low,
-                            xloc=xloc.bar_index, bgcolor=T.box_tint,
+                            xloc=xloc.bar_index, bgcolor=pal_info_whisper(),
                             border_color=BOX_05_BORDER,
                             border_width=1, border_style=line.style_solid)
 
@@ -813,17 +752,17 @@ if gBoxOn and IS_TF_MIN1 and HAS_LH
         // minute :14 of the hour. They are NOT drawn through Q2/Q3/Q4.
         int q1EndBar = curH.anchorBar + BARS_PER_QUARTER - 1
         if gShowBand10
-            line.new(hourStartBar, u10, q1EndBar, u10, xloc=xloc.bar_index, color=T.band_10, style=line.style_solid, width=1)
-            line.new(hourStartBar, l10, q1EndBar, l10, xloc=xloc.bar_index, color=T.band_10, style=line.style_solid, width=1)
+            line.new(hourStartBar, u10, q1EndBar, u10, xloc=xloc.bar_index, color=pal_struct_mid(), style=line.style_solid, width=1)
+            line.new(hourStartBar, l10, q1EndBar, l10, xloc=xloc.bar_index, color=pal_struct_mid(), style=line.style_solid, width=1)
             if gShowBandLbl
-                label.new(q1EndBar, u10, ".1%", xloc=xloc.bar_index, color=BAND_10_BG, textcolor=T.band_10, style=label.style_label_left, size=size.small)
-                label.new(q1EndBar, l10, ".1%", xloc=xloc.bar_index, color=BAND_10_BG, textcolor=T.band_10, style=label.style_label_left, size=size.small)
+                label.new(q1EndBar, u10, ".1%", xloc=xloc.bar_index, color=BAND_10_BG, textcolor=pal_on_surface(), style=label.style_label_left, size=size.small)
+                label.new(q1EndBar, l10, ".1%", xloc=xloc.bar_index, color=BAND_10_BG, textcolor=pal_on_surface(), style=label.style_label_left, size=size.small)
         if gShowBand05
-            line.new(hourStartBar, u05, q1EndBar, u05, xloc=xloc.bar_index, color=T.band_05, style=line.style_solid, width=1)
-            line.new(hourStartBar, l05_, q1EndBar, l05_, xloc=xloc.bar_index, color=T.band_05, style=line.style_solid, width=1)
+            line.new(hourStartBar, u05, q1EndBar, u05, xloc=xloc.bar_index, color=pal_struct_mid(), style=line.style_solid, width=1)
+            line.new(hourStartBar, l05_, q1EndBar, l05_, xloc=xloc.bar_index, color=pal_struct_mid(), style=line.style_solid, width=1)
             if gShowBandLbl
-                label.new(q1EndBar, u05, ".05%", xloc=xloc.bar_index, color=BAND_05_BG, textcolor=T.band_05, style=label.style_label_left, size=size.small)
-                label.new(q1EndBar, l05_, ".05%", xloc=xloc.bar_index, color=BAND_05_BG, textcolor=T.band_05, style=label.style_label_left, size=size.small)
+                label.new(q1EndBar, u05, ".05%", xloc=xloc.bar_index, color=BAND_05_BG, textcolor=pal_on_surface(), style=label.style_label_left, size=size.small)
+                label.new(q1EndBar, l05_, ".05%", xloc=xloc.bar_index, color=BAND_05_BG, textcolor=pal_on_surface(), style=label.style_label_left, size=size.small)
 
 // ── Band rejection markers ────────────────────────────────────────────────
 detectBandRejection(float h, float l, float c, float u10, float u05, float l05_, float l10) =>
@@ -879,8 +818,8 @@ if gBoxOn and HAS_LH
                     rejFired05Dn := true
 
                 // Only render the 10% band rejections; 05% rejections suppressed.
-                if gShowBandRej and level == "10" and IS_TF_MIN1
-                    color cMark = T.band_10
+                if gShowBandRej and level == "10" and IS_TF_MIN1 and not LIVE_MODE
+                    color cMark = pal_struct_mid()
                     float anchorY = side == "upper" ? high : low
                     label.new(bar_index, anchorY, "rej " + level,
                               style=side == "upper" ? label.style_label_down : label.style_label_up,
@@ -974,10 +913,10 @@ if HAS_LH
                 if gMidOn and gShowMidReact
                     if r1 == "support"
                         label.new(bar_index, low, "●", style=label.style_label_up,
-                                  color=MID_1H_BG, textcolor=T.mid_1h, size=size.small)
+                                  color=MID_1H_BG, textcolor=pal_warn_ink(), size=size.small)
                     else
                         label.new(bar_index, high, "●", style=label.style_label_down,
-                                  color=MID_1H_BG, textcolor=T.mid_1h, size=size.small)
+                                  color=MID_1H_BG, textcolor=pal_warn_ink(), size=size.small)
                 if gAlertsOn and gAlertMid
                     alert("Live Price Action: 1h midline " + r1, alert.freq_once_per_bar)
 
@@ -1008,7 +947,7 @@ var line currentMid3hLine = na
 // per-bar y-update block below writes to `currentMid1hLine` only).
 if gMidOn and gShowMid1h and IS_TF_MIN1 and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
     currentMid1hLine := line.new(bar_index, na, bar_index + BARS_PER_HOUR - 1, na,
-                                 xloc=xloc.bar_index, color=T.mid_1h,
+                                 xloc=xloc.bar_index, color=pal_warn_ink(),
                                  width=gMid1hWidth, style=line.style_solid)
 
 // Reset / spawn 3h midline at triad open (first bar of C1). Same delete-then-
@@ -1083,7 +1022,7 @@ if isFirstBarOfQuarter() and quarterOfHour() == 1
     lastSweepBiasBar := na
     dojiConfirmedThisHour := false
 
-if gQStructOn and isLastBarOfQuarter() and HAS_LH
+if gQStructOn and not LIVE_MODE and isLastBarOfQuarter() and HAS_LH
     HourAgg curH_sw = LH
     int byQ = quarterOfHour()
     if not na(curH_sw) and byQ >= 2
@@ -1231,7 +1170,7 @@ var label currentHourOpenLabel = na
 var line  priorHourOpenLine    = na
 var label priorHourOpenLabel   = na
 
-if gQStructOn and IS_TF_MIN1 and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+if gQStructOn and not LIVE_MODE and IS_TF_MIN1 and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
     // Shift current → prior, delete the older "prior" before overwriting.
     if not na(priorHourOpenLine)
         line.delete(priorHourOpenLine)
@@ -1247,7 +1186,7 @@ if gQStructOn and IS_TF_MIN1 and isFirstBarOfQuarter() and quarterOfHour() == 1 
     int hourMidBarOpen = bar_index + BARS_PER_HOUR / 2
     currentHourOpenLabel := label.new(hourMidBarOpen, open, hourTag + " Open",
                                       xloc=xloc.bar_index, style=label.style_label_down,
-                                      color=HOUR_OPEN_LABEL_BG, textcolor=HOUR_OPEN_COLOR, size=size.small)
+                                      color=HOUR_OPEN_LABEL_BG, textcolor=pal_on_surface(), size=size.small)
 
 
 // ── Hour high/low marker (whichever is closer to current close) ───────────
@@ -1272,7 +1211,7 @@ var bool  hlSwept  = false  // sticky once a sweep+reclose is detected
 var line  hlLinePrev  = na
 var label hlLabelPrev = na
 
-if gQStructOn and IS_TF_MIN1 and isHourClose() and HAS_LH
+if gQStructOn and not LIVE_MODE and IS_TF_MIN1 and isHourClose() and HAS_LH
     HourAgg justClosedHL = LH
     if not na(justClosedHL)
         float hi = hourHigh(justClosedHL)
@@ -1326,7 +1265,7 @@ if gQStructOn and IS_TF_MIN1 and isHourClose() and HAS_LH
                 int hlMidBar = math.round((qHiHL.highBar + hlEndBar) / 2.0)
                 hlLabel := label.new(hlMidBar, hi, hlTag + " High",
                                      xloc=xloc.bar_index, style=label.style_label_down,
-                                     color=HL_MARK_LABEL_BG, textcolor=HL_MARK_COLOR, size=size.small)
+                                     color=HL_MARK_LABEL_BG, textcolor=pal_on_surface(), size=size.small)
                 hlLevel := hi
                 hlIsHigh := true
             else if not na(qLoHL)
@@ -1336,13 +1275,13 @@ if gQStructOn and IS_TF_MIN1 and isHourClose() and HAS_LH
                 int hlMidBar = math.round((qLoHL.lowBar + hlEndBar) / 2.0)
                 hlLabel := label.new(hlMidBar, lo, hlTag + " Low",
                                      xloc=xloc.bar_index, style=label.style_label_down,
-                                     color=HL_MARK_LABEL_BG, textcolor=HL_MARK_COLOR, size=size.small)
+                                     color=HL_MARK_LABEL_BG, textcolor=pal_on_surface(), size=size.small)
                 hlLevel := lo
                 hlIsHigh := false
 
 // Sweep + reclose detector. Runs every bar while a live marker exists and
 // hasn't already been flagged. High swept → red; low swept → green.
-if gQStructOn and not hlSwept and not na(hlLine) and not na(hlLevel)
+if gQStructOn and not LIVE_MODE and not hlSwept and not na(hlLine) and not na(hlLevel)
     bool fired = false
     color cSwept = na
     if hlIsHigh and high > hlLevel and close < hlLevel
@@ -1409,7 +1348,7 @@ var label priorHourSummaryLabel = na
 //   - "All"                  → drop the ref to the just-closed pill without
 //                              deleting it. It freezes in place; the next
 //                              hour spawns a fresh label object.
-if gVerdictsOn and gShowHourVerd and IS_TF_MIN1 and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
+if gVerdictsOn and not LIVE_MODE and gShowHourVerd and IS_TF_MIN1 and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
     if gPillRetention == "Current"
         if not na(priorHourSummaryLabel)
             label.delete(priorHourSummaryLabel)
@@ -1430,7 +1369,7 @@ if gVerdictsOn and gShowHourVerd and IS_TF_MIN1 and isFirstBarOfQuarter() and qu
 // classification only update at quarter boundaries). Avoids per-bar rebuild
 // of 4-quarter walks + classifyHour + label composition during the live
 // portion of a quarter.
-if gVerdictsOn and gShowHourVerd and IS_TF_MIN1 and HAS_LH and isLastBarOfQuarter()
+if gVerdictsOn and not LIVE_MODE and gShowHourVerd and IS_TF_MIN1 and HAS_LH and isLastBarOfQuarter()
     HourAgg justClosedV = LH
     if not na(justClosedV)
         float hiV = hourHigh(justClosedV)
@@ -1508,14 +1447,14 @@ if gVerdictsOn and gShowHourVerd and IS_TF_MIN1 and HAS_LH and isLastBarOfQuarte
 
 
 // ── Triad close verdicts + apex-hour highlight ────────────────────────────
-if gVerdictsOn and IS_TF_MIN1 and isTriadClose() and not na(activeTriad)
+if gVerdictsOn and not LIVE_MODE and IS_TF_MIN1 and isTriadClose() and not na(activeTriad)
     cls_t = classifyTriad(activeTriad)
     if cls_t != "pending"
-        color ct = cls_t == "line-up" ? T.line_up :
-                   cls_t == "line-down" ? T.line_dn :
-                   cls_t == "apex-up" ? T.apex_up :
-                   cls_t == "apex-down" ? T.apex_dn :
-                   T.doji
+        color ct = cls_t == "line-up" ? pal_long_ink() :
+                   cls_t == "line-down" ? pal_short_ink() :
+                   cls_t == "apex-up" ? pal_info_ink() :
+                   cls_t == "apex-down" ? pal_accent_ink() :
+                   pal_accent_ink()
         // Show line/apex triad verdicts only — doji triads are not labelled.
         if gShowTriadVerd and cls_t != "doji"
             label.new(bar_index, triadLow(activeTriad), cls_t + " triad", xloc=xloc.bar_index,
@@ -1533,7 +1472,7 @@ if gVerdictsOn and IS_TF_MIN1 and isTriadClose() and not na(activeTriad)
             int apexMidBar = activeTriad.c2.anchorBar + BARS_PER_HOUR / 2
             label.new(apexMidBar, c2Hi, "• Apex Hour", xloc=xloc.bar_index,
                       style=label.style_label_down, color=APEX_HOUR_LABEL_BG,
-                      textcolor=T.apex_hour, size=size.small)
+                      textcolor=pal_on_surface(), size=size.small)
         if gAlertsOn and gAlertApex and (cls_t == "apex-up" or cls_t == "apex-down")
             alert("Live Price Action: " + cls_t + " confirmed for triad " + activeTriad.blockId, alert.freq_once_per_bar)
 
@@ -1595,7 +1534,7 @@ if IS_TF_MIN1 and not na(activeTriad)
         if not na(trHi) and not na(trLo)
             if na(activeTriadTint)
                 activeTriadTint := box.new(activeTriad.anchorBar, trHi, bar_index, trLo,
-                                           xloc=xloc.bar_index, bgcolor=T.active_triad,
+                                           xloc=xloc.bar_index, bgcolor=pal_struct_soft(),
                                            border_color=ACTIVE_TRIAD_BORDER,
                                            border_width=2)
             else
@@ -1652,8 +1591,8 @@ if g930On and is930Bar()
     if na(range930CreatedAt) or range930CreatedAt != bar_index
         range930CreatedAt := bar_index
         int rightBar = math.min(last_bar_index + 500, bar_index + BARS_930_TO_1600 - 1)
-        color fillC   = color.new(g930BoxColor, 88)
-        color borderC = color.new(g930BoxColor, 40)
+        color fillC   = pal_struct_soft()
+        color borderC = pal_struct_mid()
         if g930ShowBox
             range930Box := box.new(bar_index, high, rightBar, low,
                                    xloc=xloc.bar_index, bgcolor=fillC,
@@ -1663,8 +1602,8 @@ if g930On and is930Bar()
             // wick via the live-update block below. Distinct from the session
             // range box so the originating candle reads as its own object.
             range930Candle := box.new(bar_index, high, bar_index + 1, low,
-                                      xloc=xloc.bar_index, bgcolor=g930CandleColor,
-                                      border_color=color.new(g930CandleColor, 30),
+                                      xloc=xloc.bar_index, bgcolor=pal_warn_mid(),
+                                      border_color=pal_warn_strong(),
                                       border_width=1)
         if g930ShowQuart
             float rng = high - low
@@ -1673,11 +1612,11 @@ if g930On and is930Bar()
             float q75 = low + rng * 0.75
             // .25 and .75 use a more transparent shade to stay visually
             // subordinate to the solid .5 midline; all three are solid now.
-            color g930LineFaded = color.new(g930LineColor, math.min(95, color.t(g930LineColor) + 25))
+            color g930LineFaded = pal_struct_soft()
             range930Q25Line := line.new(bar_index, q25, rightBar, q25, xloc=xloc.bar_index,
                                         color=g930LineFaded, style=line.style_solid, width=1)
             range930Q50Line := line.new(bar_index, q50, rightBar, q50, xloc=xloc.bar_index,
-                                        color=g930LineColor, style=line.style_solid, width=1)
+                                        color=pal_struct_mid(), style=line.style_solid, width=1)
             range930Q75Line := line.new(bar_index, q75, rightBar, q75, xloc=xloc.bar_index,
                                         color=g930LineFaded, style=line.style_solid, width=1)
 
@@ -1720,11 +1659,11 @@ if g930On and not na(range930Anchor) and bar_index >= range930Anchor
 // that, plot na so the line is hidden and no price tag renders.
 bool _r930_on  = g930On and g930ShowQuart and not na(range930Anchor) and not na(range930Hi) and not na(range930Lo) and bar_index >= range930Anchor and bar_index <= range930Anchor + BARS_930_TO_1600 - 1
 float _r930_rng = _r930_on ? range930Hi - range930Lo : na
-plot(_r930_on ? range930Lo                     : na, title="0",    color=color.new(g930LineColor, 30), linewidth=1, style=plot.style_linebr, display=display.none)
-plot(_r930_on ? range930Lo + _r930_rng * 0.25  : na, title="0.25", color=color.new(g930LineColor, 30), linewidth=1, style=plot.style_linebr, display=display.none)
-plot(_r930_on ? range930Lo + _r930_rng * 0.50  : na, title="0.5",  color=color.new(g930LineColor, 0),  linewidth=1, style=plot.style_linebr, display=display.none)
-plot(_r930_on ? range930Lo + _r930_rng * 0.75  : na, title="0.75", color=color.new(g930LineColor, 30), linewidth=1, style=plot.style_linebr, display=display.none)
-plot(_r930_on ? range930Hi                     : na, title="1",    color=color.new(g930LineColor, 30), linewidth=1, style=plot.style_linebr, display=display.none)
+plot(_r930_on ? range930Lo                     : na, title="0",    color=pal_struct_strong(), linewidth=1, style=plot.style_linebr, display=display.none)
+plot(_r930_on ? range930Lo + _r930_rng * 0.25  : na, title="0.25", color=pal_struct_strong(), linewidth=1, style=plot.style_linebr, display=display.none)
+plot(_r930_on ? range930Lo + _r930_rng * 0.50  : na, title="0.5",  color=pal_struct_ink(),    linewidth=1, style=plot.style_linebr, display=display.none)
+plot(_r930_on ? range930Lo + _r930_rng * 0.75  : na, title="0.75", color=pal_struct_strong(), linewidth=1, style=plot.style_linebr, display=display.none)
+plot(_r930_on ? range930Hi                     : na, title="1",    color=pal_struct_strong(), linewidth=1, style=plot.style_linebr, display=display.none)
 
 
 // ╔══════════════════════════════════════════════════════════════════════════╗
@@ -1873,14 +1812,14 @@ trimLabelQueue(array<label> q, int perDayCap) =>
 emitSessionBox(SessionAgg s) =>
     if not na(s.anchorBar) and not na(s.hi) and not na(s.lo)
         box newBox = box.new(s.anchorBar, s.hi, bar_index - 1, s.lo,
-                             xloc=xloc.bar_index, bgcolor=gSessBoxColor,
-                             border_color=color.new(gSessBoxColor, 60), border_width=1)
+                             xloc=xloc.bar_index, bgcolor=pal_struct_soft(),
+                             border_color=pal_struct_mid(), border_width=1)
         array.push(sessBoxQ, newBox)
         if gSessShowBoxes
             float mid = (s.hi + s.lo) / 2.0
             line newMid = line.new(s.anchorBar, mid, bar_index - 1, mid,
                                    xloc=xloc.bar_index,
-                                   color=color.new(gSessBoxColor, 30),
+                                   color=pal_struct_mid(),
                                    style=line.style_solid, width=1)
             array.push(sessMidQ, newMid)
         trimBoxQueue(sessBoxQ, 4)
@@ -1910,21 +1849,22 @@ emitP12Lines() =>
         float p12Hi  = sessP12.hi
         float p12Lo  = sessP12.lo
         float p12Mid = (p12Hi + p12Lo) / 2.0
-        // Extend to end of NY trading day (~16:00). 06:00 → 16:00 is 10h.
-        // Plus a small visible-padding tail past 16:00 so the lines don't
-        // end flush with the last printed candle.
-        int p12RightBar = math.min(last_bar_index + 500, bar_index + int(10 * 60 * 60 / TF_SEC) + RIGHT_EDGE_PAD_BARS)
+        // Extend just past the most recent bar with a small padding tail.
+        // Lines grow with new bars (re-rendered each chart update) so the
+        // right edge tracks price action instead of jutting hours into the
+        // empty future.
+        int p12RightBar = last_bar_index + RIGHT_EDGE_PAD_BARS
         line lHi  = line.new(bar_index, p12Hi,  p12RightBar, p12Hi,
-                             xloc=xloc.bar_index, color=gSessP12Color,
+                             xloc=xloc.bar_index, color=SESS_P12_LINE,
                              style=line.style_solid, width=1)
         // Mid uses a more faded shade so it stays visually subordinate to
         // the solid high/low pair, but is now solid (no dash).
-        color p12MidFaded = color.new(gSessP12Color, math.min(95, color.t(gSessP12Color) + 25))
+        color p12MidFaded = color.new(SESS_P12_LINE, math.min(95, color.t(SESS_P12_LINE) + 25))
         line lMid = line.new(bar_index, p12Mid, p12RightBar, p12Mid,
                              xloc=xloc.bar_index, color=p12MidFaded,
                              style=line.style_solid, width=1)
         line lLo  = line.new(bar_index, p12Lo,  p12RightBar, p12Lo,
-                             xloc=xloc.bar_index, color=gSessP12Color,
+                             xloc=xloc.bar_index, color=SESS_P12_LINE,
                              style=line.style_solid, width=1)
         array.push(p12LineQ, lHi)
         array.push(p12LineQ, lMid)
@@ -1934,8 +1874,8 @@ emitP12Lines() =>
         // Right-edge labels. Solid text (alpha 0) matching the P12 hue so the
         // text reads even if the line itself is heavily transparent. Pill bg
         // is a faint match-tinted box for legibility.
-        color p12Solid = color.new(gSessP12Color, 0)
-        color p12LabelBg = color.new(gSessP12Color, 80)
+        color p12Solid = color.new(SESS_P12_LINE, 0)
+        color p12LabelBg = color.new(SESS_P12_LINE, 80)
         label lblHi  = label.new(p12RightBar, p12Hi,  "P12 High",
                                  xloc=xloc.bar_index, style=label.style_label_left,
                                  color=p12LabelBg, textcolor=p12Solid, size=size.small)
@@ -1950,7 +1890,7 @@ emitP12Lines() =>
         array.push(p12LabelQ, lblLo)
         trimLabelQueue(p12LabelQ, 3)
 
-if gSessOn and gSessShowP12 and isSessionStart(6, 0)
+if gSessOn and gSessShowP12 and not LIVE_MODE and isSessionStart(6, 0)
     emitP12Lines()
 
 // (Midnight horizontal anchor block lives after barsForward/hoursTo1700
@@ -2004,9 +1944,13 @@ var array<label> sdLabelQ  = array.new<label>()
 //   etc.
 // Simplest: pass the number of HOURS forward to the helper, convert to bars,
 // clamp to last_bar_index + 500.
+// `hoursForward` is retained for call-site compatibility but no longer
+// drives the right edge — anchored lines now track the live last bar with
+// a small padding tail so they don't jut hours into empty space. Lines
+// auto-extend on each chart update as `last_bar_index` advances.
 barsForward(float hoursForward) =>
-    int b = int(hoursForward * 60.0 * 60.0 / TF_SEC) + RIGHT_EDGE_PAD_BARS
-    math.min(last_bar_index + 500, bar_index + b)
+    int _unused = int(hoursForward)  // silence unused-param warning
+    last_bar_index + RIGHT_EDGE_PAD_BARS
 
 // Hours from current bar to the next 17:00 NY (today if before 17:00, else
 // tomorrow). Used so all anchored lines from a session emission terminate
@@ -2022,14 +1966,14 @@ hoursTo1700() =>
 // the midnight bar's close, extending right to 17:00 of the trading day,
 // with a right-edge "🦉 Midnight" label. Same visibility/retention/styling
 // as the rest of the day-level anchor family.
-if gSessOn and gSessShowMidnight and isSessionStart(0, 0)
+if gSessOn and gSessShowMidnight and not LIVE_MODE and isSessionStart(0, 0)
     float midY     = close
     int   rightBar = barsForward(hoursTo1700())
-    color midSolidC  = color.new(gSessMidnightCol, 0)
-    color midLabelBg = color.new(gSessMidnightCol, 80)
+    color midSolidC  = color.new(SESS_MIDNIGHT_LINE, 0)
+    color midLabelBg = color.new(SESS_MIDNIGHT_LINE, 80)
     line ml = line.new(bar_index, midY, rightBar, midY,
                        xloc=xloc.bar_index,
-                       color=gSessMidnightCol,
+                       color=SESS_MIDNIGHT_LINE,
                        style=line.style_solid, width=1)
     label midLbl = label.new(rightBar, midY, "🦉 Midnight",
                              xloc=xloc.bar_index,
@@ -2051,10 +1995,10 @@ emitOULine(SessionAgg s, string tag) =>
         float mid = (s.hi + s.lo) / 2.0
         int rightBar = barsForward(hoursTo1700())
         line ln = line.new(bar_index, mid, rightBar, mid,
-                           xloc=xloc.bar_index, color=gSessOUColor,
+                           xloc=xloc.bar_index, color=SESS_OU_LINE,
                            style=line.style_solid, width=1)
-        color solidC = color.new(gSessOUColor, 0)
-        color labelBg = color.new(gSessOUColor, 80)
+        color solidC = color.new(SESS_OU_LINE, 0)
+        color labelBg = color.new(SESS_OU_LINE, 80)
         label lbl = label.new(rightBar, mid, tag,
                               xloc=xloc.bar_index, style=label.style_label_left,
                               color=labelBg, textcolor=solidC, size=size.small)
@@ -2064,13 +2008,13 @@ emitOULine(SessionAgg s, string tag) =>
         trimLineQueue(ouLineQ, 4)
         trimLabelQueue(ouLabelQ, 4)
 
-if gSessOn and gSessShowOU and isSessionStart(19, 30)
+if gSessOn and gSessShowOU and not LIVE_MODE and isSessionStart(19, 30)
     emitOULine(sessAsia, "Asia O/U")
-if gSessOn and gSessShowOU and isSessionStart(3, 30)
+if gSessOn and gSessShowOU and not LIVE_MODE and isSessionStart(3, 30)
     emitOULine(sessLondon, "London O/U")
-if gSessOn and gSessShowOU and isSessionStart(8, 30)
+if gSessOn and gSessShowOU and not LIVE_MODE and isSessionStart(8, 30)
     emitOULine(sessNY1, "NY1 O/U")
-if gSessOn and gSessShowOU and isSessionStart(12, 30)
+if gSessOn and gSessShowOU and not LIVE_MODE and isSessionStart(12, 30)
     emitOULine(sessNY2, "NY2 O/U")
 
 // ── MDR-10 H/L: rolling 10-day H-L average around today's session open ──
@@ -2125,13 +2069,13 @@ emitMDRLines() =>
         // Trading day spans 18:00 → 17:00 next day = 23h forward.
         int rightBar = barsForward(23.0)
         line lnHi = line.new(bar_index, mdrHi, rightBar, mdrHi,
-                             xloc=xloc.bar_index, color=gSessMDRColor,
+                             xloc=xloc.bar_index, color=SESS_MDR_LINE,
                              style=line.style_solid, width=1)
         line lnLo = line.new(bar_index, mdrLo, rightBar, mdrLo,
-                             xloc=xloc.bar_index, color=gSessMDRColor,
+                             xloc=xloc.bar_index, color=SESS_MDR_LINE,
                              style=line.style_solid, width=1)
-        color solidC  = color.new(gSessMDRColor, 0)
-        color labelBg = color.new(gSessMDRColor, 80)
+        color solidC  = color.new(SESS_MDR_LINE, 0)
+        color labelBg = color.new(SESS_MDR_LINE, 80)
         label lblHi = label.new(rightBar, mdrHi, "MDR-10 High",
                                 xloc=xloc.bar_index, style=label.style_label_left,
                                 color=labelBg, textcolor=solidC, size=size.small)
@@ -2146,7 +2090,7 @@ emitMDRLines() =>
         trimLineQueue(mdrLineQ, 2)
         trimLabelQueue(mdrLabelQ, 2)
 
-if gSessOn and gSessShowMDR and isSessionStart(18, 0)
+if gSessOn and gSessShowMDR and not LIVE_MODE and isSessionStart(18, 0)
     emitMDRLines()
 
 // ── Asia fib projections off the 18:00–19:30 range ─────────────────────
@@ -2162,8 +2106,8 @@ emitAsiaSDBands() =>
         float asiaLo = sessAsia.lo
         float unit   = asiaHi - asiaLo
         int rightBar = barsForward(hoursTo1700())
-        color solidC  = color.new(gSessSDColor, 0)
-        color labelBg = color.new(gSessSDColor, 80)
+        color solidC  = color.new(SESS_SD_LINE, 0)
+        color labelBg = color.new(SESS_SD_LINE, 80)
         // (fib level → y-price). Negative levels project above the high,
         // positive >1 levels project below the low. Each row is [level, y].
         float [] ys = array.from(
@@ -2180,14 +2124,14 @@ emitAsiaSDBands() =>
         // All lines render solid; whole-unit levels keep the input color,
         // halves use a more transparent shade so they read as subordinate.
         bool [] wholes = array.from(true, false, true, false, false, true, false)
-        color sdFaded = color.new(gSessSDColor, math.min(95, color.t(gSessSDColor) + 20))
+        color sdFaded = color.new(SESS_SD_LINE, math.min(95, color.t(SESS_SD_LINE) + 20))
         for i = 0 to 6
             float yLvl  = array.get(ys, i)
             string tag  = array.get(tags, i)
             bool isWhole = array.get(wholes, i)
             line ln = line.new(bar_index, yLvl, rightBar, yLvl,
                                xloc=xloc.bar_index,
-                               color=isWhole ? gSessSDColor : sdFaded,
+                               color=isWhole ? SESS_SD_LINE : sdFaded,
                                style=line.style_solid,
                                width=1)
             label lbl = label.new(rightBar, yLvl, tag,
@@ -2199,8 +2143,36 @@ emitAsiaSDBands() =>
         trimLineQueue(sdLineQ, 7)
         trimLabelQueue(sdLabelQ, 7)
 
-if gSessOn and gSessShowSD and isSessionStart(19, 30)
+if gSessOn and gSessShowSD and not LIVE_MODE and isSessionStart(19, 30)
     emitAsiaSDBands()
+
+// ── Right-edge tracker: keep anchored lines/labels close to the live bar ──
+// Lines/labels are spawned at session-start with a fixed right edge. To stop
+// them from extending hours into the empty future we re-pin the right edge
+// to (last_bar_index + RIGHT_EDGE_PAD_BARS) on each new bar. Only runs on
+// the last bar — historical re-pins would just be overwritten next tick.
+if barstate.islast
+    int rightAnchor = last_bar_index + RIGHT_EDGE_PAD_BARS
+    for ln in p12LineQ
+        line.set_x2(ln, rightAnchor)
+    for lbl in p12LabelQ
+        label.set_x(lbl, rightAnchor)
+    for ln in midnightLineQ
+        line.set_x2(ln, rightAnchor)
+    for lbl in midnightLabelQ
+        label.set_x(lbl, rightAnchor)
+    for ln in ouLineQ
+        line.set_x2(ln, rightAnchor)
+    for lbl in ouLabelQ
+        label.set_x(lbl, rightAnchor)
+    for ln in mdrLineQ
+        line.set_x2(ln, rightAnchor)
+    for lbl in mdrLabelQ
+        label.set_x(lbl, rightAnchor)
+    for ln in sdLineQ
+        line.set_x2(ln, rightAnchor)
+    for lbl in sdLabelQ
+        label.set_x(lbl, rightAnchor)
 
 
 // ╔══════════════════════════════════════════════════════════════════════════╗
@@ -2305,7 +2277,7 @@ updateSessStatusBreach(SessStatus s) =>
             if gTblShowBreakMark and s.direction != "" and na(s.marker)
                 bool isLong = s.direction == "Long"
                 float yAnchor = isLong ? high : low
-                color cMark   = isLong ? gTblLongColor : gTblShortColor
+                color cMark   = isLong ? pal_long_ink() : pal_short_ink()
                 s.marker := label.new(bar_index, yAnchor,
                                       isLong ? "▲" : "▼",
                                       xloc=xloc.bar_index,
@@ -2354,17 +2326,17 @@ tablePosFor() =>
     p
 
 dirColor(string d) =>
-    color c = gTblTextColor
+    color c = pal_ink()
     if d == "Long"
-        c := gTblLongColor
+        c := pal_long_ink()
     else if d == "Short"
-        c := gTblShortColor
+        c := pal_short_ink()
     c
 
 sessColor(SessStatus s) =>
-    color c = gTblTextColor
+    color c = pal_ink()
     if s.direction != ""
-        c := s.oppTaken ? gTblFalseColor : gTblTrueColor
+        c := s.oppTaken ? pal_short_ink() : pal_long_ink()
     c
 
 sessText(SessStatus s) =>
@@ -2374,41 +2346,41 @@ sessText(SessStatus s) =>
     t
 
 modelText(SessStatus s) => s.midBroken ? "Broken" : ""
-modelColor() => gTblBrokenColor
+modelColor() => pal_short_ink()
 
 var table sessStatusTbl = na
 
 if gTblOn and barstate.islast
     if na(sessStatusTbl)
         sessStatusTbl := table.new(tablePosFor(), 5, 4,
-                                   bgcolor=gTblBgColor,
-                                   border_color=color.new(gTblHdrColor, 50),
+                                   bgcolor=pal_surface(),
+                                   border_color=pal_struct_mid(),
                                    border_width=1,
-                                   frame_color=color.new(gTblHdrColor, 30),
+                                   frame_color=pal_struct_strong(),
                                    frame_width=1)
     // Header row
-    table.cell(sessStatusTbl, 0, 0, "",     text_color=gTblHdrColor, text_size=size.small)
-    table.cell(sessStatusTbl, 1, 0, "ASN",  text_color=gTblHdrColor, text_size=size.small)
-    table.cell(sessStatusTbl, 2, 0, "LDN",  text_color=gTblHdrColor, text_size=size.small)
-    table.cell(sessStatusTbl, 3, 0, "NY1",  text_color=gTblHdrColor, text_size=size.small)
-    table.cell(sessStatusTbl, 4, 0, "NY2",  text_color=gTblHdrColor, text_size=size.small)
+    table.cell(sessStatusTbl, 0, 0, "",     text_color=pal_on_surface(), text_size=size.small)
+    table.cell(sessStatusTbl, 1, 0, "ASN",  text_color=pal_on_surface(), text_size=size.small)
+    table.cell(sessStatusTbl, 2, 0, "LDN",  text_color=pal_on_surface(), text_size=size.small)
+    table.cell(sessStatusTbl, 3, 0, "NY1",  text_color=pal_on_surface(), text_size=size.small)
+    table.cell(sessStatusTbl, 4, 0, "NY2",  text_color=pal_on_surface(), text_size=size.small)
 
     // Direction row
-    table.cell(sessStatusTbl, 0, 1, "Direction", text_color=gTblHdrColor, text_size=size.small)
+    table.cell(sessStatusTbl, 0, 1, "Direction", text_color=pal_on_surface(), text_size=size.small)
     table.cell(sessStatusTbl, 1, 1, statAsia.direction,   text_color=dirColor(statAsia.direction),   text_size=size.small)
     table.cell(sessStatusTbl, 2, 1, statLondon.direction, text_color=dirColor(statLondon.direction), text_size=size.small)
     table.cell(sessStatusTbl, 3, 1, statNY1.direction,    text_color=dirColor(statNY1.direction),    text_size=size.small)
     table.cell(sessStatusTbl, 4, 1, statNY2.direction,    text_color=dirColor(statNY2.direction),    text_size=size.small)
 
     // Session row
-    table.cell(sessStatusTbl, 0, 2, "Session",   text_color=gTblHdrColor, text_size=size.small)
+    table.cell(sessStatusTbl, 0, 2, "Session",   text_color=pal_on_surface(), text_size=size.small)
     table.cell(sessStatusTbl, 1, 2, sessText(statAsia),   text_color=sessColor(statAsia),   text_size=size.small)
     table.cell(sessStatusTbl, 2, 2, sessText(statLondon), text_color=sessColor(statLondon), text_size=size.small)
     table.cell(sessStatusTbl, 3, 2, sessText(statNY1),    text_color=sessColor(statNY1),    text_size=size.small)
     table.cell(sessStatusTbl, 4, 2, sessText(statNY2),    text_color=sessColor(statNY2),    text_size=size.small)
 
     // Model Status row
-    table.cell(sessStatusTbl, 0, 3, "Model Status", text_color=gTblHdrColor, text_size=size.small)
+    table.cell(sessStatusTbl, 0, 3, "Model Status", text_color=pal_on_surface(), text_size=size.small)
     table.cell(sessStatusTbl, 1, 3, modelText(statAsia),   text_color=modelColor(), text_size=size.small)
     table.cell(sessStatusTbl, 2, 3, modelText(statLondon), text_color=modelColor(), text_size=size.small)
     table.cell(sessStatusTbl, 3, 3, modelText(statNY1),    text_color=modelColor(), text_size=size.small)

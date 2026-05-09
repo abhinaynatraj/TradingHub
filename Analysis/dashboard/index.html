@@ -3,54 +3,283 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hourly Analysis · Statistic.ally</title>
+  <title>NQ Hourly Analysis · Statistic.ally</title>
   <link rel="stylesheet" href="shared.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 </head>
 <body>
-  <button class="theme-toggle" onclick="toggleTheme()">theme</button>
+  <div class="theme-picker" role="radiogroup" aria-label="Theme">
+    <button class="theme-opt" data-theme="dark"   title="Dark"   aria-label="Dark theme">☀</button>
+    <button class="theme-opt" data-theme="light"  title="Light"  aria-label="Light theme">☾</button>
+    <button class="theme-opt" data-theme="gold"   title="Gold"   aria-label="Gold theme">✦</button>
+    <button class="theme-opt" data-theme="indigo" title="Indigo" aria-label="Indigo theme">◆</button>
+  </div>
   <div class="container">
-    <nav>
-      <a href="../../index.html">← Statistic.ally hub</a>
-    </nav>
+    <nav><a href="../../index.html">← Statistic.ally hub</a></nav>
     <h1>NQ Hourly Analysis</h1>
 
-    <div id="manifest-card" class="card">
-      <div class="metric-label">Loading manifest...</div>
+    <div class="intro">
+      <div class="intro-eyebrow">About this dashboard</div>
+      <div class="intro-title">Two studies on intraday NQ price behavior, built from 1-min futures bars since 2014.</div>
+      <div class="intro-body">
+        Each hourly bar is examined two ways: <strong>after</strong> it breaks the prior hour's range (Study 1),
+        and <strong>inside</strong> the hour split into 15-minute quarters (Study 2). The previews below show the
+        headline finding from each — open a study for the full breakdown.
+      </div>
+      <div class="coverage-strip" id="coverage-strip">
+        <div class="coverage-cell"><div class="cc-label">Loading…</div></div>
+      </div>
     </div>
 
-    <div class="card-grid">
-      <a href="breakout.html" class="card" style="text-decoration:none;color:inherit;">
-        <h2>Breakout Follow-Through</h2>
-        <p style="color:var(--text-secondary);margin-top:8px;">When an hourly candle closes above the prior hour's high (or below the prior low), how often does the next hour take out the newly-formed extreme — and in which quarter?</p>
+    <div class="dash-grid">
+      <a href="breakout.html" class="study-card">
+        <div class="scd-eyebrow">Study 1 · 5 tabs</div>
+        <div class="scd-title">Breakout Follow-Through</div>
+        <div class="scd-tagline">
+          When an hour closes above the prior hour's high (or below the prior low), how often does the next hour
+          confirm the move — and when does it reverse?
+        </div>
+        <div class="scd-stats" id="breakout-stats">
+          <div class="scd-stat"><div class="scd-stat-label">Loading…</div></div>
+        </div>
+        <ul class="scd-bullets">
+          <li>Headline follow-through and reversal rates with full filtering</li>
+          <li>Quarter-of-hour timing for when the move completes</li>
+          <li>Year / hour / day-of-week regime breakdowns + heatmap</li>
+        </ul>
+        <div class="scd-cta">Open study</div>
       </a>
-      <a href="quarters.html" class="card" style="text-decoration:none;color:inherit;">
-        <h2>Quarter-of-the-Hour Study</h2>
-        <p style="color:var(--text-secondary);margin-top:8px;">In-depth analysis of intra-hour price action: where highs/lows form, sequencing, conditional shifts (Q1 → Q4), early-extreme persistence, and Q1-range expansion.</p>
+
+      <a href="quarters.html" class="study-card">
+        <div class="scd-eyebrow">Study 2 · 6 tabs</div>
+        <div class="scd-title">Quarter-of-the-Hour Study</div>
+        <div class="scd-tagline">
+          Each hour split into Q1 (:00–:14), Q2 (:15–:29), Q3 (:30–:44), Q4 (:45–:59).
+          Where do extremes form, does the open quarter set the tone, does a wide Q1 predict a wide hour?
+        </div>
+        <div class="scd-stats" id="quarters-stats">
+          <div class="scd-stat"><div class="scd-stat-label">Loading…</div></div>
+        </div>
+        <ul class="scd-bullets">
+          <li>Where intra-hour highs and lows tend to print</li>
+          <li>Conditional probabilities anchored on Q1 direction</li>
+          <li>Q1-range expansion: small open vs explosive open</li>
+        </ul>
+        <div class="scd-cta">Open study</div>
       </a>
+    </div>
+
+    <div class="dash-grid full">
+      <a href="strategy.html" class="study-card" style="border-color:var(--border-mid);">
+        <div class="scd-eyebrow">Study 3 · 4 tabs · trade model</div>
+        <div class="scd-title">Breakout Trade Model</div>
+        <div class="scd-tagline">
+          Turns the breakout analysis into actual trades — three stop-placement variants
+          (structural / breakout-bar / time-bounded), risk-gated and sized for MNQ ($2/pt, $225/trade).
+          Reports win rate with Wilson lower bounds, EV in R, P&amp;L in $, drawdown, and exit-reason mix.
+        </div>
+        <div class="scd-stats" id="strategy-stats">
+          <div class="scd-stat"><div class="scd-stat-label">Loading…</div></div>
+        </div>
+        <ul class="scd-bullets">
+          <li>What the 70% follow-through stat actually pays once you put a stop on it</li>
+          <li>How many setups survive the risk gate (rejection rate is the honest tradeoff)</li>
+          <li>Equity curve, drawdown, exit-reason breakdown, year/hour/DOW slicing</li>
+        </ul>
+        <div class="scd-cta">Open trade model</div>
+      </a>
+    </div>
+
+    <div class="dash-grid full">
+      <div class="card">
+        <div class="section-head">
+          <div class="sh-question">How the dataset is built</div>
+          <div class="sh-explainer">From shared 1-minute NQ bars to study-ready parquet, in three steps.</div>
+        </div>
+        <div class="prose" style="margin-bottom:0;">
+          <ol class="prose-list" style="margin-left:18px;">
+            <li><strong>1-min bars</strong> live in the shared <code>candle_science.duckdb</code> at <code>nq_1m</code> (timestamps in America/Toronto, converted to America/New_York for hour grouping).</li>
+            <li><strong>Hourly aggregation</strong> in <code>Analysis/engine/bars.py</code> drops any hour without 60 complete minutes (~9.6k incomplete hours skipped).</li>
+            <li><strong>Study engines</strong> (<code>breakout_study.py</code>, <code>quarter_study.py</code>) emit one parquet per slice into <code>Analysis/data/{breakout,quarters}/</code>; the dashboard reads them via DuckDB-Wasm in the browser.</li>
+          </ol>
+          <p style="margin-top:10px;">
+            Re-run the pipeline anytime with <code>python3 Analysis/engine/run_all.py</code>.
+            The manifest above shows the last refresh.
+          </p>
+        </div>
+      </div>
     </div>
   </div>
 
   <script src="shared.js"></script>
   <script>
-    (async () => {
+    async function loadManifest() {
       try {
         const resp = await fetch('../data/manifest.json');
         const m = await resp.json();
-        const card = document.getElementById('manifest-card');
-        card.innerHTML = `
-          <div class="card-grid">
-            <div><div class="metric-label">Date range</div><div class="metric-value" style="font-size:18px;">${m.date_range_start.slice(0,10)} → ${m.date_range_end.slice(0,10)}</div></div>
-            <div><div class="metric-label">Total hours</div><div class="metric-value">${fmtNum(m.total_hours)}</div></div>
-            <div><div class="metric-label">Bullish breakouts</div><div class="metric-value">${fmtNum(m.n_bullish_breakouts)}</div></div>
-            <div><div class="metric-label">Bearish breakouts</div><div class="metric-value">${fmtNum(m.n_bearish_breakouts)}</div></div>
-            <div><div class="metric-label">Last run</div><div class="metric-value" style="font-size:14px;">${m.run_timestamp_utc.slice(0,16)}Z</div></div>
+        const start = m.date_range_start.slice(0,10);
+        const end = m.date_range_end.slice(0,10);
+        const yrSpan = m.years_covered.length;
+        document.getElementById('coverage-strip').innerHTML = `
+          <div class="coverage-cell">
+            <div class="cc-label">Coverage</div>
+            <div class="cc-val">${start} → ${end}</div>
+            <div class="cc-sub">${yrSpan} years</div>
+          </div>
+          <div class="coverage-cell">
+            <div class="cc-label">Hourly bars</div>
+            <div class="cc-val">${fmtNum(m.total_hours)}</div>
+            <div class="cc-sub">${fmtNum(m.hours_dropped)} incomplete dropped</div>
+          </div>
+          <div class="coverage-cell">
+            <div class="cc-label">▲ Bullish breakouts</div>
+            <div class="cc-val" style="color:var(--green);">${fmtNum(m.n_bullish_breakouts)}</div>
+            <div class="cc-sub">${(m.n_bullish_breakouts / m.total_hours * 100).toFixed(1)}% of hours</div>
+          </div>
+          <div class="coverage-cell">
+            <div class="cc-label">▼ Bearish breakouts</div>
+            <div class="cc-val" style="color:var(--red);">${fmtNum(m.n_bearish_breakouts)}</div>
+            <div class="cc-sub">${(m.n_bearish_breakouts / m.total_hours * 100).toFixed(1)}% of hours</div>
+          </div>
+          <div class="coverage-cell">
+            <div class="cc-label">Last refreshed</div>
+            <div class="cc-val" style="font-size:14px;">${m.run_timestamp_utc.slice(0,10)}</div>
+            <div class="cc-sub">${m.run_timestamp_utc.slice(11,16)} UTC</div>
           </div>
         `;
       } catch (e) {
-        document.getElementById('manifest-card').innerHTML =
-          `<div class="metric-label">Could not load manifest: ${e.message}. Run <code>python Analysis/engine/run_all.py</code> first.</div>`;
+        document.getElementById('coverage-strip').innerHTML = `
+          <div class="coverage-cell" style="grid-column:1/-1;">
+            <div class="cc-label">Manifest not found</div>
+            <div class="cc-sub">Run <code>python3 Analysis/engine/run_all.py</code> to generate dataset previews.</div>
+          </div>`;
       }
+    }
+
+    async function loadBreakoutStats() {
+      try {
+        await loadParquet('../data/breakout/summary_aggregate.parquet', 'b_agg');
+        const r = (await query('SELECT * FROM b_agg'))[0];
+        const bullFt  = Number(r.bullish_followthrough_rate);
+        const bearFt  = Number(r.bearish_followthrough_rate);
+        const bullRev = Number(r.bullish_immediate_reversal_rate);
+        const bearRev = Number(r.bearish_immediate_reversal_rate);
+
+        document.getElementById('breakout-stats').innerHTML = `
+          <div class="scd-stat">
+            <div class="scd-stat-label">▲ Bull follow-through</div>
+            <div class="scd-stat-val green">${fmtPct(bullFt)}</div>
+            <div class="scd-stat-sub">next hour takes out the high</div>
+          </div>
+          <div class="scd-stat">
+            <div class="scd-stat-label">▼ Bear follow-through</div>
+            <div class="scd-stat-val red">${fmtPct(bearFt)}</div>
+            <div class="scd-stat-sub">next hour takes out the low</div>
+          </div>
+          <div class="scd-stat">
+            <div class="scd-stat-label">▲ Bull reversal</div>
+            <div class="scd-stat-val amber">${fmtPct(bullRev)}</div>
+            <div class="scd-stat-sub">next hour wicks through prior low</div>
+          </div>
+          <div class="scd-stat">
+            <div class="scd-stat-label">▼ Bear reversal</div>
+            <div class="scd-stat-val amber">${fmtPct(bearRev)}</div>
+            <div class="scd-stat-sub">next hour wicks through prior high</div>
+          </div>
+        `;
+      } catch (e) {
+        document.getElementById('breakout-stats').innerHTML =
+          `<div class="scd-stat" style="grid-column:1/-1;"><div class="scd-stat-label">Preview unavailable</div><div class="scd-stat-sub">${e.message}</div></div>`;
+      }
+    }
+
+    async function loadQuarterStats() {
+      try {
+        await loadParquet('../data/quarters/study_a_aggregate.parquet', 'q_a');
+        await loadParquet('../data/quarters/study_d_aggregate.parquet', 'q_d');
+        const a = (await query('SELECT * FROM q_a'))[0];
+        const d = (await query('SELECT * FROM q_d'))[0];
+
+        const highs = [a.q_of_high_q1_pct, a.q_of_high_q2_pct, a.q_of_high_q3_pct, a.q_of_high_q4_pct].map(Number);
+        const lows  = [a.q_of_low_q1_pct,  a.q_of_low_q2_pct,  a.q_of_low_q3_pct,  a.q_of_low_q4_pct ].map(Number);
+        const peakHighIdx = highs.indexOf(Math.max(...highs));
+        const peakLowIdx  = lows.indexOf(Math.max(...lows));
+
+        document.getElementById('quarters-stats').innerHTML = `
+          <div class="scd-stat">
+            <div class="scd-stat-label">Highs concentrate in</div>
+            <div class="scd-stat-val green">Q${peakHighIdx + 1}</div>
+            <div class="scd-stat-sub">${fmtPct(highs[peakHighIdx])} of hours</div>
+          </div>
+          <div class="scd-stat">
+            <div class="scd-stat-label">Lows concentrate in</div>
+            <div class="scd-stat-val red">Q${peakLowIdx + 1}</div>
+            <div class="scd-stat-sub">${fmtPct(lows[peakLowIdx])} of hours</div>
+          </div>
+          <div class="scd-stat">
+            <div class="scd-stat-label">P(hour up | Q1 up)</div>
+            <div class="scd-stat-val green">${fmtPct(d.p_hour_up_given_q1_up)}</div>
+            <div class="scd-stat-sub">Q1 sets the tone</div>
+          </div>
+          <div class="scd-stat">
+            <div class="scd-stat-label">P(hour dn | Q1 dn)</div>
+            <div class="scd-stat-val red">${fmtPct(d.p_hour_down_given_q1_down)}</div>
+            <div class="scd-stat-sub">symmetric on the downside</div>
+          </div>
+        `;
+      } catch (e) {
+        document.getElementById('quarters-stats').innerHTML =
+          `<div class="scd-stat" style="grid-column:1/-1;"><div class="scd-stat-label">Preview unavailable</div><div class="scd-stat-sub">${e.message}</div></div>`;
+      }
+    }
+
+    async function loadStrategyStats() {
+      try {
+        const resp = await fetch('../data/strategy/manifest.json');
+        const m = await resp.json();
+        const struct = m.variants.structural_1r || {};
+        const a = struct.aggregate || {};
+        const r = struct.rejection || {};
+        const wrClass  = a.wr >= 0.5 ? 'green' : 'red';
+        const evClass  = a.avg_r >= 0 ? 'green' : 'red';
+        const pnlClass = a.total_pnl_usd >= 0 ? 'green' : 'red';
+        const pnlSign  = a.total_pnl_usd >= 0 ? '+' : '-';
+        const pnlAbs   = Math.abs(a.total_pnl_usd || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+        document.getElementById('strategy-stats').innerHTML = `
+          <div class="scd-stat">
+            <div class="scd-stat-label">Take rate (variant A)</div>
+            <div class="scd-stat-val muted">${(r.taken_rate * 100).toFixed(1)}%</div>
+            <div class="scd-stat-sub">${(r.n_taken||0).toLocaleString()} of ${(r.n_total_events||0).toLocaleString()} pass risk gate</div>
+          </div>
+          <div class="scd-stat">
+            <div class="scd-stat-label">Win rate</div>
+            <div class="scd-stat-val ${wrClass}">${(a.wr * 100).toFixed(1)}%</div>
+            <div class="scd-stat-sub">95% LB: ${(a.wr_lo95 * 100).toFixed(1)}%</div>
+          </div>
+          <div class="scd-stat">
+            <div class="scd-stat-label">EV per trade</div>
+            <div class="scd-stat-val ${evClass}">${a.avg_r >= 0 ? '+' : ''}${(a.avg_r || 0).toFixed(3)}R</div>
+            <div class="scd-stat-sub">PF: ${a.pf}</div>
+          </div>
+          <div class="scd-stat">
+            <div class="scd-stat-label">Total P&L</div>
+            <div class="scd-stat-val ${pnlClass}">${pnlSign}$${pnlAbs}</div>
+            <div class="scd-stat-sub">max DD: $${(a.max_dd_usd||0).toLocaleString()}</div>
+          </div>
+        `;
+      } catch (e) {
+        document.getElementById('strategy-stats').innerHTML =
+          `<div class="scd-stat" style="grid-column:1/-1;">
+            <div class="scd-stat-label">Backtest not run yet</div>
+            <div class="scd-stat-sub">Run <code>python3 Analysis/strategy/run_strategy.py</code></div>
+          </div>`;
+      }
+    }
+
+    (async () => {
+      await loadManifest();
+      // Load study previews in parallel
+      await Promise.all([loadBreakoutStats(), loadQuarterStats(), loadStrategyStats()]);
     })();
   </script>
 </body>

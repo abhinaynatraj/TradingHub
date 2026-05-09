@@ -4,6 +4,9 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Amas Models · Probability Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script>
   // Early-paint theme: read shared hub-theme key BEFORE any pixels render.
   // Avoids a flash of wrong theme on load.
@@ -16,9 +19,9 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   --green:#10b981;--red:#ef4444;--amber:#f59e0b;--blue:#3b82f6;--purple:#8b5cf6;--cyan:#06b6d4;
-  --font-display:'Plus Jakarta Sans',system-ui,sans-serif;
-  --font-data:'IBM Plex Mono','DM Mono','Fira Code',monospace;
-  --font-body:'Inter',system-ui,sans-serif;
+  --font-display:'Inter',system-ui,-apple-system,sans-serif;
+  --font-data:'JetBrains Mono','SF Mono',Menlo,monospace;
+  --font-body:'Inter',system-ui,-apple-system,sans-serif;
   --ease:cubic-bezier(0.16,1,0.3,1);
 }
 /* CSS variable names mirror Fractal Sweep's dashboard so future migrations are easy. */

@@ -1,16 +1,39 @@
 // Analysis/dashboard/shared.js
 // Theme: shared with the rest of Statistic.ally via localStorage 'hub-theme'
+// Four themes (Fractal Sweep parity): dark, light, gold, indigo.
+const THEME_ORDER = ['dark', 'light', 'gold', 'indigo'];
 (function () {
-  const t = localStorage.getItem('hub-theme') || 'dark';
+  const saved = localStorage.getItem('hub-theme');
+  const t = THEME_ORDER.includes(saved) ? saved : 'dark';
   document.documentElement.setAttribute('data-theme', t);
 })();
 
+window.applyTheme = function (name) {
+  if (!THEME_ORDER.includes(name)) return;
+  document.documentElement.setAttribute('data-theme', name);
+  document.querySelectorAll('.theme-opt').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.theme === name);
+  });
+  localStorage.setItem('hub-theme', name);
+};
+
+// Legacy two-state toggle kept for backward compat (cycles all four).
 window.toggleTheme = function () {
   const cur = document.documentElement.getAttribute('data-theme');
-  const next = cur === 'dark' ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', next);
-  localStorage.setItem('hub-theme', next);
+  const idx = THEME_ORDER.indexOf(cur);
+  const next = THEME_ORDER[(idx + 1) % THEME_ORDER.length];
+  applyTheme(next);
 };
+
+// Auto-wire the theme picker on every page that includes it.
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.theme-opt').forEach(btn => {
+    btn.addEventListener('click', () => applyTheme(btn.dataset.theme));
+    if (btn.dataset.theme === document.documentElement.getAttribute('data-theme')) {
+      btn.classList.add('active');
+    }
+  });
+});
 
 // DuckDB-Wasm singleton
 let _dbPromise = null;
@@ -50,9 +73,13 @@ window.query = async function (sql) {
   const conn = await db.connect();
   try {
     const result = await conn.query(sql);
-    return result.toArray().map(r => Object.fromEntries(
-      Object.entries(r).map(([k, v]) => [k, typeof v === 'bigint' ? Number(v) : v])
-    ));
+    return result.toArray().map(r => {
+      const obj = typeof r.toJSON === 'function' ? r.toJSON() : { ...r };
+      for (const k of Object.keys(obj)) {
+        if (typeof obj[k] === 'bigint') obj[k] = Number(obj[k]);
+      }
+      return obj;
+    });
   } finally {
     await conn.close();
   }
@@ -128,10 +155,11 @@ window.FilterBar = (function () {
     const persisted = load();
     state = defaults();
     if (persisted) {
-      // Coerce arrays back to Sets
-      if (persisted.year) state.year = new Set(persisted.year);
-      if (persisted.hour) state.hour = new Set(persisted.hour);
-      if (persisted.dow) state.dow = new Set(persisted.dow);
+      // Coerce arrays back to Sets. Guard against legacy/corrupt entries
+      // (older builds may have stored Sets as plain objects, which aren't iterable).
+      if (Array.isArray(persisted.year)) state.year = new Set(persisted.year);
+      if (Array.isArray(persisted.hour)) state.hour = new Set(persisted.hour);
+      if (Array.isArray(persisted.dow))  state.dow  = new Set(persisted.dow);
       if (persisted.direction) state.direction = persisted.direction;
       if (persisted.minCount != null) state.minCount = persisted.minCount;
       if (persisted.collapsed != null) state.collapsed = persisted.collapsed;
@@ -520,6 +548,46 @@ window.renderHeatmap = function (el, cfg) {
 
 // ── Cross-tab heatmap (4×4) ──────────────────────────────────
 // Used by quarter study A. Same shape as renderHeatmap but smaller and labels axes.
+
+// ── Bar row (single-row labeled bar) ─────────────────────────
+// Usage:
+//   renderBarRow(el, [
+//     { label: '09 ET', value: 0.74, color: 'green' },
+//     { label: '10 ET', value: 0.68, color: 'green' },
+//   ], { max: 1.0, fmt: (v) => (v*100).toFixed(0)+'%' });
+window.renderBarRow = function (el, rows, opts = {}) {
+  const max = opts.max != null ? opts.max : 1.0;
+  const fmt = opts.fmt || ((v) => (v * 100).toFixed(1) + '%');
+  el.innerHTML = rows.map(r => {
+    const w = Math.max(0, Math.min(100, (r.value / max) * 100));
+    const cls = r.color ? `bar-${r.color}` : '';
+    return `<div class="bar-row">
+      <div class="br-label">${escapeHtml(r.label)}</div>
+      <div class="br-track"><div class="br-fill ${cls}" style="width:${w}%"></div></div>
+      <div class="br-val">${fmt(r.value)}</div>
+    </div>`;
+  }).join('');
+};
+
+// ── 4-quarter visual strip (Q1/Q2/Q3/Q4 cards) ───────────────
+// Usage:
+//   renderQuarterStrip(el, [0.36, 0.16, 0.18, 0.29], { fmt: fmtPct, sub: 'high lands here' });
+window.renderQuarterStrip = function (el, vals, opts = {}) {
+  const fmt = opts.fmt || ((v) => (v * 100).toFixed(1) + '%');
+  const labels = ['Q1', 'Q2', 'Q3', 'Q4'];
+  const minutes = ['min :00–:14', 'min :15–:29', 'min :30–:44', 'min :45–:59'];
+  const sub = opts.sub || '';
+  const peakIdx = vals.reduce((maxI, v, i, arr) => v > arr[maxI] ? i : maxI, 0);
+  el.innerHTML = labels.map((lbl, i) => {
+    const cls = i === peakIdx ? 'peak' : '';
+    return `<div class="q-strip-cell ${cls}">
+      <div class="qsc-q">${lbl}</div>
+      <div class="qsc-mins">${minutes[i]}</div>
+      <div class="qsc-val">${fmt(vals[i])}</div>
+      ${sub ? `<div class="qsc-sub">${escapeHtml(sub)}</div>` : ''}
+    </div>`;
+  }).join('');
+};
 
 window.renderCrossTab = function (el, cfg) {
   const { rowLabels, colLabels, values, fmt, rowAxisLabel = '', colAxisLabel = '' } = cfg;

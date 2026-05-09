@@ -6,7 +6,7 @@
 <title>TTFM° — TTrades Fractal Model Analysis</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -70,7 +70,7 @@
   body {
     background: var(--bg);
     color: var(--text);
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     font-size: 15px;
     line-height: 1.65;
     -webkit-font-smoothing: antialiased;
@@ -90,7 +90,7 @@
     transition: background 0.25s, border-color 0.25s;
   }
   nav .logo {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     font-weight: 800; font-size: 16px;
     color: var(--amber);
     letter-spacing: 0.04em;
@@ -126,20 +126,20 @@
   .page { max-width: 1200px; margin: 0 auto; padding: 48px 28px 96px; }
 
   h1 {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     font-weight: 800; font-size: 42px;
     line-height: 1.12; letter-spacing: -0.025em;
     color: var(--text);
   }
   h2 {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     font-weight: 700; font-size: 22px;
     letter-spacing: -0.01em;
     margin-bottom: 20px;
     color: var(--text);
   }
   h3 {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     font-weight: 700; font-size: 14px;
     letter-spacing: 0.01em;
     margin-bottom: 10px;
@@ -331,7 +331,7 @@
     border-bottom: 1px solid var(--border);
   }
   .variant-dot { width: 8px; height: 8px; border-radius: 50%; }
-  .variant-name { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 13px; }
+  .variant-name { font-family: 'Inter', system-ui, -apple-system, sans-serif; font-weight: 700; font-size: 13px; }
   .variant-dir {
     font-family: 'JetBrains Mono', monospace;
     font-size: 10.5px; font-weight: 700;
@@ -376,7 +376,7 @@
     border-color: rgba(192,132,252,0.5);
   }
   .silver-title {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     font-weight: 800; font-size: 18px;
     color: var(--purple);
     margin-bottom: 12px;
@@ -1170,22 +1170,22 @@
       <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px;" class="bt-tiles">
         <div class="card" style="text-align:center;">
           <div class="section-label" style="margin-bottom:8px;">Trades Resolved</div>
-          <div id="bt-n" style="font-family:'Syne',sans-serif; font-size:34px; font-weight:800; color:var(--text); line-height:1;">—</div>
+          <div id="bt-n" style="font-family:'Inter',system-ui,-apple-system,sans-serif; font-size:34px; font-weight:800; color:var(--text); line-height:1;">—</div>
           <div style="font-size:11px; color:var(--faint); margin-top:6px;">of setups touched zone</div>
         </div>
         <div class="card" style="text-align:center;">
           <div class="section-label" style="margin-bottom:8px;">Win Rate</div>
-          <div id="bt-wr" style="font-family:'Syne',sans-serif; font-size:34px; font-weight:800; line-height:1;">—</div>
+          <div id="bt-wr" style="font-family:'Inter',system-ui,-apple-system,sans-serif; font-size:34px; font-weight:800; line-height:1;">—</div>
           <div style="font-size:11px; color:var(--faint); margin-top:6px;">breakeven = 33.3%</div>
         </div>
         <div class="card" style="text-align:center;">
           <div class="section-label" style="margin-bottom:8px;">Expected Value</div>
-          <div id="bt-ev" style="font-family:'Syne',sans-serif; font-size:34px; font-weight:800; line-height:1;">—</div>
+          <div id="bt-ev" style="font-family:'Inter',system-ui,-apple-system,sans-serif; font-size:34px; font-weight:800; line-height:1;">—</div>
           <div style="font-size:11px; color:var(--faint); margin-top:6px;">per trade at 2:1 RR</div>
         </div>
         <div class="card" style="text-align:center;">
           <div class="section-label" style="margin-bottom:8px;">Zone Touch Rate</div>
-          <div id="bt-touch" style="font-family:'Syne',sans-serif; font-size:34px; font-weight:800; color:var(--blue); line-height:1;">—</div>
+          <div id="bt-touch" style="font-family:'Inter',system-ui,-apple-system,sans-serif; font-size:34px; font-weight:800; color:var(--blue); line-height:1;">—</div>
           <div style="font-size:11px; color:var(--faint); margin-top:6px;">setups that filled</div>
         </div>
       </div>
@@ -1231,7 +1231,7 @@
 
       <!-- ── Best combos ── -->
       <div class="card" style="margin-bottom:24px;">
-        <h3>Best Variant × Hour <span style="font-size:11.5px; color:var(--faint); font-weight:400; font-family:'DM Sans',sans-serif;">— min N=10, sorted by win rate</span></h3>
+        <h3>Best Variant × Hour <span style="font-size:11.5px; color:var(--faint); font-weight:400; font-family:'Inter',system-ui,-apple-system,sans-serif;">— min N=10, sorted by win rate</span></h3>
         <div id="bt-combos"></div>
       </div>
 
@@ -1239,7 +1239,7 @@
            TIMING DEEP DIVE — Intra-Hour Quarters
            ══════════════════════════════════════════════════════════ -->
       <div style="margin-top:8px;">
-        <h2 style="font-family:'Syne',sans-serif; font-size:22px; font-weight:800; color:var(--text); margin:0 0 6px;">
+        <h2 style="font-family:'Inter',system-ui,-apple-system,sans-serif; font-size:22px; font-weight:800; color:var(--text); margin:0 0 6px;">
           Timing Deep Dive — Intra-Hour Quarters
         </h2>
         <p style="font-size:13px; color:var(--subtle); margin:0 0 22px; line-height:1.6;">
@@ -1250,14 +1250,14 @@
 
         <!-- Q1–Q4 summary bars -->
         <div class="card" style="margin-bottom:24px;">
-          <h3>Win Rate by Quarter <span style="font-size:11.5px; color:var(--faint); font-weight:400; font-family:'DM Sans',sans-serif;">— all variants combined</span></h3>
+          <h3>Win Rate by Quarter <span style="font-size:11.5px; color:var(--faint); font-weight:400; font-family:'Inter',system-ui,-apple-system,sans-serif;">— all variants combined</span></h3>
           <div id="bt-quarter-bars"></div>
         </div>
 
         <!-- Hour × Quarter heatmap -->
         <div class="card" style="margin-bottom:24px;">
           <h3>Hour × Quarter Win-Rate Grid
-            <span style="font-size:11.5px; color:var(--faint); font-weight:400; font-family:'DM Sans',sans-serif;">
+            <span style="font-size:11.5px; color:var(--faint); font-weight:400; font-family:'Inter',system-ui,-apple-system,sans-serif;">
               — cells with N &lt; 3 shown as —
             </span>
           </h3>
@@ -1284,7 +1284,7 @@
            MOST RECENT TRADES — per variant
            ══════════════════════════════════════════════════════════ -->
       <div style="margin-top:32px;">
-        <h2 style="font-family:'Syne',sans-serif; font-size:22px; font-weight:800; color:var(--text); margin:0 0 6px;">
+        <h2 style="font-family:'Inter',system-ui,-apple-system,sans-serif; font-size:22px; font-weight:800; color:var(--text); margin:0 0 6px;">
           Most Recent Trades
         </h2>
         <p style="font-size:13px; color:var(--subtle); margin:0 0 22px; line-height:1.6;">
@@ -1406,7 +1406,7 @@ function zone(ctx, x1, x2, yTop, yBot, col, alpha) {
 function label(ctx, text, x, y, col, size, align, font) {
   const C = getC();
   col = col ?? C.subtle; size = size ?? 10; align = align ?? 'center';
-  font = font ?? "'DM Sans', sans-serif";
+  font = font ?? "'Inter', system-ui, -apple-system, sans-serif";
   ctx.fillStyle = col;
   ctx.font = `600 ${size}px ${font}`;
   ctx.textAlign = align;
@@ -1471,7 +1471,7 @@ function drawFlow() {
     ctx.fillText(i + 1, x, circY);
     ctx.textBaseline = 'alphabetic';
     // label
-    label(ctx, s.label, x, circY + 38, s.col, 12, 'center', "'Syne', sans-serif");
+    label(ctx, s.label, x, circY + 38, s.col, 12, 'center', "'Inter', system-ui, -apple-system, sans-serif");
     // sub lines
     s.sub.forEach((ln, j) => label(ctx, ln, x, circY + 56 + j * 15, C.subtle, 11));
   });
@@ -1812,7 +1812,7 @@ function drawBias() {
   const bx1 = lx - 42, by1 = H * 0.6;
   ctx.fillStyle = C.red + '20'; ctx.strokeStyle = C.red; ctx.lineWidth = 1.5;
   roundRect(ctx, bx1, by1, 84, 22, 5); ctx.fill(); ctx.stroke();
-  label(ctx, 'BEARISH', bx1 + 42, by1 + 15, C.red, 11, 'center', "'Syne',sans-serif");
+  label(ctx, 'BEARISH', bx1 + 42, by1 + 15, C.red, 11, 'center', "'Inter',system-ui,-apple-system,sans-serif");
   label(ctx, 'upper wick > lower wick', lx, by1 + 36, C.faint, 9, 'center');
 
   // Right: bullish
@@ -1833,7 +1833,7 @@ function drawBias() {
   const bx2 = rx - 42, by2 = H * 0.6;
   ctx.fillStyle = C.green + '20'; ctx.strokeStyle = C.green; ctx.lineWidth = 1.5;
   roundRect(ctx, bx2, by2, 84, 22, 5); ctx.fill(); ctx.stroke();
-  label(ctx, 'BULLISH', bx2 + 42, by2 + 15, C.green, 11, 'center', "'Syne',sans-serif");
+  label(ctx, 'BULLISH', bx2 + 42, by2 + 15, C.green, 11, 'center', "'Inter',system-ui,-apple-system,sans-serif");
   label(ctx, 'lower wick > upper wick', rx, by2 + 36, C.faint, 9, 'center');
 
   // Divider
@@ -2002,7 +2002,7 @@ function _renderDirection(d, BE) {
     const wrc = _wrTextColor(wr, BE);
     html += `<div style="margin-bottom:16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-        <span style="font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:${col};">${dir}</span>
+        <span style="font-family:'Inter',system-ui,-apple-system,sans-serif;font-weight:700;font-size:13px;color:${col};">${dir}</span>
         <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:${wrc};font-weight:700;">${_pct(wr)}</span>
       </div>
       <div style="height:9px;border-radius:5px;background:var(--card-alt);overflow:hidden;">
@@ -2127,7 +2127,7 @@ function _renderHeatmap(d, BE) {
     html += '<div style="display:flex;gap:3px;margin-bottom:3px;align-items:stretch;">';
     /* day label */
     html += `<div style="width:48px;flex-shrink:0;display:flex;align-items:center;
-      font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--subtle);">${dn}</div>`;
+      font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:700;color:var(--subtle);">${dn}</div>`;
 
     hours.forEach(h => {
       const wr = d.heatmap_wr[dn]?.[h] ?? null;
@@ -2338,7 +2338,7 @@ function _renderDowQuarter(d, BE) {
   </tr></thead><tbody>`;
 
   d.dows.forEach(dn => {
-    html += `<tr><td style="font-family:'Syne',sans-serif;font-weight:700;font-size:13px;">${dn}</td>`;
+    html += `<tr><td style="font-family:'Inter',system-ui,-apple-system,sans-serif;font-weight:700;font-size:13px;">${dn}</td>`;
     qs.forEach(q => {
       const s = d.dow_quarter?.[dn]?.[q];
       if (!s || !s.n) {

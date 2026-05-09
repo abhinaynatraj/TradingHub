@@ -3,119 +3,477 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Quarter Study · NQ Hourly</title>
+  <title>Quarter-of-the-Hour Study · NQ Hourly</title>
   <link rel="stylesheet" href="shared.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
-  <style>
-    .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
-    .tab { padding: 10px 16px; cursor: pointer; color: var(--text-secondary); border-bottom: 2px solid transparent; }
-    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; }
-  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 </head>
 <body>
-  <button class="theme-toggle" onclick="toggleTheme()">theme</button>
+  <div class="theme-picker" role="radiogroup" aria-label="Theme">
+    <button class="theme-opt" data-theme="dark"   title="Dark"   aria-label="Dark theme">☀</button>
+    <button class="theme-opt" data-theme="light"  title="Light"  aria-label="Light theme">☾</button>
+    <button class="theme-opt" data-theme="gold"   title="Gold"   aria-label="Gold theme">✦</button>
+    <button class="theme-opt" data-theme="indigo" title="Indigo" aria-label="Indigo theme">◆</button>
+  </div>
   <div class="container">
     <nav><a href="index.html">← Hourly Analysis</a></nav>
     <h1>Quarter-of-the-Hour Study</h1>
 
-    <div class="filter-bar">
-      <label>Min sample size <input type="number" id="min-count" value="30" min="0" step="10" /></label>
-      <label>Slice
-        <select id="slice">
-          <option value="aggregate">Aggregate</option>
-          <option value="by_year">By year</option>
-          <option value="by_hour">By hour-of-day</option>
-          <option value="by_dow">By DOW</option>
-        </select>
-      </label>
+    <div class="intro">
+      <div class="intro-eyebrow">What this measures</div>
+      <div class="intro-title">Each NQ hourly candle split into four 15-minute quarters.</div>
+      <div class="intro-body">
+        We slice every hour into <strong>Q1 (:00–:14)</strong>, <strong>Q2 (:15–:29)</strong>,
+        <strong>Q3 (:30–:44)</strong>, and <strong>Q4 (:45–:59)</strong>, then ask six separate
+        questions about how price behaves <em>inside</em> the hour. Each tab below answers one of them.
+      </div>
     </div>
 
-    <div class="tabs">
-      <div class="tab active" data-panel="a">A · Location</div>
-      <div class="tab" data-panel="b">B · Sequencing</div>
-      <div class="tab" data-panel="c">C · Per-quarter bias</div>
-      <div class="tab" data-panel="d">D · Conditional shifts</div>
-      <div class="tab" data-panel="e">E · Extreme persistence</div>
-      <div class="tab" data-panel="f">F · Q1-range expansion</div>
+    <div class="qhour-legend">
+      <div><strong>Q1</strong> minute :00–:14</div>
+      <div><strong>Q2</strong> minute :15–:29</div>
+      <div><strong>Q3</strong> minute :30–:44</div>
+      <div><strong>Q4</strong> minute :45–:59</div>
     </div>
 
-    <div id="panel-a" class="tab-panel active card"><table id="t-a"></table></div>
-    <div id="panel-b" class="tab-panel card"><table id="t-b"></table></div>
-    <div id="panel-c" class="tab-panel card"><table id="t-c"></table></div>
-    <div id="panel-d" class="tab-panel card"><table id="t-d"></table></div>
-    <div id="panel-e" class="tab-panel card"><table id="t-e"></table></div>
-    <div id="panel-f" class="tab-panel card"><table id="t-f"></table></div>
+    <div class="tab-nav" id="tabs">
+      <button class="tab-btn" data-tab="a" data-active="true"><span class="tab-letter">A</span>Where extremes form</button>
+      <button class="tab-btn" data-tab="b" data-active="false"><span class="tab-letter">B</span>High or low first</button>
+      <button class="tab-btn" data-tab="c" data-active="false"><span class="tab-letter">C</span>Per-quarter bias</button>
+      <button class="tab-btn" data-tab="d" data-active="false"><span class="tab-letter">D</span>Q1 conditioning</button>
+      <button class="tab-btn" data-tab="e" data-active="false"><span class="tab-letter">E</span>Extreme persistence</button>
+      <button class="tab-btn" data-tab="f" data-active="false"><span class="tab-letter">F</span>Q1-range expansion</button>
+    </div>
+
+    <!-- TAB A · Where extremes form -->
+    <div class="tab-panel" data-tab="a" data-active="true">
+      <div class="card">
+        <div class="section-head">
+          <div class="sh-question">Which quarter holds the hour's high — and which holds the low?</div>
+          <div class="sh-explainer">
+            For every hour in the dataset, we record which quarter contained the highest high and which contained the lowest low.
+            A flat 25/25/25/25 distribution would mean extremes are random in time. A skew tells you when to expect the print.
+          </div>
+        </div>
+        <div class="headline" id="hl-a"></div>
+
+        <div class="study-section">
+          <div class="study-section-title">▲ Quarter that contains the hour's HIGH</div>
+          <div class="q-strip" id="qs-a-high"></div>
+        </div>
+        <div class="study-section">
+          <div class="study-section-title">▼ Quarter that contains the hour's LOW</div>
+          <div class="q-strip" id="qs-a-low"></div>
+        </div>
+
+        <div class="prose">
+          The takeaway is symmetric: <strong>Q1 and Q4</strong> are the most common locations for both highs and lows.
+          Hours tend to make their first big move early (Q1) and then either drift, or print a fresh extreme right at the close (Q4).
+          The middle quarters are quieter — a Q2 or Q3 high/low is roughly half as common as a Q1/Q4 one.
+        </div>
+
+        <div class="slice-toggle" data-study="a">
+          <button data-slice="aggregate" data-active="true">Aggregate</button>
+          <button data-slice="by_year"   data-active="false">By year</button>
+          <button data-slice="by_hour"   data-active="false">By hour</button>
+          <button data-slice="by_dow"    data-active="false">By DOW</button>
+        </div>
+        <div id="t-a"></div>
+      </div>
+    </div>
+
+    <!-- TAB B · High vs Low first -->
+    <div class="tab-panel" data-tab="b" data-active="false">
+      <div class="card">
+        <div class="section-head">
+          <div class="sh-question">Within the hour, does the high or the low form first?</div>
+          <div class="sh-explainer">
+            Comparing the bar that printed the hour's high against the bar that printed its low — whichever came first wins.
+            "Tie" means both printed in the same minute.
+          </div>
+        </div>
+        <div class="headline" id="hl-b"></div>
+        <div id="b-bars" style="margin-bottom:14px;"></div>
+
+        <div class="prose">
+          The split is roughly <strong>50/50</strong> on the dataset overall, but small persistent biases at certain hours
+          can be a useful tell — if a particular hour reliably prints its low first, you have a directional anchor for the range.
+          Use the slice toggles below to look for those edges.
+        </div>
+
+        <div class="slice-toggle" data-study="b">
+          <button data-slice="aggregate" data-active="true">Aggregate</button>
+          <button data-slice="by_year"   data-active="false">By year</button>
+          <button data-slice="by_hour"   data-active="false">By hour</button>
+          <button data-slice="by_dow"    data-active="false">By DOW</button>
+        </div>
+        <div id="t-b"></div>
+      </div>
+    </div>
+
+    <!-- TAB C · Per-quarter bias -->
+    <div class="tab-panel" data-tab="c" data-active="false">
+      <div class="card">
+        <div class="section-head">
+          <div class="sh-question">Is each quarter directionally biased — and how big are its candles?</div>
+          <div class="sh-explainer">
+            For each of Q1–Q4 we compute the share of up-closes vs down-closes, the average and median range,
+            and the body-to-range ratio (a measure of conviction — high = trending, low = wicky).
+          </div>
+        </div>
+        <div class="headline" id="hl-c"></div>
+
+        <div class="study-section">
+          <div class="study-section-title">Up-close rate by quarter</div>
+          <div class="q-strip" id="qs-c-up"></div>
+        </div>
+        <div class="study-section">
+          <div class="study-section-title">Average range (NQ points) by quarter</div>
+          <div class="q-strip" id="qs-c-range"></div>
+        </div>
+        <div class="study-section">
+          <div class="study-section-title">Body-to-range ratio (conviction) by quarter</div>
+          <div class="q-strip" id="qs-c-body"></div>
+        </div>
+
+        <div class="prose">
+          Two stable patterns:
+          <ul class="prose-list">
+            <li><strong>Q1 and Q3</strong> are the largest-range quarters on average — these are the "action" windows.</li>
+            <li>The body-to-range ratio sits near <strong>50%</strong> in every quarter, meaning roughly half the range is wick.</li>
+          </ul>
+          A meaningful directional bias would show up as one quarter's up-close rate drifting noticeably above or below 50%.
+          The aggregate shows it's balanced — but slicing by hour can surface real edges.
+        </div>
+
+        <div class="slice-toggle" data-study="c">
+          <button data-slice="aggregate" data-active="true">Aggregate</button>
+          <button data-slice="by_year"   data-active="false">By year</button>
+          <button data-slice="by_hour"   data-active="false">By hour</button>
+          <button data-slice="by_dow"    data-active="false">By DOW</button>
+        </div>
+        <div id="t-c"></div>
+      </div>
+    </div>
+
+    <!-- TAB D · Q1 conditioning -->
+    <div class="tab-panel" data-tab="d" data-active="false">
+      <div class="card">
+        <div class="section-head">
+          <div class="sh-question">Does Q1's direction predict the rest of the hour?</div>
+          <div class="sh-explainer">
+            Conditional probabilities: given Q1 closed up (or down), what's the chance the full hour also closes up?
+            And what's the chance Q4 reverses Q1?
+          </div>
+        </div>
+        <div class="headline" id="hl-d"></div>
+
+        <div id="d-bars" style="margin-bottom:14px;"></div>
+
+        <div class="prose">
+          The signal here is real: when Q1 closes up, the <strong>full hour closes up about 70% of the time</strong>
+          (and symmetrically for down). Q1 is a strong directional anchor for the hour — but that doesn't mean
+          subsequent quarters trend in the same direction. Q2/Q3/Q4 individually run roughly 50/50 regardless of Q1.
+          The hour's net direction comes from <em>magnitude</em> set in Q1, not continued momentum.
+        </div>
+
+        <div class="slice-toggle" data-study="d">
+          <button data-slice="aggregate" data-active="true">Aggregate</button>
+          <button data-slice="by_year"   data-active="false">By year</button>
+          <button data-slice="by_hour"   data-active="false">By hour</button>
+          <button data-slice="by_dow"    data-active="false">By DOW</button>
+        </div>
+        <div id="t-d"></div>
+      </div>
+    </div>
+
+    <!-- TAB E · Extreme persistence -->
+    <div class="tab-panel" data-tab="e" data-active="false">
+      <div class="card">
+        <div class="section-head">
+          <div class="sh-question">When Q1 sets an extreme, how often does it survive the hour?</div>
+          <div class="sh-explainer">
+            "Hold rate" = the fraction of hours where the Q1 high (or low) ends up being the hour's high (or low) — i.e.
+            no later quarter exceeded it. "Overshoot" = when it fails, by how much does the next quarter break through?
+          </div>
+        </div>
+        <div class="headline" id="hl-e"></div>
+
+        <div class="kvp-row" id="e-kvp"></div>
+
+        <div class="prose">
+          Q1 extremes hold around <strong>36–40%</strong> of the time — meaning nearly two-thirds of hours print a fresh
+          extreme later. When the Q1 high <em>does</em> get broken, the median overshoot is small (~8 NQ points), so
+          the level is still useful as a near-term reference even if it doesn't survive.
+        </div>
+
+        <div class="slice-toggle" data-study="e">
+          <button data-slice="aggregate" data-active="true">Aggregate</button>
+          <button data-slice="by_year"   data-active="false">By year</button>
+          <button data-slice="by_hour"   data-active="false">By hour</button>
+          <button data-slice="by_dow"    data-active="false">By DOW</button>
+        </div>
+        <div id="t-e"></div>
+      </div>
+    </div>
+
+    <!-- TAB F · Q1-range expansion -->
+    <div class="tab-panel" data-tab="f" data-active="false">
+      <div class="card">
+        <div class="section-head">
+          <div class="sh-question">Does a wide Q1 predict a wide hour?</div>
+          <div class="sh-explainer">
+            We bucket hours by Q1 range into quintiles (smallest 20% → largest 20%) and look at the average
+            full-hour range and the additional "remaining range" after Q1.
+          </div>
+        </div>
+        <div class="headline" id="hl-f"></div>
+
+        <div id="f-bars" style="margin-bottom:14px;"></div>
+
+        <div class="prose">
+          Strong positive scaling: <strong>large Q1 ranges predict large hours</strong>. The top Q1-range quintile
+          averages <strong>~99 NQ points</strong> of full-hour range vs <strong>~11 points</strong> for the smallest.
+          A loud open keeps making noise — useful for sizing expectations of where the hour might travel.
+          Notably, Q1 hold rates also rise with Q1 range: a wide opening quarter is less likely to be exceeded.
+        </div>
+
+        <div id="t-f"></div>
+      </div>
+    </div>
   </div>
 
   <script src="shared.js"></script>
   <script>
     const STUDIES = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const DOW_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
     async function init() {
-      // Register a parquet view per (study, slice). For MVP, load all aggregate views.
       for (const s of STUDIES) {
         for (const slice of ['aggregate', 'by_year', 'by_hour', 'by_dow']) {
           try {
             await loadParquet(`../data/quarters/study_${s}_${slice}.parquet`, `q_${s}_${slice}`);
           } catch (e) {
-            // Some study/slice combos may be empty (e.g. study_f with sparse data)
             console.warn(`Skipped q_${s}_${slice}:`, e.message);
           }
         }
       }
-      document.querySelectorAll('.tab').forEach(t => {
-        t.addEventListener('click', () => {
-          document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-          document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
-          t.classList.add('active');
-          document.getElementById('panel-' + t.dataset.panel).classList.add('active');
+
+      // Tab nav wiring
+      document.querySelectorAll('#tabs .tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const t = btn.dataset.tab;
+          document.querySelectorAll('#tabs .tab-btn').forEach(b => b.dataset.active = String(b.dataset.tab === t));
+          document.querySelectorAll('.tab-panel').forEach(p => p.dataset.active = String(p.dataset.tab === t));
         });
       });
-      document.getElementById('slice').addEventListener('change', render);
-      document.getElementById('min-count').addEventListener('change', render);
-      await render();
+
+      // Slice toggle wiring (per study)
+      document.querySelectorAll('.slice-toggle').forEach(grp => {
+        const study = grp.dataset.study;
+        grp.addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-slice]');
+          if (!btn) return;
+          const slice = btn.dataset.slice;
+          grp.querySelectorAll('button').forEach(b => b.dataset.active = String(b.dataset.slice === slice));
+          renderStudyTable(study, slice);
+        });
+      });
+
+      await renderAll();
     }
 
-    function getSlice() { return document.getElementById('slice').value; }
-    function getMinCount() { return parseInt(document.getElementById('min-count').value, 10) || 0; }
-
-    function genericTable(rows, sliceCol) {
-      if (!rows.length) return '<thead><tr><th>(no data)</th></tr></thead>';
-      const cols = Object.keys(rows[0]);
-      const minC = getMinCount();
-      const head = '<thead><tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr></thead>';
-      const body = '<tbody>' + rows.map(r => {
-        const lowCount = r.count != null && r.count < minC;
-        return `<tr${lowCount ? ' class="row-low-count"' : ''}>` +
-          cols.map(c => {
-            const v = r[c];
-            if (v == null) return '<td>—</td>';
-            if (typeof v === 'number' && c.endsWith('_pct')) return `<td>${fmtPct(v)}</td>`;
-            if (typeof v === 'number' && c.endsWith('_rate')) return `<td>${fmtPct(v)}</td>`;
-            if (typeof v === 'number' && Number.isInteger(v)) return `<td>${fmtNum(v)}</td>`;
-            if (typeof v === 'number') return `<td>${v.toFixed(3)}</td>`;
-            return `<td>${v}</td>`;
-          }).join('') + '</tr>';
-      }).join('') + '</tbody>';
-      return head + body;
+    async function renderAll() {
+      await renderStudyA();
+      await renderStudyB();
+      await renderStudyC();
+      await renderStudyD();
+      await renderStudyE();
+      await renderStudyF();
+      // Render initial slice tables (aggregate)
+      for (const s of STUDIES) renderStudyTable(s, 'aggregate');
     }
 
-    async function render() {
-      const slice = getSlice();
-      for (const s of STUDIES) {
-        const view = `q_${s}_${slice}`;
-        try {
-          const rows = await query(`SELECT * FROM ${view}`);
-          document.getElementById(`t-${s}`).innerHTML = genericTable(rows, slice);
-        } catch (e) {
-          document.getElementById(`t-${s}`).innerHTML = `<thead><tr><th>(${e.message})</th></tr></thead>`;
-        }
+    // ── Study A · where extremes form ────────────────────────────
+    async function renderStudyA() {
+      const r = (await query(`SELECT * FROM q_a_aggregate`))[0];
+      const highs = [r.q_of_high_q1_pct, r.q_of_high_q2_pct, r.q_of_high_q3_pct, r.q_of_high_q4_pct].map(Number);
+      const lows  = [r.q_of_low_q1_pct,  r.q_of_low_q2_pct,  r.q_of_low_q3_pct,  r.q_of_low_q4_pct ].map(Number);
+      renderQuarterStrip(document.getElementById('qs-a-high'), highs, { sub: 'of hours' });
+      renderQuarterStrip(document.getElementById('qs-a-low'),  lows,  { sub: 'of hours' });
+
+      const peakHighIdx = highs.indexOf(Math.max(...highs));
+      const peakLowIdx  = lows.indexOf(Math.max(...lows));
+      renderHeadline(document.getElementById('hl-a'),
+        'Hourly highs land most often in Q${qh} (${ph} of hours); lows in Q${ql} (${pl}). Q1/Q4 dominate — the middle quarters are quiet.',
+        { qh: peakHighIdx + 1, ph: fmtPct(highs[peakHighIdx]),
+          ql: peakLowIdx + 1,  pl: fmtPct(lows[peakLowIdx]) });
+    }
+
+    // ── Study B · high vs low first ──────────────────────────────
+    async function renderStudyB() {
+      const r = (await query(`SELECT * FROM q_b_aggregate`))[0];
+      const hPct = Number(r.extreme_first_H_pct), lPct = Number(r.extreme_first_L_pct), tPct = Number(r.extreme_first_T_pct);
+      renderBarRow(document.getElementById('b-bars'), [
+        { label: '▲ High first', value: hPct, color: 'green' },
+        { label: '▼ Low first',  value: lPct, color: 'red' },
+        { label: '= Tie',        value: tPct, color: 'amber' },
+      ], { max: 1.0, fmt: fmtPct });
+
+      const winner = hPct > lPct ? 'low' : 'high';   // narrate the LOSER side ("high gets there first")
+      const winPct = hPct > lPct ? fmtPct(hPct) : fmtPct(lPct);
+      const losePct = hPct > lPct ? fmtPct(lPct) : fmtPct(hPct);
+      const firstSide = hPct > lPct ? 'high' : 'low';
+      renderHeadline(document.getElementById('hl-b'),
+        'The ${first} prints first ${win} of the time — the other side first ${lose}. Roughly balanced overall.',
+        { first: firstSide, win: winPct, lose: losePct });
+    }
+
+    // ── Study C · per-quarter bias ───────────────────────────────
+    async function renderStudyC() {
+      const r = (await query(`SELECT * FROM q_c_aggregate`))[0];
+      const ups   = [r.q1_up_pct, r.q2_up_pct, r.q3_up_pct, r.q4_up_pct].map(Number);
+      const ranges = [r.q1_avg_range, r.q2_avg_range, r.q3_avg_range, r.q4_avg_range].map(Number);
+      const bodies = [r.q1_body_to_range_ratio, r.q2_body_to_range_ratio, r.q3_body_to_range_ratio, r.q4_body_to_range_ratio].map(Number);
+      renderQuarterStrip(document.getElementById('qs-c-up'),    ups, { sub: 'up-close share' });
+      renderQuarterStrip(document.getElementById('qs-c-range'), ranges,
+        { fmt: (v) => v.toFixed(1) + ' pts', sub: 'avg range' });
+      renderQuarterStrip(document.getElementById('qs-c-body'),  bodies, { sub: 'body / range' });
+
+      const widestIdx = ranges.indexOf(Math.max(...ranges));
+      renderHeadline(document.getElementById('hl-c'),
+        'Q${q} is the widest quarter on average (${pts} pts). Up-close rates sit near 50% across all quarters — no persistent directional bias in the aggregate.',
+        { q: widestIdx + 1, pts: ranges[widestIdx].toFixed(1) });
+    }
+
+    // ── Study D · Q1 conditioning ────────────────────────────────
+    async function renderStudyD() {
+      const r = (await query(`SELECT * FROM q_d_aggregate`))[0];
+      const hourUpGivenQ1Up = Number(r.p_hour_up_given_q1_up);
+      const hourDnGivenQ1Dn = Number(r.p_hour_down_given_q1_down);
+      const q4UpGivenQ1Up = Number(r.p_q4_up_given_q1_up);
+      const q4DnGivenQ1Up = Number(r.p_q4_down_given_q1_up);
+      const reversal = Number(r.p_q4_reversal_given_q1_dir);
+
+      renderBarRow(document.getElementById('d-bars'), [
+        { label: 'P(hour up | Q1 up)',  value: hourUpGivenQ1Up, color: 'green' },
+        { label: 'P(hour dn | Q1 dn)',  value: hourDnGivenQ1Dn, color: 'red' },
+        { label: 'P(Q4 up | Q1 up)',    value: q4UpGivenQ1Up,   color: 'blue' },
+        { label: 'P(Q4 dn | Q1 up)',    value: q4DnGivenQ1Up,   color: 'amber' },
+        { label: 'P(Q4 reverses Q1)',   value: reversal,        color: 'amber' },
+      ], { max: 1.0, fmt: fmtPct });
+
+      renderHeadline(document.getElementById('hl-d'),
+        'When Q1 closes up, the full hour closes up ${p1} of the time. But Q4 itself is still 50/50 — Q1 sets magnitude, not continued momentum.',
+        { p1: fmtPct(hourUpGivenQ1Up) });
+    }
+
+    // ── Study E · extreme persistence ────────────────────────────
+    async function renderStudyE() {
+      const r = (await query(`SELECT * FROM q_e_aggregate`))[0];
+      document.getElementById('e-kvp').innerHTML = `
+        <div class="kvp">
+          <div class="kvp-label">Q1 high holds for hour</div>
+          <div class="kvp-val" style="color:var(--green);">${fmtPct(r.q1_high_hold_rate)}</div>
+          <div class="kvp-sub">no later quarter exceeded it</div>
+        </div>
+        <div class="kvp">
+          <div class="kvp-label">Q1 low holds for hour</div>
+          <div class="kvp-val" style="color:var(--red);">${fmtPct(r.q1_low_hold_rate)}</div>
+          <div class="kvp-sub">no later quarter exceeded it</div>
+        </div>
+        <div class="kvp">
+          <div class="kvp-label">Q4 high holds</div>
+          <div class="kvp-val">${fmtPct(r.q4_high_hold_rate)}</div>
+          <div class="kvp-sub">i.e. Q4 made the hour's high</div>
+        </div>
+        <div class="kvp">
+          <div class="kvp-label">Q4 low holds</div>
+          <div class="kvp-val">${fmtPct(r.q4_low_hold_rate)}</div>
+          <div class="kvp-sub">i.e. Q4 made the hour's low</div>
+        </div>
+        <div class="kvp">
+          <div class="kvp-label">Median overshoot</div>
+          <div class="kvp-val" style="color:var(--amber);">${Number(r.q1_high_fail_overshoot_median).toFixed(1)} pts</div>
+          <div class="kvp-sub">when Q1 high fails</div>
+        </div>
+        <div class="kvp">
+          <div class="kvp-label">Mean overshoot</div>
+          <div class="kvp-val" style="color:var(--amber);">${Number(r.q1_high_fail_overshoot_mean).toFixed(1)} pts</div>
+          <div class="kvp-sub">when Q1 high fails</div>
+        </div>
+      `;
+      renderHeadline(document.getElementById('hl-e'),
+        'Q1 highs hold ${ph} of the time and Q1 lows ${pl}. When Q1 fails, the median overshoot is just ${med} pts — the level remains a useful reference.',
+        { ph: fmtPct(r.q1_high_hold_rate), pl: fmtPct(r.q1_low_hold_rate),
+          med: Number(r.q1_high_fail_overshoot_median).toFixed(1) });
+    }
+
+    // ── Study F · Q1-range expansion ─────────────────────────────
+    async function renderStudyF() {
+      const rows = await query(`SELECT * FROM q_f_aggregate ORDER BY q1_range_quintile`);
+      // Build hour-range bars per quintile
+      const max = Math.max(...rows.map(r => Number(r.avg_hour_range)));
+      const bars = rows.map(r => ({
+        label: `Quintile ${r.q1_range_quintile} · n=${fmtNum(r.count)}`,
+        value: Number(r.avg_hour_range),
+        color: r.q1_range_quintile == 5 ? 'green' : r.q1_range_quintile == 1 ? 'red' : 'blue',
+      }));
+      renderBarRow(document.getElementById('f-bars'), bars, {
+        max,
+        fmt: (v) => v.toFixed(1) + ' pts',
+      });
+
+      const top = rows[rows.length - 1], bot = rows[0];
+      const ratio = (Number(top.avg_hour_range) / Number(bot.avg_hour_range)).toFixed(1);
+      renderHeadline(document.getElementById('hl-f'),
+        'Top Q1-range quintile averages ${top} pts of full-hour range vs ${bot} pts for the bottom — a ${r}x expansion.',
+        { top: Number(top.avg_hour_range).toFixed(0), bot: Number(bot.avg_hour_range).toFixed(0), r: ratio });
+    }
+
+    // ── Generic slice table renderer ─────────────────────────────
+    async function renderStudyTable(study, slice) {
+      const view = `q_${study}_${slice}`;
+      try {
+        const rows = await query(`SELECT * FROM ${view}`);
+        document.getElementById(`t-${study}`).innerHTML = genericTable(rows, slice);
+      } catch (e) {
+        document.getElementById(`t-${study}`).innerHTML = `<div class="prose" style="color:var(--text-muted);">No data for this slice (${e.message})</div>`;
       }
     }
 
-    init().catch(e => alert('Failed to load: ' + e.message));
+    function genericTable(rows, slice) {
+      if (!rows.length) return '<div class="prose" style="color:var(--text-muted);">No rows.</div>';
+      const cols = Object.keys(rows[0]);
+      const sliceColMap = { by_year: 'year', by_hour: 'hour_of_day_et', by_dow: 'dow' };
+      const sliceCol = sliceColMap[slice];
+      // Reorder so slice key comes first
+      const ordered = sliceCol ? [sliceCol, ...cols.filter(c => c !== sliceCol)] : cols;
+      const head = '<thead><tr>' + ordered.map(c => `<th>${prettifyHeader(c)}</th>`).join('') + '</tr></thead>';
+      const body = '<tbody>' + rows.map(r => {
+        return `<tr>` + ordered.map(c => {
+          let v = r[c];
+          if (v == null) return '<td>—</td>';
+          if (c === 'dow' && typeof v === 'number') return `<td>${DOW_NAMES[v] || v}</td>`;
+          if (c === 'hour_of_day_et' && typeof v === 'number') return `<td>${String(v).padStart(2, '0')} ET</td>`;
+          if (typeof v === 'number' && (c.endsWith('_pct') || c.endsWith('_rate') || c.startsWith('p_'))) return `<td>${fmtPct(v)}</td>`;
+          if (typeof v === 'number' && Number.isInteger(v)) return `<td>${fmtNum(v)}</td>`;
+          if (typeof v === 'number') return `<td>${v.toFixed(2)}</td>`;
+          return `<td>${v}</td>`;
+        }).join('') + '</tr>';
+      }).join('') + '</tbody>';
+      return `<table class="ibt">${head}${body}</table>`;
+    }
+
+    function prettifyHeader(c) {
+      return c
+        .replace(/_pct$/, ' %')
+        .replace(/_rate$/, ' rate')
+        .replace(/^p_/, 'P(')
+        .replace(/_/g, ' ')
+        .replace(/^./, ch => ch.toUpperCase());
+    }
+
+    init().catch(e => { console.error('init failed:', e); alert('Failed to load: ' + e.message); });
   </script>
 </body>
 </html>

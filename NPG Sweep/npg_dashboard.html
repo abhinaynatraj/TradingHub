@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NPG Sweep · Probability Engine</title>
+  <link rel="stylesheet" href="../Analysis/dashboard/shared.css" />
+  <style>
+    .toolbar { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin: 16px 0 24px; padding: 16px; background: var(--bg-elev-1); border: 1px solid var(--border); border-radius: var(--radius); }
+    .toolbar-group { display: flex; align-items: center; gap: 8px; }
+    .toolbar-label { font-family: var(--font-data); font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; }
+    .chip-row { display: flex; gap: 4px; }
+    .chip { font-family: var(--font-data); font-size: 12px; padding: 6px 12px; border: 1px solid var(--border-mid); background: var(--bg-elev-2); color: var(--text-secondary); cursor: pointer; border-radius: var(--radius-sm); transition: all .15s; }
+    .chip:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .chip.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+    .profile-select { font-family: var(--font-data); font-size: 12px; padding: 6px 10px; background: var(--bg-elev-2); color: var(--text-primary); border: 1px solid var(--border-mid); border-radius: var(--radius-sm); cursor: pointer; }
+    .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+    .tab { padding: 10px 16px; cursor: pointer; color: var(--text-secondary); border-bottom: 2px solid transparent; font-family: var(--font-data); font-size: 12px; font-weight: 600; background: transparent; border-top: none; border-left: none; border-right: none; }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .compare-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    @media (max-width: 1100px) { .compare-grid { grid-template-columns: 1fr; } }
+    .pairing-panel { background: var(--bg-elev-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+    .panel-title { font-family: var(--font-display); font-weight: 700; font-size: 16px; margin-bottom: 16px; color: var(--text-primary); }
+    .metric-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px; }
+    .metric { background: var(--bg-elev-2); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); }
+    .metric-label { font-family: var(--font-data); font-size: 10px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 4px; }
+    .metric-value { font-family: var(--font-data); font-size: 20px; font-weight: 600; color: var(--text-primary); }
+    .metric-value.positive { color: var(--green); }
+    .metric-value.negative { color: var(--red); }
+    .section-title { font-family: var(--font-data); font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; margin: 20px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    .chart-wrap { margin-top: 8px; background: var(--bg-elev-2); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); }
+    .chart-wrap svg { display: block; width: 100%; height: auto; }
+    .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-family: var(--font-data); font-size: 11px; }
+    .bar-label { width: 36px; color: var(--text-muted); }
+    .bar-track { flex: 1; background: var(--bg-elev-1); height: 18px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+    .bar-fill { height: 100%; background: var(--accent); transition: width .2s; }
+    .bar-pct { width: 48px; text-align: right; color: var(--text-primary); }
+    .breakdown-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 24px; }
+    @media (max-width: 800px) { .breakdown-grid { grid-template-columns: 1fr; } }
+    .breakdown-card { background: var(--bg-elev-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+    .breakdown-card h3 { font-family: var(--font-data); font-size: 12px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 10px; font-weight: 600; }
+    .breakdown-table { width: 100%; border-collapse: collapse; font-family: var(--font-data); font-size: 12px; }
+    .breakdown-table th { text-align: left; padding: 6px 8px; color: var(--text-muted); font-weight: 500; font-size: 10px; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+    .breakdown-table th.num { text-align: right; }
+    .breakdown-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); color: var(--text-primary); }
+    .breakdown-table td.num { text-align: right; }
+    .breakdown-table tr:last-child td { border-bottom: none; }
+    .ev-heat { padding-left: 10px; padding-right: 10px; border-radius: var(--radius-sm); }
+  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div class="theme-picker" role="radiogroup" aria-label="Theme">
+    <button class="theme-opt" data-theme="dark"   title="Dark"   aria-label="Dark theme">☀</button>
+    <button class="theme-opt" data-theme="light"  title="Light"  aria-label="Light theme">☾</button>
+    <button class="theme-opt" data-theme="gold"   title="Gold"   aria-label="Gold theme">✦</button>
+    <button class="theme-opt" data-theme="indigo" title="Indigo" aria-label="Indigo theme">◆</button>
+  </div>
+  <div class="container">
+    <nav><a href="../index.html">← Statistic.ally</a></nav>
+    <h1>NPG Sweep · Probability Engine</h1>
+
+    <div class="top">
+      <div class="top-eyebrow">What this measures</div>
+      <div class="top-title">Wick Lick → CISD → projection statistics across 3 HTF/LTF pairings</div>
+      <div class="top-desc">
+        Implements the npg "Sweep · CISD · FVG · Key Levels" model (the Fearing methodology). A <strong>Wick Lick</strong> is a higher-timeframe candle that pierces the prior candle's high or low and closes back inside it — liquidity grab + rejection. Once a Wick Lick prints, the engine walks the lower timeframe for a <strong>CISD</strong> (Change in State of Delivery): a closing break of the opposing-candle series that built up to the sweep. Entry fires on the next bar; targets are 0.5×, 1.0×, 1.5×, 2.0× of the opposing series' range; stop is the sweep extreme. Each trade splits into 4 partial-exit legs (25% per target).
+      </div>
+      <div class="top-meta">
+        <div><strong>Pairings:</strong> 1H_5M · 4H_15M · D_1H</div>
+        <div><strong>Profiles:</strong> series_multi (4 partial exits) · raw_measure (no SL/TP, MAE/MFE only)</div>
+        <div><strong>Filters:</strong> Silver (late-week + aggressive close) · SMT (NQ-ES divergence) · Direction · Session</div>
+        <div><strong>WR semantics:</strong> % of trades reaching the 1.0× projection before SL</div>
+      </div>
+    </div>
+    <div class="toolbar" id="toolbar">
+      <div class="toolbar-group">
+        <span class="toolbar-label">Profile</span>
+        <select class="profile-select" id="profileSelect" onchange="onProfileChange(this.value)">
+          <option value="series_multi">series_multi</option>
+          <option value="raw_measure">raw_measure</option>
+        </select>
+      </div>
+      <div class="toolbar-group">
+        <span class="toolbar-label">Silver</span>
+        <div class="chip-row" data-filter="silver"></div>
+      </div>
+      <div class="toolbar-group">
+        <span class="toolbar-label">SMT</span>
+        <div class="chip-row" data-filter="smt"></div>
+      </div>
+      <div class="toolbar-group">
+        <span class="toolbar-label">Direction</span>
+        <div class="chip-row" data-filter="direction"></div>
+      </div>
+      <div class="toolbar-group">
+        <span class="toolbar-label">Session</span>
+        <div class="chip-row" data-filter="session"></div>
+      </div>
+    </div>
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-tab="compare" onclick="setTab('compare')">Compare</button>
+      <button class="tab" data-tab="1H_5M" onclick="setTab('1H_5M')">1H_5M</button>
+      <button class="tab" data-tab="4H_15M" onclick="setTab('4H_15M')">4H_15M</button>
+      <button class="tab" data-tab="D_1H" onclick="setTab('D_1H')">D_1H</button>
+    </div>
+    <div id="content">Loading…</div>
+  </div>
+
+  <script src="../Analysis/dashboard/shared.js"></script>
+  <script>
+    const PAIRINGS = ['1H_5M', '4H_15M', 'D_1H'];
+    const PROFILES = ['series_multi', 'raw_measure'];
+
+    // DuckDB view alias: `t_<pairing>_<profile>` with pairing slashes replaced.
+    function viewAlias(pairing, profile) {
+      return `t_${pairing}_${profile}`;
+    }
+
+    async function loadAllViews() {
+      for (const pairing of PAIRINGS) {
+        for (const profile of PROFILES) {
+          const slug = `${pairing}_${profile}`;
+          await loadParquet(`data/trades_${slug}.parquet`, viewAlias(pairing, profile));
+        }
+      }
+    }
+
+    const FILTERS = {
+      silver: 'all',
+      smt: 'all',
+      direction: 'all',
+      session: 'all',
+    };
+
+    const CHIP_OPTIONS = {
+      silver: [['all', 'All'], ['on', 'On'], ['off', 'Off']],
+      smt: [['all', 'All'], ['on', 'On'], ['off', 'Off']],
+      direction: [['all', 'All'], ['LONG', 'Long'], ['SHORT', 'Short']],
+      session: [['all', 'All'], ['ASIA', 'Asia'], ['LONDON', 'London'], ['NY', 'NY'], ['OTHER', 'Other']],
+    };
+
+    let ACTIVE_PROFILE = 'series_multi';
+
+    function renderChips() {
+      Object.entries(CHIP_OPTIONS).forEach(([filter, options]) => {
+        const row = document.querySelector(`[data-filter="${filter}"]`);
+        row.innerHTML = '';
+        options.forEach(([value, label]) => {
+          const btn = document.createElement('button');
+          btn.className = 'chip' + (FILTERS[filter] === value ? ' active' : '');
+          btn.textContent = label;
+          btn.onclick = () => { FILTERS[filter] = value; renderChips(); rerender(); };
+          row.appendChild(btn);
+        });
+      });
+    }
+
+    function onProfileChange(value) {
+      ACTIVE_PROFILE = value;
+      rerender();
+    }
+
+    function buildWhere() {
+      const conds = [];
+      if (FILTERS.silver === 'on') conds.push('silver = TRUE');
+      if (FILTERS.silver === 'off') conds.push('silver = FALSE');
+      if (FILTERS.smt === 'on') conds.push('smt = TRUE');
+      if (FILTERS.smt === 'off') conds.push('smt = FALSE');
+      if (FILTERS.direction !== 'all') conds.push(`direction = '${FILTERS.direction}'`);
+      if (FILTERS.session === 'ASIA') conds.push('(hour >= 18 OR hour < 2)');
+      if (FILTERS.session === 'LONDON') conds.push('hour BETWEEN 2 AND 7');
+      if (FILTERS.session === 'NY') conds.push('hour BETWEEN 8 AND 15');
+      if (FILTERS.session === 'OTHER') conds.push('hour BETWEEN 16 AND 17');
+      return conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+    }
+
+    let ACTIVE_TAB = 'compare';
+
+    function setTab(tab) {
+      ACTIVE_TAB = tab;
+      document.querySelectorAll('.tab').forEach(t =>
+        t.classList.toggle('active', t.dataset.tab === tab));
+      rerender();
+    }
+
+    function fmtNum(n) { return Number(n).toLocaleString(); }
+    function fmtPct(n) { return (+n).toFixed(1) + '%'; }
+    function fmtR(n)   { return (n >= 0 ? '+' : '') + (+n).toFixed(3) + 'R'; }
+    function fmtPF(n)  { return (+n).toFixed(2); }
+    function evClass(n) { return n > 0 ? 'positive' : n < 0 ? 'negative' : ''; }
+
+    async function summaryFor(pairing) {
+      const view = viewAlias(pairing, ACTIVE_PROFILE);
+      const where = buildWhere();
+      const sql = `
+        SELECT
+          COUNT(*) AS n,
+          100.0 * AVG(CASE WHEN hits_10x THEN 1 ELSE 0 END) AS wr,
+          AVG(composite_r) AS ev,
+          SUM(CASE WHEN composite_r > 0 THEN composite_r ELSE 0 END) AS pos_sum,
+          SUM(CASE WHEN composite_r < 0 THEN -composite_r ELSE 0 END) AS neg_sum
+        FROM ${view} ${where}
+      `;
+      const result = await query(sql);
+      const r = result[0];
+      const ev = +r.ev || 0;
+      const pos_sum = +r.pos_sum || 0;
+      const neg_sum = +r.neg_sum || 0;
+      const pf = neg_sum > 0 ? pos_sum / neg_sum : 0;
+      return { n: +r.n, wr: +r.wr || 0, ev, pf };
+    }
+
+    function renderMetricGrid(s) {
+      const showEvPf = ACTIVE_PROFILE === 'series_multi';
+      const cells = [
+        { label: 'N',  value: fmtNum(s.n), cls: '' },
+        { label: 'WR', value: fmtPct(s.wr), cls: '' },
+      ];
+      if (showEvPf) {
+        cells.push({ label: 'EV', value: fmtR(s.ev), cls: evClass(s.ev) });
+        cells.push({ label: 'PF', value: fmtPF(s.pf), cls: '' });
+      }
+      return `<div class="metric-grid">${cells.map(c =>
+        `<div class="metric"><div class="metric-label">${c.label}</div>` +
+        `<div class="metric-value ${c.cls}">${c.value}</div></div>`).join('')}</div>`;
+    }
+
+    async function reachRatesFor(pairing) {
+      const view = viewAlias(pairing, ACTIVE_PROFILE);
+      const where = buildWhere();
+      const sql = `
+        SELECT
+          100.0 * AVG(CASE WHEN hits_05x THEN 1 ELSE 0 END) AS r05,
+          100.0 * AVG(CASE WHEN hits_10x THEN 1 ELSE 0 END) AS r10,
+          100.0 * AVG(CASE WHEN hits_15x THEN 1 ELSE 0 END) AS r15,
+          100.0 * AVG(CASE WHEN hits_20x THEN 1 ELSE 0 END) AS r20
+        FROM ${view} ${where}
+      `;
+      const result = await query(sql);
+      const r = result[0];
+      return { '0.5x': +r.r05 || 0, '1.0x': +r.r10 || 0, '1.5x': +r.r15 || 0, '2.0x': +r.r20 || 0 };
+    }
+
+    function renderReachRateBars(rrates) {
+      const labels = ['0.5x', '1.0x', '1.5x', '2.0x'];
+      const rows = labels.map(label => {
+        const pct = rrates[label];
+        return `<div class="bar-row">
+          <span class="bar-label">${label}</span>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct.toFixed(1)}%"></div></div>
+          <span class="bar-pct">${pct.toFixed(1)}%</span>
+        </div>`;
+      }).join('');
+      return `<div class="chart-wrap">${rows}</div>`;
+    }
+
+    async function equityPointsFor(pairing) {
+      // Pull entry_ts_ns + composite_r ordered, accumulate client-side. With ~15k
+      // rows this is fast; doing the cumulative sum in SQL would require a window
+      // function and shipping the result anyway.
+      const view = viewAlias(pairing, ACTIVE_PROFILE);
+      const where = buildWhere();
+      const sql = `SELECT composite_r FROM ${view} ${where} ORDER BY entry_ts_ns`;
+      const rows = await query(sql);
+      const cum = [];
+      let running = 0;
+      rows.forEach(r => { running += +r.composite_r; cum.push(running); });
+      return cum;
+    }
+
+    function renderEquityCurve(cum) {
+      if (cum.length === 0) {
+        return `<div class="chart-wrap" style="text-align:center;color:var(--text-muted);font-size:12px;padding:30px">No trades</div>`;
+      }
+      const W = 320, H = 100, PAD_L = 36, PAD_R = 8, PAD_Y = 12;
+      const innerW = W - PAD_L - PAD_R;
+      const innerH = H - 2 * PAD_Y;
+      const minY = Math.min(0, ...cum);
+      const maxY = Math.max(0, ...cum);
+      const yRange = (maxY - minY) || 1;
+      const xStep = cum.length > 1 ? innerW / (cum.length - 1) : 0;
+      const yToPx = y => PAD_Y + innerH - ((y - minY) / yRange) * innerH;
+      const points = cum.map((y, i) => `${PAD_L + i * xStep},${yToPx(y).toFixed(1)}`).join(' ');
+      const zeroPx = yToPx(0);
+      const finalR = cum[cum.length - 1];
+      const yLabels = [maxY, (maxY + minY) / 2, minY].map(v => ({ v, y: yToPx(v) }));
+
+      return `<div class="chart-wrap"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+        ${yLabels.map(yl =>
+          `<text x="4" y="${(yl.y + 3).toFixed(1)}" font-family="JetBrains Mono,monospace" font-size="9" fill="var(--text-muted)">${yl.v >= 0 ? '+' : ''}${yl.v.toFixed(2)}</text>`
+        ).join('')}
+        <line x1="${PAD_L}" y1="${zeroPx.toFixed(1)}" x2="${W - PAD_R}" y2="${zeroPx.toFixed(1)}" stroke="var(--text-muted)" stroke-dasharray="3,3" stroke-width="1"/>
+        <polyline points="${points}" stroke="var(--accent)" stroke-width="1.5" fill="none"/>
+        <text x="${W - PAD_R - 2}" y="14" text-anchor="end" font-family="JetBrains Mono,monospace" font-size="11" fill="var(--text-secondary)">${finalR >= 0 ? '+' : ''}${finalR.toFixed(2)}R total</text>
+      </svg></div>`;
+    }
+
+    const DOW_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    function evHeatColor(ev) {
+      // Red→white→green interpolation, clamped at ±0.5R for color saturation.
+      const t = Math.max(-1, Math.min(1, (ev || 0) / 0.5));
+      if (t >= 0) return `rgba(34,197,94,${(t * 0.4).toFixed(2)})`;
+      return `rgba(239,68,68,${(-t * 0.4).toFixed(2)})`;
+    }
+
+    async function bucketStats(pairing, bucketExpr, bucketLabelMap) {
+      // bucketExpr is a SQL expression yielding the bucket key for each row.
+      const view = viewAlias(pairing, ACTIVE_PROFILE);
+      const where = buildWhere();
+      const sql = `
+        SELECT
+          ${bucketExpr} AS bucket,
+          COUNT(*) AS n,
+          100.0 * AVG(CASE WHEN hits_10x THEN 1 ELSE 0 END) AS wr,
+          AVG(composite_r) AS ev
+        FROM ${view} ${where}
+        GROUP BY bucket
+        ORDER BY bucket
+      `;
+      const rows = await query(sql);
+      return rows.map(r => ({
+        bucket: bucketLabelMap ? (bucketLabelMap[r.bucket] || String(r.bucket)) : String(r.bucket),
+        n: +r.n,
+        wr: +r.wr || 0,
+        ev: +r.ev || 0,
+      }));
+    }
+
+    function renderBreakdownTable(title, bucketLabel, rows) {
+      const body = rows.map(r => `<tr>
+        <td>${r.bucket}</td>
+        <td class="num">${fmtNum(r.n)}</td>
+        <td class="num">${fmtPct(r.wr)}</td>
+        <td class="num ev-heat" style="background:${evHeatColor(r.ev)}">${fmtR(r.ev)}</td>
+      </tr>`).join('');
+      return `<div class="breakdown-card">
+        <h3>${title}</h3>
+        <table class="breakdown-table">
+          <thead><tr><th>${bucketLabel}</th><th class="num">N</th><th class="num">WR</th><th class="num">EV</th></tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>`;
+    }
+
+    async function renderBreakdowns(pairing) {
+      if (ACTIVE_PROFILE !== 'series_multi') {
+        return `<div class="breakdown-card" style="margin-top:24px;color:var(--text-muted);font-size:12px;padding:20px;text-align:center">Breakdowns hidden for raw_measure profile (composite_r=0 by design — EV/PF not meaningful).</div>`;
+      }
+      const sessionExpr = `CASE
+        WHEN hour >= 18 OR hour < 2 THEN 'ASIA'
+        WHEN hour BETWEEN 2 AND 7   THEN 'LONDON'
+        WHEN hour BETWEEN 8 AND 15  THEN 'NY'
+        ELSE 'OTHER'
+      END`;
+      const [bySession, byDir, byDow, byHour] = await Promise.all([
+        bucketStats(pairing, sessionExpr),
+        bucketStats(pairing, 'direction'),
+        bucketStats(pairing, 'dow', Object.fromEntries(DOW_NAMES.map((n, i) => [i, n]))),
+        bucketStats(pairing, 'hour'),
+      ]);
+      return `<div class="breakdown-grid">
+        ${renderBreakdownTable('By Session', 'Session', bySession)}
+        ${renderBreakdownTable('By Direction', 'Direction', byDir)}
+        ${renderBreakdownTable('By Day of Week', 'DOW', byDow)}
+        ${renderBreakdownTable('By Hour', 'Hour', byHour)}
+      </div>`;
+    }
+
+    async function renderPairingPanel(pairing) {
+      const s = await summaryFor(pairing);
+      const rrates = await reachRatesFor(pairing);
+      const showEquity = ACTIVE_PROFILE === 'series_multi';
+      let equityHtml = '';
+      if (showEquity) {
+        const cum = await equityPointsFor(pairing);
+        equityHtml = `<div class="section-title">Equity curve</div>${renderEquityCurve(cum)}`;
+      }
+      return `<div class="pairing-panel">
+        <div class="panel-title">${pairing}</div>
+        ${renderMetricGrid(s)}
+        <div class="section-title">Reach rates</div>
+        ${renderReachRateBars(rrates)}
+        ${equityHtml}
+      </div>`;
+    }
+
+    async function renderCompare() {
+      const panels = await Promise.all(PAIRINGS.map(renderPairingPanel));
+      return `<div class="compare-grid">${panels.join('')}</div>`;
+    }
+
+    async function rerender() {
+      const content = document.getElementById('content');
+      content.innerHTML = 'Loading…';
+      try {
+        if (ACTIVE_TAB === 'compare') {
+          content.innerHTML = await renderCompare();
+        } else {
+          const panel = await renderPairingPanel(ACTIVE_TAB);
+          const bk = await renderBreakdowns(ACTIVE_TAB);
+          content.innerHTML = panel + bk;
+        }
+      } catch (e) {
+        content.innerHTML = `<div style="color: var(--red)">Render error: ${e.message}</div>`;
+      }
+    }
+
+    async function init() {
+      try {
+        await loadAllViews();
+        renderChips();
+        await rerender();
+      } catch (e) {
+        document.getElementById('content').innerHTML =
+          `<div style="color: var(--red)">Error: ${e.message}</div>`;
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

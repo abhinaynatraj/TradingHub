@@ -53,9 +53,8 @@ var string G_SMT = "SMT Divergence"
 show_smt   = input.bool(true,    "Show SMT Labels",           group=G_SMT, tooltip="Tag each setup with SMT / NO SMT. Triggers a second security() call on the comparison symbol.")
 smt_symbol = input.string("ES1!", "Comparison Symbol",        group=G_SMT, tooltip="Typically ES1! for NQ charts. SMT = NQ swept but ES didn't.")
 
-// ── 5. STYLE ──────────────────────────────────────────────────────────────────
+// ── 5. STYLE (non-color) ──────────────────────────────────────────────────────
 var string G_STYLE = "Style"
-color_mode      = input.string("Light", "Color Mode",         options=["Light", "Dark", "Custom"],    group=G_STYLE, tooltip="Light: default palette. Dark: brighter hues + opaque R:R fills. Custom: uses the per-element color inputs below.")
 rr_extend       = input.int(20,    "R:R Box Width (bars)",    group=G_STYLE, minval=5, maxval=100)
 sweep_style_inp = input.string("Dotted", "Sweep Line Style",  options=["Dotted", "Dashed", "Solid"],  group=G_STYLE)
 cisd_style_inp  = input.string("Dotted", "CISD Line Style",   options=["Dotted", "Dashed", "Solid"],  group=G_STYLE)
@@ -64,52 +63,88 @@ cisd_text       = input.string("CISD",     "CISD Label Text", group=G_STYLE, too
 sweep_lbl_pos   = input.string("Right", "Sweep Label Position", options=["Left", "Right"],  group=G_STYLE)
 cisd_lbl_pos    = input.string("Right", "CISD Label Position",  options=["Left", "Right"],  group=G_STYLE)
 rr_lbl_pos      = input.string("Right", "R:R Pill Position",    options=["Left", "Right"],  group=G_STYLE)
-// Custom palette — only active when Color Mode = "Custom".
-c_sweep_c        = input.color(#f59e0b, "Sweep Level (Custom)",    group=G_STYLE, tooltip="Amber — swept HTF high/low.")
-c_cisd_c         = input.color(#3b82f6, "CISD Level (Custom)",     group=G_STYLE, tooltip="Blue — CISD confirmation line.")
-c_sl_c           = input.color(#ef4444, "Stop Loss (Custom)",      group=G_STYLE)
-c_tp_c           = input.color(#06b6d4, "Take Profit (Custom)",    group=G_STYLE)
-c_tspot_c        = input.color(#8b5cf6, "T-Spot Zone (Custom)",    group=G_STYLE)
-c_mid_c          = input.color(#94a3b8, "Midpoint (Custom)",       group=G_STYLE)
-c_overrisk_c     = input.color(#ff6600, "Over-Risk Warning (Custom)", group=G_STYLE)
-c_proj_c         = input.color(#64748b, "CISD Projection (Custom)", group=G_STYLE)
-c_dbg_c          = input.color(#0f172a, "Debug/Scoreboard BG (Custom)", group=G_STYLE)
-proj_color       = input.color(color.gray, "CISD Projection Line (Custom)", group=G_STYLE)
-rr_entry_col     = input.color(color.new(#e2e8f0, 0),   "Entry Line (Custom)",   group=G_STYLE)
-rr_risk_col_c    = input.color(color.new(#ef4444, 85),  "Risk Zone Fill (Custom)",   group=G_STYLE)
-rr_risk_border_c = input.color(color.new(#ef4444, 40),  "Risk Zone Border (Custom)", group=G_STYLE)
-rr_rew_col_c     = input.color(color.new(#06b6d4, 85),  "Reward Zone Fill (Custom)", group=G_STYLE)
-rr_rew_border_c  = input.color(color.new(#06b6d4, 40),  "Reward Zone Border (Custom)", group=G_STYLE)
-rr_lbl_tp_col    = input.color(color.new(#06b6d4, 20),  "TP Pill Color (Custom)",    group=G_STYLE)
-rr_lbl_sl_col    = input.color(color.new(#ef4444, 20),  "SL Pill Color (Custom)",    group=G_STYLE)
-rr_lbl_en_col    = input.color(color.new(#64748b, 40),  "Entry Pill Color (Custom)", group=G_STYLE)
 
-// Resolve active palette. Light = current defaults; Dark = brighter hues.
-_light = color_mode == "Light"
-_dark  = color_mode == "Dark"
-c_sweep    = _light ? #f59e0b : _dark ? #fbbf24 : c_sweep_c
-c_cisd     = _light ? #3b82f6 : _dark ? #60a5fa : c_cisd_c
-c_sl       = _light ? #ef4444 : _dark ? #f87171 : c_sl_c
-c_tp       = _light ? #06b6d4 : _dark ? #22d3ee : c_tp_c
-c_tspot    = _light ? #8b5cf6 : _dark ? #a78bfa : c_tspot_c
-c_mid      = _light ? #94a3b8 : _dark ? #cbd5e1 : c_mid_c
-c_overrisk = _light ? #ff6600 : _dark ? #fb923c : c_overrisk_c
-c_proj     = _light ? #64748b : _dark ? #94a3b8 : c_proj_c
-c_dbg      = _light ? #0f172a : _dark ? #1e293b : c_dbg_c
+// ── 6. PALETTE — keep in sync with palette-block reference ────────────────────
+// Source of truth: docs/superpowers/specs/2026-05-06-unified-pine-palette-block.pine
+// When that file changes, copy verbatim into the block below.
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 🎨 CANONICAL PALETTE BLOCK                                                ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+var string G_THEME = "🎨 Theme"
+gTheme = input.string("Auto", "Theme",
+                      options=["Auto", "Dark", "Light"],
+                      group=G_THEME,
+                      tooltip="Auto reads chart bg brightness; Dark/Light forces the palette.")
 
-// R:R box fills/borders. Dark mode drops transparency from 85 → 70 so the
-// red/cyan zones remain visible against a black background.
-rr_risk_col    = _light ? color.new(#ef4444, 85) : _dark ? color.new(c_sl, 70) : rr_risk_col_c
-rr_risk_border = _light ? color.new(#ef4444, 40) : _dark ? color.new(c_sl, 30) : rr_risk_border_c
-rr_rew_col     = _light ? color.new(#06b6d4, 85) : _dark ? color.new(c_tp, 70) : rr_rew_col_c
-rr_rew_border  = _light ? color.new(#06b6d4, 40) : _dark ? color.new(c_tp, 30) : rr_rew_border_c
+// All palette state assigned ONCE on the first bar via barstate.isfirst gate.
+// `chart.bg_color` is a series, so reading it makes downstream colors series-
+// typed and grows historical-buffer requirements on every live bar. The
+// barstate.isfirst gate confines the read to a single bar.
+var bool _AUTO_IS_LIGHT = false
+var bool IS_LIGHT_MODE  = false
+var color P_LONG_BASE   = #34d399
+var color P_SHORT_BASE  = #f87171
+var color P_WARN_BASE   = #fbbf24
+var color P_INFO_BASE   = #38bdf8
+var color P_ACCENT_BASE = #a78bfa
+var color P_STRUCT_BASE = #cbd5e1
+var color P_INK         = #f1f5f9
+var color P_SURFACE     = #334155
+var color P_ON_SURFACE  = #f1f5f9
 
-// R:R label text color: dark in light mode for readability, light in dark mode.
-// Custom mode keeps color.white for backward compat with existing setups.
-c_rr_lbl_text  = _light ? #0f172a : _dark ? #f1f5f9 : color.white
-// SIZE badge background — muted slate so it's informative without shouting.
-// Keeps the label readable but visually secondary to entry/SL/TP.
-c_size_bg      = _light ? color.new(#94a3b8, 60) : _dark ? color.new(#64748b, 50) : color.new(c_mid, 60)
+if barstate.isfirst
+    _AUTO_IS_LIGHT := (color.r(chart.bg_color) + color.g(chart.bg_color) + color.b(chart.bg_color)) / 3.0 > 127
+    IS_LIGHT_MODE  := gTheme == "Light" or (gTheme == "Auto" and _AUTO_IS_LIGHT)
+    P_LONG_BASE    := IS_LIGHT_MODE ? #047857 : #34d399
+    P_SHORT_BASE   := IS_LIGHT_MODE ? #b91c1c : #f87171
+    P_WARN_BASE    := IS_LIGHT_MODE ? #b45309 : #fbbf24
+    P_INFO_BASE    := IS_LIGHT_MODE ? #0369a1 : #38bdf8
+    P_ACCENT_BASE  := IS_LIGHT_MODE ? #6d28d9 : #a78bfa
+    P_STRUCT_BASE  := IS_LIGHT_MODE ? #475569 : #cbd5e1
+    P_INK          := IS_LIGHT_MODE ? #0f172a : #f1f5f9
+
+tier_ink(color c)     => color.new(c, 0)
+tier_strong(color c)  => color.new(c, 25)
+tier_mid(color c)     => color.new(c, 60)
+tier_soft(color c)    => color.new(c, 85)
+tier_whisper(color c) => color.new(c, 95)
+
+pal_long_ink()       => tier_ink(P_LONG_BASE)
+pal_long_strong()    => tier_strong(P_LONG_BASE)
+pal_long_mid()       => tier_mid(P_LONG_BASE)
+pal_long_soft()      => tier_soft(P_LONG_BASE)
+pal_long_whisper()   => tier_whisper(P_LONG_BASE)
+pal_short_ink()      => tier_ink(P_SHORT_BASE)
+pal_short_strong()   => tier_strong(P_SHORT_BASE)
+pal_short_mid()      => tier_mid(P_SHORT_BASE)
+pal_short_soft()     => tier_soft(P_SHORT_BASE)
+pal_short_whisper()  => tier_whisper(P_SHORT_BASE)
+pal_warn_ink()       => tier_ink(P_WARN_BASE)
+pal_warn_strong()    => tier_strong(P_WARN_BASE)
+pal_warn_mid()       => tier_mid(P_WARN_BASE)
+pal_warn_soft()      => tier_soft(P_WARN_BASE)
+pal_warn_whisper()   => tier_whisper(P_WARN_BASE)
+pal_info_ink()       => tier_ink(P_INFO_BASE)
+pal_info_strong()    => tier_strong(P_INFO_BASE)
+pal_info_mid()       => tier_mid(P_INFO_BASE)
+pal_info_soft()      => tier_soft(P_INFO_BASE)
+pal_info_whisper()   => tier_whisper(P_INFO_BASE)
+pal_accent_ink()     => tier_ink(P_ACCENT_BASE)
+pal_accent_strong()  => tier_strong(P_ACCENT_BASE)
+pal_accent_mid()     => tier_mid(P_ACCENT_BASE)
+pal_accent_soft()    => tier_soft(P_ACCENT_BASE)
+pal_accent_whisper() => tier_whisper(P_ACCENT_BASE)
+pal_struct_ink()     => tier_ink(P_STRUCT_BASE)
+pal_struct_strong()  => tier_strong(P_STRUCT_BASE)
+pal_struct_mid()     => tier_mid(P_STRUCT_BASE)
+pal_struct_soft()    => tier_soft(P_STRUCT_BASE)
+pal_struct_whisper() => tier_whisper(P_STRUCT_BASE)
+pal_ink()            => P_INK
+pal_surface()        => P_SURFACE
+pal_surface_strong() => tier_strong(P_SURFACE)
+pal_surface_soft()   => tier_soft(P_SURFACE)
+pal_on_surface()     => P_ON_SURFACE
+// ╚══════════════════════════════════════════════════════════════════════════╝
 
 // ── STYLE HELPERS ─────────────────────────────────────────────────────────────
 // "Right" → anchor at END of line, text flows right → style_label_left
@@ -446,12 +481,12 @@ if is_new_anchor and tf_supported
     // ── Draw sweep lines for pre-seeded setups ───────────────────────────────
     if swept_long
         ps_x = sweep_lbl_pos == "Right" ? bar_index + rr_extend : anc_lo_bar
-        sweep_line_long := line.new(anc_lo_bar, anc_lo, bar_index + rr_extend, anc_lo, color=color.new(c_sweep, 25), width=1, style=line.style_dashed)
-        sweep_lbl_long  := label.new(ps_x, anc_lo, sweep_text + " " + sweep_tf_lbl, color=color.new(c_sweep, 100), textcolor=color.new(c_sweep, 25), style=sweep_lbl_style, size=size.small)
+        sweep_line_long := line.new(anc_lo_bar, anc_lo, bar_index + rr_extend, anc_lo, color=pal_warn_strong(), width=1, style=line.style_dashed)
+        sweep_lbl_long  := label.new(ps_x, anc_lo, sweep_text + " " + sweep_tf_lbl, color=pal_warn_soft(), textcolor=pal_warn_strong(), style=sweep_lbl_style, size=size.small)
     if swept_short
         ps_x = sweep_lbl_pos == "Right" ? bar_index + rr_extend : anc_hi_bar
-        sweep_line_short := line.new(anc_hi_bar, anc_hi, bar_index + rr_extend, anc_hi, color=color.new(c_sweep, 25), width=1, style=line.style_dashed)
-        sweep_lbl_short  := label.new(ps_x, anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(c_sweep, 100), textcolor=color.new(c_sweep, 25), style=sweep_lbl_style, size=size.small)
+        sweep_line_short := line.new(anc_hi_bar, anc_hi, bar_index + rr_extend, anc_hi, color=pal_warn_strong(), width=1, style=line.style_dashed)
+        sweep_lbl_short  := label.new(ps_x, anc_hi, sweep_text + " " + sweep_tf_lbl, color=pal_warn_soft(), textcolor=pal_warn_strong(), style=sweep_lbl_style, size=size.small)
 
 
 // ── BAR COUNTER + RUNNING SWEEP EXTREMES ─────────────────────────────────────
@@ -503,8 +538,8 @@ if tf_supported and not na(anc_hi) and not na(anc_lo)
             sweep_close_long  := close
             sweep_pct_long    := ref_range > 0 ? ext / ref_range : 0.0
             sweep_x_long    = sweep_lbl_pos == "Right" ? bar_index + rr_extend : anc_lo_bar
-            sweep_line_long := line.new(anc_lo_bar, anc_lo, bar_index + rr_extend, anc_lo, color=color.new(c_sweep, 25), width=1, style=line.style_dashed)
-            sweep_lbl_long  := label.new(sweep_x_long, anc_lo, sweep_text + " " + sweep_tf_lbl, color=color.new(c_sweep, 100), textcolor=color.new(c_sweep, 25), style=sweep_lbl_style, size=size.small)
+            sweep_line_long := line.new(anc_lo_bar, anc_lo, bar_index + rr_extend, anc_lo, color=pal_warn_strong(), width=1, style=line.style_dashed)
+            sweep_lbl_long  := label.new(sweep_x_long, anc_lo, sweep_text + " " + sweep_tf_lbl, color=pal_warn_soft(), textcolor=pal_warn_strong(), style=sweep_lbl_style, size=size.small)
             if show_smt and not na(es_prior_low)
                 smt_long := es_ltf_low > es_prior_low
     if not swept_short
@@ -517,8 +552,8 @@ if tf_supported and not na(anc_hi) and not na(anc_lo)
             sweep_close_short  := close
             sweep_pct_short    := ref_range > 0 ? ext / ref_range : 0.0
             sweep_x_short    = sweep_lbl_pos == "Right" ? bar_index + rr_extend : anc_hi_bar
-            sweep_line_short := line.new(anc_hi_bar, anc_hi, bar_index + rr_extend, anc_hi, color=color.new(c_sweep, 25), width=1, style=line.style_dashed)
-            sweep_lbl_short  := label.new(sweep_x_short, anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(c_sweep, 100), textcolor=color.new(c_sweep, 25), style=sweep_lbl_style, size=size.small)
+            sweep_line_short := line.new(anc_hi_bar, anc_hi, bar_index + rr_extend, anc_hi, color=pal_warn_strong(), width=1, style=line.style_dashed)
+            sweep_lbl_short  := label.new(sweep_x_short, anc_hi, sweep_text + " " + sweep_tf_lbl, color=pal_warn_soft(), textcolor=pal_warn_strong(), style=sweep_lbl_style, size=size.small)
             if show_smt and not na(es_prior_high)
                 smt_short := es_ltf_high < es_prior_high
 
@@ -639,8 +674,8 @@ if tf_supported
     if swept_long and not alerted_long and not na(cisd_long_lvl)
         line.delete(cisd_prev_long)
         label.delete(cisd_prev_lbl_long)
-        cisd_prev_long     := line.new(bar_index - cisd_long_off, cisd_long_lvl, bar_index + 5, cisd_long_lvl, color=color.new(c_cisd, 50), width=1, style=line.style_dashed)
-        cisd_prev_lbl_long := label.new(bar_index + 5, cisd_long_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(c_cisd, 100), textcolor=color.new(c_cisd, 50), style=label.style_label_left, size=size.small)
+        cisd_prev_long     := line.new(bar_index - cisd_long_off, cisd_long_lvl, bar_index + 5, cisd_long_lvl, color=pal_info_mid(), width=1, style=line.style_dashed)
+        cisd_prev_lbl_long := label.new(bar_index + 5, cisd_long_lvl, cisd_text + " " + cisd_tf_lbl, color=pal_info_soft(), textcolor=pal_info_mid(), style=label.style_label_left, size=size.small)
     else if not swept_long or alerted_long
         line.delete(cisd_prev_long)
         label.delete(cisd_prev_lbl_long)
@@ -649,8 +684,8 @@ if tf_supported
     if swept_short and not alerted_short and not na(cisd_short_lvl)
         line.delete(cisd_prev_short)
         label.delete(cisd_prev_lbl_short)
-        cisd_prev_short     := line.new(bar_index - cisd_short_off, cisd_short_lvl, bar_index + 5, cisd_short_lvl, color=color.new(c_cisd, 50), width=1, style=line.style_dashed)
-        cisd_prev_lbl_short := label.new(bar_index + 5, cisd_short_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(c_cisd, 100), textcolor=color.new(c_cisd, 50), style=label.style_label_left, size=size.small)
+        cisd_prev_short     := line.new(bar_index - cisd_short_off, cisd_short_lvl, bar_index + 5, cisd_short_lvl, color=pal_info_mid(), width=1, style=line.style_dashed)
+        cisd_prev_lbl_short := label.new(bar_index + 5, cisd_short_lvl, cisd_text + " " + cisd_tf_lbl, color=pal_info_soft(), textcolor=pal_info_mid(), style=label.style_label_left, size=size.small)
     else if not swept_short or alerted_short
         line.delete(cisd_prev_short)
         label.delete(cisd_prev_lbl_short)
@@ -703,7 +738,7 @@ if show_debug and tf_supported and barstate.islast and barstate.isconfirmed
          + "\nsetup_counts=" + str.tostring(array.size(setup_line_counts)) + " active_dir=" + str.tostring(array.size(active_dir)) + " outcomes=" + str.tostring(array.size(outcome_markers)) + " extras(ln/lbl/bx)=" + str.tostring(array.size(active_extra_lines)) + "/" + str.tostring(array.size(active_extra_labels)) + "/" + str.tostring(array.size(active_extra_boxes))
     var label dbg_lbl = na
     label.delete(dbg_lbl)
-    dbg_lbl := label.new(bar_index + 3, high, dbg, color=color.new(c_dbg, 20), textcolor=color.white, style=label.style_label_left, size=size.small, textalign=text.align_left)
+    dbg_lbl := label.new(bar_index + 3, high, dbg, color=pal_surface_strong(), textcolor=pal_ink(), style=label.style_label_left, size=size.small, textalign=text.align_left)
 
 // ── SCOREBOARD — top-right table, scope = Today / Last N / All Time ─────────
 // Perf: the scoreboard block runs on every tick of the last bar. Rather than
@@ -787,13 +822,13 @@ if show_scoreboard and barstate.islast and _sb_dirty
     _date_str  = scoreboard_scope == "Today" ? _mm_dd_str : scoreboard_scope == "Last N Trades" ? "Last " + str.tostring(scoreboard_n) : "All Time"
     // Theme-aware scoreboard palette. Light mode uses deep slate bg; dark mode
     // uses a lighter slate so rows stand out against a pure-black chart bg.
-    _sb_bg    = _dark ? color.new(#0f172a, 0) : color.new(c_dbg, 0)
-    _sb_alt   = _dark ? color.new(#334155, 0) : color.new(#1e293b, 0)
-    _sb_text  = color.white
-    _sb_muted = _dark ? #e2e8f0 : #cbd5e1
-    _sb_tp    = _dark ? #34d399 : #10b981
-    _sb_sl    = _dark ? #f87171 : #ef4444
-    _sb_frame = _dark ? #64748b : #475569
+    _sb_bg    = pal_surface()
+    _sb_alt   = pal_surface_strong()
+    _sb_text  = pal_on_surface()
+    _sb_muted = color.new(pal_on_surface(), 30)
+    _sb_tp    = pal_long_ink()
+    _sb_sl    = pal_short_ink()
+    _sb_frame = pal_struct_strong()
     // Helpers for signed color — green when positive, red when negative, neutral when zero.
     _long_pts_col  = _sb_lpts   > 0 ? _sb_tp : _sb_lpts   < 0 ? _sb_sl : _sb_muted
     _short_pts_col = _sb_spts   > 0 ? _sb_tp : _sb_spts   < 0 ? _sb_sl : _sb_muted
@@ -1006,8 +1041,8 @@ if truncate_on_hit and array.size(active_dir) > 0
                 _mark_x    = math.round((_entry_bar + bar_index) / 2)
                 _mark_y    = math.min(_sl, _tp)
                 _mark_text = _resolved_sl ? "✗" : "✓"
-                _mark_col  = _resolved_sl ? c_sl : c_tp
-                _mark_lbl  = label.new(_mark_x, _mark_y, _mark_text, color=_mark_col, textcolor=color.white, style=label.style_label_up, size=size.normal, tooltip=_resolved_sl ? "Stop loss hit" : "Take profit hit")
+                _mark_col  = _resolved_sl ? pal_short_strong() : pal_info_strong()
+                _mark_lbl  = label.new(_mark_x, _mark_y, _mark_text, color=_mark_col, textcolor=pal_ink(), style=label.style_label_up, size=size.normal, tooltip=_resolved_sl ? "Stop loss hit" : "Take profit hit")
                 array.push(outcome_markers, _mark_lbl)
                 // Record parent setup's entry bar so pruning can delete this
                 // marker when the parent setup ages out of max_setups.
@@ -1159,36 +1194,36 @@ if draw_long[1]
     risk  = entry - sl
     tp    = entry + risk * rr_ratio
     r_end = bar_index + rr_extend
-    _cisd_ln_L = line.new(draw_cisd_bar_long, draw_cisd_lvl_long, r_end, draw_cisd_lvl_long, color=c_cisd, width=2, style=line.style_solid)
+    _cisd_ln_L = line.new(draw_cisd_bar_long, draw_cisd_lvl_long, r_end, draw_cisd_lvl_long, color=pal_info_ink(), width=2, style=line.style_solid)
     f_reg_line(_cisd_ln_L)
     cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : draw_cisd_bar_long
-    _cisd_lbl_draw_L = label.new(cisd_x, draw_cisd_lvl_long, cisd_text + " " + cisd_tf_lbl, color=color.new(c_cisd, 100), textcolor=c_cisd, style=cisd_lbl_style, size=size.small)
+    _cisd_lbl_draw_L = label.new(cisd_x, draw_cisd_lvl_long, cisd_text + " " + cisd_tf_lbl, color=pal_info_soft(), textcolor=pal_info_ink(), style=cisd_lbl_style, size=size.small)
     f_reg_label(_cisd_lbl_draw_L)
-    _sweep_ln_L = line.new(draw_anc_lo_bar, draw_anc_lo, r_end, draw_anc_lo, color=c_sweep, width=2, style=line.style_solid)
+    _sweep_ln_L = line.new(draw_anc_lo_bar, draw_anc_lo, r_end, draw_anc_lo, color=pal_warn_ink(), width=2, style=line.style_solid)
     f_reg_line(_sweep_ln_L)
     sweep_x = sweep_lbl_pos == "Right" ? r_end : draw_anc_lo_bar
-    _sweep_lbl_draw_L = label.new(sweep_x, draw_anc_lo, sweep_text + " " + sweep_tf_lbl, color=color.new(c_sweep, 100), textcolor=c_sweep, style=sweep_lbl_style, size=size.small)
+    _sweep_lbl_draw_L = label.new(sweep_x, draw_anc_lo, sweep_text + " " + sweep_tf_lbl, color=pal_warn_soft(), textcolor=pal_warn_ink(), style=sweep_lbl_style, size=size.small)
     f_reg_label(_sweep_lbl_draw_L)
     // R:R trade setup drawings — gated by Show Trade Setup
     if show_trade_setup
-        _sl_ln_L    = line.new(draw_sl_anchor_long, sl, r_end, sl, color=c_sl, width=2, style=sweep_lstyle)
-        _risk_box_L = box.new(bar_index, entry, r_end, sl,  border_color=rr_risk_border, bgcolor=rr_risk_col)
-        _rew_box_L  = box.new(bar_index, tp,    r_end, entry, border_color=rr_rew_border,  bgcolor=rr_rew_col)
-        _entry_ln_L = line.new(bar_index, entry, r_end, entry, color=rr_entry_col, width=1, style=line.style_solid)
+        _sl_ln_L    = line.new(draw_sl_anchor_long, sl, r_end, sl, color=pal_short_ink(), width=2, style=sweep_lstyle)
+        _risk_box_L = box.new(bar_index, entry, r_end, sl,  border_color=pal_short_mid(), bgcolor=pal_short_soft())
+        _rew_box_L  = box.new(bar_index, tp,    r_end, entry, border_color=pal_info_mid(),  bgcolor=pal_info_soft())
+        _entry_ln_L = line.new(bar_index, entry, r_end, entry, color=pal_struct_strong(), width=1, style=line.style_solid)
         _contracts_L = risk > 0 ? math.floor(risk_usd / (risk * point_value_usd)) : 0
         _tp_lbl = "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R"
         // Pills are invisible when show_rr_pills=false — still created so the
         // truncate/resolve paths can set_x on them without na guards.
-        _pill_bg_tp  = show_rr_pills ? rr_lbl_tp_col : color.new(color.black, 100)
-        _pill_bg_sl  = show_rr_pills ? rr_lbl_sl_col : color.new(color.black, 100)
-        _pill_bg_en  = show_rr_pills ? rr_lbl_en_col : color.new(color.black, 100)
-        _pill_fg     = show_rr_pills ? c_rr_lbl_text : color.new(color.black, 100)
+        _pill_bg_tp  = show_rr_pills ? pal_info_strong() : color.new(color.black, 100)
+        _pill_bg_sl  = show_rr_pills ? pal_short_strong() : color.new(color.black, 100)
+        _pill_bg_en  = show_rr_pills ? pal_struct_mid() : color.new(color.black, 100)
+        _pill_fg     = show_rr_pills ? pal_ink() : color.new(color.black, 100)
         _tp_lbl_L    = label.new(bar_index + rr_lbl_x, tp, _tp_lbl, color=_pill_bg_tp, textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
         _entry_lbl_L = label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=_pill_bg_en, textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
         _sl_lbl_L    = label.new(bar_index + rr_lbl_x, sl,    "SL  -" + str.tostring(risk, "#.##") + " pts", color=_pill_bg_sl, textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
         // Contract size badge — compact, centered above the R:R box.
         if show_size_badge
-            f_reg_label(label.new(math.round((bar_index + r_end) / 2), math.max(tp, sl), str.tostring(_contracts_L) + " contracts", color=c_size_bg, textcolor=c_rr_lbl_text, style=label.style_label_down, size=size.small, tooltip="Recommended contracts to keep dollar risk at $" + str.tostring(risk_usd, "#") + " given SL distance"))
+            f_reg_label(label.new(math.round((bar_index + r_end) / 2), math.max(tp, sl), str.tostring(_contracts_L) + " contracts", color=pal_struct_soft(), textcolor=pal_ink(), style=label.style_label_down, size=size.small, tooltip="Recommended contracts to keep dollar risk at $" + str.tostring(risk_usd, "#") + " given SL distance"))
         f_reg_line(_sl_ln_L)
         f_reg_box(_risk_box_L)
         f_reg_box(_rew_box_L)
@@ -1221,23 +1256,23 @@ if draw_long[1]
     if show_trade_setup and show_midlines and risk > 0
         _be_level      = entry - risk * 0.5
         _partial_level = entry + risk * 0.5
-        _mid_col = color.new(c_mid, 30)
-        f_reg_line_active(line.new(bar_index, _be_level,      r_end, _be_level,      color=_mid_col, width=1, style=line.style_dashed))
-        f_reg_line_active(line.new(bar_index, _partial_level, r_end, _partial_level, color=_mid_col, width=1, style=line.style_dashed))
-        f_reg_label_active(label.new(bar_index + rr_lbl_x, _be_level,      "Move to BE", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
-        f_reg_label_active(label.new(bar_index + rr_lbl_x, _partial_level, "Take Partial", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
+        _struct_col = pal_struct_strong()
+        f_reg_line_active(line.new(bar_index, _be_level,      r_end, _be_level,      color=_struct_col, width=1, style=line.style_dashed))
+        f_reg_line_active(line.new(bar_index, _partial_level, r_end, _partial_level, color=_struct_col, width=1, style=line.style_dashed))
+        f_reg_label_active(label.new(bar_index + rr_lbl_x, _be_level,      "Move to BE", color=pal_struct_soft(), textcolor=_struct_col, style=rr_lbl_style, size=size.tiny))
+        f_reg_label_active(label.new(bar_index + rr_lbl_x, _partial_level, "Take Partial", color=pal_struct_soft(), textcolor=_struct_col, style=rr_lbl_style, size=size.tiny))
     if show_tspot and not na(draw_sweep_logmid_long) and not na(draw_sweep_close_long)
         tspot_top  = math.max(draw_sweep_logmid_long, draw_sweep_close_long)
         tspot_bot  = math.min(draw_sweep_logmid_long, draw_sweep_close_long)
         sb = not na(draw_sweep_bar_long) ? draw_sweep_bar_long : bar_index
-        f_reg_box_active(box.new(sb, tspot_top, r_end, tspot_bot, bgcolor=color.new(c_tspot, tspot_transp), border_color=color.new(c_tspot, tspot_transp + 5)))
-        f_reg_line_active(line.new(sb, draw_sweep_logmid_long, r_end, draw_sweep_logmid_long, color=c_tspot, width=1, style=line.style_dotted))
+        f_reg_box_active(box.new(sb, tspot_top, r_end, tspot_bot, bgcolor=pal_accent_soft(), border_color=pal_accent_mid()))
+        f_reg_line_active(line.new(sb, draw_sweep_logmid_long, r_end, draw_sweep_logmid_long, color=pal_accent_ink(), width=1, style=line.style_dotted))
     if show_c_labels
-        f_reg_label(label.new(draw_anc_lo_bar, draw_anc_lo, "C2", color=color.new(c_tspot, 100), textcolor=c_tspot, style=label.style_label_up, size=size.small))
-        f_reg_label(label.new(bar_index, draw_cisd_lvl_long, "C3", color=color.new(c_tspot, 100), textcolor=c_tspot, style=label.style_label_up, size=size.small))
+        f_reg_label(label.new(draw_anc_lo_bar, draw_anc_lo, "C2", color=pal_accent_soft(), textcolor=pal_accent_ink(), style=label.style_label_up, size=size.small))
+        f_reg_label(label.new(bar_index, draw_cisd_lvl_long, "C3", color=pal_accent_soft(), textcolor=pal_accent_ink(), style=label.style_label_up, size=size.small))
     if show_tspot_type and not na(draw_sweep_pct_long)
         ttype = draw_sweep_pct_long < 0.30 ? "ProTrend" : draw_sweep_pct_long < 0.80 ? "Normal" : "Expansive"
-        f_reg_label(label.new(bar_index, tp, ttype + " LONG", color=color.new(c_tspot, 100), textcolor=c_tspot, style=label.style_label_down, size=size.tiny))
+        f_reg_label(label.new(bar_index, tp, ttype + " LONG", color=pal_accent_soft(), textcolor=pal_accent_ink(), style=label.style_label_down, size=size.tiny))
     if show_proj and draw_cisd_long_off > 0
         series_hi = high[draw_cisd_long_off + 1]
         series_lo = low[draw_cisd_long_off + 1]
@@ -1256,13 +1291,13 @@ if draw_long[1]
                     lv = str.tonumber(lv_str)
                     if not na(lv)
                         proj_price = draw_cisd_lvl_long + s_range * lv
-                        f_reg_line_active(line.new(bar_index, proj_price, r_end, proj_price, color=proj_color, width=1, style=line.style_dotted))
-                        f_reg_label_active(label.new(r_end, proj_price, str.tostring(lv), color=color.new(proj_color, 100), textcolor=proj_color, style=label.style_label_left, size=size.tiny))
+                        f_reg_line_active(line.new(bar_index, proj_price, r_end, proj_price, color=pal_struct_mid(), width=1, style=line.style_dotted))
+                        f_reg_label_active(label.new(r_end, proj_price, str.tostring(lv), color=pal_struct_soft(), textcolor=pal_struct_mid(), style=label.style_label_left, size=size.tiny))
     if show_smt
         if draw_smt_long
-            f_reg_label(label.new(bar_index, sl - (entry - sl) * 0.15, "SMT", color=color.new(color.green, 10), textcolor=c_rr_lbl_text, style=label.style_label_up, size=size.small))
+            f_reg_label(label.new(bar_index, sl - (entry - sl) * 0.15, "SMT", color=pal_long_strong(), textcolor=pal_ink(), style=label.style_label_up, size=size.small))
         else
-            f_reg_label(label.new(bar_index, sl - (entry - sl) * 0.15, "NO SMT", color=color.new(color.gray, 40), textcolor=c_rr_lbl_text, style=label.style_label_up, size=size.small))
+            f_reg_label(label.new(bar_index, sl - (entry - sl) * 0.15, "NO SMT", color=pal_struct_soft(), textcolor=pal_ink(), style=label.style_label_up, size=size.small))
     // Record how many extras this setup owns so resolution can truncate them
     if truncate_on_hit
         array.push(active_extra_ln_count,  array.size(active_extra_lines)  - _ex_ln_start)
@@ -1311,34 +1346,34 @@ if draw_short[1]
     risk  = sl - entry
     tp    = entry - risk * rr_ratio
     r_end = bar_index + rr_extend
-    _cisd_ln_S = line.new(draw_cisd_bar_short, draw_cisd_lvl_short, r_end, draw_cisd_lvl_short, color=c_cisd, width=2, style=line.style_solid)
+    _cisd_ln_S = line.new(draw_cisd_bar_short, draw_cisd_lvl_short, r_end, draw_cisd_lvl_short, color=pal_info_ink(), width=2, style=line.style_solid)
     f_reg_line(_cisd_ln_S)
     cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : draw_cisd_bar_short
-    _cisd_lbl_draw_S = label.new(cisd_x, draw_cisd_lvl_short, cisd_text + " " + cisd_tf_lbl, color=color.new(c_cisd, 100), textcolor=c_cisd, style=cisd_lbl_style, size=size.small)
+    _cisd_lbl_draw_S = label.new(cisd_x, draw_cisd_lvl_short, cisd_text + " " + cisd_tf_lbl, color=pal_info_soft(), textcolor=pal_info_ink(), style=cisd_lbl_style, size=size.small)
     f_reg_label(_cisd_lbl_draw_S)
-    _sweep_ln_S = line.new(draw_anc_hi_bar, draw_anc_hi, r_end, draw_anc_hi, color=c_sweep, width=2, style=line.style_solid)
+    _sweep_ln_S = line.new(draw_anc_hi_bar, draw_anc_hi, r_end, draw_anc_hi, color=pal_warn_ink(), width=2, style=line.style_solid)
     f_reg_line(_sweep_ln_S)
     sweep_x = sweep_lbl_pos == "Right" ? r_end : draw_anc_hi_bar
-    _sweep_lbl_draw_S = label.new(sweep_x, draw_anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(c_sweep, 100), textcolor=c_sweep, style=sweep_lbl_style, size=size.small)
+    _sweep_lbl_draw_S = label.new(sweep_x, draw_anc_hi, sweep_text + " " + sweep_tf_lbl, color=pal_warn_soft(), textcolor=pal_warn_ink(), style=sweep_lbl_style, size=size.small)
     f_reg_label(_sweep_lbl_draw_S)
     // R:R trade setup drawings — gated by Show Trade Setup
     if show_trade_setup
-        _sl_ln_S    = line.new(draw_sl_anchor_short, sl, r_end, sl, color=c_sl, width=2, style=sweep_lstyle)
-        _risk_box_S = box.new(bar_index, sl,    r_end, entry, border_color=rr_risk_border, bgcolor=rr_risk_col)
-        _rew_box_S  = box.new(bar_index, entry, r_end, tp,    border_color=rr_rew_border,  bgcolor=rr_rew_col)
-        _entry_ln_S = line.new(bar_index, entry, r_end, entry, color=rr_entry_col, width=1, style=line.style_solid)
+        _sl_ln_S    = line.new(draw_sl_anchor_short, sl, r_end, sl, color=pal_short_ink(), width=2, style=sweep_lstyle)
+        _risk_box_S = box.new(bar_index, sl,    r_end, entry, border_color=pal_short_mid(), bgcolor=pal_short_soft())
+        _rew_box_S  = box.new(bar_index, entry, r_end, tp,    border_color=pal_info_mid(),  bgcolor=pal_info_soft())
+        _entry_ln_S = line.new(bar_index, entry, r_end, entry, color=pal_struct_strong(), width=1, style=line.style_solid)
         _contracts_S = risk > 0 ? math.floor(risk_usd / (risk * point_value_usd)) : 0
         _tp_lbl = "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R"
-        _pill_bg_tp  = show_rr_pills ? rr_lbl_tp_col : color.new(color.black, 100)
-        _pill_bg_sl  = show_rr_pills ? rr_lbl_sl_col : color.new(color.black, 100)
-        _pill_bg_en  = show_rr_pills ? rr_lbl_en_col : color.new(color.black, 100)
-        _pill_fg     = show_rr_pills ? c_rr_lbl_text : color.new(color.black, 100)
+        _pill_bg_tp  = show_rr_pills ? pal_info_strong() : color.new(color.black, 100)
+        _pill_bg_sl  = show_rr_pills ? pal_short_strong() : color.new(color.black, 100)
+        _pill_bg_en  = show_rr_pills ? pal_struct_mid() : color.new(color.black, 100)
+        _pill_fg     = show_rr_pills ? pal_ink() : color.new(color.black, 100)
         _tp_lbl_S    = label.new(bar_index + rr_lbl_x, tp, _tp_lbl, color=_pill_bg_tp, textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
         _entry_lbl_S = label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=_pill_bg_en, textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
         _sl_lbl_S    = label.new(bar_index + rr_lbl_x, sl,    "SL  -" + str.tostring(risk, "#.##") + " pts", color=_pill_bg_sl, textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
         // Contract size badge — compact, centered above the R:R box.
         if show_size_badge
-            f_reg_label(label.new(math.round((bar_index + r_end) / 2), math.max(sl, tp), str.tostring(_contracts_S) + " contracts", color=c_size_bg, textcolor=c_rr_lbl_text, style=label.style_label_down, size=size.small, tooltip="Recommended contracts to keep dollar risk at $" + str.tostring(risk_usd, "#") + " given SL distance"))
+            f_reg_label(label.new(math.round((bar_index + r_end) / 2), math.max(sl, tp), str.tostring(_contracts_S) + " contracts", color=pal_struct_soft(), textcolor=pal_ink(), style=label.style_label_down, size=size.small, tooltip="Recommended contracts to keep dollar risk at $" + str.tostring(risk_usd, "#") + " given SL distance"))
         f_reg_line(_sl_ln_S)
         f_reg_box(_risk_box_S)
         f_reg_box(_rew_box_S)
@@ -1369,23 +1404,23 @@ if draw_short[1]
     if show_trade_setup and show_midlines and risk > 0
         _be_level      = entry + risk * 0.5
         _partial_level = entry - risk * 0.5
-        _mid_col = color.new(c_mid, 30)
-        f_reg_line_active(line.new(bar_index, _be_level,      r_end, _be_level,      color=_mid_col, width=1, style=line.style_dashed))
-        f_reg_line_active(line.new(bar_index, _partial_level, r_end, _partial_level, color=_mid_col, width=1, style=line.style_dashed))
-        f_reg_label_active(label.new(bar_index + rr_lbl_x, _be_level,      "Move to BE", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
-        f_reg_label_active(label.new(bar_index + rr_lbl_x, _partial_level, "Take Partial", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
+        _struct_col = pal_struct_strong()
+        f_reg_line_active(line.new(bar_index, _be_level,      r_end, _be_level,      color=_struct_col, width=1, style=line.style_dashed))
+        f_reg_line_active(line.new(bar_index, _partial_level, r_end, _partial_level, color=_struct_col, width=1, style=line.style_dashed))
+        f_reg_label_active(label.new(bar_index + rr_lbl_x, _be_level,      "Move to BE", color=pal_struct_soft(), textcolor=_struct_col, style=rr_lbl_style, size=size.tiny))
+        f_reg_label_active(label.new(bar_index + rr_lbl_x, _partial_level, "Take Partial", color=pal_struct_soft(), textcolor=_struct_col, style=rr_lbl_style, size=size.tiny))
     if show_tspot and not na(draw_sweep_logmid_short) and not na(draw_sweep_close_short)
         tspot_top  = math.max(draw_sweep_logmid_short, draw_sweep_close_short)
         tspot_bot  = math.min(draw_sweep_logmid_short, draw_sweep_close_short)
         sb = not na(draw_sweep_bar_short) ? draw_sweep_bar_short : bar_index
-        f_reg_box_active(box.new(sb, tspot_top, r_end, tspot_bot, bgcolor=color.new(c_tspot, tspot_transp), border_color=color.new(c_tspot, tspot_transp + 5)))
-        f_reg_line_active(line.new(sb, draw_sweep_logmid_short, r_end, draw_sweep_logmid_short, color=c_tspot, width=1, style=line.style_dotted))
+        f_reg_box_active(box.new(sb, tspot_top, r_end, tspot_bot, bgcolor=pal_accent_soft(), border_color=pal_accent_mid()))
+        f_reg_line_active(line.new(sb, draw_sweep_logmid_short, r_end, draw_sweep_logmid_short, color=pal_accent_ink(), width=1, style=line.style_dotted))
     if show_c_labels
-        f_reg_label(label.new(draw_anc_hi_bar, draw_anc_hi, "C2", color=color.new(c_tspot, 100), textcolor=c_tspot, style=label.style_label_down, size=size.small))
-        f_reg_label(label.new(bar_index, draw_cisd_lvl_short, "C3", color=color.new(c_tspot, 100), textcolor=c_tspot, style=label.style_label_down, size=size.small))
+        f_reg_label(label.new(draw_anc_hi_bar, draw_anc_hi, "C2", color=pal_accent_soft(), textcolor=pal_accent_ink(), style=label.style_label_down, size=size.small))
+        f_reg_label(label.new(bar_index, draw_cisd_lvl_short, "C3", color=pal_accent_soft(), textcolor=pal_accent_ink(), style=label.style_label_down, size=size.small))
     if show_tspot_type and not na(draw_sweep_pct_short)
         ttype = draw_sweep_pct_short < 0.30 ? "ProTrend" : draw_sweep_pct_short < 0.80 ? "Normal" : "Expansive"
-        f_reg_label(label.new(bar_index, tp, ttype + " SHORT", color=color.new(c_tspot, 100), textcolor=c_tspot, style=label.style_label_up, size=size.tiny))
+        f_reg_label(label.new(bar_index, tp, ttype + " SHORT", color=pal_accent_soft(), textcolor=pal_accent_ink(), style=label.style_label_up, size=size.tiny))
     if show_proj and draw_cisd_short_off > 0
         series_hi = high[draw_cisd_short_off + 1]
         series_lo = low[draw_cisd_short_off + 1]
@@ -1404,13 +1439,13 @@ if draw_short[1]
                     lv = str.tonumber(lv_str)
                     if not na(lv)
                         proj_price = draw_cisd_lvl_short - s_range * lv
-                        f_reg_line_active(line.new(bar_index, proj_price, r_end, proj_price, color=proj_color, width=1, style=line.style_dotted))
-                        f_reg_label_active(label.new(r_end, proj_price, str.tostring(lv), color=color.new(proj_color, 100), textcolor=proj_color, style=label.style_label_left, size=size.tiny))
+                        f_reg_line_active(line.new(bar_index, proj_price, r_end, proj_price, color=pal_struct_mid(), width=1, style=line.style_dotted))
+                        f_reg_label_active(label.new(r_end, proj_price, str.tostring(lv), color=pal_struct_soft(), textcolor=pal_struct_mid(), style=label.style_label_left, size=size.tiny))
     if show_smt
         if draw_smt_short
-            f_reg_label(label.new(bar_index, sl + (sl - entry) * 0.15, "SMT", color=color.new(color.red, 10), textcolor=c_rr_lbl_text, style=label.style_label_down, size=size.small))
+            f_reg_label(label.new(bar_index, sl + (sl - entry) * 0.15, "SMT", color=pal_short_strong(), textcolor=pal_ink(), style=label.style_label_down, size=size.small))
         else
-            f_reg_label(label.new(bar_index, sl + (sl - entry) * 0.15, "NO SMT", color=color.new(color.gray, 40), textcolor=c_rr_lbl_text, style=label.style_label_down, size=size.small))
+            f_reg_label(label.new(bar_index, sl + (sl - entry) * 0.15, "NO SMT", color=pal_struct_soft(), textcolor=pal_ink(), style=label.style_label_down, size=size.small))
     if truncate_on_hit
         array.push(active_extra_ln_count,  array.size(active_extra_lines)  - _ex_ln_start)
         array.push(active_extra_lbl_count, array.size(active_extra_labels) - _ex_lbl_start)
@@ -1472,7 +1507,7 @@ if long_over
     risk  = entry - sl
     tp    = entry + risk * rr_ratio
     r_end = bar_index + rr_extend
-    _ov_col  = color.new(c_overrisk, 30)
+    _ov_col  = pal_warn_strong()
     cisd_bar = bar_index - cisd_long_off
     if not na(sweep_line_long)
         line.delete(sweep_line_long)
@@ -1480,22 +1515,22 @@ if long_over
         label.delete(sweep_lbl_long)
     f_reg_line(line.new(anc_lo_bar, anc_lo, r_end, anc_lo, color=_ov_col, width=1, style=line.style_dashed))
     sweep_x = sweep_lbl_pos == "Right" ? r_end : anc_lo_bar
-    f_reg_label(label.new(sweep_x, anc_lo, sweep_text + " " + sweep_tf_lbl, color=color.new(c_overrisk, 100), textcolor=_ov_col, style=sweep_lbl_style, size=size.small))
+    f_reg_label(label.new(sweep_x, anc_lo, sweep_text + " " + sweep_tf_lbl, color=pal_warn_soft(), textcolor=_ov_col, style=sweep_lbl_style, size=size.small))
     f_reg_line(line.new(cisd_bar, cisd_long_lvl, r_end, cisd_long_lvl, color=_ov_col, width=1, style=line.style_dashed))
     cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : cisd_bar
-    f_reg_label(label.new(cisd_x, cisd_long_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(c_overrisk, 100), textcolor=_ov_col, style=cisd_lbl_style, size=size.small))
+    f_reg_label(label.new(cisd_x, cisd_long_lvl, cisd_text + " " + cisd_tf_lbl, color=pal_warn_soft(), textcolor=_ov_col, style=cisd_lbl_style, size=size.small))
     sl_anchor = not na(sweep_bar_long) ? sweep_bar_long : bar_index
     // R:R trade setup drawings — gated by Show Trade Setup
     if show_trade_setup
         f_reg_line(line.new(sl_anchor, sl, r_end, sl, color=_ov_col, width=1, style=line.style_dashed))
         f_reg_line(line.new(bar_index, entry, r_end, entry, color=_ov_col, width=1, style=line.style_dashed))
-        f_reg_box(box.new(bar_index, entry, r_end, sl, border_color=color.new(c_sl, 60), bgcolor=color.new(c_sl, 92)))
-        f_reg_box(box.new(bar_index, tp, r_end, entry, border_color=color.new(c_tp, 60), bgcolor=color.new(c_tp, 92)))
+        f_reg_box(box.new(bar_index, entry, r_end, sl, border_color=pal_short_mid(), bgcolor=pal_short_soft()))
+        f_reg_box(box.new(bar_index, tp, r_end, entry, border_color=pal_info_mid(), bgcolor=pal_info_soft()))
         if show_rr_pills
-            f_reg_label(label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=color.new(c_overrisk, 40), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
-            f_reg_label(label.new(bar_index + rr_lbl_x, sl, "SL  -" + str.tostring(risk, "#.##") + " pts", color=color.new(c_sl, 30), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
-            f_reg_label(label.new(bar_index + rr_lbl_x, tp, "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=color.new(c_tp, 30), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
-        f_reg_label(label.new(bar_index, tp + (tp - entry) * 0.1, "OVER RISK  " + str.tostring(risk, "#.#") + " pts", color=color.new(c_overrisk, 10), textcolor=color.white, style=label.style_label_down, size=size.small))
+            f_reg_label(label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=pal_warn_strong(), textcolor=pal_ink(), style=rr_lbl_style, size=size.small))
+            f_reg_label(label.new(bar_index + rr_lbl_x, sl, "SL  -" + str.tostring(risk, "#.##") + " pts", color=pal_short_strong(), textcolor=pal_ink(), style=rr_lbl_style, size=size.small))
+            f_reg_label(label.new(bar_index + rr_lbl_x, tp, "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=pal_info_strong(), textcolor=pal_ink(), style=rr_lbl_style, size=size.small))
+        f_reg_label(label.new(bar_index, tp + (tp - entry) * 0.1, "OVER RISK  " + str.tostring(risk, "#.#") + " pts", color=pal_warn_ink(), textcolor=pal_ink(), style=label.style_label_down, size=size.small))
     array.push(setup_line_counts,  array.size(fired_lines)  - _snap_lines)
     array.push(setup_label_counts, array.size(fired_labels) - _snap_labels)
     array.push(setup_box_counts,   array.size(fired_boxes)  - _snap_boxes)
@@ -1552,7 +1587,7 @@ if short_over
     risk  = sl - entry
     tp    = entry - risk * rr_ratio
     r_end = bar_index + rr_extend
-    _ov_col  = color.new(c_overrisk, 30)
+    _ov_col  = pal_warn_strong()
     cisd_bar = bar_index - cisd_short_off
     if not na(sweep_line_short)
         line.delete(sweep_line_short)
@@ -1560,22 +1595,22 @@ if short_over
         label.delete(sweep_lbl_short)
     f_reg_line(line.new(anc_hi_bar, anc_hi, r_end, anc_hi, color=_ov_col, width=1, style=line.style_dashed))
     sweep_x = sweep_lbl_pos == "Right" ? r_end : anc_hi_bar
-    f_reg_label(label.new(sweep_x, anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(c_overrisk, 100), textcolor=_ov_col, style=sweep_lbl_style, size=size.small))
+    f_reg_label(label.new(sweep_x, anc_hi, sweep_text + " " + sweep_tf_lbl, color=pal_warn_soft(), textcolor=_ov_col, style=sweep_lbl_style, size=size.small))
     f_reg_line(line.new(cisd_bar, cisd_short_lvl, r_end, cisd_short_lvl, color=_ov_col, width=1, style=line.style_dashed))
     cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : cisd_bar
-    f_reg_label(label.new(cisd_x, cisd_short_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(c_overrisk, 100), textcolor=_ov_col, style=cisd_lbl_style, size=size.small))
+    f_reg_label(label.new(cisd_x, cisd_short_lvl, cisd_text + " " + cisd_tf_lbl, color=pal_warn_soft(), textcolor=_ov_col, style=cisd_lbl_style, size=size.small))
     sl_anchor = not na(sweep_bar_short) ? sweep_bar_short : bar_index
     // R:R trade setup drawings — gated by Show Trade Setup
     if show_trade_setup
         f_reg_line(line.new(sl_anchor, sl, r_end, sl, color=_ov_col, width=1, style=line.style_dashed))
         f_reg_line(line.new(bar_index, entry, r_end, entry, color=_ov_col, width=1, style=line.style_dashed))
-        f_reg_box(box.new(bar_index, sl, r_end, entry, border_color=color.new(c_sl, 60), bgcolor=color.new(c_sl, 92)))
-        f_reg_box(box.new(bar_index, entry, r_end, tp, border_color=color.new(c_tp, 60), bgcolor=color.new(c_tp, 92)))
+        f_reg_box(box.new(bar_index, sl, r_end, entry, border_color=pal_short_mid(), bgcolor=pal_short_soft()))
+        f_reg_box(box.new(bar_index, entry, r_end, tp, border_color=pal_info_mid(), bgcolor=pal_info_soft()))
         if show_rr_pills
-            f_reg_label(label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=color.new(c_overrisk, 40), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
-            f_reg_label(label.new(bar_index + rr_lbl_x, sl, "SL  -" + str.tostring(risk, "#.##") + " pts", color=color.new(c_sl, 30), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
-            f_reg_label(label.new(bar_index + rr_lbl_x, tp, "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=color.new(c_tp, 30), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
-        f_reg_label(label.new(bar_index, tp - (entry - tp) * 0.1, "OVER RISK  " + str.tostring(risk, "#.#") + " pts", color=color.new(c_overrisk, 10), textcolor=color.white, style=label.style_label_up, size=size.small))
+            f_reg_label(label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=pal_warn_strong(), textcolor=pal_ink(), style=rr_lbl_style, size=size.small))
+            f_reg_label(label.new(bar_index + rr_lbl_x, sl, "SL  -" + str.tostring(risk, "#.##") + " pts", color=pal_short_strong(), textcolor=pal_ink(), style=rr_lbl_style, size=size.small))
+            f_reg_label(label.new(bar_index + rr_lbl_x, tp, "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=pal_info_strong(), textcolor=pal_ink(), style=rr_lbl_style, size=size.small))
+        f_reg_label(label.new(bar_index, tp - (entry - tp) * 0.1, "OVER RISK  " + str.tostring(risk, "#.#") + " pts", color=pal_warn_ink(), textcolor=pal_ink(), style=label.style_label_up, size=size.small))
     array.push(setup_line_counts,  array.size(fired_lines)  - _snap_lines)
     array.push(setup_label_counts, array.size(fired_labels) - _snap_labels)
     array.push(setup_box_counts,   array.size(fired_boxes)  - _snap_boxes)

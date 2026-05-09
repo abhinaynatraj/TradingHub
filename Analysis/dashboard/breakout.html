@@ -5,58 +5,153 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Breakout Follow-Through · NQ Hourly</title>
   <link rel="stylesheet" href="shared.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 </head>
 <body>
-  <button class="theme-toggle" onclick="toggleTheme()">theme</button>
+  <div class="theme-picker" role="radiogroup" aria-label="Theme">
+    <button class="theme-opt" data-theme="dark"   title="Dark"   aria-label="Dark theme">☀</button>
+    <button class="theme-opt" data-theme="light"  title="Light"  aria-label="Light theme">☾</button>
+    <button class="theme-opt" data-theme="gold"   title="Gold"   aria-label="Gold theme">✦</button>
+    <button class="theme-opt" data-theme="indigo" title="Indigo" aria-label="Indigo theme">◆</button>
+  </div>
   <div class="container">
     <nav><a href="index.html">← Hourly Analysis</a></nav>
     <h1>Breakout Follow-Through</h1>
 
+    <div class="intro">
+      <div class="intro-eyebrow">What this measures</div>
+      <div class="intro-title">When an hour breaks out, does the next hour push further?</div>
+      <div class="intro-body">
+        A <strong>bullish breakout</strong> is an hour that closes above the prior hour's high.
+        A <strong>bearish breakout</strong> is an hour that closes below the prior hour's low.
+        We then ask: did the <strong>next hour</strong> take out the breakout bar's extreme — or did it reverse?
+        Filter the dataset below to slice by year, hour-of-day, day-of-week, or direction.
+      </div>
+    </div>
+
     <div id="filters"></div>
 
-    <div class="hero-pair">
-      <div class="hero-panel bull" id="hero-bull">
-        <div class="hero-eyebrow">▲ BULLISH BREAKOUT</div>
-        <div class="hero-line">Loading…</div>
+    <div class="tab-nav" id="tabs">
+      <button class="tab-btn" data-tab="overview"     data-active="true"><span class="tab-letter">1</span>Overview</button>
+      <button class="tab-btn" data-tab="timing"       data-active="false"><span class="tab-letter">2</span>Timing</button>
+      <button class="tab-btn" data-tab="conditions"   data-active="false"><span class="tab-letter">3</span>Conditions</button>
+      <button class="tab-btn" data-tab="when"         data-active="false"><span class="tab-letter">4</span>When it works</button>
+      <button class="tab-btn" data-tab="heatmap"      data-active="false"><span class="tab-letter">5</span>Heatmap</button>
+    </div>
+
+    <!-- TAB 1 · Overview -->
+    <div class="tab-panel" data-tab="overview" data-active="true">
+      <div class="card">
+        <div class="hero-conditional">
+          <div class="hc-eyebrow">Headline question</div>
+          <div class="hc-question">After an hour breaks out, how often does the next hour confirm the move?</div>
+          <div class="hc-row" id="hc-row"></div>
+          <div class="hc-warn" id="hc-warn"></div>
+        </div>
+
+        <div class="section-head">
+          <div class="sh-question">How common are these breakouts in the first place?</div>
+          <div class="sh-explainer">Of all hours that have a fully-formed prior hour to compare against, what share are classified as bull or bear breakouts?</div>
+        </div>
+        <div class="kvp-row" id="kvp-rates"></div>
+
+        <div class="prose">
+          <strong>How to read this page.</strong> A breakout is a directional setup — the question is whether to fade it or follow it.
+          The <span class="accent">follow-through rate</span> tells you how often pressing in the breakout's direction would have worked.
+          The <span class="accent">reversal rate</span> tells you how often it failed badly enough to take out the opposite side.
+          Use the tabs above to drill into <em>when</em> the next hour completes the move and <em>which conditions</em> change the odds.
+        </div>
       </div>
-      <div class="hero-panel bear" id="hero-bear">
-        <div class="hero-eyebrow">▼ BEARISH BREAKOUT</div>
-        <div class="hero-line">Loading…</div>
+    </div>
+
+    <!-- TAB 2 · Timing (Q-of-H2) -->
+    <div class="tab-panel" data-tab="timing" data-active="false">
+      <div class="card">
+        <div class="section-head">
+          <div class="sh-question">When inside the next hour does the move complete?</div>
+          <div class="sh-explainer">Of the cases where the next hour does follow through, which 15-minute quarter takes out the breakout bar's extreme first?</div>
+        </div>
+        <div class="qhour-legend">
+          <div><strong>Q1</strong> minute :00–:14</div>
+          <div><strong>Q2</strong> minute :15–:29</div>
+          <div><strong>Q3</strong> minute :30–:44</div>
+          <div><strong>Q4</strong> minute :45–:59</div>
+        </div>
+        <div class="headline" id="hl-takeout"></div>
+        <div class="study-section">
+          <div class="study-section-title" id="t-takeout-bull-title">Bullish follow-throughs</div>
+          <div class="q-strip" id="t-takeout-bull"></div>
+        </div>
+        <div class="study-section">
+          <div class="study-section-title" id="t-takeout-bear-title">Bearish follow-throughs</div>
+          <div class="q-strip" id="t-takeout-bear"></div>
+        </div>
+        <div class="prose">
+          A heavy <strong>Q1</strong> bias means momentum doesn't wait — if the next hour is going to confirm,
+          it usually does so in the first 15 minutes. A flat distribution across Q1–Q4 would suggest the move
+          drifts in slowly. Most breakouts skew strongly toward Q1.
+        </div>
       </div>
     </div>
 
-    <div class="card">
-      <h2 style="margin-top:0;">Quarter-of-H2 takeout attribution</h2>
-      <div id="hl-takeout"></div>
-      <div class="study-section"><div class="study-section-title">Bullish follow-throughs</div><div id="t-takeout-bull"></div></div>
-      <div class="study-section"><div class="study-section-title">Bearish follow-throughs</div><div id="t-takeout-bear"></div></div>
+    <!-- TAB 3 · Conditions -->
+    <div class="tab-panel" data-tab="conditions" data-active="false">
+      <div class="card">
+        <div class="section-head">
+          <div class="sh-question">Does where the next hour <em>opens</em> change the odds?</div>
+          <div class="sh-explainer">
+            We split each next-hour by where it opens relative to the prior hour's mid-price (the average of its high and low).
+            Opening above prev-mid suggests follow-through is "pre-confirmed" by the gap; opening below suggests indecision.
+          </div>
+        </div>
+        <div class="headline" id="hl-prevmid"></div>
+        <div class="four-col" id="t-prevmid"></div>
+        <div class="prose" style="margin-top:14px;">
+          A consistent edge here means the open of H+1 is itself a tradeable signal — if the new hour opens
+          on the breakout side of prev-mid, you can lean in earlier than waiting for follow-through to print.
+        </div>
+      </div>
     </div>
 
-    <div class="card">
-      <h2 style="margin-top:0;">H1 open vs prev-hour mid (conditioning)</h2>
-      <div id="hl-prevmid"></div>
-      <div class="four-col" id="t-prevmid"></div>
+    <!-- TAB 4 · When it works -->
+    <div class="tab-panel" data-tab="when" data-active="false">
+      <div class="card">
+        <div class="section-head">
+          <div class="sh-question">Has the edge changed over time?</div>
+          <div class="sh-explainer">Per-year breakout count, direction split, and follow-through rates. Use this to spot regime shifts.</div>
+        </div>
+        <div id="t-by-year"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-head">
+          <div class="sh-question">Which hours of the day produce the cleanest breakouts?</div>
+          <div class="sh-explainer">Hour-of-day in NY time. Look for follow-through rates that beat the 50% baseline marker.</div>
+        </div>
+        <div id="t-by-hour"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-head">
+          <div class="sh-question">Are some weekdays better than others?</div>
+          <div class="sh-explainer">Day-of-week breakdown. Weekends are usually thin — gate by the Min n filter.</div>
+        </div>
+        <div id="t-by-dow"></div>
+      </div>
     </div>
 
-    <div class="card">
-      <h2 style="margin-top:0;">By year</h2>
-      <div id="t-by-year"></div>
-    </div>
-
-    <div class="card">
-      <h2 style="margin-top:0;">By hour-of-day (ET)</h2>
-      <div id="t-by-hour"></div>
-    </div>
-
-    <div class="card">
-      <h2 style="margin-top:0;">By day-of-week</h2>
-      <div id="t-by-dow"></div>
-    </div>
-
-    <div class="card">
-      <h2 style="margin-top:0;">Hour × DOW heatmap (bullish follow-through %)</h2>
-      <div id="t-grid"></div>
+    <!-- TAB 5 · Heatmap -->
+    <div class="tab-panel" data-tab="heatmap" data-active="false">
+      <div class="card">
+        <div class="section-head">
+          <div class="sh-question">Hour × day-of-week: where does bullish follow-through cluster?</div>
+          <div class="sh-explainer">
+            Each cell shows the bullish-breakout follow-through rate for that hour and weekday.
+            Greener = stronger follow-through. Hover for sample sizes.
+          </div>
+        </div>
+        <div id="t-grid"></div>
+      </div>
     </div>
   </div>
 
@@ -65,7 +160,6 @@
     const DOW_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
     async function init() {
-      // Load all parquet sources upfront
       await loadParquet('../data/breakout/breakouts.parquet', 'events');
       await loadParquet('../data/breakout/summary_aggregate.parquet', 's_agg');
       await loadParquet('../data/breakout/summary_by_year.parquet', 's_year');
@@ -73,7 +167,6 @@
       await loadParquet('../data/breakout/summary_by_dow.parquet', 's_dow');
       await loadParquet('../data/breakout/summary_grid.parquet', 's_grid');
 
-      // Discover available years from the events table for the filter bar
       const years = (await query('SELECT DISTINCT year FROM events ORDER BY year')).map(r => Number(r.year));
 
       await FilterBar.init(
@@ -83,6 +176,16 @@
         () => render(),
         { years }
       );
+
+      // Tab wiring
+      document.querySelectorAll('#tabs .tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const t = btn.dataset.tab;
+          document.querySelectorAll('#tabs .tab-btn').forEach(b => b.dataset.active = String(b.dataset.tab === t));
+          document.querySelectorAll('.tab-panel').forEach(p => p.dataset.active = String(p.dataset.tab === t));
+        });
+      });
+
       await render();
     }
 
@@ -94,17 +197,154 @@
       await renderGrid();
     }
 
+    // ── Tab 1 · Overview ────────────────────────────────────────
+    async function renderHero() {
+      const where = FilterBar.whereClause();
+      const sql = `
+        SELECT
+          COUNT(*) FILTER (WHERE breakout != 'no_prev') AS n_classifiable,
+          COUNT(*) FILTER (WHERE breakout = 'bullish') AS n_bullish,
+          COUNT(*) FILTER (WHERE breakout = 'bearish') AS n_bearish,
+          AVG(CASE WHEN breakout = 'bullish' AND followthrough THEN 1.0
+                   WHEN breakout = 'bullish' THEN 0.0 END)        AS bull_ft,
+          AVG(CASE WHEN breakout = 'bearish' AND followthrough THEN 1.0
+                   WHEN breakout = 'bearish' THEN 0.0 END)        AS bear_ft,
+          AVG(CASE WHEN breakout = 'bullish' AND immediate_reversal THEN 1.0
+                   WHEN breakout = 'bullish' THEN 0.0 END)        AS bull_rev,
+          AVG(CASE WHEN breakout = 'bearish' AND immediate_reversal THEN 1.0
+                   WHEN breakout = 'bearish' THEN 0.0 END)        AS bear_rev
+        FROM events WHERE ${where}
+      `;
+      const row = (await query(sql))[0];
+      const n_class = Number(row.n_classifiable) || 0;
+      const n_bull = Number(row.n_bullish) || 0;
+      const n_bear = Number(row.n_bearish) || 0;
+      const bull_rate = n_class > 0 ? n_bull / n_class : null;
+      const bear_rate = n_class > 0 ? n_bear / n_class : null;
+
+      const dir = FilterBar.direction();
+      const dimBull = dir === 'bearish' ? ' style="opacity:.45;"' : '';
+      const dimBear = dir === 'bullish' ? ' style="opacity:.45;"' : '';
+
+      document.getElementById('hc-row').innerHTML = `
+        <div class="hc-cell bull"${dimBull}>
+          <div class="hc-tag">▲ Bullish breakout → next hour</div>
+          <div class="hc-sentence">
+            takes out the breakout bar's high
+            <span class="hc-pct">${fmtPct(row.bull_ft)}</span> of the time.
+            <span class="hc-n">${fmtNum(n_bull)} setups · ${fmtPct(bull_rate)} of classifiable hours</span>
+          </div>
+        </div>
+        <div class="hc-cell bear"${dimBear}>
+          <div class="hc-tag">▼ Bearish breakout → next hour</div>
+          <div class="hc-sentence">
+            takes out the breakout bar's low
+            <span class="hc-pct">${fmtPct(row.bear_ft)}</span> of the time.
+            <span class="hc-n">${fmtNum(n_bear)} setups · ${fmtPct(bear_rate)} of classifiable hours</span>
+          </div>
+        </div>
+      `;
+
+      const bullRev = row.bull_rev, bearRev = row.bear_rev;
+      const worstRev = Math.max(bullRev || 0, bearRev || 0);
+      document.getElementById('hc-warn').innerHTML = `
+        <strong>Failure cost:</strong> when a breakout doesn't follow through, it sometimes goes the other way entirely —
+        the next hour's wick reaches all the way through the prior hour's <em>opposite</em> extreme.
+        Bullish reversal: <strong>${fmtPct(bullRev)}</strong> · Bearish reversal: <strong>${fmtPct(bearRev)}</strong>.
+        ${worstRev > 0.25 ? 'A reversal rate above 25% means losing trades cost roughly twice their winners — size accordingly.' : ''}
+      `;
+
+      document.getElementById('kvp-rates').innerHTML = `
+        <div class="kvp">
+          <div class="kvp-label">Classifiable hours</div>
+          <div class="kvp-val">${fmtNum(n_class)}</div>
+          <div class="kvp-sub">hours with a fully-formed prior</div>
+        </div>
+        <div class="kvp">
+          <div class="kvp-label">▲ Bull breakouts</div>
+          <div class="kvp-val" style="color:var(--green);">${fmtPct(bull_rate)}</div>
+          <div class="kvp-sub">${fmtNum(n_bull)} events</div>
+        </div>
+        <div class="kvp">
+          <div class="kvp-label">▼ Bear breakouts</div>
+          <div class="kvp-val" style="color:var(--red);">${fmtPct(bear_rate)}</div>
+          <div class="kvp-sub">${fmtNum(n_bear)} events</div>
+        </div>
+        <div class="kvp">
+          <div class="kvp-label">Inside / no breakout</div>
+          <div class="kvp-val" style="color:var(--text-secondary);">${fmtPct(n_class > 0 ? 1 - (n_bull + n_bear) / n_class : null)}</div>
+          <div class="kvp-sub">${fmtNum(n_class - n_bull - n_bear)} hours</div>
+        </div>
+      `;
+    }
+
+    // ── Tab 2 · Timing (quarter of H2) ──────────────────────────
+    async function renderTakeout() {
+      const where = FilterBar.whereClause();
+      const dir = FilterBar.direction();
+
+      async function getRows(direction) {
+        const sql = `
+          SELECT takeout_quarter_of_h2 AS q, COUNT(*) AS n
+          FROM events
+          WHERE ${where} AND breakout = '${direction}'
+            AND followthrough = TRUE AND takeout_quarter_of_h2 IS NOT NULL
+          GROUP BY q ORDER BY q
+        `;
+        const rows = await query(sql);
+        const total = rows.reduce((s, r) => s + Number(r.n), 0);
+        const byQ = { 1: 0, 2: 0, 3: 0, 4: 0 };
+        for (const r of rows) byQ[Number(r.q)] = Number(r.n);
+        return { byQ, total };
+      }
+
+      const bull = await getRows('bullish');
+      const bear = await getRows('bearish');
+
+      const useBull = dir !== 'bearish';
+      const useStats = useBull ? bull : bear;
+      const useLabel = useBull ? 'bullish' : 'bearish';
+      if (useStats.total > 0) {
+        const ranking = Object.entries(useStats.byQ).sort((a, b) => b[1] - a[1]);
+        const top = ranking[0];
+        const second = ranking[1];
+        const topPct = (top[1] / useStats.total * 100).toFixed(0);
+        const secondPct = (second[1] / useStats.total * 100).toFixed(0);
+        renderHeadline(document.getElementById('hl-takeout'),
+          'Most ${dir} follow-throughs complete in Q${q1} (${pct1}%) — Q${q2} is a distant second at ${pct2}%. Momentum after a breakout is fast.',
+          { dir: useLabel, q1: top[0], pct1: topPct, q2: second[0], pct2: secondPct });
+      } else {
+        renderHeadline(document.getElementById('hl-takeout'), null);
+      }
+
+      const bullEl = document.getElementById('t-takeout-bull');
+      const bearEl = document.getElementById('t-takeout-bear');
+      const bullParent = bullEl.parentElement;
+      const bearParent = bearEl.parentElement;
+      bullParent.style.display = (dir === 'bearish') ? 'none' : '';
+      bearParent.style.display = (dir === 'bullish') ? 'none' : '';
+
+      document.getElementById('t-takeout-bull-title').textContent =
+        `Bullish follow-throughs (n=${fmtNum(bull.total)})`;
+      document.getElementById('t-takeout-bear-title').textContent =
+        `Bearish follow-throughs (n=${fmtNum(bear.total)})`;
+
+      const bullVals = [1,2,3,4].map(q => bull.total > 0 ? bull.byQ[q] / bull.total : 0);
+      const bearVals = [1,2,3,4].map(q => bear.total > 0 ? bear.byQ[q] / bear.total : 0);
+      renderQuarterStrip(bullEl, bullVals, { sub: 'of bull follow-throughs' });
+      renderQuarterStrip(bearEl, bearVals, { sub: 'of bear follow-throughs' });
+    }
+
+    // ── Tab 3 · Conditions (H1 open vs prev mid) ────────────────
     async function renderPrevMid() {
       const where = FilterBar.whereClause();
       const minCount = FilterBar.minCount();
-
       const sql = `
         SELECT breakout, h1_open_vs_prev_mid AS side,
                COUNT(*) AS n,
                AVG(CASE WHEN followthrough THEN 1.0 ELSE 0.0 END) AS ft_rate
         FROM events
-        WHERE ${where}
-          AND breakout IN ('bullish','bearish')
+        WHERE ${where} AND breakout IN ('bullish','bearish')
           AND h1_open_vs_prev_mid IN ('above', 'below')
         GROUP BY breakout, side
       `;
@@ -113,42 +353,38 @@
       for (const r of rows) lookup[`${r.breakout}-${r.side}`] = r;
 
       function card(direction, side) {
-        const key = `${direction}-${side}`;
-        const r = lookup[key] || { n: 0, ft_rate: null };
+        const r = lookup[`${direction}-${side}`] || { n: 0, ft_rate: null };
         const lowCount = Number(r.n) < minCount;
         const cls = direction === 'bullish' ? 'bull' : 'bear';
-        const sideLabel = side === 'above' ? 'opened above prev-mid' : 'opened below prev-mid';
+        const sideLabel = side === 'above' ? 'Opened above prev-mid' : 'Opened below prev-mid';
         return `
           <div class="stat-card ${cls}${lowCount ? ' dim' : ''}">
-            <div class="stat-card-label">${direction === 'bullish' ? '▲ Bull' : '▼ Bear'} — ${sideLabel}</div>
+            <div class="stat-card-label">${direction === 'bullish' ? '▲ Bull' : '▼ Bear'} · ${sideLabel}</div>
             <div class="stat-card-value">${fmtPct(r.ft_rate)}</div>
             <div class="stat-card-sub">follow-through · n=${fmtNum(r.n)}</div>
           </div>
         `;
       }
 
-      // Headline insight: pick bullish row that has data
       const bullAbove = lookup['bullish-above'];
       const bullBelow = lookup['bullish-below'];
       if (bullAbove && bullBelow && Number(bullAbove.n) >= minCount && Number(bullBelow.n) >= minCount) {
+        const winnerSide = bullAbove.ft_rate >= bullBelow.ft_rate ? 'above' : 'below';
+        const winnerRate = Math.max(bullAbove.ft_rate, bullBelow.ft_rate);
+        const loserRate = Math.min(bullAbove.ft_rate, bullBelow.ft_rate);
         renderHeadline(document.getElementById('hl-prevmid'),
-          'Bull breakouts that opened ${aboveOrBelow} prev-mid follow through ${aboveBelowRate}, vs ${otherRate} when they opened the other way.',
-          {
-            aboveOrBelow: bullAbove.ft_rate >= bullBelow.ft_rate ? 'above' : 'below',
-            aboveBelowRate: fmtPct(Math.max(bullAbove.ft_rate, bullBelow.ft_rate)),
-            otherRate: fmtPct(Math.min(bullAbove.ft_rate, bullBelow.ft_rate)),
-          });
+          'Bull breakouts that open ${side} prev-mid follow through ${win} — vs only ${lose} when they open the other way. The open is itself a signal.',
+          { side: winnerSide, win: fmtPct(winnerRate), lose: fmtPct(loserRate) });
       } else {
         renderHeadline(document.getElementById('hl-prevmid'), null);
       }
 
       document.getElementById('t-prevmid').innerHTML =
-        card('bullish', 'above') +
-        card('bullish', 'below') +
-        card('bearish', 'above') +
-        card('bearish', 'below');
+        card('bullish', 'above') + card('bullish', 'below') +
+        card('bearish', 'above') + card('bearish', 'below');
     }
 
+    // ── Tab 4 · When it works (year/hour/dow) ───────────────────
     async function renderBreakdowns() {
       const where = FilterBar.whereClause();
       const minCount = FilterBar.minCount();
@@ -157,11 +393,6 @@
       const activeHours = new Set(FilterBar.hours());
       const activeDows = new Set(FilterBar.dows());
 
-      // Common SQL pattern: aggregate over events at the slice-key level.
-      // The breakdown tables show ALL cells in the dimension (e.g. all years), so
-      // they apply the filter ONLY for the OTHER dimensions. The slice's own
-      // dimension is left unfiltered so cells outside the active filter are
-      // visible-but-dimmed (via dimRowFn) rather than absent.
       function sliceSql(keyExpr, partialWhere) {
         return `
           SELECT ${keyExpr} AS k,
@@ -173,13 +404,11 @@
                           WHEN breakout = 'bullish' THEN 0.0 END) AS bull_ft,
                  AVG(CASE WHEN breakout = 'bearish' AND followthrough THEN 1.0
                           WHEN breakout = 'bearish' THEN 0.0 END) AS bear_ft
-          FROM events
-          WHERE ${partialWhere}
+          FROM events WHERE ${partialWhere}
           GROUP BY k ORDER BY k
         `;
       }
 
-      // Build per-dimension partial WHERE clauses (exclude the dimension being grouped)
       function buildPartialWhere(excludeDim) {
         const ALL_HOURS_LEN = 24;
         const parts = [];
@@ -187,15 +416,9 @@
         const hours = FilterBar.hours();
         const dows = FilterBar.dows();
         const availableYears = FilterBar.availableYears();
-        if (excludeDim !== 'year' && years.length < availableYears.length) {
-          parts.push(`year IN (${years.join(',')})`);
-        }
-        if (excludeDim !== 'hour' && hours.length < ALL_HOURS_LEN) {
-          parts.push(`hour_of_day_et IN (${hours.join(',')})`);
-        }
-        if (excludeDim !== 'dow' && dows.length < 7) {
-          parts.push(`dow IN (${dows.join(',')})`);
-        }
+        if (excludeDim !== 'year' && years.length < availableYears.length) parts.push(`year IN (${years.join(',')})`);
+        if (excludeDim !== 'hour' && hours.length < ALL_HOURS_LEN) parts.push(`hour_of_day_et IN (${hours.join(',')})`);
+        if (excludeDim !== 'dow' && dows.length < 7) parts.push(`dow IN (${dows.join(',')})`);
         return parts.length ? parts.join(' AND ') : '1=1';
       }
 
@@ -203,12 +426,10 @@
         return rows.map(r => {
           const n_class = Number(r.n_class) || 0;
           return {
-            k: r.k,
-            count: Number(r.n) || 0,
+            k: r.k, count: Number(r.n) || 0,
             bull_rate: n_class > 0 ? Number(r.n_bull) / n_class : null,
             bear_rate: n_class > 0 ? Number(r.n_bear) / n_class : null,
-            bull_ft: r.bull_ft,
-            bear_ft: r.bear_ft,
+            bull_ft: r.bull_ft, bear_ft: r.bear_ft,
           };
         });
       }
@@ -229,39 +450,31 @@
         return cols;
       };
 
-      // By year — apply hour + dow filters, but show all years
       const yearRows = transform(await query(sliceSql('year', buildPartialWhere('year'))));
       renderInlineBarTable(document.getElementById('t-by-year'),
-        yearRows.map(r => ({ ...r, k: r.k })),
+        yearRows.map(r => ({ ...r })),
         baseCols('Year'),
         { minCount, dimRowFn: (r) => !activeYears.has(Number(r.k)) });
 
-      // By hour-of-day — apply year + dow filters, but show all hours
       const hourRows = transform(await query(sliceSql('hour_of_day_et', buildPartialWhere('hour'))));
       renderInlineBarTable(document.getElementById('t-by-hour'),
         hourRows.map(r => ({ ...r, k: String(r.k).padStart(2, '0') + ' ET' })),
         baseCols('Hour'),
         { minCount, dimRowFn: (r) => !activeHours.has(Number(String(r.k).slice(0,2))) });
 
-      // By DOW — apply year + hour filters, but show all DOWs
       const dowRows = transform(await query(sliceSql('dow', buildPartialWhere('dow'))));
       renderInlineBarTable(document.getElementById('t-by-dow'),
-        dowRows.map(r => ({ ...r, k: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][Number(r.k)] })),
+        dowRows.map(r => ({ ...r, k: DOW_NAMES[Number(r.k)] })),
         baseCols('DOW'),
-        { minCount, dimRowFn: (r) => {
-            const idx = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].indexOf(r.k);
-            return !activeDows.has(idx);
-        }});
+        { minCount, dimRowFn: (r) => !activeDows.has(DOW_NAMES.indexOf(r.k)) });
     }
 
+    // ── Tab 5 · Heatmap ─────────────────────────────────────────
     async function renderGrid() {
       const minCount = FilterBar.minCount();
-      // Year filter applies (year is not a heatmap dimension), but hour/dow do NOT
-      // because they ARE the heatmap dimensions and we want to show all cells.
       const years = FilterBar.years();
       const availableYears = FilterBar.availableYears();
-      const yearWhere = years.length < availableYears.length
-        ? `WHERE year IN (${years.join(',')})` : '';
+      const yearWhere = years.length < availableYears.length ? `WHERE year IN (${years.join(',')})` : '';
 
       const sql = `
         SELECT hour_of_day_et AS h, dow,
@@ -272,15 +485,11 @@
                AVG(CASE WHEN breakout = 'bearish' THEN 1.0 ELSE 0.0 END) AS bear_rate,
                AVG(CASE WHEN breakout = 'bearish' AND followthrough THEN 1.0
                         WHEN breakout = 'bearish' THEN 0.0 END) AS bear_ft
-        FROM events
-        ${yearWhere}
-        GROUP BY h, dow
+        FROM events ${yearWhere} GROUP BY h, dow
       `;
       const rows = await query(sql);
 
-      // Build 24 × 7 grids
       const hourLabels = Array.from({length: 24}, (_, i) => i.toString().padStart(2, '0'));
-      const dowLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
       const values = Array.from({length: 24}, () => Array(7).fill(null));
       const counts = Array.from({length: 24}, () => Array(7).fill(0));
       const tooltips = Array.from({length: 24}, () => Array(7).fill(''));
@@ -289,15 +498,14 @@
         values[h][d] = r.bull_ft;
         counts[h][d] = Number(r.n);
         tooltips[h][d] =
-          `${dowLabels[d]} ${hourLabels[h]} ET\n` +
-          `n=${fmtNum(r.n)}\n` +
+          `${DOW_NAMES[d]} ${hourLabels[h]} ET\nn=${fmtNum(r.n)}\n` +
           `Bull rate: ${fmtPct(r.bull_rate)}, FT: ${fmtPct(r.bull_ft)}\n` +
           `Bear rate: ${fmtPct(r.bear_rate)}, FT: ${fmtPct(r.bear_ft)}`;
       }
 
       renderHeatmap(document.getElementById('t-grid'), {
         rowLabels: hourLabels.map(h => `${h} ET`),
-        colLabels: dowLabels,
+        colLabels: DOW_NAMES,
         values, counts,
         fmt: (v) => v == null ? '' : (v * 100).toFixed(0) + '%',
         minCount,
@@ -305,142 +513,7 @@
       });
     }
 
-    async function renderTakeout() {
-      const where = FilterBar.whereClause();
-      const dir = FilterBar.direction();
-      const minCount = FilterBar.minCount();
-
-      async function getRows(direction) {
-        const sql = `
-          SELECT takeout_quarter_of_h2 AS q, COUNT(*) AS n
-          FROM events
-          WHERE ${where}
-            AND breakout = '${direction}'
-            AND followthrough = TRUE
-            AND takeout_quarter_of_h2 IS NOT NULL
-          GROUP BY q ORDER BY q
-        `;
-        const rows = await query(sql);
-        const total = rows.reduce((s, r) => s + Number(r.n), 0);
-        const byQ = { 1: 0, 2: 0, 3: 0, 4: 0 };
-        for (const r of rows) byQ[Number(r.q)] = Number(r.n);
-        return { byQ, total };
-      }
-
-      const bull = await getRows('bullish');
-      const bear = await getRows('bearish');
-
-      // Headline insight: pick the direction matching the active filter
-      // (default 'bullish' if Both is selected, since headline must say something).
-      const useBull = dir !== 'bearish';
-      const useStats = useBull ? bull : bear;
-      const useLabel = useBull ? 'bull' : 'bear';
-      const dominant = Object.entries(useStats.byQ).sort((a, b) => b[1] - a[1])[0];
-      if (useStats.total > 0) {
-        const dPct = (dominant[1] / useStats.total * 100).toFixed(0);
-        renderHeadline(document.getElementById('hl-takeout'),
-          'Most ${dir} follow-throughs happen in Q${q} (${pct}%) — momentum after a breakout is fast.',
-          { dir: useLabel, q: dominant[0], pct: dPct });
-      } else {
-        renderHeadline(document.getElementById('hl-takeout'), null);
-      }
-
-      function rowsFor(byQ, total) {
-        return [1, 2, 3, 4].map(q => ({
-          q: `Q${q}`,
-          pct: total > 0 ? byQ[q] / total : 0,
-          count: total,
-        }));
-      }
-
-      const cols = [
-        { key: 'q', label: 'Quarter of H2', type: 'label' },
-        { key: 'pct', label: '% of follow-throughs', type: 'inlineBar', maxPct: 1.0, color: 'green' },
-      ];
-      const colsBear = cols.slice();
-      colsBear[1] = { ...colsBear[1], color: 'red' };
-
-      // Show or hide based on direction filter
-      const bullEl = document.getElementById('t-takeout-bull');
-      const bearEl = document.getElementById('t-takeout-bear');
-      bullEl.parentElement.style.display = (dir === 'bearish') ? 'none' : '';
-      bearEl.parentElement.style.display = (dir === 'bullish') ? 'none' : '';
-
-      bullEl.parentElement.querySelector('.study-section-title').textContent =
-        `Bullish follow-throughs (n=${fmtNum(bull.total)})`;
-      bearEl.parentElement.querySelector('.study-section-title').textContent =
-        `Bearish follow-throughs (n=${fmtNum(bear.total)})`;
-
-      renderInlineBarTable(bullEl, rowsFor(bull.byQ, bull.total), cols, { minCount });
-      renderInlineBarTable(bearEl, rowsFor(bear.byQ, bear.total), colsBear, { minCount });
-    }
-
-    async function renderHero() {
-      // Note: the direction filter does NOT narrow this query — both bull and bear
-      // metrics are always computed so the side-by-side hero panels stay visible.
-      // Direction is applied visually only (dimming the off-direction panel below).
-      // Per-panel queries in render functions BELOW the hero MAY apply direction.
-      const where = FilterBar.whereClause();
-      // Aggregate metrics over filtered events
-      const sql = `
-        SELECT
-          COUNT(*) FILTER (WHERE breakout != 'no_prev') AS n_classifiable,
-          COUNT(*) FILTER (WHERE breakout = 'bullish') AS n_bullish,
-          COUNT(*) FILTER (WHERE breakout = 'bearish') AS n_bearish,
-          AVG(CASE WHEN breakout = 'bullish' AND followthrough THEN 1.0
-                   WHEN breakout = 'bullish' THEN 0.0 END)        AS bull_ft,
-          AVG(CASE WHEN breakout = 'bearish' AND followthrough THEN 1.0
-                   WHEN breakout = 'bearish' THEN 0.0 END)        AS bear_ft,
-          AVG(CASE WHEN breakout = 'bullish' AND immediate_reversal THEN 1.0
-                   WHEN breakout = 'bullish' THEN 0.0 END)        AS bull_rev,
-          AVG(CASE WHEN breakout = 'bearish' AND immediate_reversal THEN 1.0
-                   WHEN breakout = 'bearish' THEN 0.0 END)        AS bear_rev
-        FROM events
-        WHERE ${where}
-      `;
-      const row = (await query(sql))[0];
-      const n_class = Number(row.n_classifiable) || 0;
-      const n_bull = Number(row.n_bullish) || 0;
-      const n_bear = Number(row.n_bearish) || 0;
-      const bull_rate = n_class > 0 ? n_bull / n_class : null;
-      const bear_rate = n_class > 0 ? n_bear / n_class : null;
-      const bull_ft = row.bull_ft;
-      const bear_ft = row.bear_ft;
-      const bull_rev = row.bull_rev;
-      const bear_rev = row.bear_rev;
-
-      const dir = FilterBar.direction();
-      document.getElementById('hero-bull').classList.toggle('dimmed', dir === 'bearish');
-      document.getElementById('hero-bear').classList.toggle('dimmed', dir === 'bullish');
-
-      const ftBullCount = Math.round((bull_ft || 0) * n_bull);
-      const ftBearCount = Math.round((bear_ft || 0) * n_bear);
-
-      document.getElementById('hero-bull').innerHTML = `
-        <div class="hero-eyebrow">▲ BULLISH BREAKOUT</div>
-        <div class="hero-line">Happens in</div>
-        <div class="hero-big">${fmtPct(bull_rate)}</div>
-        <div class="hero-line">of classifiable hours (${fmtNum(n_bull)} events)</div>
-        <div class="hero-divider"></div>
-        <div class="hero-line">When it does, next hour follows through</div>
-        <div class="hero-mid">${fmtPct(bull_ft)}</div>
-        <div class="hero-foot">${fmtNum(ftBullCount)} of ${fmtNum(n_bull)} cases</div>
-        <div class="hero-foot warn">Reversal: ${fmtPct(bull_rev)}</div>
-      `;
-      document.getElementById('hero-bear').innerHTML = `
-        <div class="hero-eyebrow">▼ BEARISH BREAKOUT</div>
-        <div class="hero-line">Happens in</div>
-        <div class="hero-big">${fmtPct(bear_rate)}</div>
-        <div class="hero-line">of classifiable hours (${fmtNum(n_bear)} events)</div>
-        <div class="hero-divider"></div>
-        <div class="hero-line">When it does, next hour follows through</div>
-        <div class="hero-mid">${fmtPct(bear_ft)}</div>
-        <div class="hero-foot">${fmtNum(ftBearCount)} of ${fmtNum(n_bear)} cases</div>
-        <div class="hero-foot warn">Reversal: ${fmtPct(bear_rev)}</div>
-      `;
-    }
-
-    init().catch(e => alert('Failed to load: ' + e.message));
+    init().catch(e => { console.error('init failed:', e); alert('Failed to load: ' + e.message); });
   </script>
 </body>
 </html>
