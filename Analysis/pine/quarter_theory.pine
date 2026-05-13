@@ -554,8 +554,8 @@ inTrackedHour() => not na(blockId()) or is3pmHour()
 // Session anchor lines (P12 / O/U / MDR-10 / midnight / fib) routed through palette.
 // Per-quarter background border (na-color = invisible); Q1-Q4 share the palette.
 color HOUR_BOX_BG          = color(na)
-color HOUR_BOX_BORDER      = pal_struct_strong()
-color HOUR_DIV_LINE        = pal_struct_strong()
+color HOUR_BOX_BORDER      = pal_struct_mid()
+color HOUR_DIV_LINE        = pal_struct_soft()
 // HOUR_OPEN line color (chart): warn-ink reads as amber against the chart bg.
 // The HOUR_OPEN_COLOR is also used as textcolor on the hour-open pill — but pills
 // route through their own surface tokens at the call site (see line ~1151), so we
@@ -572,8 +572,8 @@ color ACTIVE_TRIAD_BORDER  = pal_struct_mid()
 color BOX_05_BORDER        = pal_info_soft()
 color ACTIVE_HR_BG         = pal_struct_whisper()
 color ACTIVE_HR_BORDER     = color(na)
-color BAND_05_BG           = pal_struct_whisper()
-color BAND_10_BG           = pal_struct_whisper()
+color BAND_05_BG           = color(na)
+color BAND_10_BG           = color(na)
 color APEX_HOUR_BG         = pal_warn_whisper()
 color APEX_HOUR_BORDER     = pal_warn_soft()
 color APEX_HOUR_LABEL_BG   = pal_surface()
@@ -611,17 +611,17 @@ var line currentQ4Line = na
 if gQStructOn and gShowQDiv and IS_TF_MIN1 and isFirstBarOfQuarter() and quarterOfHour() == 1 and inTrackedHour()
     currentHourBox := box.new(left=bar_index, top=high, right=bar_index + BARS_PER_HOUR - 1, bottom=low,
                               xloc=xloc.bar_index, bgcolor=HOUR_BOX_BG,
-                              border_color=HOUR_BOX_BORDER, border_width=2)
+                              border_color=HOUR_BOX_BORDER, border_width=1)
     if IS_TF_MIN1
         currentQ2Line := line.new(bar_index + BARS_PER_QUARTER,     low, bar_index + BARS_PER_QUARTER,     high,
                                   xloc=xloc.bar_index, extend=extend.none,
-                                  color=HOUR_DIV_LINE, style=line.style_solid, width=2)
+                                  color=HOUR_DIV_LINE, style=line.style_solid, width=1)
         currentQ3Line := line.new(bar_index + BARS_PER_QUARTER * 2, low, bar_index + BARS_PER_QUARTER * 2, high,
                                   xloc=xloc.bar_index, extend=extend.none,
-                                  color=HOUR_DIV_LINE, style=line.style_solid, width=2)
+                                  color=HOUR_DIV_LINE, style=line.style_solid, width=1)
         currentQ4Line := line.new(bar_index + BARS_PER_QUARTER * 3, low, bar_index + BARS_PER_QUARTER * 3, high,
                                   xloc=xloc.bar_index, extend=extend.none,
-                                  color=HOUR_DIV_LINE, style=line.style_solid, width=2)
+                                  color=HOUR_DIV_LINE, style=line.style_solid, width=1)
 
 // Update every bar inside the active hour: expand top/bottom to running range
 if gQStructOn and gShowQDiv and IS_TF_MIN1 and not na(currentHourBox) and inTrackedHour()
@@ -786,14 +786,14 @@ if gBoxOn and IS_TF_MIN1 and HAS_LH
             line.new(hourStartBar, u10, q1EndBar, u10, xloc=xloc.bar_index, color=pal_struct_mid(), style=line.style_solid, width=1)
             line.new(hourStartBar, l10, q1EndBar, l10, xloc=xloc.bar_index, color=pal_struct_mid(), style=line.style_solid, width=1)
             if gShowBandLbl
-                bandLbl10UpCur := label.new(q1EndBar, u10, ".1%", xloc=xloc.bar_index, color=BAND_10_BG, textcolor=pal_ink(), style=label.style_label_left, size=size.small)
-                bandLbl10DnCur := label.new(q1EndBar, l10, ".1%", xloc=xloc.bar_index, color=BAND_10_BG, textcolor=pal_ink(), style=label.style_label_left, size=size.small)
+                bandLbl10UpCur := label.new(q1EndBar, u10, ".1%", xloc=xloc.bar_index, color=BAND_10_BG, textcolor=pal_struct_mid(), style=label.style_none, size=size.small)
+                bandLbl10DnCur := label.new(q1EndBar, l10, ".1%", xloc=xloc.bar_index, color=BAND_10_BG, textcolor=pal_struct_mid(), style=label.style_none, size=size.small)
         if gShowBand05
             line.new(hourStartBar, u05, q1EndBar, u05, xloc=xloc.bar_index, color=pal_struct_mid(), style=line.style_solid, width=1)
             line.new(hourStartBar, l05_, q1EndBar, l05_, xloc=xloc.bar_index, color=pal_struct_mid(), style=line.style_solid, width=1)
             if gShowBandLbl
-                bandLbl05UpCur := label.new(q1EndBar, u05, ".05%", xloc=xloc.bar_index, color=BAND_05_BG, textcolor=pal_ink(), style=label.style_label_left, size=size.small)
-                bandLbl05DnCur := label.new(q1EndBar, l05_, ".05%", xloc=xloc.bar_index, color=BAND_05_BG, textcolor=pal_ink(), style=label.style_label_left, size=size.small)
+                bandLbl05UpCur := label.new(q1EndBar, u05, ".05%", xloc=xloc.bar_index, color=BAND_05_BG, textcolor=pal_struct_mid(), style=label.style_none, size=size.small)
+                bandLbl05DnCur := label.new(q1EndBar, l05_, ".05%", xloc=xloc.bar_index, color=BAND_05_BG, textcolor=pal_struct_mid(), style=label.style_none, size=size.small)
 
 // ── Band rejection markers ────────────────────────────────────────────────
 detectBandRejection(float h, float l, float c, float u10, float u05, float l05_, float l10) =>
