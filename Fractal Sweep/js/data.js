@@ -305,7 +305,35 @@ function getFilteredD(D) {
     pf: 1,
   }));
 
-  return { ...D, meta: newMeta, risk_stats: newRS, by_hour, by_session, by_dow, dir_summary, by_year, recent_trades: trades };
+  // Recompute top_combos / worst_combos from filtered trades
+  const DOW_NAMES = {0:'Sun',1:'Mon',2:'Tue',3:'Wed',4:'Thu',5:'Fri',6:'Sat'};
+  const comboMap = {};
+  trades.forEach(t => {
+    if (t.hr == null || t.dow == null) return;
+    const key = `${t.hr}_${t.dow}_${t.direction}`;
+    if (!comboMap[key]) {
+      const dn = t.dow_name || DOW_NAMES[t.dow] || String(t.dow);
+      comboMap[key] = { hr: t.hr, dow: t.dow, dow_name: dn, direction: t.direction,
+        label: `${dn} ${String(t.hr).padStart(2,'0')}:00 ${t.direction}`,
+        n: 0, wins: 0, sumR: 0, sumAbsR: 0, sumMae: 0, sumMfe: 0, sumMaeHr: 0, sumMfeHr: 0 };
+    }
+    const b = comboMap[key];
+    b.n++; b.sumR += t.r; b.sumAbsR += Math.abs(t.r);
+    if (t.outcome === 'WIN') b.wins++;
+    b.sumMae += t.mae_pct || 0; b.sumMfe += t.mfe_pct || 0;
+    b.sumMaeHr += t.mae_pct_hr || 0; b.sumMfeHr += t.mfe_pct_hr || 0;
+  });
+  const combos = Object.values(comboMap).filter(c => c.n >= 6).map(c => ({
+    ...c, wr: +(c.wins / c.n).toFixed(4),
+    ev: +(c.sumR / c.n).toFixed(4),
+    pf: +(c.sumAbsR / Math.max(c.sumR - c.wins * (c.sumR > 0 ? 1 : -1), 0.001)).toFixed(3),
+    avg_risk_pts: 0,
+  }));
+  combos.sort((a, b) => b.ev - a.ev);
+  const top_combos = combos.slice(0, 15);
+  const worst_combos = [...combos].sort((a, b) => a.ev - b.ev).slice(0, 5);
+
+  return { ...D, meta: newMeta, risk_stats: newRS, by_hour, by_session, by_dow, dir_summary, by_year, recent_trades: trades, top_combos, worst_combos };
 }
 
 // Back-compat alias — legacy call sites use getSmtD

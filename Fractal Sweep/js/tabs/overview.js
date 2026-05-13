@@ -6,6 +6,7 @@ import { renderEdgeStudy } from './edge.js';
 import { renderFilterVariants, renderProfileComparison, renderVerdict } from '../verdict.js';
 import { renderMAEStudy, renderMFEStudy } from './excursion.js';
 import { updateFilterChipDeltas } from './filters.js';
+import { renderRecentTrades } from './trades.js';
 import { switchSMT, switchF3, switchF4, customRanges, applyCustomRanges } from '../walkforward.js';
 
 function renderModelDropdown(){
@@ -121,6 +122,7 @@ function renderModel(D){
 
   if (activePageTab === 'excursion') { renderMAEStudy(D); renderMFEStudy(D); }
   if (activePageTab === 'risk') renderEquityCurveFS(D);
+  if (activePageTab === 'trades') renderRecentTrades(0);
 
   renderOverviewEquityCurve(D);
   renderProfileComparison();

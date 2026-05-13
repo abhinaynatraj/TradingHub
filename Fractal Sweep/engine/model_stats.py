@@ -95,16 +95,25 @@ SESSION_FILTER_ENABLED = False  # default: all 24h (Globex/ETH included); --rth-
 UNSWEPT_LOOKBACK = 10
 
 # ── RISK PROFILES ─────────────────────────────────────────────────────────────
-# Each tuple: (stop_val, target_val, display_key, profile_type)
+# Each tuple: (stop_val, target_val, display_key, profile_type, target_ref=None)
 #
 # profile_type='mult'  → stop/target distances = val × base_risk
 #                         base_risk = |entry_price − sweep_extreme|
 #
 # profile_type='pct'   → stop/target distances = entry_price × val / 100
 #                         (fixed % of entry price, independent of sweep size)
+#
+# target_ref='cisd'    → target measured from CISD level (order block open),
+#                         stop still measured from entry as usual
 RR_PROFILES = [
-    # --- Simple 1R: SL = sweep extreme, TP = 1R, 100% exit (all-in/all-out) ---
-    (1.0, 1.0, 'simple_1r', 'mult'),
+    # --- Entry-based targets (SL = sweep extreme) ---
+    (1.0, 1.0, 'simple_1r',   'mult'),
+    (1.0, 1.5, 'simple_1r5',  'mult'),
+    (1.0, 2.0, 'simple_2r',   'mult'),
+    # --- OB-based targets (TP from CISD/order-block open price) ---
+    (1.0, 1.0, 'ob_1r',       'mult', 'cisd'),
+    (1.0, 1.5, 'ob_1r5',      'mult', 'cisd'),
+    (1.0, 2.0, 'ob_2r',       'mult', 'cisd'),
     # --- Raw Measure: no SL/TP — records full-session MAE/MFE only ---
     (0.0, 0.0, 'raw_measure', 'raw'),
 ]
@@ -1510,6 +1519,7 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                 base_risk        = base_risk,
                 direction        = direction,
                 hour_range_pts   = _hr_rng,
+                cisd_level       = round(cisd_level, 2) if cisd_level is not None else None,
             ))
 
     print(f"      {len(base_pending):,} entries detected across all filters")
@@ -1519,14 +1529,18 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
 # ── PROFILE OUTCOME RESOLVER ──────────────────────────────────────────────────
 def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
                                stop_val, target_val, profile_type='mult',
-                               tp2_pct=None, sl_mae_pct=None):
+                               tp2_pct=None, sl_mae_pct=None,
+                               target_ref='entry'):
     """
     Compute stop / target for each detected setup and resolve outcomes.
 
     profile_type='mult'  (sweep-relative):
         risk_pts   = stop_val  × base_risk   (base_risk = |entry − sweep_extreme|)
-        LONG:  stop = entry − stop_val×base_risk,  target = entry + target_val×base_risk
-        SHORT: stop = entry + stop_val×base_risk,  target = entry − target_val×base_risk
+        LONG:  stop = entry − stop_val×base_risk,  target = ref + target_val×base_risk
+        SHORT: stop = entry + stop_val×base_risk,  target = ref − target_val×base_risk
+
+        target_ref='entry' → ref = entry_price (default)
+        target_ref='cisd'  → ref = cisd_level  (OB open price)
 
     profile_type='pct'  (fixed % of entry price):
         risk_pts   = entry_price × stop_val  / 100
@@ -1556,6 +1570,14 @@ def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
             ))
             continue
 
+        # Determine reference price for target
+        if target_ref == 'cisd':
+            ref_price = bp.get('cisd_level')
+            if ref_price is None:
+                ref_price = entry_price  # fallback to entry if CISD not available
+        else:
+            ref_price = entry_price
+
         if profile_type == 'pct':
             stop_dist    = entry_price * stop_val   / 100.0
             target_dist  = entry_price * target_val / 100.0
@@ -1575,10 +1597,10 @@ def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
 
         if direction == 'LONG':
             stop_price   = entry_price - stop_dist
-            target_price = entry_price + target_dist
+            target_price = ref_price + target_dist
         else:
             stop_price   = entry_price + stop_dist
-            target_price = entry_price - target_dist
+            target_price = ref_price - target_dist
 
         rows[idx]['stop_price']   = round(stop_price,   2)
         rows[idx]['target_price'] = round(target_price, 2)
@@ -2573,7 +2595,7 @@ def main():
 
     print("\n" + "═"*65)
     print(f"  SWEEP MODEL ENGINE v6.0  ·  {TABLE.upper()}")
-    print(f"  Profiles: {', '.join(pk for _, __, pk, ___ in RR_PROFILES)}")
+    print(f"  Profiles: {', '.join(p[2] for p in RR_PROFILES)}")
     print(f"  Models: {', '.join(args.models)}")
     print(f"  Sweep mode: PREV  ·  CISD bars: {'unlimited' if CISD_FAST_BARS is None else CISD_FAST_BARS}")
     print(f"  Session:    {'RTH 07:00-16:00 ET' if SESSION_FILTER_ENABLED else 'ALL 24H (Globex/ETH included)'}")
@@ -2657,10 +2679,15 @@ def main():
 
         print(f"      Resolving outcomes across {len(RR_PROFILES)} profiles ...")
         model_profiles = {}
-        for p_idx, (stop_val, target_val, pk, ptype) in enumerate(RR_PROFILES, 1):
+        for p_idx, prof_tup in enumerate(RR_PROFILES, 1):
+            pk   = prof_tup[2]
+            ptype = prof_tup[3]
+            target_ref = prof_tup[4] if len(prof_tup) > 4 else 'entry'
+            stop_val, target_val = prof_tup[0], prof_tup[1]
             print(f"      [{p_idx}/{len(RR_PROFILES)}] profile {pk} ...", flush=True)
             df_p = apply_profile_and_resolve(
-                base_rows, base_pending, m1, stop_val, target_val, ptype)
+                base_rows, base_pending, m1, stop_val, target_val, ptype,
+                target_ref=target_ref)
             if df_p.empty:
                 continue
 

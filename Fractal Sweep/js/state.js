@@ -66,8 +66,16 @@ export function setActivePd(v) { activePd = v; }
 export function setActivePageTab(v) { activePageTab = v; }
 
 export const FILTER_STORAGE_KEY = 'fractal-filters-v1';
-export const RR_PROFILES = ['simple_1r', 'raw_measure'];
-export const PROFILE_LABELS = {simple_1r:'Simple 1R — TP @ 1R · 100% exit · SL = sweep extreme', raw_measure:'Raw Measure — no SL/TP · full-session MAE/MFE only'};
+export const RR_PROFILES = ['simple_1r', 'simple_1r5', 'simple_2r', 'ob_1r', 'ob_1r5', 'ob_2r', 'raw_measure'];
+export const PROFILE_LABELS = {
+  'simple_1r':    'Simple 1R — TP @ 1R · 100% exit · SL = sweep extreme',
+  'simple_1r5':   'Simple 1.5R — TP @ 1.5R · 100% exit · SL = sweep extreme',
+  'simple_2r':    'Simple 2R — TP @ 2R · 100% exit · SL = sweep extreme',
+  'ob_1r':        'OB 1R — TP @ 1R from OB open · SL = sweep extreme',
+  'ob_1r5':       'OB 1.5R — TP @ 1.5R from OB open · SL = sweep extreme',
+  'ob_2r':        'OB 2R — TP @ 2R from OB open · SL = sweep extreme',
+  'raw_measure':  'Raw Measure — no SL/TP · full-session MAE/MFE only',
+};
 export const PCT_PROFILES = new Set();
 export const EQ_ACCT = 2000, EQ_RPT = 200;
 export const DASHBOARD_SCHEMA_VERSION = 2;
