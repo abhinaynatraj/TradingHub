@@ -408,99 +408,6 @@ main {
 }
 .open-btn svg { width: 12px; height: 12px; }
 
-/* ── Model detail section ────────────────────────────────────────────────────── */
-.model-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin-bottom: 44px;
-}
-.model-panel {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: var(--shadow);
-}
-.model-panel-hd {
-  padding: 18px 22px 14px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.model-panel-icon {
-  font-size: 18px;
-}
-.model-panel-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text);
-}
-.model-panel-sub {
-  font-size: 11px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-}
-.model-panel-body {
-  padding: 18px 22px;
-}
-.rule-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-}
-.rule-list li {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  font-size: 13px;
-  color: var(--text-sub);
-  line-height: 1.5;
-}
-.rule-list li::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  margin-top: 6px;
-  flex-shrink: 0;
-}
-.rule-list.blue li::before { background: var(--blue); }
-.rule-list.green li::before { background: var(--green); }
-.rule-list.purple li::before { background: var(--purple); }
-.rule-list.amber li::before { background: var(--amber); }
-
-.kv-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-.kv-item {
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 12px;
-}
-.kv-key {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 3px;
-}
-.kv-val {
-  font-family: var(--font-mono);
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text);
-}
-.kv-val.green { color: var(--green); }
-.kv-val.blue  { color: var(--blue); }
-.kv-val.amber { color: var(--amber); }
-
 /* ── EV Leaderboard ─────────────────────────────────────────────────────────── */
 .ev-board {
   background: var(--bg-card);
@@ -663,13 +570,9 @@ main {
 @keyframes fade { from { opacity: .4 } to { opacity: 1 } }
 
 /* ── Responsive ────────────────────────────────────────────────────────────── */
-@media(max-width: 860px) {
-  .model-grid { grid-template-columns: 1fr 1fr; }
-}
 @media(max-width: 640px) {
   main { padding: 24px 16px 60px; }
   .project-grid { grid-template-columns: 1fr; }
-  .model-grid { grid-template-columns: 1fr; }
   .hdr { padding: 0 16px; }
   .hero-title { font-size: 26px; }
 }
@@ -719,65 +622,6 @@ main {
     <div class="loading-pill">Loading project stats…</div>
   </div>
 
-  <!-- ── Model deep-dive ────────────────────────────────────────────────── -->
-  <div class="sec-head">
-    <span class="sec-label">Model Mechanics</span>
-    <div class="sec-line"></div>
-  </div>
-
-  <div class="model-grid">
-
-    <!-- Fractal Sweep Model -->
-    <div class="model-panel">
-      <div class="model-panel-hd">
-        <div class="model-panel-icon">🌊</div>
-        <div>
-          <div class="model-panel-title">Fractal Sweep — Sweep + CISD</div>
-          <div class="model-panel-sub">3 timeframe pairs · Prior candle sweep logic</div>
-        </div>
-      </div>
-      <div class="model-panel-body">
-        <ul class="rule-list blue" style="margin-bottom:16px;">
-          <li><strong>Sweep:</strong> Prior HTF candle's high or low is violated anywhere within the new candle</li>
-          <li><strong>Close-back:</strong> Price closes back inside the prior candle's range, confirming the manipulation</li>
-          <li><strong>CISD:</strong> The CISD candle closes through the open of the last opposing delivery run — confirmation trigger</li>
-          <li><strong>Entry:</strong> Next candle open after CISD · <strong>Stop:</strong> Sweep extreme · <strong>Target:</strong> 1R (simple_1r profile)</li>
-        </ul>
-        <div class="kv-grid">
-          <div class="kv-item"><div class="kv-key">Timeframe Pairs</div><div class="kv-val blue">4</div></div>
-          <div class="kv-item"><div class="kv-key">Risk:Reward</div><div class="kv-val">1 : 1</div></div>
-          <div class="kv-item"><div class="kv-key">Runtime Filters</div><div class="kv-val amber">6 chips · 64 combos</div></div>
-          <div class="kv-item"><div class="kv-key">Instrument</div><div class="kv-val">NQ / ES</div></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Stack & infrastructure -->
-    <div class="model-panel">
-      <div class="model-panel-hd">
-        <div class="model-panel-icon">⚙️</div>
-        <div>
-          <div class="model-panel-title">Data Infrastructure</div>
-          <div class="model-panel-sub">DuckDB · Databento · Python 3.14 · Daily cron</div>
-        </div>
-      </div>
-      <div class="model-panel-body">
-        <ul class="rule-list amber" style="margin-bottom:16px;">
-          <li><strong>Source:</strong> Databento GLBX.MDP3 dataset — 1-minute continuous front-month NQ &amp; ES</li>
-          <li><strong>Database:</strong> DuckDB <code>candle_science.duckdb</code> · tables <code>nq_1m</code>, <code>es_1m</code> · 15+ years of data</li>
-          <li><strong>Daily Update:</strong> <code>daily_update.py</code> runs at 7:00am ET weekdays via cron — fetches missing bars from Databento, rebuilds all JSON outputs</li>
-          <li><strong>Dashboards:</strong> Standalone HTML + vanilla JS — no framework required. Serve with <code>python3 -m http.server</code></li>
-        </ul>
-        <div class="kv-grid">
-          <div class="kv-item"><div class="kv-key">Data Source</div><div class="kv-val blue">Databento</div></div>
-          <div class="kv-item"><div class="kv-key">Database</div><div class="kv-val">DuckDB</div></div>
-          <div class="kv-item"><div class="kv-key">Language</div><div class="kv-val amber">Python 3.14</div></div>
-          <div class="kv-item"><div class="kv-key">Update Freq</div><div class="kv-val green">Daily 7am</div></div>
-        </div>
-      </div>
-    </div>
-
-  </div>
 
   <!-- ── Serve instructions ─────────────────────────────────────────────── -->
   <div class="sec-head">
