@@ -572,8 +572,8 @@ color ACTIVE_TRIAD_BORDER  = pal_struct_mid()
 color BOX_05_BORDER        = pal_info_soft()
 color ACTIVE_HR_BG         = pal_struct_whisper()
 color ACTIVE_HR_BORDER     = color(na)
-color BAND_05_BG           = pal_surface()
-color BAND_10_BG           = pal_surface()
+color BAND_05_BG           = pal_struct_whisper()
+color BAND_10_BG           = pal_struct_whisper()
 color APEX_HOUR_BG         = pal_warn_whisper()
 color APEX_HOUR_BORDER     = pal_warn_soft()
 color APEX_HOUR_LABEL_BG   = pal_surface()
@@ -743,6 +743,18 @@ if gBoxOn and gShowBoxCol and IS_TF_MIN1 and isBoxBar() and not na(current05Box)
 bandLevels(float boxHi, float boxLo) =>
     [boxHi * 1.0010, boxHi * 1.0005, boxLo * 0.9995, boxLo * 0.9990]
 
+// Band-label retention: keep only current + previous hour's badges.
+// When a new hour's bands lock, the prior-hour labels are deleted and the
+// current-hour labels shift into the prior slot.
+var label bandLbl10UpCur   = na
+var label bandLbl10DnCur   = na
+var label bandLbl05UpCur   = na
+var label bandLbl05DnCur   = na
+var label bandLbl10UpPrev  = na
+var label bandLbl10DnPrev  = na
+var label bandLbl05UpPrev  = na
+var label bandLbl05DnPrev  = na
+
 if gBoxOn and IS_TF_MIN1 and HAS_LH
     HourAgg curH = LH
     if not na(curH) and curH.box05Locked and _M == 4 and not na(curH.box05Hi)
@@ -751,18 +763,37 @@ if gBoxOn and IS_TF_MIN1 and HAS_LH
         // Bands extend only through the rest of Q1 — i.e. up to and including
         // minute :14 of the hour. They are NOT drawn through Q2/Q3/Q4.
         int q1EndBar = curH.anchorBar + BARS_PER_QUARTER - 1
+
+        // Age the live label set out: drop oldest, shift current → prior.
+        if not na(bandLbl10UpPrev)
+            label.delete(bandLbl10UpPrev)
+        if not na(bandLbl10DnPrev)
+            label.delete(bandLbl10DnPrev)
+        if not na(bandLbl05UpPrev)
+            label.delete(bandLbl05UpPrev)
+        if not na(bandLbl05DnPrev)
+            label.delete(bandLbl05DnPrev)
+        bandLbl10UpPrev := bandLbl10UpCur
+        bandLbl10DnPrev := bandLbl10DnCur
+        bandLbl05UpPrev := bandLbl05UpCur
+        bandLbl05DnPrev := bandLbl05DnCur
+        bandLbl10UpCur  := na
+        bandLbl10DnCur  := na
+        bandLbl05UpCur  := na
+        bandLbl05DnCur  := na
+
         if gShowBand10
             line.new(hourStartBar, u10, q1EndBar, u10, xloc=xloc.bar_index, color=pal_struct_mid(), style=line.style_solid, width=1)
             line.new(hourStartBar, l10, q1EndBar, l10, xloc=xloc.bar_index, color=pal_struct_mid(), style=line.style_solid, width=1)
             if gShowBandLbl
-                label.new(q1EndBar, u10, ".1%", xloc=xloc.bar_index, color=BAND_10_BG, textcolor=pal_on_surface(), style=label.style_label_left, size=size.small)
-                label.new(q1EndBar, l10, ".1%", xloc=xloc.bar_index, color=BAND_10_BG, textcolor=pal_on_surface(), style=label.style_label_left, size=size.small)
+                bandLbl10UpCur := label.new(q1EndBar, u10, ".1%", xloc=xloc.bar_index, color=BAND_10_BG, textcolor=pal_ink(), style=label.style_label_left, size=size.small)
+                bandLbl10DnCur := label.new(q1EndBar, l10, ".1%", xloc=xloc.bar_index, color=BAND_10_BG, textcolor=pal_ink(), style=label.style_label_left, size=size.small)
         if gShowBand05
             line.new(hourStartBar, u05, q1EndBar, u05, xloc=xloc.bar_index, color=pal_struct_mid(), style=line.style_solid, width=1)
             line.new(hourStartBar, l05_, q1EndBar, l05_, xloc=xloc.bar_index, color=pal_struct_mid(), style=line.style_solid, width=1)
             if gShowBandLbl
-                label.new(q1EndBar, u05, ".05%", xloc=xloc.bar_index, color=BAND_05_BG, textcolor=pal_on_surface(), style=label.style_label_left, size=size.small)
-                label.new(q1EndBar, l05_, ".05%", xloc=xloc.bar_index, color=BAND_05_BG, textcolor=pal_on_surface(), style=label.style_label_left, size=size.small)
+                bandLbl05UpCur := label.new(q1EndBar, u05, ".05%", xloc=xloc.bar_index, color=BAND_05_BG, textcolor=pal_ink(), style=label.style_label_left, size=size.small)
+                bandLbl05DnCur := label.new(q1EndBar, l05_, ".05%", xloc=xloc.bar_index, color=BAND_05_BG, textcolor=pal_ink(), style=label.style_label_left, size=size.small)
 
 // ── Band rejection markers ────────────────────────────────────────────────
 detectBandRejection(float h, float l, float c, float u10, float u05, float l05_, float l10) =>
