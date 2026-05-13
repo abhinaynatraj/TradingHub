@@ -2383,18 +2383,24 @@ var table sessStatusTbl = na
 
 if gTblOn and barstate.islast
     if na(sessStatusTbl)
+        // Solid borders/frame so they're visible against the dark surface bg.
+        // pal_struct_mid/strong are 60%/25% transparent and read as near-
+        // invisible stripes; routing through opaque on-surface ratios gives
+        // a clean grid.
         sessStatusTbl := table.new(tablePosFor(), 5, 4,
                                    bgcolor=pal_surface(),
-                                   border_color=pal_struct_mid(),
+                                   border_color=color.new(pal_on_surface(), 70),
                                    border_width=1,
-                                   frame_color=pal_struct_strong(),
+                                   frame_color=color.new(pal_on_surface(), 40),
                                    frame_width=1)
-    // Header row
-    table.cell(sessStatusTbl, 0, 0, "",     text_color=pal_on_surface(), text_size=size.small)
-    table.cell(sessStatusTbl, 1, 0, "ASN",  text_color=pal_on_surface(), text_size=size.small)
-    table.cell(sessStatusTbl, 2, 0, "LDN",  text_color=pal_on_surface(), text_size=size.small)
-    table.cell(sessStatusTbl, 3, 0, "NY1",  text_color=pal_on_surface(), text_size=size.small)
-    table.cell(sessStatusTbl, 4, 0, "NY2",  text_color=pal_on_surface(), text_size=size.small)
+    // Header row — solid slate-900 bg in both modes so the header reads as
+    // a darker band against the always-dark pal_surface() body.
+    color _SESS_HDR_BG = #0f172a
+    table.cell(sessStatusTbl, 0, 0, "",     text_color=pal_on_surface(), text_size=size.small, bgcolor=_SESS_HDR_BG)
+    table.cell(sessStatusTbl, 1, 0, "ASN",  text_color=pal_on_surface(), text_size=size.small, bgcolor=_SESS_HDR_BG)
+    table.cell(sessStatusTbl, 2, 0, "LDN",  text_color=pal_on_surface(), text_size=size.small, bgcolor=_SESS_HDR_BG)
+    table.cell(sessStatusTbl, 3, 0, "NY1",  text_color=pal_on_surface(), text_size=size.small, bgcolor=_SESS_HDR_BG)
+    table.cell(sessStatusTbl, 4, 0, "NY2",  text_color=pal_on_surface(), text_size=size.small, bgcolor=_SESS_HDR_BG)
 
     // Direction row
     table.cell(sessStatusTbl, 0, 1, "Direction", text_color=pal_on_surface(), text_size=size.small)

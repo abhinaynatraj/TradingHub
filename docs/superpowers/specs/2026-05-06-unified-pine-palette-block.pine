@@ -2,6 +2,7 @@
 // ║ 🎨 CANONICAL PALETTE BLOCK — REFERENCE COPY                              ║
 // ║ Source of truth: this file. When this block changes, copy verbatim into: ║
 // ║   - Analysis/pine/quarter_theory.pine                                    ║
+// ║   - Analysis/pine/quarter_theory_stats.pine                              ║
 // ║   - Fractal Sweep/pine/fractal_sweep.pine                                ║
 // ║   - Fractal Sweep/pine/ttfm+fadi.pine                                    ║
 // ║ Spec: docs/superpowers/specs/2026-05-06-unified-pine-palette-design.md   ║
@@ -99,4 +100,21 @@ pal_surface()        => P_SURFACE
 pal_surface_strong() => tier_strong(P_SURFACE)
 pal_surface_soft()   => tier_soft(P_SURFACE)
 pal_on_surface()     => P_ON_SURFACE
+
+// ── Table tokens — for stats / scoreboard tables ─────────────────────────────
+// Built on top of the base palette but tuned for legibility against the solid
+// dark P_SURFACE bg.
+//   pal_table_header_bg() — slate-900 (#0f172a) in BOTH modes. Always darker
+//                           than the always-dark P_SURFACE body bg so the
+//                           header reads as a deep band regardless of chart
+//                           theme. Pairs with pal_on_surface() text.
+//                           (Earlier mode-aware version went LIGHT in light
+//                           mode, making white-on-light text invisible.)
+//   pal_table_text()      — opaque on-surface text. Same as pal_on_surface();
+//                           routed via a table-specific token for future tuning.
+//   pal_table_muted()     — 50%-transparent on-surface for placeholder rows.
+//                           Visibly dimmer than primary text but still legible.
+pal_table_header_bg() => #0f172a
+pal_table_text()      => P_ON_SURFACE
+pal_table_muted()     => color.new(P_ON_SURFACE, 50)
 // ╚══════════════════════════════════════════════════════════════════════════╝

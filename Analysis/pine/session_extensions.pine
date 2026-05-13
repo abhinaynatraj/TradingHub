@@ -345,9 +345,12 @@ if gShowNY and isSessionOpen(gNyStartH)
 // ║ Useful while loading the indicator on a fresh chart.                     ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
 
+// Solid slate-900 bg so the table is readable regardless of chart theme.
+// (75%-transparent black washes out on light charts → white text becomes
+// invisible.)
 var table statusTbl = table.new(position.top_right, 2, 3,
-                                bgcolor=color.new(color.black, 75),
-                                border_color=color.new(color.gray, 50),
+                                bgcolor=#0f172a,
+                                border_color=color.new(color.white, 70),
                                 border_width=1)
 
 if barstate.islast

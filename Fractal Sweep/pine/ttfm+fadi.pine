@@ -336,11 +336,14 @@ settings.htf_timer_size  := input.string(SIZE_NORMAL, "", [SIZE_TINY, SIZE_SMALL
 show_table = input.bool(true, "Show Info Table", group="HTF Candle")
 table_position = input.string("Top Right", "Table Position", options=["Top Left", "Top Center", "Top Right", "Middle Left", "Middle Center", "Middle Right", "Bottom Left", "Bottom Center", "Bottom Right"], group="HTF Candle")
 table_bg_color = pal_surface()
-table_border_color = pal_struct_strong()
+// Solid border/frame so they're actually visible on the dark surface bg
+// (pal_struct_strong / pal_struct_mid are 25%/60% transparent and read as
+// near-invisible stripes against pal_surface).
+table_border_color = color.new(pal_on_surface(), 70)
 table_text_color = pal_on_surface()
 table_size = input.string(SIZE_SMALL, "Table Text Size", options=[SIZE_TINY, SIZE_SMALL, SIZE_NORMAL, SIZE_LARGE, SIZE_HUGE], group="HTF Candle")
 table_border_width = input.int(1, "Table Border Width", minval=0, maxval=5, group="HTF Candle")
-table_frame_color = pal_struct_mid()
+table_frame_color = color.new(pal_on_surface(), 40)
 table_frame_width = input.int(1, "Table Frame Width", minval=0, maxval=5, group="HTF Candle")
 
 settings.fvg_show        := input.bool(true, "Fair Value Gap   ", inline="fvg", group="HTF Candle")
