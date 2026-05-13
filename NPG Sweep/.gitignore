@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+npg_stats.json
+*.duckdb
+.pytest_cache/
+.DS_Store
+.venv/

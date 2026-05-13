@@ -1,0 +1,359 @@
+//@version=6
+indicator("Session Extension Bands (Asia → London → NY)", overlay=true,
+         max_labels_count=500, max_lines_count=500, max_boxes_count=500)
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ Session Extension Bands                                                  ║
+// ║                                                                          ║
+// ║ For each new session, projects how far price typically extends beyond    ║
+// ║ the prior session's close, based on a rolling N-day lookback.            ║
+// ║                                                                          ║
+// ║   • London projection   = anchored to Asia close                         ║
+// ║   • NY projection       = anchored to Asia+London close                  ║
+// ║                                                                          ║
+// ║ Each side (up / down) shows: max, mean, median.                          ║
+// ║                                                                          ║
+// ║ Standalone — does NOT depend on quarter_theory.pine. Built for record /  ║
+// ║ reference; safe to load alongside any other overlay.                     ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 1. SETTINGS                                                              ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+G_CORE = "⚙ Core"
+gLookback     = input.int(250, "Rolling lookback (days)", minval=20, maxval=500, group=G_CORE,
+                          tooltip="How many prior session-pairs to include in the stats. ~250 ≈ one trading year.")
+gShowLondon   = input.bool(true, "Show London projection (anchored to Asia close)", group=G_CORE)
+gShowNY       = input.bool(true, "Show NY projection (anchored to Asia+London close)", group=G_CORE)
+gShowMin      = input.bool(false, "Show min extension", group=G_CORE,
+                          tooltip="Off by default — min is usually noise (a near-zero extension day).")
+gShowMean     = input.bool(true,  "Show mean extension", group=G_CORE)
+gShowMedian   = input.bool(true,  "Show median extension", group=G_CORE)
+gShowMax      = input.bool(true,  "Show max extension", group=G_CORE)
+gShowLabels   = input.bool(true,  "Show price labels on each level", group=G_CORE)
+
+G_SESS = "🕒 Session windows (NY time)"
+// Defaults match common futures-desk session blocks. All in America/New_York.
+gAsiaStartH   = input.int(18, "Asia start hour",   minval=0, maxval=23, group=G_SESS)
+gAsiaEndH     = input.int(3,  "Asia end hour",     minval=0, maxval=23, group=G_SESS,
+                          tooltip="Hour AFTER which Asia closes. e.g. 3 means Asia closes at 03:00 NY.")
+gLondonStartH = input.int(3,  "London start hour", minval=0, maxval=23, group=G_SESS)
+gLondonEndH   = input.int(9,  "London end hour",   minval=0, maxval=23, group=G_SESS,
+                          tooltip="Hour AFTER which London closes. e.g. 9 means London closes at 09:00 NY.")
+gNyStartH     = input.int(9,  "NY start hour",     minval=0, maxval=23, group=G_SESS,
+                          tooltip="Defaults to 09 so the NY session anchors to London close at 09:00 NY (close-to-pre-cash).")
+gNyEndH       = input.int(16, "NY end hour",       minval=0, maxval=23, group=G_SESS)
+
+G_RENDER = "🎨 Rendering"
+gColorUp      = input.color(color.new(#10b981, 70), "Up-extension box (green)",  group=G_RENDER)
+gColorDn      = input.color(color.new(#ef4444, 70), "Down-extension box (red)",  group=G_RENDER)
+gColorText    = input.color(color.new(#0f172a, 0),  "Label text color",          group=G_RENDER,
+                          tooltip="Switch to a light color (e.g. #f1f5f9) on dark themes.")
+gBoxWidthBars = input.int(6, "Projection box width (bars)", minval=2, maxval=24, group=G_RENDER,
+                          tooltip="How many bars wide the colored projection box is at session open. Pure visual.")
+gLabelSize    = input.string("tiny", "Label size", options=["tiny","small","normal"], group=G_RENDER)
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 2. TIME PRIMITIVES                                                       ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+NY_TZ = "America/New_York"
+int _H = hour(time, NY_TZ)
+int _M = minute(time, NY_TZ)
+int TF_SEC = timeframe.in_seconds("")
+
+// Detect the FIRST bar of each session. A session is defined by its start
+// hour at minute :00 in NY time. Works on any sub-hourly TF (1m / 5m / 15m).
+isSessionOpen(int hourOfDay) => _H == hourOfDay and _M == 0
+
+// Detect the LAST bar of each session. Session end is at the start of the
+// next session, so the last bar is the one whose CLOSE coincides with the
+// next session's open. We approximate as: hour matches (endHour - 1) and
+// minute is the highest minute of that hour for the chart's TF.
+//
+// On 1m  : end hour - 1, minute :59
+// On 5m  : end hour - 1, minute :55
+// On 15m : end hour - 1, minute :45
+// On 1h  : end hour - 1, minute :00
+//
+// Compute the "last minute of the hour" once for the chart TF.
+int LAST_MIN_OF_HOUR = TF_SEC >= 3600 ? 0 : 60 - int(TF_SEC / 60)
+
+isSessionClose(int endHour) =>
+    int prevH = endHour == 0 ? 23 : endHour - 1
+    _H == prevH and _M == LAST_MIN_OF_HOUR
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 3. RUNNING SESSION AGGREGATIONS                                          ║
+// ║                                                                          ║
+// ║ Three live aggregators (Asia / London / NY). Each tracks running         ║
+// ║ high / low / close while inside its own window, then locks them at       ║
+// ║ session close.                                                           ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+type SessionAgg
+    float hi    = na
+    float lo    = na
+    float close_ = na
+    int   barCount = 0
+
+resetSession(SessionAgg s) =>
+    s.hi := na
+    s.lo := na
+    s.close_ := na
+    s.barCount := 0
+
+updateSession(SessionAgg s, float h, float l, float c) =>
+    if na(s.hi) or h > s.hi
+        s.hi := h
+    if na(s.lo) or l < s.lo
+        s.lo := l
+    s.close_ := c
+    s.barCount += 1
+
+// Returns true if the current bar's NY hour falls inside [startH, endH).
+// Handles wrap-around (e.g. Asia 18→3 spans midnight).
+inWindow(int startH, int endH) =>
+    bool inside = false
+    if startH < endH
+        inside := _H >= startH and _H < endH
+    else
+        inside := _H >= startH or _H < endH
+    inside
+
+var SessionAgg asia   = SessionAgg.new()
+var SessionAgg london = SessionAgg.new()
+var SessionAgg ny     = SessionAgg.new()
+
+// At session open, reset that session's aggregator. Then accumulate every
+// bar that falls inside its window.
+if isSessionOpen(gAsiaStartH)
+    resetSession(asia)
+if isSessionOpen(gLondonStartH)
+    resetSession(london)
+if isSessionOpen(gNyStartH)
+    resetSession(ny)
+
+if inWindow(gAsiaStartH, gAsiaEndH)
+    updateSession(asia, high, low, close)
+if inWindow(gLondonStartH, gLondonEndH)
+    updateSession(london, high, low, close)
+if inWindow(gNyStartH, gNyEndH)
+    updateSession(ny, high, low, close)
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 4. EXTENSION HISTORY                                                     ║
+// ║                                                                          ║
+// ║ At each session close, compute the up-extension and down-extension       ║
+// ║ vs the anchor (the prior session's locked close), and push into a        ║
+// ║ rolling array of size `gLookback`.                                       ║
+// ║                                                                          ║
+// ║   London anchor = Asia close                                             ║
+// ║   NY anchor     = London close                                           ║
+// ║                                                                          ║
+// ║ (The user's described behavior was "Asia+London close" for NY — using    ║
+// ║ London close alone gives the same value because London immediately       ║
+// ║ follows Asia, and we want the close immediately preceding NY open.)      ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+var array<float> londonUpExt = array.new<float>()
+var array<float> londonDnExt = array.new<float>()
+var array<float> nyUpExt     = array.new<float>()
+var array<float> nyDnExt     = array.new<float>()
+
+// Need to remember the prior session's locked values across bars.
+var float asiaCloseLocked   = na
+var float londonHiLocked    = na
+var float londonLoLocked    = na
+var float londonCloseLocked = na
+
+pushBounded(array<float> arr, float v, int cap) =>
+    array.push(arr, v)
+    while array.size(arr) > cap
+        array.shift(arr)
+
+// At Asia close: lock its close (anchor for London).
+if isSessionClose(gAsiaEndH) and not na(asia.close_)
+    asiaCloseLocked := asia.close_
+
+// At London close: compute London extensions vs Asia close, then lock
+// London's close (anchor for NY).
+if isSessionClose(gLondonEndH) and not na(london.hi) and not na(london.lo) and not na(asiaCloseLocked)
+    float upExt = london.hi - asiaCloseLocked
+    float dnExt = asiaCloseLocked - london.lo
+    pushBounded(londonUpExt, upExt, gLookback)
+    pushBounded(londonDnExt, dnExt, gLookback)
+    londonHiLocked    := london.hi
+    londonLoLocked    := london.lo
+    londonCloseLocked := london.close_
+
+// At NY close: compute NY extensions vs London close.
+if isSessionClose(gNyEndH) and not na(ny.hi) and not na(ny.lo) and not na(londonCloseLocked)
+    float upExtN = ny.hi - londonCloseLocked
+    float dnExtN = londonCloseLocked - ny.lo
+    pushBounded(nyUpExt, upExtN, gLookback)
+    pushBounded(nyDnExt, dnExtN, gLookback)
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 5. STATS                                                                 ║
+// ║                                                                          ║
+// ║ Mean / median / max / min over an extension array. Only run at session   ║
+// ║ open (called twice per day max), so cost is negligible.                  ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+statsOf(array<float> arr) =>
+    int n = array.size(arr)
+    float vMean = na
+    float vMed  = na
+    float vMax  = na
+    float vMin  = na
+    if n > 0
+        vMean := array.avg(arr)
+        vMed  := array.median(arr)
+        vMax  := array.max(arr)
+        vMin  := array.min(arr)
+    [vMean, vMed, vMax, vMin, n]
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 6. RENDERER                                                              ║
+// ║                                                                          ║
+// ║ At each session open, draw two stacked colored boxes (up + down) and     ║
+// ║ four (or fewer) horizontal lines per box at the stat levels, labeled    ║
+// ║ with the projected price.                                                ║
+// ║                                                                          ║
+// ║ Box anchor: the session-open bar. Width: gBoxWidthBars bars to the       ║
+// ║ right. Boxes don't track price after spawn — they freeze (intentional;   ║
+// ║ they represent a frozen statistical projection, not live state).         ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+labelSize() =>
+    string s = gLabelSize == "tiny" ? size.tiny : gLabelSize == "small" ? size.small : size.normal
+    s
+
+drawProjection(string sessionName, float anchor, array<float> upArr, array<float> dnArr) =>
+    if not na(anchor) and array.size(upArr) > 0 and array.size(dnArr) > 0
+        [meanU, medU, maxU, minU, nU] = statsOf(upArr)
+        [meanD, medD, maxD, minD, nD] = statsOf(dnArr)
+
+        int leftBar  = bar_index
+        int rightBar = bar_index + gBoxWidthBars
+
+        // Upper box: anchor → anchor + maxUp
+        if not na(maxU) and maxU > 0
+            box.new(leftBar, anchor + maxU, rightBar, anchor,
+                    xloc=xloc.bar_index, bgcolor=gColorUp,
+                    border_color=color.new(gColorUp, 50), border_width=1)
+
+        // Lower box: anchor - maxDn → anchor
+        if not na(maxD) and maxD > 0
+            box.new(leftBar, anchor, rightBar, anchor - maxD,
+                    xloc=xloc.bar_index, bgcolor=gColorDn,
+                    border_color=color.new(gColorDn, 50), border_width=1)
+
+        // Helper: draw one stat level (line + optional label).
+        // Local function not allowed — inline the level draws below.
+
+        // Up-side levels
+        if gShowMax and not na(maxU)
+            float yMax = anchor + maxU
+            line.new(leftBar, yMax, rightBar, yMax, xloc=xloc.bar_index,
+                     color=color.new(gColorUp, 0), style=line.style_solid, width=1)
+            if gShowLabels
+                label.new(leftBar, yMax, sessionName + " Max " + str.tostring(yMax, format.mintick),
+                          xloc=xloc.bar_index, style=label.style_label_lower_right,
+                          color=color.new(gColorUp, 70), textcolor=gColorText, size=labelSize())
+        if gShowMean and not na(meanU)
+            float yMean = anchor + meanU
+            line.new(leftBar, yMean, rightBar, yMean, xloc=xloc.bar_index,
+                     color=color.new(gColorUp, 0), style=line.style_dashed, width=1)
+            if gShowLabels
+                label.new(leftBar, yMean, sessionName + " Mean " + str.tostring(yMean, format.mintick),
+                          xloc=xloc.bar_index, style=label.style_label_lower_right,
+                          color=color.new(gColorUp, 70), textcolor=gColorText, size=labelSize())
+        if gShowMedian and not na(medU)
+            float yMed = anchor + medU
+            line.new(leftBar, yMed, rightBar, yMed, xloc=xloc.bar_index,
+                     color=color.new(gColorUp, 0), style=line.style_dotted, width=1)
+            if gShowLabels
+                label.new(leftBar, yMed, sessionName + " Med " + str.tostring(yMed, format.mintick),
+                          xloc=xloc.bar_index, style=label.style_label_lower_right,
+                          color=color.new(gColorUp, 70), textcolor=gColorText, size=labelSize())
+        if gShowMin and not na(minU)
+            float yMin = anchor + minU
+            line.new(leftBar, yMin, rightBar, yMin, xloc=xloc.bar_index,
+                     color=color.new(gColorUp, 30), style=line.style_dotted, width=1)
+            if gShowLabels
+                label.new(leftBar, yMin, sessionName + " Min " + str.tostring(yMin, format.mintick),
+                          xloc=xloc.bar_index, style=label.style_label_lower_right,
+                          color=color.new(gColorUp, 70), textcolor=gColorText, size=labelSize())
+
+        // Down-side levels
+        if gShowMax and not na(maxD)
+            float yMaxD = anchor - maxD
+            line.new(leftBar, yMaxD, rightBar, yMaxD, xloc=xloc.bar_index,
+                     color=color.new(gColorDn, 0), style=line.style_solid, width=1)
+            if gShowLabels
+                label.new(leftBar, yMaxD, sessionName + " Max " + str.tostring(yMaxD, format.mintick),
+                          xloc=xloc.bar_index, style=label.style_label_upper_right,
+                          color=color.new(gColorDn, 70), textcolor=gColorText, size=labelSize())
+        if gShowMean and not na(meanD)
+            float yMeanD = anchor - meanD
+            line.new(leftBar, yMeanD, rightBar, yMeanD, xloc=xloc.bar_index,
+                     color=color.new(gColorDn, 0), style=line.style_dashed, width=1)
+            if gShowLabels
+                label.new(leftBar, yMeanD, sessionName + " Mean " + str.tostring(yMeanD, format.mintick),
+                          xloc=xloc.bar_index, style=label.style_label_upper_right,
+                          color=color.new(gColorDn, 70), textcolor=gColorText, size=labelSize())
+        if gShowMedian and not na(medD)
+            float yMedD = anchor - medD
+            line.new(leftBar, yMedD, rightBar, yMedD, xloc=xloc.bar_index,
+                     color=color.new(gColorDn, 0), style=line.style_dotted, width=1)
+            if gShowLabels
+                label.new(leftBar, yMedD, sessionName + " Med " + str.tostring(yMedD, format.mintick),
+                          xloc=xloc.bar_index, style=label.style_label_upper_right,
+                          color=color.new(gColorDn, 70), textcolor=gColorText, size=labelSize())
+        if gShowMin and not na(minD)
+            float yMinD = anchor - minD
+            line.new(leftBar, yMinD, rightBar, yMinD, xloc=xloc.bar_index,
+                     color=color.new(gColorDn, 30), style=line.style_dotted, width=1)
+            if gShowLabels
+                label.new(leftBar, yMinD, sessionName + " Min " + str.tostring(yMinD, format.mintick),
+                          xloc=xloc.bar_index, style=label.style_label_upper_right,
+                          color=color.new(gColorDn, 70), textcolor=gColorText, size=labelSize())
+
+// Trigger projections at session open. We need the prior locked anchor to
+// already be set — for the very first day or two of chart history these
+// branches no-op (anchor is na), then begin drawing once the lookback fills.
+if gShowLondon and isSessionOpen(gLondonStartH)
+    drawProjection("London", asiaCloseLocked, londonUpExt, londonDnExt)
+
+if gShowNY and isSessionOpen(gNyStartH)
+    drawProjection("NY", londonCloseLocked, nyUpExt, nyDnExt)
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 7. SAMPLE COUNT BADGE (top-right table)                                  ║
+// ║                                                                          ║
+// ║ Tiny status table so you can confirm the rolling buffers are filling.    ║
+// ║ Useful while loading the indicator on a fresh chart.                     ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+var table statusTbl = table.new(position.top_right, 2, 3,
+                                bgcolor=color.new(color.black, 75),
+                                border_color=color.new(color.gray, 50),
+                                border_width=1)
+
+if barstate.islast
+    table.cell(statusTbl, 0, 0, "Session", text_color=color.white, text_size=size.small)
+    table.cell(statusTbl, 1, 0, "n / " + str.tostring(gLookback), text_color=color.white, text_size=size.small)
+    table.cell(statusTbl, 0, 1, "London", text_color=color.new(color.lime, 0), text_size=size.small)
+    table.cell(statusTbl, 1, 1, str.tostring(array.size(londonUpExt)), text_color=color.white, text_size=size.small)
+    table.cell(statusTbl, 0, 2, "NY", text_color=color.new(color.lime, 0), text_size=size.small)
+    table.cell(statusTbl, 1, 2, str.tostring(array.size(nyUpExt)), text_color=color.white, text_size=size.small)
