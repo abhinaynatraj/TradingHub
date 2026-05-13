@@ -6,20 +6,22 @@ indicator("Quarter Theory Stats", overlay=true,
 // ╔══════════════════════════════════════════════════════════════════════════╗
 // ║ Quarter Theory Stats — live conditional-probability table                ║
 // ║                                                                          ║
-// ║ Works on ANY chart timeframe. Stats are always computed from 5m bars:    ║
-// ║   · Chart TF == 5m   → bars consumed natively                            ║
-// ║   · Chart TF < 5m    → 5m bars pulled via request.security("5", ...)     ║
-// ║   · Chart TF > 5m    → 5m bars pulled via request.security_lower_tf      ║
+// ║ Works on ANY chart timeframe. Stats are always computed from 15m bars:   ║
+// ║   · Chart TF == 15m  → bars consumed natively                            ║
+// ║   · Chart TF < 15m   → 15m bars pulled via request.security("15", ...)   ║
+// ║   · Chart TF > 15m   → 15m bars pulled via request.security_lower_tf     ║
 // ║ The table footer shows which sourcing path is active.                   ║
 // ║                                                                          ║
-// ║ Sample-size note: on a sub-5m chart, max_bars_back=5000 means the script ║
-// ║ only sees ~5000 1m bars (~83 hours of trading) directly — stats warm up ║
-// ║ slowly. On 5m+ charts you get vastly more samples per bar of history.   ║
+// ║ At 15m granularity each quarter is exactly one bar. This gives a much   ║
+// ║ larger historical sample than 5m would (3× more events per loaded bar  ║
+// ║ of history) at the cost of stat #3 (band rejection follow-through),    ║
+// ║ which requires sub-15m resolution to detect rejections inside Q1.       ║
 // ║                                                                          ║
 // ║ Stats:                                                                   ║
 // ║   #1 — Quarter extension probability (per-stage live forecast)           ║
 // ║   #2 — Q3-close → hour classification probability                        ║
-// ║   #3 — Band rejection follow-through                                     ║
+// ║   #3 — Band rejection follow-through (DISABLED on 15m — needs sub-15m   ║
+// ║         resolution to capture the minute :00-:04 box-lock window)       ║
 // ║   #4 — In-stat / out-of-stat extreme reclaim rate                        ║
 // ║   #5 — Hour-of-day breakout rate                                         ║
 // ║                                                                          ║
@@ -29,7 +31,6 @@ indicator("Quarter Theory Stats", overlay=true,
 // ║     · Live Forecast — per-quarter extension P + Q3 sig class P           ║
 // ║   REFERENCE (toggleable, ~20 rows)                                       ║
 // ║     · Hour-of-Day Breakout Grid (24 hours)                               ║
-// ║     · Band Rejection Follow-Through (4 rows)                             ║
 // ║     · Stat Extreme Reclaim (4 rows)                                      ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
 
@@ -117,18 +118,18 @@ gTrackedOnly = input.bool(true, "Restrict to tracked hours only",
 NY_TZ = "America/New_York"
 
 int TF_SEC = timeframe.in_seconds("")
-bool IS_TF_MIN5    = TF_SEC == 300
-bool IS_TF_BELOW5  = TF_SEC < 300
-bool IS_TF_ABOVE5  = TF_SEC > 300
+bool IS_TF_MIN15   = TF_SEC == 900
+bool IS_TF_BELOW15 = TF_SEC < 900
+bool IS_TF_ABOVE15 = TF_SEC > 900
 
 // Predicate helpers — operate on an arbitrary (h, m) pair so the aggregator
-// can be driven from chart-native time OR 5m-resampled time.
+// can be driven from chart-native time OR 15m-resampled time.
+// On 15m granularity each quarter is exactly one bar:
+//   :00 bar → Q1   :15 bar → Q2   :30 bar → Q3   :45 bar → Q4
 quarterOfHourAt(int m)    => int(math.floor(m / 15)) + 1
 isHourOpenAt(int m)       => m == 0
-// Hour close on 5m semantics: the last 5m bar of any hour is the :55 bar
-// (covering minutes 55-59). We also accept :59 in case data is sampled at
-// the chart's native resolution and uses 1m semantics.
-isHourCloseAt(int m)      => m == 55 or m == 59
+// Hour close on 15m semantics: the last 15m bar of any hour starts at :45.
+isHourCloseAt(int m)      => m == 45
 inTrackedHourAt(int h)    => (h >= 0 and h < 16) or h >= 18
 
 
@@ -194,11 +195,14 @@ classifyHour(HourAgg h) =>
 
 var HourAgg curHour = na
 
-// Per-5m-bar aggregation. Mutates fields of `curHour` (in-place, allowed since
+// Per-15m-bar aggregation. Mutates fields of `curHour` (in-place, allowed since
 // Pine UDTs are reference types) and the quarter under it. Hour-spawn is
-// handled at driver scope (see process5mBar / hour-open branch below) because
-// Pine v6 disallows reassigning global `var` references from inside functions.
-applyRunning5m(HourAgg h_curr, int m, float h_, float l_) =>
+// handled at driver scope below because Pine v6 disallows reassigning
+// global `var` references from inside functions.
+//
+// On 15m bars each quarter is one bar, so this function fires once per
+// quarter and the entire quarter's H/L is captured atomically.
+applyRunning15m(HourAgg h_curr, int m, float h_, float l_) =>
     if not na(h_curr)
         int qi = quarterOfHourAt(m)
         QuarterAgg q = qi == 1 ? h_curr.q1 : qi == 2 ? h_curr.q2 : qi == 3 ? h_curr.q3 : h_curr.q4
@@ -217,13 +221,10 @@ applyRunning5m(HourAgg h_curr, int m, float h_, float l_) =>
         if na(q.low_) or l_ < q.low_
             q.low_ := l_
         q.barCount += 1
-
-        // Box-lock range: minutes :00 and :05 are the first 2 bars of Q1.
-        if qi == 1 and (m == 0 or m == 5)
-            h_curr.box05Hi := na(h_curr.box05Hi) ? h_ : math.max(h_curr.box05Hi, h_)
-            h_curr.box05Lo := na(h_curr.box05Lo) ? l_ : math.min(h_curr.box05Lo, l_)
-            if m == 5
-                h_curr.box05Locked := true
+        // Note: box-lock band tracking (stat #3) is disabled on 15m — that
+        // logic requires the minute :00-:04 sub-window which doesn't exist
+        // at this resolution. The box05* fields stay as `na` and stat #3
+        // simply records nothing.
 
 
 // ╔══════════════════════════════════════════════════════════════════════════╗
@@ -429,45 +430,14 @@ recordStat1(HourAgg h_curr) =>
 var array<int> rejFired   = array.new<int>(4, 0)  // [10up, 10dn, 05up, 05dn]
 var array<int> rejReverse = array.new<int>(4, 0)
 
-// Per-5m-bar: update fired flags on the live hour during minute :06+ (after box locks).
+// Stat #3 is disabled on 15m. These stubs are kept (rather than removed)
+// so the driver loop's call sequence stays uniform across stats. The
+// reference section's renderer skips the band-rejection rows entirely.
 applyRunningStat3(HourAgg h_curr, int m, float h_, float l_) =>
-    if not na(h_curr) and h_curr.box05Locked and not na(h_curr.box05Hi) and not na(h_curr.box05Lo) and m >= 6
-        float u10 = h_curr.box05Hi * 1.0010
-        float u05 = h_curr.box05Hi * 1.0005
-        float l05 = h_curr.box05Lo * 0.9995
-        float l10 = h_curr.box05Lo * 0.9990
-        if not h_curr.rej10Up and h_ > u10
-            h_curr.rej10Up := true
-        if not h_curr.rej05Up and h_ > u05
-            h_curr.rej05Up := true
-        if not h_curr.rej10Dn and l_ < l10
-            h_curr.rej10Dn := true
-        if not h_curr.rej05Dn and l_ < l05
-            h_curr.rej05Dn := true
+    na
 
-// Called once per hour close. Tally fired + reverse for each level/side.
 recordStat3(HourAgg h_curr, float c_) =>
-    if not na(h_curr) and h_curr.box05Locked
-        float boxMid = (h_curr.box05Hi + h_curr.box05Lo) / 2.0
-        bool reversedUp = c_ < boxMid
-        bool reversedDn = c_ > boxMid
-
-        if h_curr.rej10Up
-            array.set(rejFired,   0, array.get(rejFired,   0) + 1)
-            if reversedUp
-                array.set(rejReverse, 0, array.get(rejReverse, 0) + 1)
-        if h_curr.rej10Dn
-            array.set(rejFired,   1, array.get(rejFired,   1) + 1)
-            if reversedDn
-                array.set(rejReverse, 1, array.get(rejReverse, 1) + 1)
-        if h_curr.rej05Up
-            array.set(rejFired,   2, array.get(rejFired,   2) + 1)
-            if reversedUp
-                array.set(rejReverse, 2, array.get(rejReverse, 2) + 1)
-        if h_curr.rej05Dn
-            array.set(rejFired,   3, array.get(rejFired,   3) + 1)
-            if reversedDn
-                array.set(rejReverse, 3, array.get(rejReverse, 3) + 1)
+    na
 
 
 // ╔══════════════════════════════════════════════════════════════════════════╗
@@ -556,31 +526,26 @@ recordStat4(HourAgg h_curr, float c_) =>
 // ╔══════════════════════════════════════════════════════════════════════════╗
 // ║ TF-AWARE DATA SOURCING                                                   ║
 // ║                                                                          ║
-// ║ Three branches feed the aggregator with 5m-resolution data:             ║
-// ║   · Chart TF == 5m   → native bar (current chart bar's H/L/C/time)      ║
-// ║   · Chart TF < 5m    → request.security("5", ...) returns the 5m bar's  ║
-// ║                        close-time snapshot; fire only when a new 5m    ║
-// ║                        bar locks.                                       ║
-// ║   · Chart TF > 5m    → request.security_lower_tf returns an ARRAY of    ║
-// ║                        every 5m bar contained in the current chart bar. ║
+// ║ Three branches feed the aggregator with 15m-resolution data:            ║
+// ║   · Chart TF == 15m  → native bar (current chart bar's H/L/C/time)      ║
+// ║   · Chart TF < 15m   → request.security("15", ...) returns the 15m      ║
+// ║                        bar's close-time snapshot; fire only when a new  ║
+// ║                        15m bar locks.                                   ║
+// ║   · Chart TF > 15m   → request.security_lower_tf returns an ARRAY of    ║
+// ║                        every 15m bar contained in the chart bar.        ║
 // ║                                                                          ║
-// ║ The per-5m-bar logic is inlined (not wrapped in a function) because    ║
+// ║ The per-15m-bar logic is inlined (not wrapped in a function) because   ║
 // ║ Pine v6 forbids functions from reassigning global `var` references,    ║
 // ║ and the hour-spawn / priorHourS5-advance steps need exactly that.      ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
 
-// Per-bar inline aggregator. Reads (h, m, h_, l_, c_) from the surrounding
-// scope and updates curHour + priorHourS5 + all stat counters. Captured as
-// a flat block so each branch below can just set the 5 values and run it.
-// Pine doesn't have a macro system, so the same block is repeated per branch.
-
-// Branch 1: native 5m. Read chart-native time/OHLC and feed directly.
-if IS_TF_MIN5
+// Branch 1: native 15m. Read chart-native time/OHLC and feed directly.
+if IS_TF_MIN15
     int _Hn = hour(time, NY_TZ)
     int _Mn = minute(time, NY_TZ)
     if isHourOpenAt(_Mn) and (not gTrackedOnly or inTrackedHourAt(_Hn))
         curHour := HourAgg.new(hourOfDay = _Hn, anchorBar = bar_index)
-    applyRunning5m(curHour, _Mn, high, low)
+    applyRunning15m(curHour, _Mn, high, low)
     applyRunningStat3(curHour, _Mn, high, low)
     if isHourCloseAt(_Mn)
         recordStat5(curHour, priorHourS5)
@@ -590,55 +555,55 @@ if IS_TF_MIN5
         recordStat4(curHour, close)
         priorHourS5 := curHour
 
-// Branch 2: sub-5m chart. Pull the in-progress 5m bar via request.security
-// with lookahead_off so each 5m close prints exactly once on the chart bar
+// Branch 2: sub-15m chart. Pull the in-progress 15m bar via request.security
+// with lookahead_off so each 15m close prints exactly once on the chart bar
 // that contains it.
-if IS_TF_BELOW5
-    [_h5, _l5, _c5, _t5] = request.security(syminfo.tickerid, "5",
-                                            [high, low, close, time],
-                                            lookahead=barmerge.lookahead_off)
-    // Fire only when a new 5m close just printed (t5 advanced this bar).
-    bool _t5_advanced = not na(_t5) and (na(_t5[1]) or _t5 != _t5[1])
-    if _t5_advanced
-        int _Hn = hour(_t5, NY_TZ)
-        int _Mn = minute(_t5, NY_TZ)
+if IS_TF_BELOW15
+    [_h15, _l15, _c15, _t15] = request.security(syminfo.tickerid, "15",
+                                                [high, low, close, time],
+                                                lookahead=barmerge.lookahead_off)
+    // Fire only when a new 15m close just printed (t15 advanced this bar).
+    bool _t15_advanced = not na(_t15) and (na(_t15[1]) or _t15 != _t15[1])
+    if _t15_advanced
+        int _Hn = hour(_t15, NY_TZ)
+        int _Mn = minute(_t15, NY_TZ)
         if isHourOpenAt(_Mn) and (not gTrackedOnly or inTrackedHourAt(_Hn))
             curHour := HourAgg.new(hourOfDay = _Hn, anchorBar = bar_index)
-        applyRunning5m(curHour, _Mn, _h5, _l5)
-        applyRunningStat3(curHour, _Mn, _h5, _l5)
+        applyRunning15m(curHour, _Mn, _h15, _l15)
+        applyRunningStat3(curHour, _Mn, _h15, _l15)
         if isHourCloseAt(_Mn)
             recordStat5(curHour, priorHourS5)
             recordStat2(curHour)
             recordStat1(curHour)
-            recordStat3(curHour, _c5)
-            recordStat4(curHour, _c5)
+            recordStat3(curHour, _c15)
+            recordStat4(curHour, _c15)
             priorHourS5 := curHour
 
-// Branch 3: chart TF > 5m. Each chart bar covers multiple 5m bars; iterate
+// Branch 3: chart TF > 15m. Each chart bar covers multiple 15m bars; iterate
 // over them in order via request.security_lower_tf.
-if IS_TF_ABOVE5
-    array<float> _h5arr = request.security_lower_tf(syminfo.tickerid, "5", high)
-    array<float> _l5arr = request.security_lower_tf(syminfo.tickerid, "5", low)
-    array<float> _c5arr = request.security_lower_tf(syminfo.tickerid, "5", close)
-    array<int>   _t5arr = request.security_lower_tf(syminfo.tickerid, "5", time)
-    if array.size(_t5arr) > 0
-        for i = 0 to array.size(_t5arr) - 1
-            int _t5 = array.get(_t5arr, i)
-            int _Hn = hour(_t5, NY_TZ)
-            int _Mn = minute(_t5, NY_TZ)
-            float _h5 = array.get(_h5arr, i)
-            float _l5 = array.get(_l5arr, i)
-            float _c5 = array.get(_c5arr, i)
+if IS_TF_ABOVE15
+    array<float> _h15arr = request.security_lower_tf(syminfo.tickerid, "15", high)
+    array<float> _l15arr = request.security_lower_tf(syminfo.tickerid, "15", low)
+    array<float> _c15arr = request.security_lower_tf(syminfo.tickerid, "15", close)
+    array<int>   _t15arr = request.security_lower_tf(syminfo.tickerid, "15", time)
+    if array.size(_t15arr) > 0
+        for i = 0 to array.size(_t15arr) - 1
+            int _t15 = array.get(_t15arr, i)
+            int _Hn = hour(_t15, NY_TZ)
+            int _Mn = minute(_t15, NY_TZ)
+            float _h15 = array.get(_h15arr, i)
+            float _l15 = array.get(_l15arr, i)
+            float _c15 = array.get(_c15arr, i)
             if isHourOpenAt(_Mn) and (not gTrackedOnly or inTrackedHourAt(_Hn))
                 curHour := HourAgg.new(hourOfDay = _Hn, anchorBar = bar_index)
-            applyRunning5m(curHour, _Mn, _h5, _l5)
-            applyRunningStat3(curHour, _Mn, _h5, _l5)
+            applyRunning15m(curHour, _Mn, _h15, _l15)
+            applyRunningStat3(curHour, _Mn, _h15, _l15)
             if isHourCloseAt(_Mn)
                 recordStat5(curHour, priorHourS5)
                 recordStat2(curHour)
                 recordStat1(curHour)
-                recordStat3(curHour, _c5)
-                recordStat4(curHour, _c5)
+                recordStat3(curHour, _c15)
+                recordStat4(curHour, _c15)
                 priorHourS5 := curHour
 
 
@@ -862,35 +827,9 @@ if barstate.islast
     // SECTION 3 — REFERENCE (toggleable)
     // ═════════════════════════════════════════════════════════════════════
     if gShowReference
-        // ── 3a. Band Rejection Follow-Through ──────────────────────────
-        table.cell(statsTbl, 0, row, "BAND REJECTION → REVERSE",
-                   text_color=pal_on_surface(), text_size=size.small,
-                   bgcolor=pal_table_header_bg())
-        table.cell(statsTbl, 1, row, "", bgcolor=pal_table_header_bg())
-        table.cell(statsTbl, 2, row, "P(reverse)", text_color=pal_on_surface(), text_size=size.small,
-                   bgcolor=pal_table_header_bg())
-        table.cell(statsTbl, 3, row, "n", text_color=pal_on_surface(), text_size=size.small,
-                   bgcolor=pal_table_header_bg())
-        row += 1
-
-        string [] rejLabels = array.from(
-             "0.10 " + GLYPH_HI + " upper",
-             "0.10 " + GLYPH_LO + " lower",
-             "0.05 " + GLYPH_HI + " upper",
-             "0.05 " + GLYPH_LO + " lower")
-        for i = 0 to 3
-            int fired = array.get(rejFired, i)
-            int succ  = array.get(rejReverse, i)
-            table.cell(statsTbl, 0, row, array.get(rejLabels, i),
-                       text_color=pal_on_surface(), text_size=size.small)
-            table.cell(statsTbl, 1, row, "", text_size=size.small)
-            table.cell(statsTbl, 2, row, fmtPct(succ, fired),
-                       text_color=breakoutColor(succ, fired), text_size=size.small)
-            table.cell(statsTbl, 3, row, str.tostring(fired),
-                       text_color=pal_on_surface(), text_size=size.small)
-            row += 1
-
-        // ── 3b. Stat Extreme Reclaim ───────────────────────────────────
+        // ── 3a. Stat Extreme Reclaim ───────────────────────────────────
+        // (Band rejection section is disabled on 15m — that stat needs
+        //  sub-15m resolution to detect rejections inside Q1.)
         table.cell(statsTbl, 0, row, "STAT EXTREME RECLAIM",
                    text_color=pal_on_surface(), text_size=size.small,
                    bgcolor=pal_table_header_bg())
@@ -918,7 +857,7 @@ if barstate.islast
                        text_color=pal_on_surface(), text_size=size.small)
             row += 1
 
-        // ── 3c. Hour-of-Day Breakout Grid (24 hours) ───────────────────
+        // ── 3b. Hour-of-Day Breakout Grid (24 hours) ───────────────────
         table.cell(statsTbl, 0, row, "HOUR-OF-DAY BREAKOUT GRID",
                    text_color=pal_on_surface(), text_size=size.small,
                    bgcolor=pal_table_header_bg())
@@ -950,11 +889,11 @@ if barstate.islast
 
     // ── Footer: data lineage ──────────────────────────────────────────────
     // Always-shown small footer so the user knows the stats are sourced
-    // from 5m bars, regardless of what TF their chart is set to.
-    string srcLabel = "data: 5m bars"
-    if IS_TF_BELOW5
+    // from 15m bars, regardless of what TF their chart is set to.
+    string srcLabel = "data: 15m bars"
+    if IS_TF_BELOW15
         srcLabel := srcLabel + " (resampled up from " + timeframe.period + ")"
-    else if IS_TF_ABOVE5
+    else if IS_TF_ABOVE15
         srcLabel := srcLabel + " (drilled down from " + timeframe.period + ")"
     table.cell(statsTbl, 0, row, srcLabel,
                text_color=pal_table_muted(), text_size=size.small,
