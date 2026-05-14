@@ -1,33 +1,50 @@
 import { activeModel, activeMode, activeCisd, activeProfile, activeTF } from '../state.js';
 import { C, dirCards } from '../charts.js';
 import { csvEscape, triggerCSVDownload, evFmt, evCls, pfFmt, pct } from '../utils.js';
-import { getProfileData, getActiveTFData } from '../data.js';
 import { getSmtFilteredTrades } from '../walkforward.js';
 
 let _tradesPage = 0;
 const TRADES_PER_PAGE = 40;
+let _tradesCache = { key: '', trades: [] };
 
-function renderRecentTrades(page) {
+async function fetchTrades() {
+  const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
+  const cacheKey = `${fullKey}_${activeProfile}`;
+  if (_tradesCache.key === cacheKey) return _tradesCache.trades;
+
+  const params = new URLSearchParams({
+    engine: 'fractal_sweep',
+    model: fullKey,
+    profile: activeProfile,
+    limit: '12000',
+  });
+  const r = await fetch('/trades?' + params);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const data = await r.json();
+  _tradesCache = { key: cacheKey, trades: data.trades || [] };
+  return _tradesCache.trades;
+}
+
+async function renderRecentTrades(page) {
   const el = document.getElementById('recent-trades-table');
   const pgEl = document.getElementById('recent-trades-pagination');
   if (!el) return;
-  const baseD2 = getProfileData(`${activeModel}_${activeMode}_${activeCisd}`, activeProfile);
-  const D = getActiveTFData(baseD2);
-  const rawTrades = D?.recent_trades;
-  console.log('[trades] activeTF=', activeTF, 'trades.length=', rawTrades?.length, 'slice_has_trades=', !!baseD2?.by_tf?.[activeTF]?.recent_trades);
-  const titleEl = document.getElementById('trades-panel-title');
-  if (!rawTrades || !rawTrades.length) {
-    el.innerHTML = '<p style="color:var(--text-muted);font-size:13px;padding:8px 0;">No trades data. Run <code>python3 model_stats.py</code> to generate.</p>';
-    if (titleEl) titleEl.textContent = 'Resolved Trades';
-    if (pgEl) pgEl.style.display = 'none';
-    return;
-  }
-  const trades = getSmtFilteredTrades(rawTrades);
-  const totalCount = trades.length;
-  const totalPages = Math.ceil(totalCount / TRADES_PER_PAGE);
-  if (page !== undefined) _tradesPage = page;
-  _tradesPage = Math.max(0, Math.min(_tradesPage, totalPages - 1));
-  const start = _tradesPage * TRADES_PER_PAGE;
+
+  try {
+    const rawTrades = await fetchTrades();
+    if (!rawTrades || !rawTrades.length) {
+      el.innerHTML = '<p style="color:var(--text-muted);font-size:13px;padding:8px 0;">No trades data. Run <code>python3 model_stats.py</code> to generate.</p>';
+      const titleEl = document.getElementById('trades-panel-title');
+      if (titleEl) titleEl.textContent = 'Resolved Trades';
+      if (pgEl) pgEl.style.display = 'none';
+      return;
+    }
+    const trades = getSmtFilteredTrades(rawTrades);
+    const totalCount = trades.length;
+    const totalPages = Math.ceil(totalCount / TRADES_PER_PAGE);
+    if (page !== undefined) _tradesPage = page;
+    _tradesPage = Math.max(0, Math.min(_tradesPage, totalPages - 1));
+    const start = _tradesPage * TRADES_PER_PAGE;
   const displayTrades = trades.slice(start, start + TRADES_PER_PAGE);
   const end = start + displayTrades.length;
   if (titleEl) titleEl.textContent = totalPages > 1
@@ -100,6 +117,10 @@ function renderRecentTrades(page) {
   ].join('');
   pgEl.style.display = 'flex';
   pgEl.innerHTML = paginationHTML;
+  } catch(e) {
+    console.error('[trades]', e);
+    el.innerHTML = `<p style="color:var(--red);font-size:13px;padding:8px 0;">Failed to load trades: ${e.message}. Ensure server.py is running.</p>`;
+  }
 }
 
 export { renderRecentTrades, _tradesPage, TRADES_PER_PAGE };

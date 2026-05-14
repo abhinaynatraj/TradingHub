@@ -100,27 +100,53 @@ SESSION_FILTER_ENABLED = False  # default: all 24h (Globex/ETH included); --rth-
 UNSWEPT_LOOKBACK = 10
 
 # ── RISK PROFILES ─────────────────────────────────────────────────────────────
-# Each tuple: (stop_val, target_val, display_key, profile_type, target_ref=None)
+# Each tuple: (stop_val, target_val, profile_key, profile_type, target_ref, entry_ref)
 #
 # profile_type='mult'  → stop/target distances = val × base_risk
 #                         base_risk = |entry_price − sweep_extreme|
 #
-# profile_type='pct'   → stop/target distances = entry_price × val / 100
-#                         (fixed % of entry price, independent of sweep size)
+# target_ref='entry'   → target measured from entry (default)
+# target_ref='cisd'    → target measured from CISD level (order block open)
 #
-# target_ref='cisd'    → target measured from CISD level (order block open),
-#                         stop still measured from entry as usual
+# entry_ref='open'     → entry at next candle open (default)
+# entry_ref='l33'      → entry at 33% cascade level (deeper discount)
+# entry_ref='l50'      → entry at 50% cascade level
+# entry_ref='l66'      → entry at 66% cascade level
 RR_PROFILES = [
-    # --- Entry-based targets (SL = sweep extreme) ---
-    (1.0, 1.0, 'simple_1r',   'mult'),
-    (1.0, 1.5, 'simple_1r5',  'mult'),
-    (1.0, 2.0, 'simple_2r',   'mult'),
-    # --- OB-based targets (TP from CISD/order-block open price) ---
-    (1.0, 1.0, 'ob_1r',       'mult', 'cisd'),
-    (1.0, 1.5, 'ob_1r5',      'mult', 'cisd'),
-    (1.0, 2.0, 'ob_2r',       'mult', 'cisd'),
-    # --- Raw Measure: no SL/TP — records full-session MAE/MFE only ---
-    (0.0, 0.0, 'raw_measure', 'raw'),
+    # ── Market entry, Entry-based TP ──
+    (1.0, 1.0, 'simple_1r',   'mult', 'entry', 'open'),
+    (1.0, 1.5, 'simple_1r5',  'mult', 'entry', 'open'),
+    (1.0, 2.0, 'simple_2r',   'mult', 'entry', 'open'),
+    # ── Market entry, OB-based TP ──
+    (1.0, 1.0, 'ob_1r',       'mult', 'cisd',  'open'),
+    (1.0, 1.5, 'ob_1r5',      'mult', 'cisd',  'open'),
+    (1.0, 2.0, 'ob_2r',       'mult', 'cisd',  'open'),
+    # ── L33 entry ──
+    (1.0, 1.0, 'l33_1r',      'mult', 'entry', 'l33'),
+    (1.0, 1.5, 'l33_1r5',     'mult', 'entry', 'l33'),
+    (1.0, 2.0, 'l33_2r',      'mult', 'entry', 'l33'),
+    # ── L50 entry ──
+    (1.0, 1.0, 'l50_1r',      'mult', 'entry', 'l50'),
+    (1.0, 1.5, 'l50_1r5',     'mult', 'entry', 'l50'),
+    (1.0, 2.0, 'l50_2r',      'mult', 'entry', 'l50'),
+    # ── L66 entry ──
+    (1.0, 1.0, 'l66_1r',      'mult', 'entry', 'l66'),
+    (1.0, 1.5, 'l66_1r5',     'mult', 'entry', 'l66'),
+    (1.0, 2.0, 'l66_2r',      'mult', 'entry', 'l66'),
+    # ── L33 entry, OB-based TP ──
+    (1.0, 1.0, 'l33_ob_1r',   'mult', 'cisd',  'l33'),
+    (1.0, 1.5, 'l33_ob_1r5',  'mult', 'cisd',  'l33'),
+    (1.0, 2.0, 'l33_ob_2r',   'mult', 'cisd',  'l33'),
+    # ── L50 entry, OB-based TP ──
+    (1.0, 1.0, 'l50_ob_1r',   'mult', 'cisd',  'l50'),
+    (1.0, 1.5, 'l50_ob_1r5',  'mult', 'cisd',  'l50'),
+    (1.0, 2.0, 'l50_ob_2r',   'mult', 'cisd',  'l50'),
+    # ── L66 entry, OB-based TP ──
+    (1.0, 1.0, 'l66_ob_1r',   'mult', 'cisd',  'l66'),
+    (1.0, 1.5, 'l66_ob_1r5',  'mult', 'cisd',  'l66'),
+    (1.0, 2.0, 'l66_ob_2r',   'mult', 'cisd',  'l66'),
+    # ── Raw Measure ──
+    (0.0, 0.0, 'raw_measure', 'raw',  'entry', 'open'),
 ]
 DEFAULT_PROFILE = 'simple_1r'
 
@@ -1471,7 +1497,7 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
 def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
                                stop_val, target_val, profile_type='mult',
                                tp2_pct=None, sl_mae_pct=None,
-                               target_ref='entry'):
+                               target_ref='entry', entry_ref='open'):
     """
     Compute stop / target for each detected setup and resolve outcomes.
 
@@ -1483,10 +1509,10 @@ def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
         target_ref='entry' → ref = entry_price (default)
         target_ref='cisd'  → ref = cisd_level  (OB open price)
 
-    profile_type='pct'  (fixed % of entry price):
-        risk_pts   = entry_price × stop_val  / 100
-        LONG:  stop = entry × (1 − stop_val/100),   target = entry × (1 + target_val/100)
-        SHORT: stop = entry × (1 + stop_val/100),   target = entry × (1 − target_val/100)
+    entry_ref='open' → entry at next candle open (default)
+    entry_ref='l33'  → entry at 33% cascade level (between cisd_level and sweep_extreme)
+    entry_ref='l50'  → entry at 50% cascade level
+    entry_ref='l66'  → entry at 66% cascade level
     """
     rows = [dict(r) for r in base_rows]   # shallow copy per profile
 
@@ -1510,6 +1536,43 @@ def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
                 hour_range_pts = bp.get('hour_range_pts', 0.0),
             ))
             continue
+
+        # ── Level entry: compute alternative entry price from cascade level ──
+        if entry_ref in ('l33', 'l50', 'l66'):
+            cascade_frac = {'l33': 0.3333, 'l50': 0.5000, 'l66': 0.6667}[entry_ref]
+            cisd_lvl = bp.get('cisd_level')
+            sweep_ext = bp.get('sweep_extreme')
+            if cisd_lvl is None or sweep_ext is None:
+                rows[idx]['outcome'] = 'SKIP'
+                rows[idx]['rejected_by'] = rows[idx].get('rejected_by') or 'NO_CASCADE'
+                continue
+            span = sweep_ext - cisd_lvl
+            level_price = round(cisd_lvl + cascade_frac * span, 2)
+
+            m1_ts_ns = m1_arrs['ts_ns']
+            m1_hi = m1_arrs['high']
+            m1_lo = m1_arrs['low']
+            m1_start = int(np.searchsorted(m1_ts_ns, bp['entry_ts_ns'], side='left'))
+            fill_idx = -1
+            scan_limit = min(m1_start + 240, len(m1_ts_ns))
+            if direction == 'LONG':
+                for fi in range(m1_start, scan_limit):
+                    if m1_lo[fi] <= level_price:
+                        fill_idx = fi; break
+            else:
+                for fi in range(m1_start, scan_limit):
+                    if m1_hi[fi] >= level_price:
+                        fill_idx = fi; break
+            if fill_idx < 0:
+                rows[idx]['outcome'] = 'SKIP'
+                rows[idx]['rejected_by'] = rows[idx].get('rejected_by') or 'LEVEL_NOT_FILLED'
+                continue
+
+            entry_price = level_price
+            base_risk = abs(entry_price - sweep_ext)
+            entry_ts_use = int(m1_ts_ns[fill_idx])
+        else:
+            entry_ts_use = bp['entry_ts_ns']
 
         # Determine reference price for target
         if target_ref == 'cisd':
@@ -1546,6 +1609,9 @@ def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
         rows[idx]['stop_price']   = round(stop_price,   2)
         rows[idx]['target_price'] = round(target_price, 2)
         rows[idx]['risk_pts']     = round(risk_pts,     2)
+        if entry_ref != 'open':
+            rows[idx]['entry_price'] = round(entry_price, 2)
+            rows[idx]['base_risk']   = round(base_risk, 2)
 
         if risk_pts < MIN_RISK_PTS:
             rows[idx]['outcome']     = 'INVALID'
@@ -1558,7 +1624,7 @@ def apply_profile_and_resolve(base_rows, base_pending, m1_arrs,
 
         profile_pending.append(dict(
             idx              = idx,
-            entry_ts_ns      = bp['entry_ts_ns'],
+            entry_ts_ns      = entry_ts_use,
             entry_price      = entry_price,
             stop_price       = stop_price,
             target_price     = target_price,
@@ -2633,11 +2699,12 @@ def main():
             pk   = prof_tup[2]
             ptype = prof_tup[3]
             target_ref = prof_tup[4] if len(prof_tup) > 4 else 'entry'
+            entry_ref  = prof_tup[5] if len(prof_tup) > 5 else 'open'
             stop_val, target_val = prof_tup[0], prof_tup[1]
             print(f"      [{p_idx}/{len(RR_PROFILES)}] profile {pk} ...", flush=True)
             df_p = apply_profile_and_resolve(
                 base_rows, base_pending, m1, stop_val, target_val, ptype,
-                target_ref=target_ref)
+                target_ref=target_ref, entry_ref=entry_ref)
             if df_p.empty:
                 continue
 

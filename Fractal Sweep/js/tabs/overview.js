@@ -1,7 +1,7 @@
 import { activeModel, activeMode, activeCisd, activeProfile, activeTF, activeSmt, activeF3, activeF4, MODEL_KEYS, MODEL_LABELS, RR_PROFILES, PROFILE_LABELS, PCT_PROFILES, CLS_META, SVG_FONT, isDark, activePageTab, setActiveModel, setActiveProfile, setActiveTF } from '../state.js';
 import { pct, evFmt, pfFmt, evCls, wrHeatClr, wrHeatTxt, fmtDateRange, _tradingDaysFromRange } from '../utils.js';
 import { C, lineChart, rDistChart, filterWaterfall, dirCards, drawSetupViz, _buildEquityPts, renderEquityCurveFS, renderOverviewEquityCurve } from '../charts.js';
-import { getProfileData, getActiveTFData, getFilteredD, getSmtD, getAvailableProfiles } from '../data.js';
+import { getProfileData, getActiveTFData, getFilteredD, getSmtD, getAvailableProfiles, loadProfile } from '../data.js';
 import { renderEdgeStudy } from './edge.js';
 import { renderFilterVariants, renderProfileComparison, renderVerdict } from '../verdict.js';
 import { renderMAEStudy, renderMFEStudy } from './excursion.js';
@@ -56,15 +56,67 @@ function switchModel(k){
 }
 
 function renderProfileDropdown(){
-  const sel = document.getElementById('profile-select');
-  if (!sel) return;
-  const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
-  const profiles = getAvailableProfiles(fullKey);
-  sel.innerHTML = profiles.map(pk => `<option value="${pk}" ${pk===activeProfile?'selected':''}>${PROFILE_LABELS[pk]||pk}${PCT_PROFILES.has(pk)?' %':''}</option>`).join('');
+  // Set selector values from activeProfile
+  updateProfileSelectorsFromKey(activeProfile);
 }
-function switchProfile(pk){
+async function switchProfile(pk){
+  const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
+  // Ensure profile data is loaded from API
+  await loadProfile(fullKey, pk);
   setActiveProfile(pk);
+  updateProfileSelectorsFromKey(pk);
   window.render();
+}
+
+function profileKeyFromSelectors() {
+  const special = document.getElementById('profile-special')?.value;
+  if (special === 'raw_measure') return 'raw_measure';
+  const r = document.getElementById('profile-r')?.value || '1';
+  const ref = document.getElementById('profile-ref')?.value || 'entry';
+  const entry = document.getElementById('profile-entry')?.value || 'open';
+  return buildProfileKey(r, ref, entry);
+}
+
+function buildProfileKey(r, ref, entry) {
+  const rSuffix = r === '1' ? '1r' : r === '1.5' ? '1r5' : '2r';
+  if (entry === 'open' && ref === 'entry') return `simple_${rSuffix}`;
+  if (entry === 'open' && ref === 'ob')    return `ob_${rSuffix}`;
+  if (ref === 'entry') return `${entry}_${rSuffix}`;
+  return `${entry}_ob_${rSuffix}`;
+}
+
+function parseProfileKey(pk) {
+  if (pk === 'raw_measure') return { r: '1', ref: 'entry', entry: 'open' };
+  if (pk.startsWith('simple_')) return { r: pk.includes('1r5') ? '1.5' : pk.includes('2r') ? '2' : '1', ref: 'entry', entry: 'open' };
+  if (pk.startsWith('ob_'))    return { r: pk.includes('1r5') ? '1.5' : pk.includes('2r') ? '2' : '1', ref: 'ob',    entry: 'open' };
+  const m = pk.match(/^(l\d+)_(ob_)?(\w+)$/);
+  if (m) return { entry: m[1], ref: m[2] ? 'ob' : 'entry', r: m[3].includes('1r5') ? '1.5' : m[3].includes('2r') ? '2' : '1' };
+  return { r: '1', ref: 'entry', entry: 'open' };
+}
+
+let _updatingSelectors = 0;
+
+function updateProfileSelectorsFromKey(pk) {
+  _updatingSelectors = Date.now();
+  const special = document.getElementById('profile-special');
+  const rEl = document.getElementById('profile-r');
+  const refEl = document.getElementById('profile-ref');
+  const entryEl = document.getElementById('profile-entry');
+  if (pk === 'raw_measure') {
+    if (special) special.value = 'raw_measure';
+    return;
+  }
+  if (special) special.value = '';
+  const p = parseProfileKey(pk);
+  if (rEl) rEl.value = p.r;
+  if (refEl) refEl.value = p.ref;
+  if (entryEl) entryEl.value = p.entry;
+}
+
+function updateProfileFromSelectors() {
+  if (Date.now() - _updatingSelectors < 100) return;
+  const pk = profileKeyFromSelectors();
+  if (pk && pk !== activeProfile) switchProfile(pk);
 }
 
 function switchTF(tf){
@@ -166,4 +218,4 @@ function renderModel(D){
   renderVerdict(document.getElementById('overview-verdict-panel'));
 }
 
-export { renderModel, renderModelDropdown, renderProfileDropdown, switchProfile, switchTF, renderControls, switchModel, renderClassificationBreakdown };
+export { renderModel, renderModelDropdown, renderProfileDropdown, switchProfile, switchTF, renderControls, switchModel, renderClassificationBreakdown, updateProfileFromSelectors };

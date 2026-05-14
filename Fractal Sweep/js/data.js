@@ -96,6 +96,52 @@ const DEMO = {
 let DATA = DEMO;
 export function setData(v) { DATA = v; }
 
+async function fetchData(params = {}) {
+  const qs = new URLSearchParams({ engine: 'fractal_sweep', ...params }).toString();
+  const r = await fetch('/data?' + qs);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+async function loadModelList() {
+  const data = await fetchData();
+  if (data.models) {
+    const newData = { _meta: data._meta };
+    for (const m of data.models) {
+      if (!DATA[m] || !DATA[m].profiles) newData[m] = { profiles: {} };
+      else newData[m] = DATA[m];
+    }
+    Object.assign(DATA, newData);
+    return data.models;
+  }
+  return Object.keys(DATA).filter(k => k !== '_meta');
+}
+
+async function loadProfile(fullKey, profileKey) {
+  if (!DATA[fullKey] || !DATA[fullKey].profiles) DATA[fullKey] = { profiles: {} };
+  if (DATA[fullKey].profiles[profileKey]) return DATA[fullKey].profiles[profileKey];
+
+  const data = await fetchData({ model: fullKey, profile: profileKey });
+  const modelData = data[fullKey];
+  if (modelData?.profiles) {
+    Object.assign(DATA[fullKey].profiles, modelData.profiles);
+    return modelData.profiles[profileKey];
+  }
+  return null;
+}
+
+async function initProfileData() {
+  const models = await loadModelList();
+  const fullKey = '1H_5M_PREV_CISD';
+  if (models.includes(fullKey)) {
+    await loadProfile(fullKey, 'simple_1r');
+    return true;
+  }
+  const firstModel = models.find(k => k !== '_meta') || fullKey;
+  await loadProfile(firstModel, 'simple_1r');
+  return true;
+}
+
 // Helper — resolve active profile data (handles both flat DEMO and {profiles:{}} real JSON)
 function getProfileData(fullKey, profile) {
   const base = DATA[fullKey];
@@ -377,3 +423,4 @@ export { getActiveTFData };
 export { getFilteredD };
 export { getSmtD };
 export { applyLoadedData };
+export { initProfileData, loadProfile };

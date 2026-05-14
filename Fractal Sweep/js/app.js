@@ -7,9 +7,9 @@ import { activePageTab, RAW_TABS, RAW_TAB_LABELS,
          setActiveTF, setIsDemo, setActivePageTab, setCurrentTheme } from './state.js';
 import { applyTheme, _savedTheme } from './theme.js';
 import { fmtDateRange, triggerCSVDownload, csvEscape, showTip, hideTip } from './utils.js';
-import { getProfileData, getActiveTFData, getSmtD, applyLoadedData, DEMO, DATA, setData } from './data.js';
+import { getProfileData, getActiveTFData, getSmtD, applyLoadedData, DEMO, DATA, setData, initProfileData, loadProfile } from './data.js';
 import { drawSetupViz, renderOverviewEquityCurve, lineChart, rDistChart, renderEquityCurveFS } from './charts.js';
-import { renderModel, renderModelDropdown, renderProfileDropdown, switchProfile, switchTF, renderControls, switchModel } from './tabs/overview.js';
+import { renderModel, renderModelDropdown, renderProfileDropdown, switchProfile, switchTF, renderControls, switchModel, updateProfileFromSelectors } from './tabs/overview.js';
 import { renderEdgeStudy } from './tabs/edge.js';
 import { updateFilterChipDeltas } from './tabs/filters.js';
 import { renderRecentTrades } from './tabs/trades.js';
@@ -177,6 +177,13 @@ function pollRecalc(){
 }
 
 // ── Window bindings (for HTML onclick handlers) ──────────────────────────
+// Global error resilience
+window.onerror = function(msg, url, line) {
+  console.error('[sweep]', msg, url, line);
+  const el = document.getElementById('meta-row');
+  if (el) el.innerHTML = `<div style="grid-column:1/-1;font-family:var(--font-data);font-size:11px;color:var(--red);padding:8px">Error: ${msg} (line ${line})</div>`;
+};
+
 window.renderActive = renderActive;
 window.parseKey = parseKey;
 window.applyTheme = applyTheme;
@@ -195,6 +202,7 @@ window.updateRange = updateRange;
 window.saveAndRenderRanges = saveAndRenderRanges;
 window.switchCustomTab = switchCustomTab;
 window.downloadFSTrades = downloadFSTrades;
+window.updateProfileFromSelectors = updateProfileFromSelectors;
 window.showTip = showTip;
 window.hideTip = hideTip;
 window.render = render;
@@ -230,23 +238,23 @@ render();
 updateTabVisibility();
 drawSetupViz();
 
-fetch('./model_stats.json')
-  .then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
-  .then(j => {
-    console.log('[sweep] model_stats.json loaded. Keys:', Object.keys(j));
+// Load real data from /data API (profile-by-profile, much faster than full JSON)
+initProfileData()
+  .then(ok => {
+    if (!ok) return;
+    console.log('[sweep] profile data loaded via /data API');
     setIsDemo(false);
     const badge = document.getElementById('demo-badge');
-    if(badge){ badge.style.display = 'none'; }
-    applyLoadedData(j);
+    if (badge) badge.style.display = 'none';
     render();
     updateTabVisibility();
     drawSetupViz();
   })
   .catch(e => {
-    console.warn('[sweep] fetch failed:', e, '— using demo data');
+    console.warn('[sweep] /data API failed:', e, '— using demo data');
     setIsDemo(true);
     const badge = document.getElementById('demo-badge');
-    if(badge){ badge.style.display = ''; }
+    if (badge) badge.style.display = '';
   });
 
 // JSON file upload handler
