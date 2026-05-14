@@ -12,11 +12,13 @@ Dashboard URLs:
     http://localhost:8001/Fractal Sweep/model_dashboard.html
     http://localhost:8001/TTrades Fractal Model Analysis/index.html
     http://localhost:8001/NPG Sweep/npg_dashboard.html
+    http://localhost:8001/Amas Models/model_dashboard.html
 
 Recalc endpoint (POST):
     /recalc?engine=fractal_sweep
     /recalc?engine=ttfm
     /recalc?engine=npg
+    /recalc?engine=amas
 """
 
 import subprocess
@@ -33,6 +35,7 @@ ENGINES = {
     "fractal_sweep": [sys.executable, "Fractal Sweep/engine/model_stats.py"],
     "ttfm":          [sys.executable, "TTrades Fractal Model Analysis/ttfm_backtest.py"],
     "npg":           [sys.executable, "NPG Sweep/engine/npg_stats.py"],
+    "amas":          [sys.executable, "Amas Models/engine/model_stats.py"],
 }
 
 _recalc_state: dict[str, dict] = {}
@@ -127,7 +130,8 @@ if __name__ == "__main__":
     print(f"  Fractal Sweep  →  http://localhost:{port}/Fractal%20Sweep/model_dashboard.html")
     print(f"  TTrades        →  http://localhost:{port}/TTrades%20Fractal%20Model%20Analysis/index.html")
     print(f"  NPG Sweep      →  http://localhost:{port}/NPG%20Sweep/npg_dashboard.html")
-    print(f"  Recalc API     →  POST http://localhost:{port}/recalc?engine={{fractal_sweep|ttfm|npg}}")
+    print(f"  Amas Models    →  http://localhost:{port}/Amas%20Models/model_dashboard.html")
+    print(f"  Recalc API     →  POST http://localhost:{port}/recalc?engine={{fractal_sweep|ttfm|npg|amas}}")
     print("Press Ctrl+C to stop.")
     try:
         server.serve_forever()
