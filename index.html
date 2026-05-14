@@ -681,6 +681,18 @@ const PROJECTS = [
     stats:    null,
   },
   {
+    id:       'amas',
+    title:    'Amas Models',
+    subtitle: 'Mentorship-derived models · WIP',
+    desc:     'Backtest engine + dashboard for trading models extracted from the Amas mentorship materials. Mirrors the Fractal Sweep pattern: Python engine writes model_stats.json, single-file dashboard reads it.',
+    json:     'Amas Models/model_stats.json',
+    link:     'Amas Models/model_dashboard.html',
+    color:    '#06b6d4',
+    icon:     '📐',
+    type:     'amas',
+    stats:    null,
+  },
+  {
     id:       'npg',
     title:    'NPG Sweep',
     subtitle: 'Wick Lick + CISD · 3 Pairings',
@@ -777,6 +789,38 @@ async function loadStats(project) {
         label3: 'EV (R)',     val3: ev != null ? (ev >= 0 ? '+' : '') + ev.toFixed(3) : '—',
                               cls3: ev != null && ev > 0 ? 'pos' : ev != null && ev < 0 ? 'neg' : 'neutral',
         dateRange: '—',
+      };
+    }
+
+    if (project.type === 'amas') {
+      // model_stats.json shape:
+      //   { meta: {engine_version, generated_at, table, data_range, spec_sha},
+      //     models: { <model_key>: { label, filters, trades, summary, filter_variants, spec_html } } }
+      // Per-model `summary` is agg() output: { n, n_resolved, n_expired, wins,
+      //   wr, wr_ci_low, wr_ci_high, ev, pf, avg_mae, avg_mfe, ... }.
+      // `wr` here is a 0-1 fraction (not 0-100 like NPG).
+      const models = Object.entries(d.models || {});
+      if (!models.length) return null;
+      let totalN = 0;
+      let best = null;
+      for (const [, model] of models) {
+        const s = model.summary || {};
+        const n = s.n_resolved || 0;
+        if (n < 20) continue;
+        totalN += n;
+        if (best == null || (s.ev || 0) > (best.ev || 0)) {
+          best = { key: model.label || '', n, wr: s.wr, ev: s.ev, pf: s.pf };
+        }
+      }
+      if (!best) return null;
+      const dr = (d.meta && d.meta.data_range) || '—';
+      return {
+        label1: 'Best WR',    val1: best.wr != null ? (best.wr * 100).toFixed(1) + '%' : '—', cls1: 'pos',
+        label2: 'Best EV',    val2: best.ev != null ? sgn(best.ev) : '—',
+                              cls2: (best.ev || 0) >= 0 ? 'pos' : 'neg',
+        label3: 'Trades',     val3: num(totalN), cls3: 'neutral',
+        dateRange: dr,
+        subtitle2: `Best: ${best.key} · PF ${best.pf != null ? best.pf.toFixed(2) : '—'} · ${best.n.toLocaleString()} trades`,
       };
     }
 

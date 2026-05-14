@@ -223,6 +223,16 @@ BACKTESTS = [
         "output": REPO_ROOT / "Analysis" / "data" / "manifest.json",
         "incremental": False,
     },
+    {
+        # Amas Models — H1 continuation and pattern-based models extracted
+        # from the Amas mentorship materials. Engine has no --since flag yet
+        # (non-incremental). Reads from the shared candle_science.duckdb;
+        # only re-runs after the DB has been refreshed by this daily script.
+        "name": "Amas Models",
+        "script": REPO_ROOT / "Amas Models" / "engine" / "model_stats.py",
+        "output": REPO_ROOT / "Amas Models" / "model_stats.json",
+        "incremental": False,
+    },
 ]
 
 MODEL_STATS_JSON = Path(__file__).parent.parent / "model_stats.json"
