@@ -867,6 +867,11 @@ if isFirstBarOfQuarter() and quarterOfHour() == 1
     rejFired05Dn := false
 
 // ── 1h midline + reactions ────────────────────────────────────────────────
+// Always uses the CURRENT hour's running midpoint. The earlier "containment
+// rule" (return prior hour's mid when curRange ⊂ priRange) was removed
+// because it made the 9pm midline render at the 8pm level during
+// consolidation, which read as a rendering bug. `source` is kept in the
+// return tuple so the call site signature stays stable.
 resolve1hMid(HourAgg cur, HourAgg prior) =>
     float mid = na
     string source = "current"
@@ -874,34 +879,20 @@ resolve1hMid(HourAgg cur, HourAgg prior) =>
         curHi = hourHigh(cur)
         curLo = hourLow(cur)
         if not na(curHi) and not na(curLo)
-            // Containment rule: when the current hour's range is contained
-            // inside the prior hour's range, the actionable midline is the
-            // PRIOR hour's mid (price is reacting to that level, not its
-            // own running midpoint). Mirrors the 3h midline rule.
-            float priHi = na
-            float priLo = na
-            if not na(prior)
-                priHi := hourHigh(prior)
-                priLo := hourLow(prior)
-            if not na(priHi) and not na(priLo) and curLo > priLo and curHi < priHi
-                mid := (priHi + priLo) / 2.0
-                source := "prior"
-            else
-                mid := (curHi + curLo) / 2.0
+            mid := (curHi + curLo) / 2.0
     [mid, source]
 
 resolve3hMid(TriadAgg cur, float priorTriadHi, float priorTriadLo) =>
     float mid = na
+    // Mirrors resolve1hMid: containment rule removed. Always uses the
+    // CURRENT triad's running midpoint to avoid the prior-triad mid being
+    // drawn during contained consolidation (which read as a rendering bug).
     string source = "current"
     if not na(cur)
         curHi = triadHigh(cur)
         curLo = triadLow(cur)
         if not na(curHi) and not na(curLo)
-            if not na(priorTriadHi) and not na(priorTriadLo) and curLo > priorTriadLo and curHi < priorTriadHi
-                mid := (priorTriadHi + priorTriadLo) / 2.0
-                source := "prior"
-            else
-                mid := (curHi + curLo) / 2.0
+            mid := (curHi + curLo) / 2.0
     [mid, source]
 
 detectMidReaction(float mid, float h, float l, float c) =>
