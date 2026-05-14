@@ -64,6 +64,47 @@ def _get_data(engine: str) -> dict | None:
     return _data_cache.get(engine)
 
 
+# ── Parquet trade cache ──────────────────────────────────────────────────────
+_parquet_cache: dict[str, object] = {}  # engine → DataFrame
+
+def _get_trades(
+    engine: str,
+    model: str | None,
+    profile: str | None,
+    limit: int,
+) -> dict | None:
+    import pandas as pd
+
+    pq_paths = {
+        "fractal_sweep": ROOT / "Fractal Sweep" / "model_stats.parquet",
+    }
+    path = pq_paths.get(engine)
+    if not path or not path.exists():
+        return None
+
+    if engine not in _parquet_cache:
+        _parquet_cache[engine] = pd.read_parquet(path)
+
+    df = _parquet_cache[engine]
+    if model:
+        df = df[df["model_key"] == model]
+    if profile:
+        df = df[df["profile_key"] == profile]
+
+    if df.empty:
+        return {"trades": [], "count": 0}
+
+    df = df.sort_values("date", ascending=False).head(limit)
+    records = df.where(pd.notna(df), None).to_dict("records")
+    for r in records:
+        r["date"] = str(r["date"])[:19]
+        for k in ("dow", "hr", "mn"):
+            if r.get(k) is not None:
+                r[k] = int(r[k])
+
+    return {"trades": records, "count": len(records)}
+
+
 def _filter_data(full_data: dict, model: str | None, profile: str | None) -> dict | None:
     """Extract _meta and optionally model/profile slice from full data."""
     if model is None:
@@ -179,6 +220,18 @@ class Handler(SimpleHTTPRequestHandler):
             result = _filter_data(full_data, model, profile)
             if result is None:
                 self._json(404, {"error": f"Model '{model}' not found"})
+                return
+            self._json(200, result)
+            return
+
+        if parsed.path == "/trades":
+            engine  = (qs.get("engine")  or [""])[0]
+            model   = (qs.get("model")   or [None])[0]
+            profile = (qs.get("profile") or [None])[0]
+            limit   = int((qs.get("limit") or [12000])[0])
+            result  = _get_trades(engine, model, profile, limit)
+            if result is None:
+                self._json(404, {"error": "No trade data found"})
                 return
             self._json(200, result)
             return
