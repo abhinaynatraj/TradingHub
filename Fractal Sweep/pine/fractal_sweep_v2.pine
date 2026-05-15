@@ -1282,6 +1282,7 @@ if draw_long[1]
     tp    = f_compute_tp("LONG", draw_target_ref_long, risk, tp_mode, rr_ratio, tp_proj, draw_cisd_lvl_long, _cisd_series_range)
     tp1   = use_partial ? f_compute_tp("LONG", draw_target_ref_long, risk, tp1_mode, tp1_rr, tp1_proj, draw_cisd_lvl_long, _cisd_series_range) : na
     r_end = bar_index + rr_extend
+    _filled_long = entry_mode == "Market" or low <= entry
     _cisd_ln_L = line.new(draw_cisd_bar_long, draw_cisd_lvl_long, r_end, draw_cisd_lvl_long, color=c_cisd, width=2, style=line.style_solid)
     f_reg_line(_cisd_ln_L)
     cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : draw_cisd_bar_long
@@ -1292,8 +1293,8 @@ if draw_long[1]
     sweep_x = sweep_lbl_pos == "Right" ? r_end : draw_anc_lo_bar
     _sweep_lbl_draw_L = label.new(sweep_x, draw_anc_lo, sweep_text + " " + sweep_tf_lbl, color=color.new(c_sweep, 100), textcolor=c_sweep, style=sweep_lbl_style, size=size.small)
     f_reg_label(_sweep_lbl_draw_L)
-    // R:R trade setup drawings — gated by Show Trade Setup
-    if show_trade_setup
+    // R:R trade setup drawings — gated by Show Trade Setup and entry fill
+    if show_trade_setup and _filled_long
         _sl_ln_L    = line.new(draw_sl_anchor_long, sl, r_end, sl, color=c_sl, width=2, style=sweep_lstyle)
         _risk_box_L = box.new(bar_index, entry, r_end, sl,  border_color=rr_risk_border, bgcolor=rr_risk_col)
         _rew_box_L  = box.new(bar_index, tp,    r_end, entry, border_color=rr_rew_border,  bgcolor=rr_rew_col)
@@ -1331,8 +1332,8 @@ if draw_long[1]
         f_reg_label(_tp_lbl_L)
         f_reg_label(_entry_lbl_L)
         f_reg_label(_sl_lbl_L)
-        // Track for TP/SL truncation
-        if truncate_on_hit
+        // Track for TP/SL truncation — only if entry was actually filled
+        if truncate_on_hit and _filled_long
             array.push(active_dir, 1)
             array.push(active_tp, tp)
             array.push(active_sl, sl)
@@ -1349,7 +1350,7 @@ if draw_long[1]
             array.push(active_cisd_lbl, _cisd_lbl_draw_L)
             array.push(active_sweep_lbl, _sweep_lbl_draw_L)
             array.push(active_entry_bar, bar_index)
-    // Snapshot extras pool sizes so we know how many this setup adds
+    // Only record extras + setup counts if filled — unfilled setups bypass scoreboard
     _ex_ln_start  = array.size(active_extra_lines)
     _ex_lbl_start = array.size(active_extra_labels)
     _ex_bx_start  = array.size(active_extra_boxes)
@@ -1399,14 +1400,15 @@ if draw_long[1]
         else
             f_reg_label(label.new(bar_index, sl - (entry - sl) * 0.15, "NO SMT", color=color.new(color.gray, 40), textcolor=c_rr_lbl_text, style=label.style_label_up, size=size.small))
     // Record how many extras this setup owns so resolution can truncate them
-    if truncate_on_hit
+    if truncate_on_hit and _filled_short
         array.push(active_extra_ln_count,  array.size(active_extra_lines)  - _ex_ln_start)
         array.push(active_extra_lbl_count, array.size(active_extra_labels) - _ex_lbl_start)
         array.push(active_extra_bx_count,  array.size(active_extra_boxes)  - _ex_bx_start)
-    array.push(setup_line_counts,  array.size(fired_lines)  - _snap_lines)
-    array.push(setup_label_counts, array.size(fired_labels) - _snap_labels)
-    array.push(setup_box_counts,   array.size(fired_boxes)  - _snap_boxes)
-    array.push(setup_entry_bars,   bar_index)
+    if _filled_short
+        array.push(setup_line_counts,  array.size(fired_lines)  - _snap_lines)
+        array.push(setup_label_counts, array.size(fired_labels) - _snap_labels)
+        array.push(setup_box_counts,   array.size(fired_boxes)  - _snap_boxes)
+        array.push(setup_entry_bars,   bar_index)
     while array.size(setup_line_counts) > max_setups
         _nl = array.shift(setup_line_counts)
         _nb = array.shift(setup_label_counts)
@@ -1447,6 +1449,7 @@ if draw_short[1]
     tp    = f_compute_tp("SHORT", draw_target_ref_short, risk, tp_mode, rr_ratio, tp_proj, draw_cisd_lvl_short, _cisd_series_range)
     tp1   = use_partial ? f_compute_tp("SHORT", draw_target_ref_short, risk, tp1_mode, tp1_rr, tp1_proj, draw_cisd_lvl_short, _cisd_series_range) : na
     r_end = bar_index + rr_extend
+    _filled_short = entry_mode == "Market" or high >= entry
     _cisd_ln_S = line.new(draw_cisd_bar_short, draw_cisd_lvl_short, r_end, draw_cisd_lvl_short, color=c_cisd, width=2, style=line.style_solid)
     f_reg_line(_cisd_ln_S)
     cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : draw_cisd_bar_short
@@ -1457,8 +1460,8 @@ if draw_short[1]
     sweep_x = sweep_lbl_pos == "Right" ? r_end : draw_anc_hi_bar
     _sweep_lbl_draw_S = label.new(sweep_x, draw_anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(c_sweep, 100), textcolor=c_sweep, style=sweep_lbl_style, size=size.small)
     f_reg_label(_sweep_lbl_draw_S)
-    // R:R trade setup drawings — gated by Show Trade Setup
-    if show_trade_setup
+    // R:R trade setup drawings — gated by Show Trade Setup and entry fill
+    if show_trade_setup and _filled_short
         _sl_ln_S    = line.new(draw_sl_anchor_short, sl, r_end, sl, color=c_sl, width=2, style=sweep_lstyle)
         _risk_box_S = box.new(bar_index, sl,    r_end, entry, border_color=rr_risk_border, bgcolor=rr_risk_col)
         _rew_box_S  = box.new(bar_index, entry, r_end, tp,    border_color=rr_rew_border,  bgcolor=rr_rew_col)
@@ -1494,7 +1497,8 @@ if draw_short[1]
         f_reg_label(_tp_lbl_S)
         f_reg_label(_entry_lbl_S)
         f_reg_label(_sl_lbl_S)
-        if truncate_on_hit
+        // Track for TP/SL truncation — only if entry was actually filled
+        if truncate_on_hit and _filled_short
             array.push(active_dir, -1)
             array.push(active_tp, tp)
             array.push(active_sl, sl)
