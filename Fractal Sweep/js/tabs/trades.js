@@ -1,29 +1,23 @@
 import { activeModel, activeMode, activeCisd, activeProfile, activeTF } from '../state.js';
 import { C, dirCards } from '../charts.js';
 import { csvEscape, triggerCSVDownload, evFmt, evCls, pfFmt, pct } from '../utils.js';
-import { getSmtFilteredTrades } from '../walkforward.js';
+import { getSmtFilteredTrades, customRanges } from '../walkforward.js';
+import { loadTrades } from '../data.js';
 
 let _tradesPage = 0;
 const TRADES_PER_PAGE = 40;
-let _tradesCache = { key: '', trades: [] };
 
 async function fetchTrades() {
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
-  const cacheKey = `${fullKey}_${activeProfile}`;
-  if (_tradesCache.key === cacheKey) return _tradesCache.trades;
-
-  const params = new URLSearchParams({
-    engine: 'fractal_sweep',
-    model: fullKey,
-    profile: activeProfile,
-    period: 'all',
-    limit: '12000',
-  });
-  const r = await fetch('/trades?' + params);
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  const data = await r.json();
-  _tradesCache = { key: cacheKey, trades: data.trades || [] };
-  return _tradesCache.trades;
+  // Respect the dashboard's active period selection. Custom ranges send
+  // {from, to}; canonical periods send the string directly.
+  if (activeTF === 'custom') {
+    // walkforward.js uses {start, end}; loadTrades / server use {from, to}.
+    const range = customRanges && customRanges[0];
+    if (!range || !range.start || !range.end) return [];
+    return await loadTrades(fullKey, activeProfile, { from: range.start, to: range.end });
+  }
+  return await loadTrades(fullKey, activeProfile, activeTF || 'all');
 }
 
 async function renderRecentTrades(page) {
