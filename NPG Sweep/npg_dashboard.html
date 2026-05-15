@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NPG Sweep · Probability Engine</title>
+  <link rel="stylesheet" href="../Analysis/dashboard/shared.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script defer src="../Analysis/dashboard/shared.js"></script>
+  <style>
+    body { background: var(--bg); color: var(--text-primary); font-family: var(--font-body); margin: 0; }
+
+    /* ── Header (matches Fractal Sweep) ───────────────────────────────────── */
+    .hdr { display:flex; justify-content:space-between; align-items:center; padding:14px 24px; border-bottom:1px solid var(--border); background:var(--bg-elev-1); flex-wrap:wrap; gap:12px; }
+    .hdr-left { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+    .hub-back { color:var(--text-secondary); text-decoration:none; display:flex; align-items:center; gap:6px; font-family:var(--font-display); font-weight:600; }
+    .hub-back:hover { color:var(--text-primary); }
+    .hub-wordmark em { font-style:normal; color:var(--accent); }
+    .hdr-divider { width:1px; height:22px; background:var(--border); }
+    .hdr-wordmark { font-family:var(--font-display); font-weight:800; font-size:18px; color:var(--text-primary); letter-spacing:-0.01em; }
+    .hdr-wordmark em { font-style:normal; color:var(--accent); }
+    .hdr-sub { font-family:var(--font-data); font-size:11px; color:var(--text-muted); letter-spacing:.05em; text-transform:uppercase; }
+    .hdr-link { font-family:var(--font-data); font-size:11px; color:var(--text-secondary); text-decoration:none; padding:4px 8px; border:1px solid var(--border-mid); border-radius:var(--radius-sm); }
+    .hdr-link:hover { color:var(--accent); border-color:var(--accent); }
+    .hdr-right { display:flex; align-items:center; gap:10px; }
+
+    /* ── Two-column layout: sidebar + main ────────────────────────────────── */
+    .layout { display:grid; grid-template-columns: 260px 1fr; min-height: calc(100vh - 60px); }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); }
+    }
+
+    /* Unified sidebar — docked, sticky-top so nav stays visible, padding
+       18px 16px 24px / gap 14px to match Fractal Sweep / Amas / Hourly. */
+    .sidebar {
+      background: var(--bg-elev-1);
+      border-right: 1px solid var(--border);
+      padding: 18px 16px 24px;
+      display: flex; flex-direction: column; gap: 14px;
+      position: sticky; top: 60px;
+      align-self: flex-start;
+      height: calc(100vh - 60px); overflow-y: auto;
+    }
+    /* Spacing between sections is handled by .sidebar's gap (14px). */
+    .sb-section { display: flex; flex-direction: column; gap: 6px; }
+    .sb-label { display:block; font-family:var(--font-data); font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px; }
+    .sel-drop { width:100%; padding:7px 10px; background:var(--bg-elev-2); color:var(--text-primary); border:1px solid var(--border-mid); border-radius:var(--radius-sm); font-family:var(--font-data); font-size:12px; cursor:pointer; }
+    .sb-chk-group { display: flex; flex-direction: column; gap: 5px; }
+    .filter-chk { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:var(--radius-sm); cursor:pointer; font-size:12px; color:var(--text-secondary); transition: background .15s; }
+    .filter-chk:hover { background: var(--bg-elev-2); color: var(--text-primary); }
+    .filter-chk input { accent-color: var(--accent); cursor: pointer; }
+
+    .sb-nav { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+    .sb-nav-btn { text-align: left; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; color: var(--text-secondary); font-family: var(--font-data); font-size: 12px; cursor: pointer; transition: all .15s; }
+    .sb-nav-btn:hover { background: var(--bg-elev-2); color: var(--text-primary); }
+    .sb-nav-btn.active { background: var(--bg-elev-2); color: var(--accent); border-left: 2px solid var(--accent); padding-left: 10px; font-weight: 600; }
+
+    /* ── Main pane ───────────────────────────────────────────────────────── */
+    .main { padding: 22px 28px 60px; max-width: 1280px; }
+    .page-pane { display: none; }
+    .page-pane.active { display: block; }
+    .sec-label { font-family: var(--font-data); font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: .05em; margin: 22px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    .sec-label:first-child { margin-top: 0; }
+
+    /* ── Edge ribbon ─────────────────────────────────────────────────────── */
+    .edge-ribbon { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+    @media (max-width: 700px) { .edge-ribbon { grid-template-columns: repeat(2, 1fr); } }
+    .ribbon-cell { background: var(--bg-elev-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+    .ribbon-label { font-family: var(--font-data); font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
+    .ribbon-value { font-family: var(--font-data); font-size: 22px; font-weight: 700; color: var(--text-primary); }
+    .ribbon-value.positive { color: var(--green); }
+    .ribbon-value.negative { color: var(--red); }
+    .ribbon-sub { font-family: var(--font-data); font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+
+    /* ── Cards / panels ──────────────────────────────────────────────────── */
+    .card { background: var(--bg-elev-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin: 10px 0; }
+    .card-title { font-family: var(--font-data); font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: .05em; margin-bottom: 10px; font-weight: 600; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    @media (max-width: 900px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+    /* ── Tables ──────────────────────────────────────────────────────────── */
+    .tbl { width: 100%; border-collapse: collapse; font-family: var(--font-data); font-size: 12px; }
+    .tbl th { text-align: left; padding: 8px 10px; color: var(--text-muted); font-weight: 500; font-size: 10px; text-transform: uppercase; border-bottom: 1px solid var(--border); letter-spacing: .05em; }
+    .tbl th.num, .tbl td.num { text-align: right; }
+    .tbl td { padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--text-primary); }
+    .tbl tr:last-child td { border-bottom: none; }
+    .tbl tr:hover td { background: var(--bg-elev-2); }
+    .tbl tr.row-best td { background: var(--green-tint); }
+    .tbl .pos { color: var(--green); }
+    .tbl .neg { color: var(--red); }
+    .ev-heat { padding-left: 10px; padding-right: 10px; border-radius: var(--radius-sm); }
+
+    /* ── Reach-rate bars ─────────────────────────────────────────────────── */
+    .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-family: var(--font-data); font-size: 11px; }
+    .bar-label { width: 38px; color: var(--text-muted); }
+    .bar-track { flex: 1; background: var(--bar-track); height: 18px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+    .bar-fill { height: 100%; background: var(--accent); transition: width .2s; }
+    .bar-pct { width: 56px; text-align: right; color: var(--text-primary); }
+
+    /* ── Equity chart wrap ───────────────────────────────────────────────── */
+    .chart-wrap { background: var(--bg-elev-2); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); }
+    .chart-wrap svg { display: block; width: 100%; height: auto; }
+
+    /* ── Heatmap ─────────────────────────────────────────────────────────── */
+    .heatmap-grid { display: grid; gap: 2px; font-family: var(--font-data); font-size: 10px; }
+    .heat-cell { padding: 6px 4px; text-align: center; border-radius: 3px; color: var(--text-primary); }
+    .heat-label { font-size: 9px; color: var(--text-muted); text-align: center; padding: 4px 2px; }
+    .heat-tooltip { font-size: 9px; color: var(--text-muted); margin-top: 6px; }
+
+    /* ── Pagination ──────────────────────────────────────────────────────── */
+    .pagination { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-family: var(--font-data); font-size: 12px; }
+    .page-btn { padding: 5px 10px; background: var(--bg-elev-2); color: var(--text-primary); border: 1px solid var(--border-mid); border-radius: var(--radius-sm); cursor: pointer; font-family: var(--font-data); font-size: 12px; }
+    .page-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .page-btn:disabled { opacity: .4; cursor: not-allowed; }
+    .page-info { color: var(--text-muted); }
+
+    .stat-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-family: var(--font-data); font-size: 11px; }
+    .stat-pill.pos { background: var(--green-tint); color: var(--green); border: 1px solid var(--green-border); }
+    .stat-pill.neg { background: var(--red-tint); color: var(--red); border: 1px solid var(--red-border); }
+    .stat-pill.neutral { background: var(--bg-elev-2); color: var(--text-secondary); border: 1px solid var(--border); }
+
+    .loading { color: var(--text-muted); font-family: var(--font-data); font-size: 12px; padding: 24px 0; text-align: center; }
+    .empty { color: var(--text-muted); font-family: var(--font-data); font-size: 12px; padding: 18px 0; text-align: center; }
+    .error { color: var(--red); font-family: var(--font-data); font-size: 12px; padding: 18px 0; }
+
+    .filter-summary-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; font-family: var(--font-data); font-size: 11px; }
+    .filter-summary-bar .chip-active { padding: 3px 9px; background: var(--green-tint); color: var(--green); border: 1px solid var(--green-border); border-radius: 999px; }
+  </style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-left">
+    <a class="hub-back" href="../index.html">
+      <span>←</span>
+      <span class="hub-wordmark">Statistic<em>.ally</em></span>
+    </a>
+    <div class="hdr-divider"></div>
+    <div class="hdr-wordmark">NPG<em>Sweep</em></div>
+    <div class="hdr-divider"></div>
+    <div class="hdr-sub">Probability Engine · Wick Lick + CISD + Projections</div>
+    <div class="hdr-divider"></div>
+    <a class="hdr-link" href="npg_explainer.html">How the model works →</a>
+  </div>
+  <div class="hdr-right">
+    <div class="theme-picker" role="radiogroup" aria-label="Theme">
+      <button class="theme-opt" data-theme="dark"   title="Dark"   aria-label="Dark theme">☀</button>
+      <button class="theme-opt" data-theme="light"  title="Light"  aria-label="Light theme">☾</button>
+      <button class="theme-opt" data-theme="gold"   title="Gold"   aria-label="Gold theme">✦</button>
+      <button class="theme-opt" data-theme="indigo" title="Indigo" aria-label="Indigo theme">◆</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="sidebar">
+
+    <div class="sb-section">
+      <label class="sb-label">Pairing</label>
+      <select id="pairing-select" class="sel-drop">
+        <option value="1H_5M">1H_5M</option>
+        <option value="4H_15M">4H_15M</option>
+        <option value="D_1H">D_1H</option>
+      </select>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">Risk Profile</label>
+      <select id="profile-select" class="sel-drop">
+        <option value="series_multi">series_multi — 4 partial exits</option>
+        <option value="raw_measure">raw_measure — no SL/TP</option>
+      </select>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">Setup Quality</label>
+      <div class="sb-chk-group">
+        <label class="filter-chk" title="Late-week timing + aggressive close">
+          <input type="checkbox" id="silver-checkbox" />
+          <span>Silver</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">Confirmation</label>
+      <div class="sb-chk-group">
+        <label class="filter-chk" title="NQ swept but ES did not">
+          <input type="checkbox" id="smt-checkbox" />
+          <span>NQ-ES Divergence</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">Direction</label>
+      <select id="direction-select" class="sel-drop">
+        <option value="all">All</option>
+        <option value="LONG">LONG</option>
+        <option value="SHORT">SHORT</option>
+      </select>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">Session</label>
+      <select id="session-select" class="sel-drop">
+        <option value="all">All</option>
+        <option value="ASIA">Asia (18:00–01:59)</option>
+        <option value="LONDON">London (02:00–07:59)</option>
+        <option value="NY">NY (08:00–15:59)</option>
+        <option value="OTHER">Other (16:00–17:59)</option>
+      </select>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">View</label>
+      <div class="sb-nav" id="nav-tabs">
+        <button class="sb-nav-btn active" data-tab="overview">Overview</button>
+        <button class="sb-nav-btn" data-tab="edge">Edge</button>
+        <button class="sb-nav-btn" data-tab="risk">Risk</button>
+        <button class="sb-nav-btn" data-tab="excursion">MAE/MFE</button>
+        <button class="sb-nav-btn" data-tab="filters">Filters</button>
+        <button class="sb-nav-btn" data-tab="trades">Trades</button>
+      </div>
+    </div>
+
+  </aside>
+
+  <main class="main">
+
+    <!-- Filter summary strip (live, updates on filter change) -->
+    <div class="filter-summary-bar" id="filter-summary-bar"></div>
+
+    <!-- OVERVIEW -->
+    <div class="page-pane active" id="pane-overview">
+      <div class="sec-label">Model Overview</div>
+      <div class="edge-ribbon" id="overview-ribbon"><div class="loading">Loading…</div></div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Reach Rates · % of trades hitting each target</div>
+          <div id="overview-reach"><div class="loading">Loading…</div></div>
+        </div>
+        <div class="card">
+          <div class="card-title">By Direction</div>
+          <div id="overview-direction"><div class="loading">Loading…</div></div>
+        </div>
+      </div>
+
+      <div class="sec-label">All Pairings · Side by Side</div>
+      <div class="grid-3" id="overview-compare"><div class="loading">Loading…</div></div>
+    </div>
+
+    <!-- EDGE -->
+    <div class="page-pane" id="pane-edge">
+      <div class="sec-label">Direction Asymmetry · LONG vs SHORT</div>
+      <div class="card"><div id="edge-direction"><div class="loading">Loading…</div></div></div>
+
+      <div class="sec-label">Temporal Edge Stability · Yearly EV</div>
+      <div class="card"><div id="edge-yearly"><div class="loading">Loading…</div></div></div>
+
+      <div class="sec-label">EV Heatmap · Hour × Day of Week</div>
+      <div class="card"><div id="edge-heatmap"><div class="loading">Loading…</div></div></div>
+
+      <div class="sec-label">Session & Day Decomposition</div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">By Session</div>
+          <div id="edge-session"><div class="loading">Loading…</div></div>
+        </div>
+        <div class="card">
+          <div class="card-title">By Day of Week</div>
+          <div id="edge-dow"><div class="loading">Loading…</div></div>
+        </div>
+      </div>
+
+      <div class="sec-label">Highest & Lowest Conviction Setups</div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Top 10 by EV</div>
+          <div id="edge-top"><div class="loading">Loading…</div></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Bottom 10 by EV</div>
+          <div id="edge-bottom"><div class="loading">Loading…</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RISK -->
+    <div class="page-pane" id="pane-risk">
+      <div class="sec-label">Outcome Distribution · composite_r buckets</div>
+      <div class="card"><div id="risk-dist"><div class="loading">Loading…</div></div></div>
+
+      <div class="sec-label">Equity Curve · cumulative composite_r over time</div>
+      <div class="card"><div id="risk-equity"><div class="loading">Loading…</div></div></div>
+
+      <div class="sec-label">Drawdown</div>
+      <div class="card"><div id="risk-dd"><div class="loading">Loading…</div></div></div>
+    </div>
+
+    <!-- MAE / MFE -->
+    <div class="page-pane" id="pane-excursion">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title" style="color:var(--red)">MAE · Maximum Adverse Excursion</div>
+          <div id="excursion-mae"><div class="loading">Loading…</div></div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="color:var(--green)">MFE · Maximum Favorable Excursion</div>
+          <div id="excursion-mfe"><div class="loading">Loading…</div></div>
+        </div>
+      </div>
+
+      <div class="sec-label">Excursion as fraction of series_range</div>
+      <div class="card"><div id="excursion-norm"><div class="loading">Loading…</div></div></div>
+    </div>
+
+    <!-- FILTERS -->
+    <div class="page-pane" id="pane-filters">
+      <div class="sec-label">Filter Variant Analysis · all 4 combinations of Silver × SMT</div>
+      <div class="card"><div id="filter-variants"><div class="loading">Loading…</div></div></div>
+    </div>
+
+    <!-- TRADES -->
+    <div class="page-pane" id="pane-trades">
+      <div class="sec-label">Most Recent Trades</div>
+      <div class="card">
+        <div id="trades-table"><div class="loading">Loading…</div></div>
+        <div class="pagination" id="trades-pagination"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+const PAIRINGS = ['1H_5M', '4H_15M', 'D_1H'];
+const PROFILES = ['series_multi', 'raw_measure'];
+const DOW_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+// ── State ────────────────────────────────────────────────────────────────
+const STATE = {
+  pairing: '1H_5M',
+  profile: 'series_multi',
+  silver: false,
+  smt: false,
+  direction: 'all',
+  session: 'all',
+  tab: 'overview',
+  tradesPage: 0,
+};
+const TRADES_PER_PAGE = 25;
+
+// ── DuckDB-Wasm singleton from shared.js (window.loadParquet + window.query) ─
+async function loadAllViews() {
+  for (const pairing of PAIRINGS) {
+    for (const profile of PROFILES) {
+      const slug = `${pairing}_${profile}`;
+      await window.loadParquet(`data/trades_${slug}.parquet`, viewAlias(pairing, profile));
+    }
+  }
+}
+function viewAlias(pairing, profile) { return `t_${pairing}_${profile}`; }
+function currentView() { return viewAlias(STATE.pairing, STATE.profile); }
+
+function buildWhere() {
+  const conds = [];
+  if (STATE.silver) conds.push('silver = TRUE');
+  if (STATE.smt) conds.push('smt = TRUE');
+  if (STATE.direction !== 'all') conds.push(`direction = '${STATE.direction}'`);
+  if (STATE.session === 'ASIA')   conds.push('(hour >= 18 OR hour < 2)');
+  if (STATE.session === 'LONDON') conds.push('hour BETWEEN 2 AND 7');
+  if (STATE.session === 'NY')     conds.push('hour BETWEEN 8 AND 15');
+  if (STATE.session === 'OTHER')  conds.push('hour BETWEEN 16 AND 17');
+  return conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+}
+
+// ── Formatters ───────────────────────────────────────────────────────────
+const fmtN  = n => Number(n).toLocaleString();
+const fmtPct = n => (+n).toFixed(1) + '%';
+const fmtR  = n => (n >= 0 ? '+' : '') + (+n).toFixed(3) + 'R';
+const fmtPF = n => (+n).toFixed(2);
+const evCls = n => n > 0.005 ? 'pos' : n < -0.005 ? 'neg' : '';
+
+function evHeat(ev) {
+  // Red → transparent → green, clamped at ±0.5R for saturation.
+  const t = Math.max(-1, Math.min(1, (ev || 0) / 0.5));
+  if (t >= 0) return `rgba(34,197,94,${(t * 0.35).toFixed(2)})`;
+  return `rgba(239,68,68,${(-t * 0.35).toFixed(2)})`;
+}
+
+// ── Summary helpers (all queries take the active filter set) ─────────────
+async function summaryStats() {
+  const where = buildWhere();
+  const winExpr = STATE.profile === 'series_multi'
+    ? "CASE WHEN composite_r > 0 THEN 1 ELSE 0 END"
+    : "CASE WHEN hits_10x THEN 1 ELSE 0 END";
+  const sql = `
+    SELECT
+      COUNT(*) AS n,
+      100.0 * AVG(${winExpr}) AS wr,
+      AVG(composite_r) AS ev,
+      SUM(CASE WHEN composite_r > 0 THEN composite_r ELSE 0 END) AS pos,
+      SUM(CASE WHEN composite_r < 0 THEN -composite_r ELSE 0 END) AS neg
+    FROM ${currentView()} ${where}
+  `;
+  const r = (await window.query(sql))[0];
+  const pos = +r.pos || 0;
+  const neg = +r.neg || 0;
+  return {
+    n: +r.n || 0,
+    wr: +r.wr || 0,
+    ev: +r.ev || 0,
+    pf: neg > 0 ? pos / neg : 0,
+  };
+}
+
+async function reachRates() {
+  const where = buildWhere();
+  const sql = `
+    SELECT
+      100.0 * AVG(CASE WHEN hits_05x THEN 1 ELSE 0 END) AS r05,
+      100.0 * AVG(CASE WHEN hits_10x THEN 1 ELSE 0 END) AS r10,
+      100.0 * AVG(CASE WHEN hits_15x THEN 1 ELSE 0 END) AS r15,
+      100.0 * AVG(CASE WHEN hits_20x THEN 1 ELSE 0 END) AS r20
+    FROM ${currentView()} ${where}
+  `;
+  const r = (await window.query(sql))[0];
+  return { '0.5×': +r.r05||0, '1.0×': +r.r10||0, '1.5×': +r.r15||0, '2.0×': +r.r20||0 };
+}
+
+async function bucketStats(bucketExpr, asNum) {
+  const where = buildWhere();
+  const winExpr = STATE.profile === 'series_multi'
+    ? "CASE WHEN composite_r > 0 THEN 1 ELSE 0 END"
+    : "CASE WHEN hits_10x THEN 1 ELSE 0 END";
+  const sql = `
+    SELECT
+      ${bucketExpr} AS bucket,
+      COUNT(*) AS n,
+      100.0 * AVG(${winExpr}) AS wr,
+      AVG(composite_r) AS ev,
+      SUM(CASE WHEN composite_r > 0 THEN composite_r ELSE 0 END) AS pos,
+      SUM(CASE WHEN composite_r < 0 THEN -composite_r ELSE 0 END) AS neg
+    FROM ${currentView()} ${where}
+    GROUP BY bucket ORDER BY bucket
+  `;
+  const rows = await window.query(sql);
+  return rows.map(r => {
+    const pos = +r.pos || 0;
+    const neg = +r.neg || 0;
+    return {
+      bucket: asNum ? +r.bucket : String(r.bucket),
+      n: +r.n,
+      wr: +r.wr || 0,
+      ev: +r.ev || 0,
+      pf: neg > 0 ? pos / neg : 0,
+    };
+  });
+}
+
+// ── Render helpers ───────────────────────────────────────────────────────
+function renderRibbon(s) {
+  const evC = evCls(s.ev);
+  return `
+    <div class="ribbon-cell">
+      <div class="ribbon-label">Trades</div>
+      <div class="ribbon-value">${fmtN(s.n)}</div>
+    </div>
+    <div class="ribbon-cell">
+      <div class="ribbon-label">Win Rate</div>
+      <div class="ribbon-value">${fmtPct(s.wr)}</div>
+      <div class="ribbon-sub">${STATE.profile === 'series_multi' ? 'positive composite_r' : 'hits 1.0× target'}</div>
+    </div>
+    <div class="ribbon-cell">
+      <div class="ribbon-label">EV / trade</div>
+      <div class="ribbon-value ${evC}">${fmtR(s.ev)}</div>
+    </div>
+    <div class="ribbon-cell">
+      <div class="ribbon-label">Profit Factor</div>
+      <div class="ribbon-value">${s.pf > 0 ? fmtPF(s.pf) : '—'}</div>
+    </div>
+  `;
+}
+
+function renderReachBars(rrates) {
+  return Object.entries(rrates).map(([label, pct]) => `
+    <div class="bar-row">
+      <span class="bar-label">${label}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct.toFixed(1)}%"></div></div>
+      <span class="bar-pct">${pct.toFixed(1)}%</span>
+    </div>
+  `).join('');
+}
+
+function renderBucketTable(rows, bucketLabel, opts={}) {
+  if (!rows.length) return `<div class="empty">No trades match the current filters.</div>`;
+  const showPF = opts.showPF !== false;
+  const body = rows.map(r => `
+    <tr ${opts.highlightBest && r === rows[0] ? 'class="row-best"' : ''}>
+      <td>${r.bucket}</td>
+      <td class="num">${fmtN(r.n)}</td>
+      <td class="num">${fmtPct(r.wr)}</td>
+      <td class="num ev-heat" style="background:${evHeat(r.ev)}">${fmtR(r.ev)}</td>
+      ${showPF ? `<td class="num">${r.pf > 0 ? fmtPF(r.pf) : '—'}</td>` : ''}
+    </tr>
+  `).join('');
+  return `<table class="tbl">
+    <thead><tr>
+      <th>${bucketLabel}</th>
+      <th class="num">N</th>
+      <th class="num">WR</th>
+      <th class="num">EV</th>
+      ${showPF ? '<th class="num">PF</th>' : ''}
+    </tr></thead>
+    <tbody>${body}</tbody>
+  </table>`;
+}
+
+// ── Equity curve SVG ─────────────────────────────────────────────────────
+async function renderEquityCurve(target) {
+  const where = buildWhere();
+  const sql = `SELECT composite_r FROM ${currentView()} ${where} ORDER BY entry_ts_ns`;
+  const rows = await window.query(sql);
+  if (!rows.length) { target.innerHTML = `<div class="empty">No trades.</div>`; return; }
+  const cum = []; let r = 0;
+  rows.forEach(row => { r += +row.composite_r; cum.push(r); });
+  const W = 900, H = 200, PAD_L = 50, PAD_R = 20, PAD_Y = 16;
+  const innerW = W - PAD_L - PAD_R, innerH = H - 2*PAD_Y;
+  const minY = Math.min(0, ...cum), maxY = Math.max(0, ...cum);
+  const yRange = (maxY - minY) || 1;
+  const xStep = cum.length > 1 ? innerW / (cum.length - 1) : 0;
+  const yToPx = y => PAD_Y + innerH - ((y - minY) / yRange) * innerH;
+  const points = cum.map((y, i) => `${(PAD_L + i*xStep).toFixed(1)},${yToPx(y).toFixed(1)}`).join(' ');
+  const zeroPx = yToPx(0);
+  const finalR = cum[cum.length - 1];
+  const yLabels = [maxY, (maxY+minY)/2, minY].map(v => ({v, y: yToPx(v)}));
+  target.innerHTML = `<div class="chart-wrap"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:${H}px">
+    ${yLabels.map(yl => `<text x="6" y="${(yl.y+3).toFixed(1)}" font-family="JetBrains Mono,monospace" font-size="10" fill="var(--text-muted)">${yl.v >= 0 ? '+' : ''}${yl.v.toFixed(2)}R</text>`).join('')}
+    <line x1="${PAD_L}" y1="${zeroPx.toFixed(1)}" x2="${W-PAD_R}" y2="${zeroPx.toFixed(1)}" stroke="var(--text-muted)" stroke-dasharray="3,3" stroke-width="1"/>
+    <polyline points="${points}" stroke="var(--accent)" stroke-width="1.5" fill="none"/>
+    <text x="${W-PAD_R-4}" y="16" text-anchor="end" font-family="JetBrains Mono,monospace" font-size="12" fill="var(--text-secondary)">${finalR >= 0 ? '+' : ''}${finalR.toFixed(2)}R total · ${cum.length} trades</text>
+  </svg></div>`;
+}
+
+// ── Drawdown ─────────────────────────────────────────────────────────────
+async function renderDrawdown(target) {
+  const where = buildWhere();
+  const sql = `SELECT composite_r FROM ${currentView()} ${where} ORDER BY entry_ts_ns`;
+  const rows = await window.query(sql);
+  if (!rows.length) { target.innerHTML = `<div class="empty">No trades.</div>`; return; }
+  let eq = 0, peak = 0, maxDd = 0, ddR = 0;
+  const dd = [];
+  rows.forEach(row => {
+    eq += +row.composite_r;
+    if (eq > peak) peak = eq;
+    const d = peak - eq;  // points/R away from peak
+    if (d > maxDd) { maxDd = d; ddR = peak; }
+    dd.push(-d);
+  });
+  const W = 900, H = 150, PAD_L = 50, PAD_R = 20, PAD_Y = 10;
+  const innerW = W - PAD_L - PAD_R, innerH = H - 2*PAD_Y;
+  const minY = Math.min(...dd), maxY = 0;
+  const yRange = Math.abs(minY) || 1;
+  const xStep = dd.length > 1 ? innerW / (dd.length - 1) : 0;
+  const yToPx = y => PAD_Y + (-y / yRange) * innerH;
+  const points = dd.map((y, i) => `${(PAD_L + i*xStep).toFixed(1)},${yToPx(y).toFixed(1)}`).join(' ');
+  target.innerHTML = `<div class="chart-wrap"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:${H}px">
+    <text x="6" y="14" font-family="JetBrains Mono,monospace" font-size="10" fill="var(--text-muted)">0</text>
+    <text x="6" y="${(H-4).toFixed(0)}" font-family="JetBrains Mono,monospace" font-size="10" fill="var(--red)">-${maxDd.toFixed(2)}R</text>
+    <polyline points="${points}" stroke="var(--red)" stroke-width="1.2" fill="var(--red-tint)" fill-opacity="0.5"/>
+    <text x="${W-PAD_R-4}" y="16" text-anchor="end" font-family="JetBrains Mono,monospace" font-size="12" fill="var(--text-secondary)">Max DD: -${maxDd.toFixed(2)}R</text>
+  </svg></div>`;
+}
+
+// ── Outcome distribution (R buckets) ─────────────────────────────────────
+async function renderOutcomeDist(target) {
+  const where = buildWhere();
+  const sql = `
+    SELECT
+      CASE
+        WHEN composite_r <= -1.0 THEN '-1.0R (full SL)'
+        WHEN composite_r < -0.5  THEN '-1.0 .. -0.5R'
+        WHEN composite_r < 0     THEN '-0.5 .. 0R'
+        WHEN composite_r = 0     THEN '0R (BE)'
+        WHEN composite_r <= 0.25 THEN '0 .. 0.25R'
+        WHEN composite_r <= 0.5  THEN '0.25 .. 0.5R'
+        WHEN composite_r <= 0.75 THEN '0.5 .. 0.75R'
+        WHEN composite_r <= 1.0  THEN '0.75 .. 1.0R (full TP)'
+        ELSE '>1.0R'
+      END AS bucket,
+      COUNT(*) AS n
+    FROM ${currentView()} ${where}
+    GROUP BY bucket
+  `;
+  const rows = await window.query(sql);
+  if (!rows.length) { target.innerHTML = `<div class="empty">No trades.</div>`; return; }
+  // Fixed bucket order
+  const order = ['-1.0R (full SL)','-1.0 .. -0.5R','-0.5 .. 0R','0R (BE)','0 .. 0.25R','0.25 .. 0.5R','0.5 .. 0.75R','0.75 .. 1.0R (full TP)','>1.0R'];
+  const byBucket = Object.fromEntries(rows.map(r => [r.bucket, +r.n]));
+  const total = rows.reduce((s, r) => s + +r.n, 0);
+  const max = Math.max(...rows.map(r => +r.n));
+  target.innerHTML = order.map(b => {
+    const n = byBucket[b] || 0;
+    const isNeg = b.includes('-') && !b.startsWith('-0.5');
+    const isFull = b.includes('full SL') || b.includes('full TP');
+    const color = b.includes('-') ? 'var(--red)' : b === '0R (BE)' ? 'var(--text-muted)' : 'var(--green)';
+    const pct = total > 0 ? (100 * n / total) : 0;
+    const w = max > 0 ? (100 * n / max) : 0;
+    return `
+      <div class="bar-row">
+        <span class="bar-label" style="width:140px">${b}</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${w.toFixed(1)}%;background:${color}"></div></div>
+        <span class="bar-pct">${fmtN(n)} (${pct.toFixed(1)}%)</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// ── Heatmap (Hour × DoW EV) ──────────────────────────────────────────────
+async function renderEvHeatmap(target) {
+  const where = buildWhere();
+  const sql = `
+    SELECT hour, dow, COUNT(*) AS n, AVG(composite_r) AS ev
+    FROM ${currentView()} ${where}
+    GROUP BY hour, dow
+  `;
+  const rows = await window.query(sql);
+  const map = {};
+  rows.forEach(r => { map[`${r.hour}_${r.dow}`] = {n: +r.n, ev: +r.ev}; });
+
+  const hours = Array.from({length: 24}, (_, i) => i);
+  const dows = [0,1,2,3,4]; // Mon-Fri only (markets closed weekends)
+
+  let html = `<div class="heatmap-grid" style="grid-template-columns: 70px repeat(24, 1fr)">`;
+  html += `<div class="heat-label"></div>`;
+  hours.forEach(h => { html += `<div class="heat-label">${String(h).padStart(2,'0')}</div>`; });
+
+  dows.forEach(d => {
+    html += `<div class="heat-label" style="text-align:right;padding-right:8px">${DOW_NAMES[d]}</div>`;
+    hours.forEach(h => {
+      const cell = map[`${h}_${d}`];
+      if (!cell) { html += `<div class="heat-cell" style="background:var(--bg-elev-2)"></div>`; }
+      else {
+        html += `<div class="heat-cell" style="background:${evHeat(cell.ev)}" title="${DOW_NAMES[d]} ${String(h).padStart(2,'0')}:00 · N=${cell.n} · EV=${fmtR(cell.ev)}">${cell.n < 5 ? '·' : fmtR(cell.ev).replace('R','')}</div>`;
+      }
+    });
+  });
+  html += `</div>`;
+  html += `<div class="heat-tooltip">Red = negative EV · Green = positive EV · "·" indicates fewer than 5 trades in cell. Hover for details.</div>`;
+  target.innerHTML = html;
+}
+
+// ── Yearly stability ─────────────────────────────────────────────────────
+async function renderYearly(target) {
+  const where = buildWhere();
+  const winExpr = STATE.profile === 'series_multi' ? "CASE WHEN composite_r > 0 THEN 1 ELSE 0 END" : "CASE WHEN hits_10x THEN 1 ELSE 0 END";
+  const sql = `
+    SELECT
+      CAST(EXTRACT(year FROM epoch_ms(CAST(entry_ts_ns / 1000000 AS BIGINT))) AS INT) AS yr,
+      COUNT(*) AS n,
+      100.0 * AVG(${winExpr}) AS wr,
+      AVG(composite_r) AS ev
+    FROM ${currentView()} ${where}
+    GROUP BY yr ORDER BY yr
+  `;
+  const rows = await window.query(sql);
+  if (!rows.length) { target.innerHTML = `<div class="empty">No trades.</div>`; return; }
+  const data = rows.map(r => ({yr: +r.yr, n: +r.n, wr: +r.wr || 0, ev: +r.ev || 0}));
+  const W = 900, H = 200, PAD_L = 50, PAD_R = 20, PAD_Y = 24, PAD_BOT = 30;
+  const innerW = W - PAD_L - PAD_R, innerH = H - PAD_Y - PAD_BOT;
+  const maxAbs = Math.max(0.1, ...data.map(d => Math.abs(d.ev)));
+  const xStep = innerW / data.length;
+  const zeroY = PAD_Y + innerH / 2;
+  const barH = ev => (Math.abs(ev) / maxAbs) * (innerH / 2);
+  let svg = `<div class="chart-wrap"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:${H}px">`;
+  // axis at zero
+  svg += `<line x1="${PAD_L}" y1="${zeroY}" x2="${W-PAD_R}" y2="${zeroY}" stroke="var(--text-muted)" stroke-width="1"/>`;
+  data.forEach((d, i) => {
+    const x = PAD_L + i*xStep + 4;
+    const w = xStep - 8;
+    const h = barH(d.ev);
+    const y = d.ev >= 0 ? zeroY - h : zeroY;
+    const color = d.ev >= 0 ? 'var(--green)' : 'var(--red)';
+    svg += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${color}" fill-opacity="0.7"/>`;
+    svg += `<text x="${(x + w/2).toFixed(1)}" y="${(H-12).toFixed(1)}" font-family="JetBrains Mono,monospace" font-size="10" fill="var(--text-muted)" text-anchor="middle">${d.yr}</text>`;
+    svg += `<text x="${(x + w/2).toFixed(1)}" y="${(d.ev >= 0 ? y - 4 : y + h + 12).toFixed(1)}" font-family="JetBrains Mono,monospace" font-size="10" fill="${color}" text-anchor="middle">${fmtR(d.ev)}</text>`;
+  });
+  svg += `</svg></div>`;
+  target.innerHTML = svg;
+}
+
+// ── Top / bottom conviction setups (hour × dow × direction) ──────────────
+async function renderConvictionSetups(target, isTop) {
+  const where = buildWhere();
+  const winExpr = STATE.profile === 'series_multi' ? "CASE WHEN composite_r > 0 THEN 1 ELSE 0 END" : "CASE WHEN hits_10x THEN 1 ELSE 0 END";
+  const sql = `
+    SELECT
+      hour, dow, direction,
+      COUNT(*) AS n,
+      100.0 * AVG(${winExpr}) AS wr,
+      AVG(composite_r) AS ev
+    FROM ${currentView()} ${where}
+    GROUP BY hour, dow, direction
+    HAVING COUNT(*) >= 10
+    ORDER BY ev ${isTop ? 'DESC' : 'ASC'}
+    LIMIT 10
+  `;
+  const rows = await window.query(sql);
+  if (!rows.length) { target.innerHTML = `<div class="empty">Not enough data — need ≥10 trades per (hour, dow, direction) cell.</div>`; return; }
+  const body = rows.map(r => `
+    <tr>
+      <td>${DOW_NAMES[+r.dow]} ${String(r.hour).padStart(2,'0')}:00 ${r.direction}</td>
+      <td class="num">${fmtN(r.n)}</td>
+      <td class="num">${fmtPct(+r.wr || 0)}</td>
+      <td class="num ev-heat" style="background:${evHeat(+r.ev)}">${fmtR(+r.ev)}</td>
+    </tr>
+  `).join('');
+  target.innerHTML = `<table class="tbl"><thead><tr><th>Setup</th><th class="num">N</th><th class="num">WR</th><th class="num">EV</th></tr></thead><tbody>${body}</tbody></table>`;
+}
+
+// ── Filter combinations (Silver × SMT, 4 combos) ─────────────────────────
+async function renderFilterVariants(target) {
+  const view = currentView();
+  // Build all 4 combos in one query using GROUP BY GROUPING SETS
+  const winExpr = STATE.profile === 'series_multi' ? "CASE WHEN composite_r > 0 THEN 1 ELSE 0 END" : "CASE WHEN hits_10x THEN 1 ELSE 0 END";
+  const baseFilters = [];
+  if (STATE.direction !== 'all') baseFilters.push(`direction = '${STATE.direction}'`);
+  if (STATE.session === 'ASIA')   baseFilters.push('(hour >= 18 OR hour < 2)');
+  if (STATE.session === 'LONDON') baseFilters.push('hour BETWEEN 2 AND 7');
+  if (STATE.session === 'NY')     baseFilters.push('hour BETWEEN 8 AND 15');
+  if (STATE.session === 'OTHER')  baseFilters.push('hour BETWEEN 16 AND 17');
+  const baseWhere = baseFilters.length ? 'WHERE ' + baseFilters.join(' AND ') : '';
+
+  const combos = [
+    {name: 'None',          mask: ``},
+    {name: 'Silver only',   mask: `AND silver = TRUE`},
+    {name: 'SMT only',      mask: `AND smt = TRUE`},
+    {name: 'Silver + SMT',  mask: `AND silver = TRUE AND smt = TRUE`},
+  ];
+  // Note: the AND prefix in mask only works when baseWhere exists; handle both cases.
+  const results = [];
+  for (const c of combos) {
+    const where = baseWhere
+      ? `${baseWhere} ${c.mask}`
+      : (c.mask ? `WHERE ${c.mask.replace(/^AND /, '')}` : '');
+    const sql = `
+      SELECT
+        COUNT(*) AS n,
+        100.0 * AVG(${winExpr}) AS wr,
+        AVG(composite_r) AS ev,
+        SUM(CASE WHEN composite_r > 0 THEN composite_r ELSE 0 END) AS pos,
+        SUM(CASE WHEN composite_r < 0 THEN -composite_r ELSE 0 END) AS neg
+      FROM ${view} ${where}
+    `;
+    const r = (await window.query(sql))[0];
+    const pos = +r.pos || 0, neg = +r.neg || 0;
+    results.push({
+      name: c.name,
+      n: +r.n || 0,
+      wr: +r.wr || 0,
+      ev: +r.ev || 0,
+      pf: neg > 0 ? pos / neg : 0,
+    });
+  }
+  // Sort by EV
+  results.sort((a, b) => b.ev - a.ev);
+  const body = results.map((r, i) => `
+    <tr ${i === 0 ? 'class="row-best"' : ''}>
+      <td><strong>${r.name}</strong>${i === 0 ? ' <span class="stat-pill pos">BEST</span>' : ''}</td>
+      <td class="num">${fmtN(r.n)}</td>
+      <td class="num">${fmtPct(r.wr)}</td>
+      <td class="num ev-heat" style="background:${evHeat(r.ev)}">${fmtR(r.ev)}</td>
+      <td class="num">${r.pf > 0 ? fmtPF(r.pf) : '—'}</td>
+    </tr>
+  `).join('');
+  target.innerHTML = `<table class="tbl">
+    <thead><tr><th>Filter Combination</th><th class="num">N</th><th class="num">WR</th><th class="num">EV</th><th class="num">PF</th></tr></thead>
+    <tbody>${body}</tbody>
+  </table>
+  <div class="heat-tooltip">Direction and Session filters from the sidebar are applied as a base. The 4 rows above show every combination of Silver × SMT layered on top, sorted by EV. Sidebar Silver/SMT toggles are <em>not</em> applied here so you can compare all four objectively.</div>`;
+}
+
+// ── MAE/MFE ──────────────────────────────────────────────────────────────
+async function renderExcursion(target, which) {
+  const where = buildWhere();
+  const field = which === 'MAE' ? 'mae_pts' : 'mfe_pts';
+  const sql = `
+    SELECT
+      MIN(${field}) AS lo,
+      MAX(${field}) AS hi,
+      AVG(${field}) AS mean,
+      QUANTILE_CONT(${field}, 0.50) AS p50,
+      QUANTILE_CONT(${field}, 0.80) AS p80,
+      QUANTILE_CONT(${field}, 0.90) AS p90,
+      QUANTILE_CONT(${field}, 0.95) AS p95
+    FROM ${currentView()} ${where}
+  `;
+  const r = (await window.query(sql))[0];
+  if (!r || r.lo === null) { target.innerHTML = `<div class="empty">No trades.</div>`; return; }
+  target.innerHTML = `<table class="tbl">
+    <thead><tr><th>Stat</th><th class="num">Value (pts)</th></tr></thead>
+    <tbody>
+      <tr><td>Mean</td><td class="num">${(+r.mean).toFixed(2)}</td></tr>
+      <tr><td>Median (p50)</td><td class="num">${(+r.p50).toFixed(2)}</td></tr>
+      <tr><td>p80</td><td class="num">${(+r.p80).toFixed(2)}</td></tr>
+      <tr><td>p90</td><td class="num">${(+r.p90).toFixed(2)}</td></tr>
+      <tr><td>p95</td><td class="num">${(+r.p95).toFixed(2)}</td></tr>
+      <tr><td>Max</td><td class="num">${(+r.hi).toFixed(2)}</td></tr>
+    </tbody>
+  </table>`;
+}
+
+async function renderExcursionNorm(target) {
+  // MAE/MFE as fraction of series_range — regime-normalized
+  const where = buildWhere();
+  const sql = `
+    SELECT
+      AVG(CASE WHEN series_range > 0 THEN mae_pts / series_range END) AS mean_mae,
+      AVG(CASE WHEN series_range > 0 THEN mfe_pts / series_range END) AS mean_mfe,
+      QUANTILE_CONT(CASE WHEN series_range > 0 THEN mae_pts / series_range END, 0.50) AS p50_mae,
+      QUANTILE_CONT(CASE WHEN series_range > 0 THEN mfe_pts / series_range END, 0.50) AS p50_mfe,
+      QUANTILE_CONT(CASE WHEN series_range > 0 THEN mae_pts / series_range END, 0.90) AS p90_mae,
+      QUANTILE_CONT(CASE WHEN series_range > 0 THEN mfe_pts / series_range END, 0.90) AS p90_mfe
+    FROM ${currentView()} ${where}
+  `;
+  const r = (await window.query(sql))[0];
+  if (!r || r.mean_mae === null) { target.innerHTML = `<div class="empty">No trades.</div>`; return; }
+  target.innerHTML = `<table class="tbl">
+    <thead><tr><th>Stat</th><th class="num">MAE / series_range</th><th class="num">MFE / series_range</th></tr></thead>
+    <tbody>
+      <tr><td>Mean</td><td class="num">${(+r.mean_mae).toFixed(3)}</td><td class="num">${(+r.mean_mfe).toFixed(3)}</td></tr>
+      <tr><td>Median</td><td class="num">${(+r.p50_mae).toFixed(3)}</td><td class="num">${(+r.p50_mfe).toFixed(3)}</td></tr>
+      <tr><td>p90</td><td class="num">${(+r.p90_mae).toFixed(3)}</td><td class="num">${(+r.p90_mfe).toFixed(3)}</td></tr>
+    </tbody>
+  </table>
+  <div class="heat-tooltip">Excursion measured as a fraction of the trade's own series_range. Lets you compare across trades regardless of volatility regime.</div>`;
+}
+
+// ── Trades table ─────────────────────────────────────────────────────────
+async function renderTradesTable() {
+  const where = buildWhere();
+  const offset = STATE.tradesPage * TRADES_PER_PAGE;
+  const view = currentView();
+  // Total count
+  const cnt = (await window.query(`SELECT COUNT(*) AS n FROM ${view} ${where}`))[0];
+  const total = +cnt.n;
+  // Page rows
+  const sql = `
+    SELECT
+      entry_ts_ns, direction, hour, dow,
+      composite_r, hits_05x, hits_10x, hits_15x, hits_20x, sl_hit,
+      silver, smt, series_range, mae_pts, mfe_pts, entry_price, sl_price, sweep_extreme
+    FROM ${view} ${where}
+    ORDER BY entry_ts_ns DESC
+    LIMIT ${TRADES_PER_PAGE} OFFSET ${offset}
+  `;
+  const rows = await window.query(sql);
+  const body = rows.map(r => {
+    const ts = new Date(Number(r.entry_ts_ns) / 1000000);
+    const dateStr = ts.toISOString().slice(0, 16).replace('T', ' ');
+    const hitMarks = ['hits_05x','hits_10x','hits_15x','hits_20x'].map(k =>
+      r[k] ? '<span class="pos">●</span>' : '<span style="color:var(--text-faint)">○</span>'
+    ).join(' ');
+    const cR = +r.composite_r;
+    return `
+      <tr>
+        <td>${dateStr}</td>
+        <td>${r.direction}</td>
+        <td class="num">${r.entry_price ? (+r.entry_price).toFixed(2) : '—'}</td>
+        <td class="num">${r.sweep_extreme ? (+r.sweep_extreme).toFixed(2) : '—'}</td>
+        <td class="num">${r.series_range ? (+r.series_range).toFixed(2) : '—'}</td>
+        <td class="num"><span class="${cR > 0 ? 'pos' : cR < 0 ? 'neg' : ''}">${cR === 0 ? '0R' : fmtR(cR)}</span></td>
+        <td>${hitMarks}</td>
+        <td>${r.sl_hit ? '<span class="neg">●</span>' : '<span style="color:var(--text-faint)">○</span>'}</td>
+        <td>${r.silver ? '<span class="stat-pill neutral">Silver</span>' : ''} ${r.smt ? '<span class="stat-pill neutral">SMT</span>' : ''}</td>
+      </tr>
+    `;
+  }).join('');
+  document.getElementById('trades-table').innerHTML = `<table class="tbl">
+    <thead><tr>
+      <th>Entry (UTC)</th><th>Dir</th><th class="num">Entry</th><th class="num">Sweep</th><th class="num">Range</th>
+      <th class="num">composite_r</th><th title="0.5x 1.0x 1.5x 2.0x">TPs</th><th>SL</th><th>Flags</th>
+    </tr></thead>
+    <tbody>${body}</tbody>
+  </table>
+  <div class="heat-tooltip" style="margin-top:8px">● = filled · ○ = not reached. TPs column shows 0.5× / 1.0× / 1.5× / 2.0× partial-exit hits.</div>`;
+  const totalPages = Math.ceil(total / TRADES_PER_PAGE);
+  document.getElementById('trades-pagination').innerHTML = `
+    <button class="page-btn" id="prev-page" ${STATE.tradesPage === 0 ? 'disabled' : ''}>← Prev</button>
+    <span class="page-info">Page ${STATE.tradesPage + 1} of ${Math.max(1, totalPages)} · ${fmtN(total)} trades total</span>
+    <button class="page-btn" id="next-page" ${STATE.tradesPage >= totalPages - 1 ? 'disabled' : ''}>Next →</button>
+  `;
+  document.getElementById('prev-page')?.addEventListener('click', () => { if (STATE.tradesPage > 0) { STATE.tradesPage--; renderTradesTable(); } });
+  document.getElementById('next-page')?.addEventListener('click', () => { STATE.tradesPage++; renderTradesTable(); });
+}
+
+// ── Compare all 3 pairings (overview) ────────────────────────────────────
+async function renderCompareAll(target) {
+  const where = buildWhere();
+  const winExpr = STATE.profile === 'series_multi' ? "CASE WHEN composite_r > 0 THEN 1 ELSE 0 END" : "CASE WHEN hits_10x THEN 1 ELSE 0 END";
+  const panels = await Promise.all(PAIRINGS.map(async p => {
+    const v = viewAlias(p, STATE.profile);
+    const sql = `
+      SELECT
+        COUNT(*) AS n,
+        100.0 * AVG(${winExpr}) AS wr,
+        AVG(composite_r) AS ev,
+        SUM(CASE WHEN composite_r > 0 THEN composite_r ELSE 0 END) AS pos,
+        SUM(CASE WHEN composite_r < 0 THEN -composite_r ELSE 0 END) AS neg
+      FROM ${v} ${where}
+    `;
+    const r = (await window.query(sql))[0];
+    const pos = +r.pos || 0, neg = +r.neg || 0;
+    return { pairing: p, n: +r.n || 0, wr: +r.wr || 0, ev: +r.ev || 0, pf: neg > 0 ? pos / neg : 0 };
+  }));
+  target.innerHTML = panels.map(p => `
+    <div class="card">
+      <div class="card-title">${p.pairing}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><div class="ribbon-label">Trades</div><div style="font-family:var(--font-data);font-size:18px;font-weight:600">${fmtN(p.n)}</div></div>
+        <div><div class="ribbon-label">WR</div><div style="font-family:var(--font-data);font-size:18px;font-weight:600">${fmtPct(p.wr)}</div></div>
+        <div><div class="ribbon-label">EV</div><div style="font-family:var(--font-data);font-size:18px;font-weight:600" class="${evCls(p.ev)}">${fmtR(p.ev)}</div></div>
+        <div><div class="ribbon-label">PF</div><div style="font-family:var(--font-data);font-size:18px;font-weight:600">${p.pf > 0 ? fmtPF(p.pf) : '—'}</div></div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── Filter summary chip strip ────────────────────────────────────────────
+function renderFilterSummary() {
+  const chips = [];
+  chips.push(`<span class="chip-active">Pairing: ${STATE.pairing}</span>`);
+  chips.push(`<span class="chip-active">${STATE.profile}</span>`);
+  if (STATE.silver) chips.push(`<span class="chip-active">Silver</span>`);
+  if (STATE.smt) chips.push(`<span class="chip-active">SMT</span>`);
+  if (STATE.direction !== 'all') chips.push(`<span class="chip-active">${STATE.direction}</span>`);
+  if (STATE.session !== 'all') chips.push(`<span class="chip-active">Session: ${STATE.session}</span>`);
+  document.getElementById('filter-summary-bar').innerHTML = chips.join('');
+}
+
+// ── Tab + render orchestration ───────────────────────────────────────────
+async function renderActive() {
+  renderFilterSummary();
+  const tab = STATE.tab;
+  // Clear any stale error banners from a prior failed render.
+  document.querySelectorAll('.page-pane .error').forEach(el => el.remove());
+  try {
+    if (tab === 'overview') {
+      const s = await summaryStats();
+      document.getElementById('overview-ribbon').innerHTML = renderRibbon(s);
+
+      const rr = await reachRates();
+      document.getElementById('overview-reach').innerHTML = renderReachBars(rr);
+
+      const dirRows = await bucketStats('direction', false);
+      document.getElementById('overview-direction').innerHTML = renderBucketTable(dirRows, 'Direction');
+
+      await renderCompareAll(document.getElementById('overview-compare'));
+    }
+    else if (tab === 'edge') {
+      const dirRows = await bucketStats('direction', false);
+      document.getElementById('edge-direction').innerHTML = renderBucketTable(dirRows, 'Direction');
+
+      await renderYearly(document.getElementById('edge-yearly'));
+      await renderEvHeatmap(document.getElementById('edge-heatmap'));
+
+      const sessExpr = `CASE WHEN hour >= 18 OR hour < 2 THEN 'ASIA' WHEN hour BETWEEN 2 AND 7 THEN 'LONDON' WHEN hour BETWEEN 8 AND 15 THEN 'NY' ELSE 'OTHER' END`;
+      const sessRows = await bucketStats(sessExpr, false);
+      document.getElementById('edge-session').innerHTML = renderBucketTable(sessRows, 'Session');
+
+      const dowRows = (await bucketStats('dow', true)).map(r => ({...r, bucket: DOW_NAMES[r.bucket]}));
+      document.getElementById('edge-dow').innerHTML = renderBucketTable(dowRows, 'Day');
+
+      await renderConvictionSetups(document.getElementById('edge-top'), true);
+      await renderConvictionSetups(document.getElementById('edge-bottom'), false);
+    }
+    else if (tab === 'risk') {
+      await renderOutcomeDist(document.getElementById('risk-dist'));
+      await renderEquityCurve(document.getElementById('risk-equity'));
+      await renderDrawdown(document.getElementById('risk-dd'));
+    }
+    else if (tab === 'excursion') {
+      await renderExcursion(document.getElementById('excursion-mae'), 'MAE');
+      await renderExcursion(document.getElementById('excursion-mfe'), 'MFE');
+      await renderExcursionNorm(document.getElementById('excursion-norm'));
+    }
+    else if (tab === 'filters') {
+      await renderFilterVariants(document.getElementById('filter-variants'));
+    }
+    else if (tab === 'trades') {
+      await renderTradesTable();
+    }
+  } catch (e) {
+    console.error(e);
+    // Find the active pane and show error
+    const pane = document.querySelector('.page-pane.active');
+    if (pane) pane.querySelector('.card, .loading')?.insertAdjacentHTML('beforebegin', `<div class="error">Render error: ${e.message}</div>`);
+  }
+}
+
+// ── Wire-up ──────────────────────────────────────────────────────────────
+function bindUI() {
+  document.getElementById('pairing-select').addEventListener('change', e => { STATE.pairing = e.target.value; STATE.tradesPage = 0; renderActive(); });
+  document.getElementById('profile-select').addEventListener('change', e => { STATE.profile = e.target.value; STATE.tradesPage = 0; renderActive(); });
+  document.getElementById('silver-checkbox').addEventListener('change', e => { STATE.silver = e.target.checked; STATE.tradesPage = 0; renderActive(); });
+  document.getElementById('smt-checkbox').addEventListener('change', e => { STATE.smt = e.target.checked; STATE.tradesPage = 0; renderActive(); });
+  document.getElementById('direction-select').addEventListener('change', e => { STATE.direction = e.target.value; STATE.tradesPage = 0; renderActive(); });
+  document.getElementById('session-select').addEventListener('change', e => { STATE.session = e.target.value; STATE.tradesPage = 0; renderActive(); });
+
+  document.querySelectorAll('#nav-tabs .sb-nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#nav-tabs .sb-nav-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const tab = btn.dataset.tab;
+      STATE.tab = tab;
+      document.querySelectorAll('.page-pane').forEach(p => p.classList.remove('active'));
+      document.getElementById(`pane-${tab}`).classList.add('active');
+      renderActive();
+    });
+  });
+}
+
+async function init() {
+  try {
+    if (typeof window.loadParquet !== 'function' || typeof window.query !== 'function') {
+      throw new Error('shared.js helpers (loadParquet/query) not loaded — check that ../Analysis/dashboard/shared.js is reachable.');
+    }
+    await loadAllViews();
+    bindUI();
+    renderActive();
+  } catch (e) {
+    document.querySelector('.main').innerHTML = `<div class="error">Failed to load parquet views: ${e.message}<br><br>Make sure you're serving from the Statistic.ally root and the engine has been run.</div>`;
+    console.error(e);
+  }
+}
+
+// Wait for DOMContentLoaded so the deferred shared.js has finished executing
+// and window.loadParquet / window.query are defined.
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+
+</body>
+</html>

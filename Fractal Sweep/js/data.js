@@ -1,4 +1,4 @@
-import { isDemo, activeModel, activeMode, activeCisd, activeProfile, activeTF, MODEL_KEYS, MODEL_LABELS, RR_PROFILES, PROFILE_LABELS, PCT_PROFILES, DASHBOARD_SCHEMA_VERSION, activeSmt, activeF3, activeF4, setIsDemo, setActiveModel, setActiveMode, setActiveCisd, setActiveProfile } from './state.js';
+import { isDemo, activeModel, activeMode, activeCisd, activeProfile, activeTF, MODEL_KEYS, MODEL_LABELS, RR_PROFILES, PROFILE_LABELS, PCT_PROFILES, DASHBOARD_SCHEMA_VERSION, activeSmt, activeF3, activeF4, activeP42, activePd, setIsDemo, setActiveModel, setActiveMode, setActiveCisd, setActiveProfile } from './state.js';
 function makeDemoModel(key, label, mode, cisd, wrBase, evBase, pfBase, riskMed, spd){
   const fi=[
     {label:'Baseline (unfiltered)',n:Math.round(6200*(riskMed/18)),wr:wrBase-0.07,ev:evBase-0.22,pf:pfBase-0.58,removed:0},
@@ -186,7 +186,7 @@ function getActiveTFData(fullProfileData){
 //
 // F3 defaults CHECKED (active) — it's the baseline quality filter.
 function getFilteredD(D) {
-  const anyActive = activeSmt || activeF3 || activeF4;
+  const anyActive = activeSmt || activeF3 || activeF4 || activeP42 || activePd;
   if (!anyActive) return D;
   const rawTrades = D?.recent_trades;
   if (!rawTrades || !rawTrades.length) return D;
@@ -194,6 +194,8 @@ function getFilteredD(D) {
   if (activeSmt) trades = trades.filter(t => t.smt === true);
   if (activeF3)  trades = trades.filter(t => t.passes_f3 === true);
   if (activeF4)  trades = trades.filter(t => t.passes_f4 === true);
+  if (activeP42) trades = trades.filter(t => t.passes_p42 === true);
+  if (activePd)  trades = trades.filter(t => t.passes_pd_cisd === true);
   if (!trades.length) return D;
 
   const wins = trades.filter(t => t.outcome === 'WIN');

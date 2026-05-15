@@ -17,7 +17,89 @@ import mindyourbuisness/CustomAlertLib/3 as CAL
 alertFormat = input.text_area('{"ticker":"{ticker}", "interval":"{interval}", "alert":"{default}"}', "Custom alert message format", group="Alert Settings")
 
 
-TEMPLATE_COLOR = input.color(color.black, "Template Color", group="HTF Candle")
+// ── 🎨 PALETTE — keep in sync with palette-block reference ────────────────────
+// Source of truth: docs/superpowers/specs/2026-05-06-unified-pine-palette-block.pine
+// When that file changes, copy verbatim into the block below.
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 🎨 CANONICAL PALETTE BLOCK                                                ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+G_THEME = "🎨 Theme"
+gTheme = input.string("Auto", "Theme",
+                      options=["Auto", "Dark", "Light"],
+                      group=G_THEME,
+                      tooltip="Auto reads chart bg brightness; Dark/Light forces the palette.")
+
+// All palette state assigned ONCE on the first bar via barstate.isfirst gate.
+// `chart.bg_color` is a series, so reading it makes downstream colors series-
+// typed and grows historical-buffer requirements on every live bar. The
+// barstate.isfirst gate confines the read to a single bar.
+var bool _AUTO_IS_LIGHT = false
+var bool IS_LIGHT_MODE  = false
+var color P_LONG_BASE   = #34d399
+var color P_SHORT_BASE  = #f87171
+var color P_WARN_BASE   = #fbbf24
+var color P_INFO_BASE   = #38bdf8
+var color P_ACCENT_BASE = #a78bfa
+var color P_STRUCT_BASE = #cbd5e1
+var color P_INK         = #f1f5f9
+var color P_SURFACE     = #334155
+var color P_ON_SURFACE  = #f1f5f9
+
+if barstate.isfirst
+    _AUTO_IS_LIGHT := (color.r(chart.bg_color) + color.g(chart.bg_color) + color.b(chart.bg_color)) / 3.0 > 127
+    IS_LIGHT_MODE  := gTheme == "Light" or (gTheme == "Auto" and _AUTO_IS_LIGHT)
+    P_LONG_BASE    := IS_LIGHT_MODE ? #047857 : #34d399
+    P_SHORT_BASE   := IS_LIGHT_MODE ? #b91c1c : #f87171
+    P_WARN_BASE    := IS_LIGHT_MODE ? #b45309 : #fbbf24
+    P_INFO_BASE    := IS_LIGHT_MODE ? #0369a1 : #38bdf8
+    P_ACCENT_BASE  := IS_LIGHT_MODE ? #6d28d9 : #a78bfa
+    P_STRUCT_BASE  := IS_LIGHT_MODE ? #475569 : #cbd5e1
+    P_INK          := IS_LIGHT_MODE ? #0f172a : #f1f5f9
+
+tier_ink(color c)     => color.new(c, 0)
+tier_strong(color c)  => color.new(c, 25)
+tier_mid(color c)     => color.new(c, 60)
+tier_soft(color c)    => color.new(c, 85)
+tier_whisper(color c) => color.new(c, 95)
+
+pal_long_ink()       => tier_ink(P_LONG_BASE)
+pal_long_strong()    => tier_strong(P_LONG_BASE)
+pal_long_mid()       => tier_mid(P_LONG_BASE)
+pal_long_soft()      => tier_soft(P_LONG_BASE)
+pal_long_whisper()   => tier_whisper(P_LONG_BASE)
+pal_short_ink()      => tier_ink(P_SHORT_BASE)
+pal_short_strong()   => tier_strong(P_SHORT_BASE)
+pal_short_mid()      => tier_mid(P_SHORT_BASE)
+pal_short_soft()     => tier_soft(P_SHORT_BASE)
+pal_short_whisper()  => tier_whisper(P_SHORT_BASE)
+pal_warn_ink()       => tier_ink(P_WARN_BASE)
+pal_warn_strong()    => tier_strong(P_WARN_BASE)
+pal_warn_mid()       => tier_mid(P_WARN_BASE)
+pal_warn_soft()      => tier_soft(P_WARN_BASE)
+pal_warn_whisper()   => tier_whisper(P_WARN_BASE)
+pal_info_ink()       => tier_ink(P_INFO_BASE)
+pal_info_strong()    => tier_strong(P_INFO_BASE)
+pal_info_mid()       => tier_mid(P_INFO_BASE)
+pal_info_soft()      => tier_soft(P_INFO_BASE)
+pal_info_whisper()   => tier_whisper(P_INFO_BASE)
+pal_accent_ink()     => tier_ink(P_ACCENT_BASE)
+pal_accent_strong()  => tier_strong(P_ACCENT_BASE)
+pal_accent_mid()     => tier_mid(P_ACCENT_BASE)
+pal_accent_soft()    => tier_soft(P_ACCENT_BASE)
+pal_accent_whisper() => tier_whisper(P_ACCENT_BASE)
+pal_struct_ink()     => tier_ink(P_STRUCT_BASE)
+pal_struct_strong()  => tier_strong(P_STRUCT_BASE)
+pal_struct_mid()     => tier_mid(P_STRUCT_BASE)
+pal_struct_soft()    => tier_soft(P_STRUCT_BASE)
+pal_struct_whisper() => tier_whisper(P_STRUCT_BASE)
+pal_ink()            => P_INK
+pal_surface()        => P_SURFACE
+pal_surface_strong() => tier_strong(P_SURFACE)
+pal_surface_soft()   => tier_soft(P_SURFACE)
+pal_on_surface()     => P_ON_SURFACE
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+TEMPLATE_COLOR = pal_ink()
 // Line Styles
 var string LINE_STYLE_SOLID = line.style_solid
 var string LINE_STYLE_DASHED = line.style_dashed
@@ -230,12 +312,12 @@ htf6.settings.show          := false
 
 settings.max_sets           := 1
 
-settings.bull_body       := input.color(color.new(#8ABF91, 10), "Body  ", inline="body", group="HTF Candle")
-settings.bear_body       := input.color(color.new(#E08C89, 10), "", inline="body", group="HTF Candle")
-settings.bull_border     := input.color(color.new(#8ABF91, 10), "Borders", inline="borders", group="HTF Candle")
-settings.bear_border     := input.color(color.new(#E08C89, 10), "", inline="borders", group="HTF Candle")
-settings.bull_wick       := input.color(color.new(#8ABF91, 10), "Wick  ", inline="wick", group="HTF Candle")
-settings.bear_wick       := input.color(color.new(#E08C89, 10), "", inline="wick", group="HTF Candle")
+settings.bull_body       := pal_long_strong()
+settings.bear_body       := pal_short_strong()
+settings.bull_border     := pal_long_mid()
+settings.bear_border     := pal_short_mid()
+settings.bull_wick       := pal_long_mid()
+settings.bear_wick       := pal_short_mid()
 
 settings.offset          := input.int(20, "padding from current candles", minval = 1, group="HTF Candle")
 settings.buffer          := input.int(1, "space between candles", minval = 1, maxval = 4, group="HTF Candle")
@@ -243,51 +325,54 @@ settings.htf_buffer      := input.int(5, "space between Higher Timeframes", minv
 settings.width           := input.int(1, "Candle Width", minval = 1, maxval = 4, group="HTF Candle")*2
 
 settings.htf_label_show  := input.bool(true, "HTF Label           ", inline="HTFlabel", group="HTF Candle")
-settings.htf_label_color := input.color(color.black, "", inline='HTFlabel', group="HTF Candle")
+settings.htf_label_color := pal_ink()
 settings.htf_label_size  := input.string(SIZE_NORMAL, "", [SIZE_TINY, SIZE_SMALL, SIZE_NORMAL, SIZE_LARGE, SIZE_HUGE], inline="HTFlabel", group="HTF Candle")
 
 settings.htf_timer_show  := input.bool(true, "Remaining time      ", inline="timer", group="HTF Candle")
-settings.htf_timer_color := input.color(color.black, "", inline='timer', group="HTF Candle")
+settings.htf_timer_color := pal_ink()
 settings.htf_timer_size  := input.string(SIZE_NORMAL, "", [SIZE_TINY, SIZE_SMALL, SIZE_NORMAL, SIZE_LARGE, SIZE_HUGE], inline="timer", group="HTF Candle")
 
 // Table display settings
 show_table = input.bool(true, "Show Info Table", group="HTF Candle")
 table_position = input.string("Top Right", "Table Position", options=["Top Left", "Top Center", "Top Right", "Middle Left", "Middle Center", "Middle Right", "Bottom Left", "Bottom Center", "Bottom Right"], group="HTF Candle")
-table_bg_color = input.color(color.new(color.gray, 100), "Table Background", group="HTF Candle")
-table_border_color = input.color(color.black, "Table Border", group="HTF Candle")
-table_text_color = input.color(color.black, "Table Text", group="HTF Candle")
+table_bg_color = pal_surface()
+// Solid border/frame so they're actually visible on the dark surface bg
+// (pal_struct_strong / pal_struct_mid are 25%/60% transparent and read as
+// near-invisible stripes against pal_surface).
+table_border_color = color.new(pal_on_surface(), 70)
+table_text_color = pal_on_surface()
 table_size = input.string(SIZE_SMALL, "Table Text Size", options=[SIZE_TINY, SIZE_SMALL, SIZE_NORMAL, SIZE_LARGE, SIZE_HUGE], group="HTF Candle")
 table_border_width = input.int(1, "Table Border Width", minval=0, maxval=5, group="HTF Candle")
-table_frame_color = input.color(color.black, "Table Frame Color", group="HTF Candle")
+table_frame_color = color.new(pal_on_surface(), 40)
 table_frame_width = input.int(1, "Table Frame Width", minval=0, maxval=5, group="HTF Candle")
 
 settings.fvg_show        := input.bool(true, "Fair Value Gap   ", inline="fvg", group="HTF Candle")
-settings.fvg_color       := input.color(color.new(color.gray, 80), "", inline='fvg', group="HTF Candle")
+settings.fvg_color       := pal_struct_soft()
 
 settings.vi_show         := input.bool(true, "Volume Imbalance", inline="vi", group="HTF Candle")
-settings.vi_color        := input.color(color.new(color.orange, 50), "", inline='vi', group="HTF Candle")
+settings.vi_color        := pal_warn_mid()
 
 settings.trace_show      := input.bool(false, "Trace lines", group="HTF Candle")
-settings.trace_o_color   := input.color(color.new(color.gray, 50), "Open    ", inline='1', group="HTF Candle")
+settings.trace_o_color   := pal_struct_mid()
 settings.trace_o_style   := input.string(LINE_STYLE_DOTTED, '', options = [LINE_STYLE_SOLID, LINE_STYLE_DASHED, LINE_STYLE_DOTTED], inline='1', group="HTF Candle")
 settings.trace_o_size    := input.int(1, '', options = [1,2,3,4], inline='1', group="HTF Candle")
-settings.trace_c_color   := input.color(color.new(color.gray, 50), "Close    ", inline='2', group="HTF Candle")
+settings.trace_c_color   := pal_struct_mid()
 settings.trace_c_style   := input.string(LINE_STYLE_DOTTED, '', options = [LINE_STYLE_SOLID, LINE_STYLE_DASHED, LINE_STYLE_DOTTED], inline='2', group="HTF Candle")
 settings.trace_c_size    := input.int(1, '', options = [1,2,3,4], inline='2', group="HTF Candle")
-settings.trace_h_color   := input.color(color.new(color.gray, 50), "High     ", inline='3', group="HTF Candle")
+settings.trace_h_color   := pal_struct_mid()
 settings.trace_h_style   := input.string(LINE_STYLE_DOTTED, '', options = [LINE_STYLE_SOLID, LINE_STYLE_DASHED, LINE_STYLE_DOTTED], inline='3', group="HTF Candle")
 settings.trace_h_size    := input.int(1, '', options = [1,2,3,4], inline='3', group="HTF Candle")
-settings.trace_l_color   := input.color(color.new(color.gray, 50), "Low     ", inline='4', group="HTF Candle")
+settings.trace_l_color   := pal_struct_mid()
 settings.trace_l_style   := input.string(LINE_STYLE_DOTTED, '', options = [LINE_STYLE_SOLID, LINE_STYLE_DASHED, LINE_STYLE_DOTTED], inline='4', group="HTF Candle")
 settings.trace_l_size    := input.int(1, '', options = [1,2,3,4], inline='4', group="HTF Candle")
 settings.trace_anchor    := input.string("First Timeframe", "Anchor to", options=["First Timeframe", "Last Timeframe"], group="HTF Candle")
 
 settings.label_show      := input.bool(false, "Price Label           ", inline="label", group="HTF Candle")
-settings.label_color     := input.color(color.new(#eaeaea, 10), "", inline='label', group="HTF Candle")
+settings.label_color     := pal_surface()
 settings.label_size      := input.string(size.small, "", [size.tiny, size.small, size.normal, size.large, size.huge], inline="label", group="HTF Candle")
 
 settings.htf_line_show   := input.bool(true, "HTF Start Line    ", inline="htfline", group="HTF Candle")
-settings.htf_line_color  := input.color(color.black, "", inline="htfline", group="HTF Candle")
+settings.htf_line_color  := pal_ink()
 settings.htf_line_width  := input.int(1, "", options=[1,2,3], inline="htfline", group="HTF Candle")
 settings.htf_line_style  := input.string(LINE_STYLE_DOTTED, "", options=[LINE_STYLE_SOLID, LINE_STYLE_DASHED, LINE_STYLE_DOTTED], inline="htfline", group="HTF Candle")
 settings.show_chart_sweeps := input.bool(true, "Show Chart Sweeps", inline="sweeps", group="HTF Candle")
@@ -296,7 +381,7 @@ extend_latest_tspot = input.bool(true, "Extend Latest T-Spot to Current Bar", in
 show_only_latest_tspot = input.bool(true, "Show Only Latest T-Spot", inline="tspot2", group="HTF Candle")
 show_only_latest_sweep = input.bool(false, "Show Only Latest Sweep", inline="tspot2", group="HTF Candle")
 show_tspot_sweeps = input.bool(true, "Show T-Spot Sweeps", inline="tspot_sweeps", group="HTF Candle")
-tspot_sweep_label_color = input.color(color.white, "| Sweep Label Color", inline="tspot_sweeps", group="HTF Candle")
+tspot_sweep_label_color = pal_ink()
 tspot_sweep_label_size = input.string(SIZE_NORMAL, "Label Size", options=[SIZE_TINY, SIZE_SMALL, SIZE_NORMAL, SIZE_LARGE, SIZE_HUGE ], inline="tspot_sweeps", group="HTF Candle")
 show_confirmation_lines = input.bool(true, "Show Confirmation Lines", inline="tspot_sweeps", group="HTF Candle")
 usebody_for_confirmation = input.bool(true, "Use Body for Confirmation", inline="tspot_sweeps", group="HTF Candle")
@@ -308,10 +393,10 @@ show_tspot_close_line = input.bool(true, "Show T-Spot Close Line", inline="tspot
 
 // CISD and Projections Settings
 show_cisd = input.bool(true, "Show CISD Lines", group="CISD & Projections")
-cisd_color = input.color(color.yellow, "CISD Line Color", group="CISD & Projections")
+cisd_color = pal_info_ink()
 cisd_width = input.int(2, "CISD Line Width", minval=1, maxval=5, group="CISD & Projections")
 show_projections = input.bool(true, "Show Projections", group="CISD & Projections")
-projection_color = input.color(color.gray, "Projection Color", group="CISD & Projections")
+projection_color = pal_struct_mid()
 projection_levels = input.string("0.5,1.0,1.5,2.0", "Projection Levels (comma-separated)", group="CISD & Projections")
 extend_latest_projections = input.bool(true, "Extend Latest Projections to Current Bar", group="CISD & Projections")
 projection_label_size = input.string(SIZE_TINY, "Projection Label Size", options=[SIZE_TINY, SIZE_SMALL, SIZE_NORMAL, SIZE_LARGE, SIZE_HUGE], group="CISD & Projections")

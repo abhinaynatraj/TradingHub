@@ -84,7 +84,8 @@ def _m1(scenario_bars):
     )
 
 
-def _filter_df(n=200, wr=0.55, f3_rate=0.5, f4_rate=0.6, smt_rate=0.3, seed=0):
+def _filter_df(n=200, wr=0.55, f3_rate=0.5, f4_rate=0.6, smt_rate=0.3,
+               p42_rate=0.5, pd_rate=0.5, seed=0):
     """Build a realistic-ish trade DataFrame for filter variant tests."""
     rng = np.random.RandomState(seed)
     outcomes = rng.choice(['WIN', 'LOSS'], n, p=[wr, 1 - wr])
@@ -97,6 +98,8 @@ def _filter_df(n=200, wr=0.55, f3_rate=0.5, f4_rate=0.6, smt_rate=0.3, seed=0):
         'passes_f3':   rng.choice([True, False], n, p=[f3_rate, 1 - f3_rate]),
         'passes_f4':   rng.choice([True, False], n, p=[f4_rate, 1 - f4_rate]),
         'smt':         rng.choice([True, False], n, p=[smt_rate, 1 - smt_rate]),
+        'passes_p42':  rng.choice([True, False], n, p=[p42_rate, 1 - p42_rate]),
+        'passes_pd_cisd': rng.choice([True, False], n, p=[pd_rate, 1 - pd_rate]),
     })
 
 
@@ -521,19 +524,19 @@ class TestInvalidRiskBoundaries:
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestFilterVariantEnumeration:
-    """compute_filter_variants must produce exactly 2^3 = 8 combinations."""
+    """compute_filter_variants must produce exactly 2^5 = 32 combinations."""
 
     def test_all_combinations_count(self):
         df = _filter_df()
         result = ms.compute_filter_variants(df)
-        assert len(result['all_combinations']) == 8, (
-            f"Expected 8 combinations (2^3), got {len(result['all_combinations'])}"
+        assert len(result['all_combinations']) == 32, (
+            f"Expected 32 combinations (2^5), got {len(result['all_combinations'])}"
         )
 
     def test_all_filter_subsets_present(self):
-        """Every subset of {F3, F4, SMT} must appear exactly once."""
+        """Every subset of {F3, F4, SMT, P42, PD} must appear exactly once."""
         from itertools import combinations as _combos
-        FILTERS = ['F3', 'F4', 'SMT']
+        FILTERS = ['F3', 'F4', 'SMT', 'P42', 'PD']
         expected_sets = set()
         for r in range(len(FILTERS) + 1):
             for c in _combos(FILTERS, r):

@@ -1,4 +1,4 @@
-import { activeModel, activeTF, activeSmt, activeF3, activeF4, activeProfile, activeMode, activeCisd, FILTER_STORAGE_KEY, SVG_FONT, isDark, setActiveSmt, setActiveF3, setActiveF4 } from './state.js';
+import { activeModel, activeTF, activeSmt, activeF3, activeF4, activeP42, activePd, activeProfile, activeMode, activeCisd, FILTER_STORAGE_KEY, SVG_FONT, isDark, setActiveSmt, setActiveF3, setActiveF4, setActiveP42, setActivePd } from './state.js';
 import { C, lineChart, drawSetupViz, _drawMAEProbCurve, _drawMFEProbCurve, _drawExcursionHeatmap } from './charts.js';
 import { pct, evFmt, pfFmt, evCls, fmtDateRange, _tradingDaysFromRange, showTip, hideTip, csvEscape, triggerCSVDownload } from './utils.js';
 import { getProfileData, getActiveTFData, getFilteredD } from './data.js';
@@ -28,11 +28,13 @@ function getSmtFilteredTrades(trades) {
   if (activeSmt) out = out.filter(t => t.smt === true);
   if (activeF3)  out = out.filter(t => t.passes_f3 === true);
   if (activeF4)  out = out.filter(t => t.passes_f4 === true);
+  if (activeP42) out = out.filter(t => t.passes_p42 === true);
+  if (activePd)  out = out.filter(t => t.passes_pd_cisd === true);
   return out;
 }
 
 function hasNonBaselineFilters() {
-  return activeSmt || activeF3 || activeF4;
+  return activeSmt || activeF3 || activeF4 || activeP42 || activePd;
 }
 
 function switchSMT(checked) {
@@ -57,20 +59,42 @@ function switchF4(checked) {
   _tradesPage = 0;
   renderActive();
 }
+
+function switchP42(checked) {
+  setActiveP42(!!checked);
+  _saveFilters();
+  _tradesPage = 0;
+  renderActive();
+}
+
+function switchPD(checked) {
+  setActivePd(!!checked);
+  _saveFilters();
+  _tradesPage = 0;
+  renderActive();
+}
+
 function _saveFilters() {
-  localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({smt: activeSmt, f3: activeF3, f4: activeF4}));
+  localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
+    smt: activeSmt, f3: activeF3, f4: activeF4, p42: activeP42, pd: activePd
+  }));
 }
 function _restoreFilters() {
   try {
     const s = JSON.parse(localStorage.getItem(FILTER_STORAGE_KEY) || '{}');
     setActiveSmt(!!s.smt); setActiveF3(!!s.f3); setActiveF4(!!s.f4);
+    setActiveP42(!!s.p42); setActivePd(!!s.pd);
   } catch(e) { /* ignore corrupt storage */ }
   const smtEl = document.getElementById('smt-checkbox');
   const f3El  = document.getElementById('f3-checkbox');
   const f4El  = document.getElementById('f4-checkbox');
+  const p42El = document.getElementById('p42-checkbox');
+  const pdEl  = document.getElementById('pd-checkbox');
   if(smtEl) smtEl.checked = activeSmt;
   if(f3El)  f3El.checked  = activeF3;
   if(f4El)  f4El.checked  = activeF4;
+  if(p42El) p42El.checked = activeP42;
+  if(pdEl)  pdEl.checked  = activePd;
 }
 function renderRangeSlots(){
   const container = document.getElementById('range-slots');
@@ -184,16 +208,6 @@ function computeRangeStats(trades){
   }
   const maxDDPct = Math.round(maxDD * 10000) / 100;
 
-  // By class
-  const byClass = {};
-  trades.forEach(t => {
-    const cls = t.classification || 'Unclassified';
-    if(!byClass[cls]) byClass[cls] = {n:0, wins:0};
-    byClass[cls].n++;
-    if(t.outcome === 'WIN') byClass[cls].wins++;
-  });
-  Object.values(byClass).forEach(c => { c.wr = c.n > 0 ? c.wins / c.n : 0; });
-
   // By hour
   const byHour = {};
   for(let h = 7; h <= 16; h++) byHour[h] = {n:0, wins:0, wr:0};
@@ -283,7 +297,7 @@ function computeRangeStats(trades){
   return {
     n, nWins, nLosses, wr, ev_r: Math.round(ev_r*1000)/1000, pf: Math.round(pf*1000)/1000,
     ce: Math.round(ce*1000)/1000, mcl, mcw, maxDDPct, totalPnl: Math.round(totalPnl), sharpe, blown, minEq: Math.round(minEq),
-    byClass, byHour, maeDist, mfeDist, mfeMaeRatio,
+    byHour, maeDist, mfeDist, mfeMaeRatio,
     longN: longs.length, shortN: shorts.length, longWR, shortWR, longEV: +longEV.toFixed(3), shortEV: +shortEV.toFixed(3),
     avgWinR: +avgWinR.toFixed(3),
     maePercentiles, mfePercentiles,
@@ -1824,10 +1838,6 @@ function renderCustomViewV2(pairs, unpairedRanges, combinedStats){
         if(smtY.n >= 3) features.push({feature:'SMT', bucket:'Yes', ...smtY});
         if(smtN.n >= 3) features.push({feature:'SMT', bucket:'No', ...smtN});
       }
-      // By classification
-      const classes = {};
-      wlTr.forEach(t => { const c = t.classification || 'Unclassified'; if(!classes[c]) classes[c] = []; classes[c].push(t); });
-      Object.entries(classes).forEach(([k,v]) => { const g = grpStats(v); if(g.n >= 5) features.push({feature:'Classification', bucket:k, ...g}); });
       // By sweep_pct quartile
       const spVals = wlTr.map(t => t.sweep_pct).filter(v => v != null);
       if(spVals.length >= 20){
@@ -2584,4 +2594,6 @@ export { switchCustomTab };
 export { switchF3 };
 export { switchF4 };
 export { switchSMT };
+export { switchP42 };
+export { switchPD };
 export { updateRange };

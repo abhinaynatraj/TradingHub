@@ -187,6 +187,7 @@ def notify(title, message):
         pass
 
 
+REPO_ROOT = Path(__file__).parent.parent.parent
 BACKTESTS = [
     {
         "name": "Fractal Sweep",
@@ -195,9 +196,41 @@ BACKTESTS = [
         "incremental": True,
     },
     {
+        # NOTE: was previously rooted at Path(__file__).parent.parent which
+        # resolves to Fractal Sweep/ (not repo root) — so TTrades had been
+        # silently skipped with "SKIP — script not found" since the engine
+        # moved into Fractal Sweep/engine/. REPO_ROOT fixes that.
         "name": "TTrades Fractal Model",
-        "script": Path(__file__).parent.parent / "TTrades Fractal Model Analysis" / "ttfm_backtest.py",
-        "output": Path(__file__).parent.parent / "TTrades Fractal Model Analysis" / "ttfm_results.json",
+        "script": REPO_ROOT / "TTrades Fractal Model Analysis" / "ttfm_backtest.py",
+        "output": REPO_ROOT / "TTrades Fractal Model Analysis" / "ttfm_results.json",
+        "incremental": False,
+    },
+    {
+        # NPG Sweep — Wick Lick + series-based CISD + 4-leg projections.
+        # The engine uses local imports (resampling, wick_lick, etc.) so it
+        # MUST run from within NPG Sweep/engine/. cwd kwarg handles that.
+        "name": "NPG Sweep",
+        "script": REPO_ROOT / "NPG Sweep" / "engine" / "npg_stats.py",
+        "output": REPO_ROOT / "NPG Sweep" / "npg_stats.json",
+        "incremental": False,
+        "cwd": REPO_ROOT / "NPG Sweep",
+    },
+    {
+        # Hourly Analysis — breakout + quarter studies. Writes parquet
+        # files to Analysis/data/{breakout,quarters}/ plus manifest.json.
+        "name": "Hourly Analysis",
+        "script": REPO_ROOT / "Analysis" / "engine" / "run_all.py",
+        "output": REPO_ROOT / "Analysis" / "data" / "manifest.json",
+        "incremental": False,
+    },
+    {
+        # Amas Models — H1 continuation and pattern-based models extracted
+        # from the Amas mentorship materials. Engine has no --since flag yet
+        # (non-incremental). Reads from the shared candle_science.duckdb;
+        # only re-runs after the DB has been refreshed by this daily script.
+        "name": "Amas Models",
+        "script": REPO_ROOT / "Amas Models" / "engine" / "model_stats.py",
+        "output": REPO_ROOT / "Amas Models" / "model_stats.json",
         "incremental": False,
     },
 ]
@@ -307,7 +340,10 @@ def run_backtests(incremental: bool = True):
             partial_path = None
             log(f"[backtest] Running {bt['name']} …")
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        # Some engines (NPG) use local imports and must run from a specific
+        # working directory; others run fine from the default cwd.
+        run_cwd = str(bt["cwd"]) if bt.get("cwd") else None
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=run_cwd)
         if result.returncode == 0:
             log(f"[backtest] {bt['name']} — OK")
             if partial_path and partial_path.exists():

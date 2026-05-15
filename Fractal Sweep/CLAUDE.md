@@ -36,7 +36,7 @@ Fractal Sweep/
 All engine scripts self-locate — run them from the `Fractal Sweep/` folder (they resolve `candle_science.duckdb` and `model_stats.json` via `Path(__file__).parent.parent`).
 
 ```bash
-python3 engine/model_stats.py                         # all 2 sweep models
+python3 engine/model_stats.py                         # all 3 sweep models
 python3 engine/model_stats.py --models 1H_5M          # subset
 python3 engine/model_stats.py --table es_1m           # ES instead of NQ
 python3 -m pytest tests/ -q                           # test suite
@@ -46,7 +46,7 @@ python3 engine/daily_update.py                        # fetch new bars from Data
 Dashboard served from the repo root: `python3 -m http.server 8001`, then open `http://localhost:8001/Fractal Sweep/model_dashboard.html`.
 
 ## Trading Model
-- 2 timeframe pairs: `1H_5M`, `30M_3M`
+- 3 timeframe pairs: `1H_5M`, `30M_3M`, `15M_1M`
 - Setup: prior candle swept → price returns inside range → CISD confirms
 - Entry: next candle open · Stop: sweep extreme · Target: 1R (`simple_1r`)
 - Sweep, return-to-range, and CISD-fire must all occur within the **same anchor HTF window**. Setups that don't complete before the next anchor are discarded — matches the indicator's `is_new_anchor` reset semantics.
@@ -82,7 +82,7 @@ Standalone marginal edge over the ~50% baseline:
 - **F3 Shallow Sweep** — moderate (+3-4% WR, +0.05-0.06R EV)
 - **F4 Closed Back Inside** — noise standalone; helpful in combos
 
-Best practical combo (both models):
+Best practical combo (measured on the original 1H_5M and 30M_3M models — `15M_1M` was added later and has not been re-measured here):
 - **F3 + F4 + SMT** → 59.1% WR, +0.182R EV, N=1,711 over 12y on 1H_5M (~143 trades/yr)
 - 30M_3M: same combo → 58.6% WR, +0.172R EV, N=3,234 (~270/yr)
 
@@ -129,10 +129,6 @@ Custom date ranges view pairs consecutive ranges into train→test walk-forward 
 ## Analysis Scripts Convention
 - Reference point for candle analysis: `close` of the anchor candle
 - Group results by day of week (0=Mon … 4=Fri)
-
-## Date Classification
-- `DATE_CLASSIFICATION` is an empty dict — the classifier source (`daily_classifier.py`) was in the deleted NY1 FPFVG folder
-- Downstream aggregations read it defensively; absence is fine
 
 ## Diagnostic-only fields (not promoted to filters)
 - `passes_fvg_cisd_strict`, `passes_fvg_cisd_loose`, `passes_fvg_1m_strict`, `passes_fvg_1m_loose` — supporting FVG flags. Tested 2026-04-26, did not clear the +3% standalone / +1% vs-SMT decision criterion (no marginal edge over SMT alone). Kept on rows + in `fvg_summary` for future reference. See `docs/superpowers/specs/2026-04-26-supporting-fvg-confluence-design.md`.

@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NPG Sweep · How the Model Works</title>
+  <link rel="stylesheet" href="../Analysis/dashboard/shared.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script defer src="../Analysis/dashboard/shared.js"></script>
+  <style>
+    body { background: var(--bg); color: var(--text-primary); font-family: var(--font-body); }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 0 24px 80px; }
+
+    /* Top nav strip — matches dashboards */
+    .topbar {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 16px 24px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .topbar .crumb { font-family: var(--font-data); font-size: 11px; color: var(--text-muted); letter-spacing: .05em; text-transform: uppercase; }
+    .topbar .crumb a { color: var(--text-muted); text-decoration: none; }
+    .topbar .crumb a:hover { color: var(--text-primary); }
+    .topbar .nav-links { display: flex; gap: 14px; }
+    .topbar .nav-links a { font-family: var(--font-data); font-size: 12px; color: var(--text-secondary); text-decoration: none; padding: 4px 0; border-bottom: 1px solid transparent; }
+    .topbar .nav-links a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+    h1 { font-family: var(--font-display); font-weight: 800; font-size: 32px; margin: 8px 0 6px; letter-spacing: -0.01em; color: var(--text-primary); }
+    .subtitle { font-family: var(--font-display); font-weight: 400; font-size: 16px; color: var(--text-secondary); margin-bottom: 32px; }
+
+    h2 { font-family: var(--font-display); font-weight: 700; font-size: 22px; margin: 40px 0 12px; letter-spacing: -0.01em; color: var(--text-primary); }
+    h3 { font-family: var(--font-display); font-weight: 600; font-size: 16px; margin: 24px 0 8px; color: var(--text-primary); }
+
+    p { line-height: 1.6; color: var(--text-secondary); margin: 0 0 12px; }
+    p strong { color: var(--text-primary); font-weight: 600; }
+
+    .pitch { background: var(--bg-elev-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; margin-bottom: 32px; }
+    .pitch p { margin: 0; color: var(--text-primary); font-size: 15px; }
+
+    .step-card {
+      background: var(--bg-elev-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin: 16px 0;
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 24px;
+      align-items: center;
+    }
+    @media (max-width: 800px) { .step-card { grid-template-columns: 1fr; } }
+    .diagram { background: var(--bg-elev-2); border-radius: var(--radius-sm); padding: 12px; display: flex; align-items: center; justify-content: center; min-height: 200px; border: 1px solid var(--border); }
+    .diagram svg { display: block; width: 100%; height: auto; max-width: 320px; }
+
+    /* SVG theming — uses CSS classes so colors adapt to theme */
+    .diagram svg .grid-line { stroke: var(--border); stroke-width: 0.5; }
+    .diagram svg .level-line { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 4,4; }
+    .diagram svg .level-label { font-family: var(--font-data); font-size: 9px; fill: var(--text-muted); }
+    .diagram svg .accent-line { stroke: var(--amber); stroke-width: 1; stroke-dasharray: 4,4; }
+    .diagram svg .accent-label { font-family: var(--font-data); font-size: 9px; fill: var(--amber); }
+    .diagram svg .candle-stem-bull { stroke: var(--green); stroke-width: 1; }
+    .diagram svg .candle-body-bull  { fill: var(--green); fill-opacity: 0.55; stroke: var(--green); }
+    .diagram svg .candle-stem-bear { stroke: var(--red); stroke-width: 1; }
+    .diagram svg .candle-body-bear  { fill: var(--red); fill-opacity: 0.7; stroke: var(--red); }
+    .diagram svg .candle-stem-neutral { stroke: var(--text-secondary); stroke-width: 1; }
+    .diagram svg .candle-body-neutral { fill: var(--text-secondary); fill-opacity: 0.4; stroke: var(--text-secondary); }
+    .diagram svg .candle-label { font-family: var(--font-data); font-size: 9px; fill: var(--text-muted); }
+    .diagram svg .note { font-family: var(--font-data); font-size: 9px; fill: var(--amber); }
+    .diagram svg .note-line { stroke: var(--amber); stroke-width: 1; }
+    .diagram svg .marker-dot { fill: var(--text-secondary); }
+    .diagram svg .marker-label { font-family: var(--font-data); font-size: 9px; fill: var(--text-secondary); }
+    .diagram svg .target-line { stroke: var(--blue); stroke-width: 0.8; stroke-dasharray: 2,2; }
+    .diagram svg .target-label { font-family: var(--font-data); font-size: 9px; fill: var(--blue); }
+    .diagram svg .pill-bg { fill: var(--amber); fill-opacity: 0.15; stroke: var(--amber); }
+    .diagram svg .pill-text { font-family: var(--font-data); font-size: 11px; fill: var(--amber); }
+    .diagram svg .fire-label { font-family: var(--font-data); font-size: 9px; fill: var(--red); font-weight: 700; }
+    .diagram svg .commit-label { font-family: var(--font-data); font-size: 9px; fill: var(--red); }
+
+    .step-num { font-family: var(--font-data); font-size: 11px; color: var(--accent); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 4px; }
+    .step-title { font-family: var(--font-display); font-weight: 700; font-size: 18px; margin: 0 0 6px; color: var(--text-primary); }
+    .step-body { font-size: 14px; line-height: 1.55; color: var(--text-secondary); }
+    .step-body code { font-family: var(--font-data); background: var(--bg-elev-2); padding: 1px 5px; border-radius: 3px; color: var(--text-primary); font-size: 12px; }
+    .step-body strong { color: var(--text-primary); }
+
+    .compare-table { width: 100%; border-collapse: collapse; margin: 12px 0 24px; font-size: 14px; }
+    .compare-table th, .compare-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .compare-table th { font-family: var(--font-data); font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: .05em; background: var(--bg-elev-1); font-weight: 600; }
+    .compare-table td { color: var(--text-secondary); }
+    .compare-table td:first-child { font-weight: 600; color: var(--text-primary); width: 22%; }
+    .compare-table td code { font-family: var(--font-data); font-size: 12px; color: var(--text-primary); background: var(--bg-elev-2); padding: 1px 5px; border-radius: 3px; }
+    .compare-table tr.section-row td { background: var(--bg-elev-1); font-family: var(--font-data); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); padding: 8px 12px; }
+    .compare-table strong { color: var(--text-primary); }
+
+    .callout { background: var(--bg-elev-1); border-left: 3px solid var(--accent); padding: 12px 16px; margin: 16px 0; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+    .callout p { margin: 0; color: var(--text-primary); font-size: 14px; }
+    .callout strong { color: var(--accent); }
+
+    .glossary { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 16px 0; }
+    @media (max-width: 700px) { .glossary { grid-template-columns: 1fr; } }
+    .glossary-card { background: var(--bg-elev-1); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; }
+    .glossary-term { font-family: var(--font-data); font-weight: 700; font-size: 13px; color: var(--accent); margin-bottom: 4px; letter-spacing: .02em; }
+    .glossary-def { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+    .glossary-def code { font-family: var(--font-data); font-size: 12px; color: var(--text-primary); background: var(--bg-elev-2); padding: 1px 5px; border-radius: 3px; }
+
+    .cta-row { display: flex; gap: 12px; margin-top: 32px; flex-wrap: wrap; }
+    .cta-btn { font-family: var(--font-data); font-size: 13px; font-weight: 600; padding: 10px 18px; border-radius: var(--radius-sm); border: 1px solid var(--border-mid); background: var(--bg-elev-2); color: var(--text-primary); text-decoration: none; transition: all .15s; }
+    .cta-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .cta-btn.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+    .cta-btn.primary:hover { opacity: .85; color: var(--bg); }
+  </style>
+</head>
+<body>
+
+  <!-- Theme picker — auto-wired by shared.js -->
+  <div class="theme-picker" role="radiogroup" aria-label="Theme">
+    <button class="theme-opt" data-theme="dark"   title="Dark"   aria-label="Dark theme">☀</button>
+    <button class="theme-opt" data-theme="light"  title="Light"  aria-label="Light theme">☾</button>
+    <button class="theme-opt" data-theme="gold"   title="Gold"   aria-label="Gold theme">✦</button>
+    <button class="theme-opt" data-theme="indigo" title="Indigo" aria-label="Indigo theme">◆</button>
+  </div>
+
+  <div class="topbar">
+    <div class="crumb"><a href="../index.html">Statistic.ally</a> &nbsp;/&nbsp; <a href="npg_dashboard.html">NPG Sweep</a> &nbsp;/&nbsp; How it works</div>
+    <div class="nav-links">
+      <a href="npg_dashboard.html">Dashboard →</a>
+      <a href="../Fractal Sweep/model_dashboard.html">Fractal Sweep</a>
+      <a href="../index.html">Hub</a>
+    </div>
+  </div>
+
+  <div class="wrap">
+
+    <h1>NPG Sweep — How the Model Works</h1>
+    <p class="subtitle">A plain-English walkthrough of what the engine looks for, with diagrams.</p>
+
+    <div class="pitch">
+      <p><strong>One-sentence summary.</strong> NPG Sweep tests a published TradingView indicator's setup model against 12 years of NQ/ES data. Same data as Fractal Sweep, different rules for what counts as a valid setup and how to measure outcomes.</p>
+    </div>
+
+    <h2>What is "NPG"?</h2>
+    <p><strong>NPG</strong> is the handle of the author who published the TradingView indicator "<em>Sweep · CISD · MTF · FVG · Key Levels</em>." It's a Pine v6 overlay indicator, MPL-2.0 licensed. This project is a statistical engine that reimplements that indicator's setup detection logic in Python so we can run it across 12 years of historical 1-minute NQ and ES futures bars.</p>
+    <p>It's a <strong>sibling project to Fractal Sweep</strong> — same database, same anchor-window semantics, same SMT logic. The differences are in <em>what counts as a CISD</em> and <em>how outcomes are scored</em>.</p>
+
+    <h2>The four steps of a setup</h2>
+    <p>Every NPG setup has the same shape, played out over 4 stages. Here's each one with a diagram.</p>
+
+    <!-- Step 1 — Wick Lick (sweep) -->
+    <div class="step-card">
+      <div class="diagram">
+        <svg viewBox="0 0 320 200" xmlns="http://www.w3.org/2000/svg" aria-label="Bearish Wick Lick: candle wicks above prior high but closes back below">
+          <defs>
+            <pattern id="grid1" width="40" height="20" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 20" fill="none" class="grid-line"/>
+            </pattern>
+          </defs>
+          <rect width="320" height="200" fill="url(#grid1)" />
+          <line x1="0" y1="70" x2="320" y2="70" class="level-line"/>
+          <text x="6" y="64" class="level-label">prior high</text>
+
+          <!-- prev candle (neutral) -->
+          <line x1="100" y1="80" x2="100" y2="160" class="candle-stem-neutral"/>
+          <rect x="92" y="90" width="16" height="60" class="candle-body-neutral"/>
+          <text x="86" y="178" class="candle-label">prev</text>
+
+          <!-- sweep candle (bearish wick above, close below) -->
+          <line x1="200" y1="45" x2="200" y2="140" class="candle-stem-bear"/>
+          <rect x="192" y="90" width="16" height="40" class="candle-body-bear"/>
+          <text x="186" y="178" class="candle-label">sweep</text>
+
+          <!-- annotation -->
+          <line x1="220" y1="50" x2="260" y2="40" class="note-line"/>
+          <text x="232" y="34" class="note">wick above</text>
+          <text x="232" y="46" class="note">prior high</text>
+          <circle cx="200" cy="130" r="3" class="marker-dot"/>
+          <text x="208" y="134" class="marker-label">closes below</text>
+        </svg>
+      </div>
+      <div>
+        <div class="step-num">Step 1</div>
+        <div class="step-title">Wick Lick &mdash; the sweep</div>
+        <div class="step-body">
+          On the higher-timeframe chart (1H or 30M), the engine watches for a candle that <strong>wicks above the prior candle's high</strong> but <strong>closes back inside the prior range</strong>. In trader-speak: the market briefly took liquidity above the previous high, then rejected it.
+          <br><br>
+          The mirror image (wicks below prior low, closes back above) is a bullish Wick Lick.
+          <br><br>
+          Setups where the candle sweeps <em>both</em> the prior high and prior low and closes back inside are excluded — they're ambiguous (could go either way).
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2 — CISD (series-based) -->
+    <div class="step-card">
+      <div class="diagram">
+        <svg viewBox="0 0 320 200" xmlns="http://www.w3.org/2000/svg" aria-label="CISD series — multiple bullish candles forming a series, then one bearish close breaks below the lowest body">
+          <defs>
+            <pattern id="grid2" width="40" height="20" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 20" fill="none" class="grid-line"/>
+            </pattern>
+          </defs>
+          <rect width="320" height="200" fill="url(#grid2)" />
+          <line x1="0" y1="115" x2="320" y2="115" class="accent-line"/>
+          <text x="6" y="109" class="accent-label">series_low</text>
+
+          <!-- 3 bullish candles walking back from c2 -->
+          <line x1="60"  y1="80" x2="60"  y2="145" class="candle-stem-bull"/>
+          <rect x="54"  y="105" width="12" height="35" class="candle-body-bull"/>
+          <line x1="100" y1="70" x2="100" y2="135" class="candle-stem-bull"/>
+          <rect x="94"  y="95"  width="12" height="30" class="candle-body-bull"/>
+          <line x1="140" y1="55" x2="140" y2="120" class="candle-stem-bull"/>
+          <rect x="134" y="80"  width="12" height="30" class="candle-body-bull"/>
+          <text x="48"  y="178" class="candle-label">c2-3</text>
+          <text x="88"  y="178" class="candle-label">c2-2</text>
+          <text x="128" y="178" class="candle-label">c2-1</text>
+
+          <!-- c2 (sweep) - bearish closing back inside -->
+          <line x1="180" y1="40" x2="180" y2="130" class="candle-stem-bear"/>
+          <rect x="174" y="80" width="12" height="35" class="candle-body-bear"/>
+          <text x="172" y="178" class="candle-label">c2</text>
+
+          <!-- CISD fire: bearish candle closes below series_low -->
+          <line x1="240" y1="100" x2="240" y2="165" class="candle-stem-bear"/>
+          <rect x="234" y="115" width="12" height="38" class="candle-body-bear" fill-opacity="0.85"/>
+          <text x="248" y="148" class="fire-label">FIRE</text>
+          <text x="232" y="178" class="candle-label">cisd</text>
+        </svg>
+      </div>
+      <div>
+        <div class="step-num">Step 2</div>
+        <div class="step-title">CISD &mdash; the confirmation</div>
+        <div class="step-body">
+          <strong>CISD = Change in State of Delivery.</strong> The engine walks backward from the sweep candle on the lower timeframe (5M or 3M) and collects consecutive opposing-direction candles into a <em>series</em>. For a bearish setup, that's bullish candles. The series stops at the first opposite-direction candle, capped at 20 bars.
+          <br><br>
+          Then it tracks <code>series_low</code> (lowest body in the series). The CISD <strong>fires</strong> when a new candle closes <em>below</em> that series_low — that's the bears breaking the bullish run and confirming the reversal.
+          <br><br>
+          The whole process has to complete inside the same higher-timeframe candle's window.
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3 — Projections -->
+    <div class="step-card">
+      <div class="diagram">
+        <svg viewBox="0 0 320 220" xmlns="http://www.w3.org/2000/svg" aria-label="Projection targets at 0.5x, 1.0x, 1.5x, 2.0x of series range below break price">
+          <defs>
+            <pattern id="grid3" width="40" height="20" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 20" fill="none" class="grid-line"/>
+            </pattern>
+            <marker id="arrow1" markerWidth="10" markerHeight="10" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L6,3 z" fill="var(--amber)"/>
+            </marker>
+          </defs>
+          <rect width="320" height="220" fill="url(#grid3)" />
+
+          <line x1="40" y1="40"  x2="300" y2="40"  class="level-line"/>
+          <line x1="40" y1="70"  x2="300" y2="70"  class="accent-line"/>
+          <text x="6"  y="44"  class="level-label">s_high</text>
+          <text x="6"  y="74"  class="accent-label">s_low = break</text>
+
+          <line x1="40" y1="100" x2="300" y2="100" class="target-line"/>
+          <text x="220" y="96"  class="target-label">0.5×  TP1</text>
+          <line x1="40" y1="130" x2="300" y2="130" class="target-line"/>
+          <text x="220" y="126" class="target-label">1.0×  TP2</text>
+          <line x1="40" y1="160" x2="300" y2="160" class="target-line"/>
+          <text x="220" y="156" class="target-label">1.5×  TP3</text>
+          <line x1="40" y1="190" x2="300" y2="190" class="target-line"/>
+          <text x="220" y="186" class="target-label">2.0×  TP4</text>
+
+          <line x1="50" y1="40" x2="50" y2="70" stroke="var(--amber)" stroke-width="1.5" marker-end="url(#arrow1)"/>
+          <text x="58" y="58" class="note">range</text>
+        </svg>
+      </div>
+      <div>
+        <div class="step-num">Step 3</div>
+        <div class="step-title">Projections &mdash; the four targets</div>
+        <div class="step-body">
+          Once CISD fires, the engine doesn't aim for "1R." Instead it sets <strong>four target levels</strong>, each measured as a multiple of the <em>series range</em> (the high minus low of the opposing series).
+          <br><br>
+          From the <code>break_price</code> (where CISD fired): <code>0.5×</code>, <code>1.0×</code>, <code>1.5×</code>, <code>2.0×</code> of the series range. Each level = 25% of position size. Stop loss = the original sweep extreme.
+          <br><br>
+          So if the series spanned 40 points, the four targets sit at 20 / 40 / 60 / 80 points beyond the break — and the position scales out a quarter at each one.
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4 — Silver filter -->
+    <div class="step-card">
+      <div class="diagram">
+        <svg viewBox="0 0 320 200" xmlns="http://www.w3.org/2000/svg" aria-label="Silver filter — Thursday after 1pm or Friday, with aggressive close beyond prior two candle extremes">
+          <defs>
+            <pattern id="grid4" width="40" height="20" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 20" fill="none" class="grid-line"/>
+            </pattern>
+          </defs>
+          <rect width="320" height="200" fill="url(#grid4)" />
+
+          <line x1="0" y1="80"  x2="320" y2="80"  class="level-line"/>
+          <text x="6" y="74"  class="level-label">prev-prev low</text>
+          <line x1="0" y1="100" x2="320" y2="100" class="level-line"/>
+          <text x="6" y="96"  class="level-label">prev low</text>
+
+          <line x1="70"  y1="60" x2="70"  y2="120" class="candle-stem-neutral"/>
+          <rect x="62"  y="80" width="16" height="30" class="candle-body-neutral"/>
+          <line x1="140" y1="65" x2="140" y2="125" class="candle-stem-neutral"/>
+          <rect x="132" y="85" width="16" height="40" class="candle-body-neutral"/>
+
+          <!-- aggressive bearish close -->
+          <line x1="220" y1="55" x2="220" y2="165" class="candle-stem-bear"/>
+          <rect x="212" y="70" width="16" height="80" class="candle-body-bear" fill-opacity="0.85"/>
+          <text x="230" y="150" class="commit-label">closes below</text>
+          <text x="230" y="162" class="commit-label">both lows</text>
+
+          <!-- timing pill -->
+          <rect x="6" y="6" width="160" height="22" rx="4" class="pill-bg"/>
+          <text x="14" y="22" class="pill-text">Thu ≥ 1pm  OR  Fri</text>
+        </svg>
+      </div>
+      <div>
+        <div class="step-num">Step 4</div>
+        <div class="step-title">Silver &mdash; the optional filter</div>
+        <div class="step-body">
+          NPG's signature filter, called <strong>Silver</strong>. Two parts, both must hold:
+          <br><br>
+          <strong>(a) Late-week timing.</strong> Either the 5th 4-hour bucket of the day (afternoon onward) <em>or</em> the 4th bucket on/after 1pm ET. The market is in its final session of the week.
+          <br><br>
+          <strong>(b) Aggressive close.</strong> The current candle closes <em>beyond</em> the extremes of the previous two candles in the trade direction — i.e., bears breaking two prior lows (or bulls breaking two prior highs). A decisive 2-bar break, not a fade.
+          <br><br>
+          Silver doesn't fire often, but when it does, the setup has earned both timing and momentum.
+        </div>
+      </div>
+    </div>
+
+    <h2>How is this different from Fractal Sweep?</h2>
+    <p>Both engines watch for the same high-level pattern (HTF sweep → return → confirmation), use the same database, and live in the same hub. The differences sit in the details — what counts as confirmation, and how outcomes are scored.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Aspect</th><th>Fractal Sweep</th><th>NPG Sweep</th></tr>
+      </thead>
+      <tbody>
+        <tr class="section-row"><td colspan="3">Setup detection</td></tr>
+        <tr>
+          <td>Sweep definition</td>
+          <td>Sweep + return-to-range, no double-sweep exclusion explicit (handled by F4)</td>
+          <td><strong>Wick Lick</strong>: same shape, but explicitly excludes double-sweeps (candles that breach both prior high <em>and</em> prior low and close back inside)</td>
+        </tr>
+        <tr>
+          <td>CISD definition</td>
+          <td><strong>Single-bar engulf</strong>. The CISD level is the open of the earliest candle in a backward-running opposing run; fire when a single close breaks it.</td>
+          <td><strong>Series-based</strong>. Walks back collecting an opposing series (up to 20 bars), tracks the series_high/low, fires when one close breaks the <em>series</em> extreme. Sensitive to multi-bar consolidation.</td>
+        </tr>
+        <tr class="section-row"><td colspan="3">Outcome scoring</td></tr>
+        <tr>
+          <td>Targets</td>
+          <td><strong>1R</strong> (one full unit of risk = |entry − sweep extreme|). 100% exit at target.</td>
+          <td><strong>Four projection levels</strong> at 0.5×, 1.0×, 1.5×, 2.0× of the series range. 25% scale-out at each level.</td>
+        </tr>
+        <tr>
+          <td>Stop loss</td>
+          <td>Sweep extreme.</td>
+          <td>Sweep extreme. (Same.)</td>
+        </tr>
+        <tr>
+          <td>Composite R</td>
+          <td>Always exactly +1R (win) or −1R (loss).</td>
+          <td>Weighted sum across the four legs. A trade that hits TP1 + TP2 then stops out is partial win, partial loss.</td>
+        </tr>
+        <tr class="section-row"><td colspan="3">Filters</td></tr>
+        <tr>
+          <td>Built-in filters</td>
+          <td>F3 (Shallow Sweep ≤50%), F4 (Closed Back Inside), SMT (NQ-ES Divergence), and as of 2026-05-11: P42 (Late Extreme), PD (CISD in PD).</td>
+          <td>SMT (same NQ-ES divergence). <strong>Silver</strong> (late-week timing + aggressive close). No F3/F4 analog.</td>
+        </tr>
+        <tr class="section-row"><td colspan="3">Bookkeeping</td></tr>
+        <tr>
+          <td>Anchor window</td>
+          <td>Sweep + return + CISD must all complete in the same HTF candle's time window.</td>
+          <td>Same.</td>
+        </tr>
+        <tr>
+          <td>Same-bar TP/SL tie</td>
+          <td>SL wins.</td>
+          <td>SL wins. (Same.)</td>
+        </tr>
+        <tr>
+          <td>Data source</td>
+          <td><code>candle_science.duckdb</code> · <code>nq_1m</code> / <code>es_1m</code></td>
+          <td>Same DB, read-only.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <p><strong>The intuition.</strong> Fractal Sweep asks "did one candle close back through the sweep level?" NPG asks "did the entire opposing-side run get broken?" When markets consolidate before reversing, NPG waits for the full consolidation to break, which can mean different (sometimes better, sometimes worse) entries. And instead of a single 1R win/loss, NPG measures how far each trade actually walks, in fractions of the consolidation's own range.</p>
+    </div>
+
+    <h2>Glossary</h2>
+    <div class="glossary">
+      <div class="glossary-card">
+        <div class="glossary-term">Wick Lick</div>
+        <div class="glossary-def">NPG's name for the sweep pattern. A candle that wicks beyond a prior extreme and closes back inside the prior range. Double-sweeps (both extremes touched + close back inside) are excluded.</div>
+      </div>
+      <div class="glossary-card">
+        <div class="glossary-term">CISD</div>
+        <div class="glossary-def">Change in State of Delivery. Confirmation that the sweep has actually reversed price direction. NPG's CISD is series-based — a whole consolidation must break, not just one candle.</div>
+      </div>
+      <div class="glossary-card">
+        <div class="glossary-term">Series</div>
+        <div class="glossary-def">The run of consecutive opposing-direction candles walking backward from the sweep. Bullish series before a bearish setup, vice versa. Capped at 20 bars.</div>
+      </div>
+      <div class="glossary-card">
+        <div class="glossary-term">Series range</div>
+        <div class="glossary-def">The span (high − low, body-based by default) of the opposing series. Used to size all four projection targets.</div>
+      </div>
+      <div class="glossary-card">
+        <div class="glossary-term">Break price</div>
+        <div class="glossary-def">The series extreme that gets broken when CISD fires. For shorts: series_low. For longs: series_high. Projections measure from here, not from entry.</div>
+      </div>
+      <div class="glossary-card">
+        <div class="glossary-term">Anchor window</div>
+        <div class="glossary-def">The time bucket of the higher-timeframe candle that hosts the sweep. Every part of the setup — sweep, return, CISD, fire — has to happen inside this window.</div>
+      </div>
+      <div class="glossary-card">
+        <div class="glossary-term">SMT</div>
+        <div class="glossary-def">"Smart Money Tool" — divergence between NQ and ES. If NQ sweeps a level but ES doesn't sweep its corresponding level, that's an SMT — a structural disagreement that historically lifts win rate.</div>
+      </div>
+      <div class="glossary-card">
+        <div class="glossary-term">candleOfDay</div>
+        <div class="glossary-def">A 4-hour bucket index: <code>floor(hour_ET/4) + 1</code>. Buckets 1–6 across the day. Silver fires only in bucket 5 (16:00 onward) or bucket 4 (12:00–15:59) when hour ≥ 13:00.</div>
+      </div>
+    </div>
+
+    <h2>Where to go next</h2>
+    <div class="cta-row">
+      <a class="cta-btn primary" href="npg_dashboard.html">Open the NPG dashboard</a>
+      <a class="cta-btn" href="../Fractal Sweep/model_dashboard.html">Compare with Fractal Sweep</a>
+      <a class="cta-btn" href="../Fractal Sweep/pine/sweep_cisd_mtf_fvg.md">Read the indicator analysis</a>
+      <a class="cta-btn" href="../index.html">Back to hub</a>
+    </div>
+
+  </div>
+</body>
+</html>

@@ -4,14 +4,18 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Statistic.ally</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script defer src="Analysis/dashboard/shared.js"></script>
 <style>
 /* ── Reset & base ──────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
   --ease: cubic-bezier(.4,0,.2,1);
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-mono: 'DM Mono', 'Fira Code', monospace;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
 }
 
 [data-theme="dark"] {
@@ -64,6 +68,56 @@
   --shadow-lg:    0 8px 24px rgba(0,0,0,.12);
 }
 
+[data-theme="gold"] {
+  --bg:           #1a1408;
+  --bg-card:      #241b0c;
+  --bg-raised:    #2e2310;
+  --bg-hover:     #3a2c15;
+  --border:       #4a371a;
+  --border-mid:   #5a4220;
+  --text:         #f5e6c8;
+  --text-sub:     #c9b386;
+  --text-muted:   #8c7855;
+  --green:        #d4af37;
+  --green-tint:   rgba(212,175,55,.10);
+  --green-border: rgba(212,175,55,.30);
+  --red:          #c84a3a;
+  --red-tint:     rgba(200,74,58,.10);
+  --red-border:   rgba(200,74,58,.30);
+  --blue:         #d4a942;
+  --blue-tint:    rgba(212,169,66,.10);
+  --amber:        #e6b94a;
+  --purple:       #b88c3a;
+  --cyan:         #d4af37;
+  --shadow:       0 2px 12px rgba(0,0,0,.5);
+  --shadow-lg:    0 8px 32px rgba(0,0,0,.6);
+}
+
+[data-theme="indigo"] {
+  --bg:           #0a0d1f;
+  --bg-card:      #131730;
+  --bg-raised:    #1c2240;
+  --bg-hover:     #2a3155;
+  --border:       #2a3055;
+  --border-mid:   #3a4275;
+  --text:         #e2e5f5;
+  --text-sub:     #9aa4d4;
+  --text-muted:   #5a6395;
+  --green:        #818cf8;
+  --green-tint:   rgba(129,140,248,.10);
+  --green-border: rgba(129,140,248,.30);
+  --red:          #ef4444;
+  --red-tint:     rgba(239,68,68,.08);
+  --red-border:   rgba(239,68,68,.25);
+  --blue:         #6366f1;
+  --blue-tint:    rgba(99,102,241,.10);
+  --amber:        #fbbf24;
+  --purple:       #a78bfa;
+  --cyan:         #818cf8;
+  --shadow:       0 2px 12px rgba(0,0,0,.4);
+  --shadow-lg:    0 8px 32px rgba(0,0,0,.5);
+}
+
 body {
   font-family: var(--font-sans);
   background: var(--bg);
@@ -105,17 +159,31 @@ body {
   border-left: 1px solid var(--border-mid);
   padding-left: 12px;
 }
-.theme-btn {
+/* 4-theme picker — wired by Analysis/dashboard/shared.js */
+.theme-picker {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
   background: var(--bg-raised);
   border: 1px solid var(--border-mid);
   border-radius: 8px;
-  color: var(--text-sub);
+}
+.theme-opt {
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--text-muted);
   cursor: pointer;
-  font-size: 16px;
-  padding: 6px 12px;
+  font-size: 14px;
+  width: 28px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: all .15s var(--ease);
 }
-.theme-btn:hover { background: var(--bg-hover); color: var(--text); }
+.theme-opt:hover { background: var(--bg-hover); color: var(--text); }
+.theme-opt.active { background: var(--bg-card); color: var(--text); box-shadow: inset 0 0 0 1px var(--border-mid); }
 
 /* ── Main layout ───────────────────────────────────────────────────────────── */
 main {
@@ -340,99 +408,6 @@ main {
 }
 .open-btn svg { width: 12px; height: 12px; }
 
-/* ── Model detail section ────────────────────────────────────────────────────── */
-.model-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin-bottom: 44px;
-}
-.model-panel {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: var(--shadow);
-}
-.model-panel-hd {
-  padding: 18px 22px 14px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.model-panel-icon {
-  font-size: 18px;
-}
-.model-panel-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text);
-}
-.model-panel-sub {
-  font-size: 11px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-}
-.model-panel-body {
-  padding: 18px 22px;
-}
-.rule-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-}
-.rule-list li {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  font-size: 13px;
-  color: var(--text-sub);
-  line-height: 1.5;
-}
-.rule-list li::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  margin-top: 6px;
-  flex-shrink: 0;
-}
-.rule-list.blue li::before { background: var(--blue); }
-.rule-list.green li::before { background: var(--green); }
-.rule-list.purple li::before { background: var(--purple); }
-.rule-list.amber li::before { background: var(--amber); }
-
-.kv-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-.kv-item {
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 12px;
-}
-.kv-key {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 3px;
-}
-.kv-val {
-  font-family: var(--font-mono);
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text);
-}
-.kv-val.green { color: var(--green); }
-.kv-val.blue  { color: var(--blue); }
-.kv-val.amber { color: var(--amber); }
-
 /* ── EV Leaderboard ─────────────────────────────────────────────────────────── */
 .ev-board {
   background: var(--bg-card);
@@ -595,13 +570,9 @@ main {
 @keyframes fade { from { opacity: .4 } to { opacity: 1 } }
 
 /* ── Responsive ────────────────────────────────────────────────────────────── */
-@media(max-width: 860px) {
-  .model-grid { grid-template-columns: 1fr 1fr; }
-}
 @media(max-width: 640px) {
   main { padding: 24px 16px 60px; }
   .project-grid { grid-template-columns: 1fr; }
-  .model-grid { grid-template-columns: 1fr; }
   .hdr { padding: 0 16px; }
   .hero-title { font-size: 26px; }
 }
@@ -614,7 +585,12 @@ main {
     <div class="hdr-logo">Statistic<em>.ally</em></div>
     <div class="hdr-sub">NQ · ES Futures · Research Lab</div>
   </div>
-  <button class="theme-btn" id="themeBtn" title="Toggle theme" onclick="toggleTheme()">☀</button>
+  <div class="theme-picker" role="radiogroup" aria-label="Theme">
+    <button class="theme-opt" data-theme="dark"   title="Dark"   aria-label="Dark theme">☀</button>
+    <button class="theme-opt" data-theme="light"  title="Light"  aria-label="Light theme">☾</button>
+    <button class="theme-opt" data-theme="gold"   title="Gold"   aria-label="Gold theme">✦</button>
+    <button class="theme-opt" data-theme="indigo" title="Indigo" aria-label="Indigo theme">◆</button>
+  </div>
 </header>
 
 <main>
@@ -646,65 +622,6 @@ main {
     <div class="loading-pill">Loading project stats…</div>
   </div>
 
-  <!-- ── Model deep-dive ────────────────────────────────────────────────── -->
-  <div class="sec-head">
-    <span class="sec-label">Model Mechanics</span>
-    <div class="sec-line"></div>
-  </div>
-
-  <div class="model-grid">
-
-    <!-- Fractal Sweep Model -->
-    <div class="model-panel">
-      <div class="model-panel-hd">
-        <div class="model-panel-icon">🌊</div>
-        <div>
-          <div class="model-panel-title">Fractal Sweep — Sweep + CISD</div>
-          <div class="model-panel-sub">4 timeframe pairs · Prior candle sweep logic</div>
-        </div>
-      </div>
-      <div class="model-panel-body">
-        <ul class="rule-list blue" style="margin-bottom:16px;">
-          <li><strong>Sweep:</strong> Prior HTF candle's high or low is violated anywhere within the new candle</li>
-          <li><strong>Close-back:</strong> Price closes back inside the prior candle's range, confirming the manipulation</li>
-          <li><strong>CISD:</strong> The CISD candle closes through the open of the last opposing delivery run — confirmation trigger</li>
-          <li><strong>Entry:</strong> Next candle open after CISD · <strong>Stop:</strong> Sweep extreme · <strong>Target:</strong> 1R (simple_1r profile)</li>
-        </ul>
-        <div class="kv-grid">
-          <div class="kv-item"><div class="kv-key">Timeframe Pairs</div><div class="kv-val blue">4</div></div>
-          <div class="kv-item"><div class="kv-key">Risk:Reward</div><div class="kv-val">1 : 1</div></div>
-          <div class="kv-item"><div class="kv-key">Runtime Filters</div><div class="kv-val amber">6 chips · 64 combos</div></div>
-          <div class="kv-item"><div class="kv-key">Instrument</div><div class="kv-val">NQ / ES</div></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Stack & infrastructure -->
-    <div class="model-panel">
-      <div class="model-panel-hd">
-        <div class="model-panel-icon">⚙️</div>
-        <div>
-          <div class="model-panel-title">Data Infrastructure</div>
-          <div class="model-panel-sub">DuckDB · Databento · Python 3.14 · Daily cron</div>
-        </div>
-      </div>
-      <div class="model-panel-body">
-        <ul class="rule-list amber" style="margin-bottom:16px;">
-          <li><strong>Source:</strong> Databento GLBX.MDP3 dataset — 1-minute continuous front-month NQ &amp; ES</li>
-          <li><strong>Database:</strong> DuckDB <code>candle_science.duckdb</code> · tables <code>nq_1m</code>, <code>es_1m</code> · 15+ years of data</li>
-          <li><strong>Daily Update:</strong> <code>daily_update.py</code> runs at 7:00am ET weekdays via cron — fetches missing bars from Databento, rebuilds all JSON outputs</li>
-          <li><strong>Dashboards:</strong> Standalone HTML + vanilla JS — no framework required. Serve with <code>python3 -m http.server</code></li>
-        </ul>
-        <div class="kv-grid">
-          <div class="kv-item"><div class="kv-key">Data Source</div><div class="kv-val blue">Databento</div></div>
-          <div class="kv-item"><div class="kv-key">Database</div><div class="kv-val">DuckDB</div></div>
-          <div class="kv-item"><div class="kv-key">Language</div><div class="kv-val amber">Python 3.14</div></div>
-          <div class="kv-item"><div class="kv-key">Update Freq</div><div class="kv-val green">Daily 7am</div></div>
-        </div>
-      </div>
-    </div>
-
-  </div>
 
   <!-- ── Serve instructions ─────────────────────────────────────────────── -->
   <div class="sec-head">
@@ -731,16 +648,11 @@ main {
 
 <script>
 // ── Theme ────────────────────────────────────────────────────────────────────
-function applyTheme(t) {
-  document.documentElement.setAttribute('data-theme', t);
-  document.getElementById('themeBtn').textContent = t === 'dark' ? '☀' : '☾';
-  localStorage.setItem('hub-theme', t);
-}
-function toggleTheme() {
-  applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
-}
-const saved = localStorage.getItem('hub-theme');
-if (saved) applyTheme(saved);
+// Theme handling delegated to Analysis/dashboard/shared.js — auto-wires
+// .theme-picker buttons and persists the choice via localStorage['hub-theme'].
+// shared.js is loaded as a deferred script in <head>; the early inline block
+// at the bottom of <head> already set data-theme="dark" as a default so
+// nothing flashes before shared.js executes.
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function pct(v)  { return v != null ? (v * 100).toFixed(1) + '%' : '—'; }
@@ -759,8 +671,8 @@ const PROJECTS = [
   {
     id:       'sweep',
     title:    'Fractal Sweep',
-    subtitle: 'Sweep + CISD · 2 Timeframes',
-    desc:     'Prior-candle sweep → return-to-range → CISD confirmation across 1H_5M and 30M_3M. 3 runtime-toggleable filters (Shallow Sweep, Closed Back Inside, NQ-ES Divergence) with 8 precomputed combinations. Engine and Pine indicator are aligned.',
+    subtitle: 'Sweep + CISD · 3 Timeframes',
+    desc:     'Prior-candle sweep → return-to-range → CISD confirmation across 1H_5M, 30M_3M, and 15M_1M. 3 runtime-toggleable filters (Shallow Sweep, Closed Back Inside, NQ-ES Divergence) with 8 precomputed combinations. Engine and Pine indicator are aligned.',
     json:     'Fractal Sweep/model_stats.json',
     link:     'Fractal Sweep/model_dashboard.html',
     color:    '#8b5cf6',
@@ -777,7 +689,19 @@ const PROJECTS = [
     link:     'Amas Models/model_dashboard.html',
     color:    '#06b6d4',
     icon:     '📐',
-    type:     'sweep',
+    type:     'amas',
+    stats:    null,
+  },
+  {
+    id:       'npg',
+    title:    'NPG Sweep',
+    subtitle: 'Wick Lick + CISD · 3 Pairings',
+    desc:     'Statistical engine for the npg "Sweep · CISD · FVG · Key Levels" model. 3 HTF/LTF pairings (1H_5M, 4H_15M, D_1H), 4-leg partial-exit profile, Silver late-week timing filter. Companion to Fractal Sweep — same data, different model spec.',
+    json:     'NPG Sweep/npg_stats.json',
+    link:     'NPG Sweep/npg_dashboard.html',
+    color:    '#f59e0b',
+    icon:     '⚡',
+    type:     'npg',
     stats:    null,
   },
   {
@@ -847,6 +771,56 @@ async function loadStats(project) {
         label2: 'Bull breakouts', val2: num(d.n_bullish_breakouts),   cls2: 'pos',
         label3: 'Bear breakouts', val3: num(d.n_bearish_breakouts),   cls3: 'neg',
         dateRange: dr,
+      };
+    }
+
+    if (project.type === 'npg') {
+      // npg_stats.json shape: { summary: { '<pairing>/<profile>': { n_trades, agg: {n,wr,ev,pf,...}, reach_rates, ... } }, manifest: {...} }
+      // Headline: 1H_5M/series_multi (the most active pairing).
+      const s = (d.summary || {})['1H_5M/series_multi'];
+      if (!s) return null;
+      const a = s.agg || {};
+      const n = a.n != null ? a.n : s.n_trades;
+      const wr = a.wr != null ? a.wr : null;        // already a percentage (0-100)
+      const ev = a.ev != null ? a.ev : null;        // signed R per trade
+      return {
+        label1: '1H trades', val1: num(n),                                  cls1: 'neutral',
+        label2: 'Reach 1.0×', val2: wr != null ? wr.toFixed(1) + '%' : '—',  cls2: 'pos',
+        label3: 'EV (R)',     val3: ev != null ? (ev >= 0 ? '+' : '') + ev.toFixed(3) : '—',
+                              cls3: ev != null && ev > 0 ? 'pos' : ev != null && ev < 0 ? 'neg' : 'neutral',
+        dateRange: '—',
+      };
+    }
+
+    if (project.type === 'amas') {
+      // model_stats.json shape:
+      //   { meta: {engine_version, generated_at, table, data_range, spec_sha},
+      //     models: { <model_key>: { label, filters, trades, summary, filter_variants, spec_html } } }
+      // Per-model `summary` is agg() output: { n, n_resolved, n_expired, wins,
+      //   wr, wr_ci_low, wr_ci_high, ev, pf, avg_mae, avg_mfe, ... }.
+      // `wr` here is a 0-1 fraction (not 0-100 like NPG).
+      const models = Object.entries(d.models || {});
+      if (!models.length) return null;
+      let totalN = 0;
+      let best = null;
+      for (const [, model] of models) {
+        const s = model.summary || {};
+        const n = s.n_resolved || 0;
+        if (n < 20) continue;
+        totalN += n;
+        if (best == null || (s.ev || 0) > (best.ev || 0)) {
+          best = { key: model.label || '', n, wr: s.wr, ev: s.ev, pf: s.pf };
+        }
+      }
+      if (!best) return null;
+      const dr = (d.meta && d.meta.data_range) || '—';
+      return {
+        label1: 'Best WR',    val1: best.wr != null ? (best.wr * 100).toFixed(1) + '%' : '—', cls1: 'pos',
+        label2: 'Best EV',    val2: best.ev != null ? sgn(best.ev) : '—',
+                              cls2: (best.ev || 0) >= 0 ? 'pos' : 'neg',
+        label3: 'Trades',     val3: num(totalN), cls3: 'neutral',
+        dateRange: dr,
+        subtitle2: `Best: ${best.key} · PF ${best.pf != null ? best.pf.toFixed(2) : '—'} · ${best.n.toLocaleString()} trades`,
       };
     }
 

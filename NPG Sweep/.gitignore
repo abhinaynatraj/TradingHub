@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 npg_stats.json
+data/
 *.duckdb
 .pytest_cache/
 .DS_Store

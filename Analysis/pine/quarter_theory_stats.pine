@@ -1,0 +1,905 @@
+//@version=6
+indicator("Quarter Theory Stats", overlay=true,
+         max_labels_count=50, max_lines_count=50, max_boxes_count=50,
+         max_bars_back=5000)
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ Quarter Theory Stats — live conditional-probability table                ║
+// ║                                                                          ║
+// ║ Works on ANY chart timeframe. Stats are always computed from 15m bars:   ║
+// ║   · Chart TF == 15m  → bars consumed natively                            ║
+// ║   · Chart TF < 15m   → 15m bars pulled via request.security("15", ...)   ║
+// ║   · Chart TF > 15m   → 15m bars pulled via request.security_lower_tf     ║
+// ║ The table footer shows which sourcing path is active.                   ║
+// ║                                                                          ║
+// ║ At 15m granularity each quarter is exactly one bar. This gives a much   ║
+// ║ larger historical sample than 5m would (3× more events per loaded bar  ║
+// ║ of history) at the cost of stat #3 (band rejection follow-through),    ║
+// ║ which requires sub-15m resolution to detect rejections inside Q1.       ║
+// ║                                                                          ║
+// ║ Stats:                                                                   ║
+// ║   #1 — Quarter extension probability (per-stage live forecast)           ║
+// ║   #2 — Q3-close → hour classification probability                        ║
+// ║   #3 — Band rejection follow-through (DISABLED on 15m — needs sub-15m   ║
+// ║         resolution to capture the minute :00-:04 box-lock window)       ║
+// ║   #4 — In-stat / out-of-stat extreme reclaim rate                        ║
+// ║   #5 — Hour-of-day breakout rate                                         ║
+// ║                                                                          ║
+// ║ Table layout:                                                            ║
+// ║   PRIMARY (always shown, ~6 rows)                                        ║
+// ║     · Hour Context  — current + next hour breakout prior                 ║
+// ║     · Live Forecast — per-quarter extension P + Q3 sig class P           ║
+// ║   REFERENCE (toggleable, ~20 rows)                                       ║
+// ║     · Hour-of-Day Breakout Grid (24 hours)                               ║
+// ║     · Stat Extreme Reclaim (4 rows)                                      ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ PALETTE — verbatim subset from quarter_theory.pine                       ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+G_THEME = "🎨 Theme"
+gTheme = input.string("Auto", "Theme", options=["Auto","Dark","Light"], group=G_THEME)
+
+var bool _AUTO_IS_LIGHT = false
+var bool IS_LIGHT_MODE  = false
+var color P_STRUCT_BASE = #cbd5e1
+var color P_LONG_BASE   = #34d399
+var color P_SHORT_BASE  = #f87171
+var color P_WARN_BASE   = #fbbf24
+var color P_INFO_BASE   = #38bdf8
+var color P_INK         = #f1f5f9
+var color P_SURFACE     = #334155
+var color P_ON_SURFACE  = #f1f5f9
+
+if barstate.isfirst
+    _AUTO_IS_LIGHT := (color.r(chart.bg_color) + color.g(chart.bg_color) + color.b(chart.bg_color)) / 3.0 > 127
+    IS_LIGHT_MODE  := gTheme == "Light" or (gTheme == "Auto" and _AUTO_IS_LIGHT)
+    P_STRUCT_BASE  := IS_LIGHT_MODE ? #475569 : #cbd5e1
+    P_LONG_BASE    := IS_LIGHT_MODE ? #047857 : #34d399
+    P_SHORT_BASE   := IS_LIGHT_MODE ? #b91c1c : #f87171
+    P_WARN_BASE    := IS_LIGHT_MODE ? #b45309 : #fbbf24
+    P_INFO_BASE    := IS_LIGHT_MODE ? #0369a1 : #38bdf8
+    P_INK          := IS_LIGHT_MODE ? #0f172a : #f1f5f9
+
+tier_mid(color c)     => color.new(c, 60)
+tier_strong(color c)  => color.new(c, 25)
+pal_struct_mid()      => tier_mid(P_STRUCT_BASE)
+pal_struct_strong()   => tier_strong(P_STRUCT_BASE)
+pal_long_ink()        => color.new(P_LONG_BASE, 0)
+pal_short_ink()       => color.new(P_SHORT_BASE, 0)
+pal_warn_ink()        => color.new(P_WARN_BASE, 0)
+pal_info_ink()        => color.new(P_INFO_BASE, 0)
+pal_ink()             => P_INK
+pal_surface()         => P_SURFACE
+pal_on_surface()      => P_ON_SURFACE
+
+// Table-specific tokens — used only by the stats table so contrast holds
+// against the solid dark surface bg. Body text is always opaque; muted text
+// uses a partially-transparent ON_SURFACE so it dims without losing legibility.
+// Section headers use slate-900 (#0f172a) in BOTH modes — darker than the
+// always-dark P_SURFACE body bg — so the header reads as a deep band against
+// the body regardless of chart theme. (Earlier light-mode `#cbd5e1` header
+// rendered white-on-light-gray = invisible.)
+pal_table_header_bg() => #0f172a
+pal_table_text()      => P_ON_SURFACE
+pal_table_muted()     => color.new(P_ON_SURFACE, 50)
+// Bright green/red for the table — both modes. The table body bg is always
+// the dark P_SURFACE slate, so dark-mode-tier emerald/red would read as
+// dark-on-dark in light mode (where pal_long/short_ink resolve to deep
+// 700-tier hex like #047857 / #b91c1c). Lock to the brighter 300-tier so
+// percentages pop against the slate body regardless of chart theme.
+pal_table_long()      => #6ee7b7  // emerald-300 (was #34d399 in dark; brighter)
+pal_table_short()     => #fca5a5  // red-300 (was #f87171 in dark; brighter)
+pal_table_warn()      => #fcd34d  // amber-300 (used for doji text)
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ SETTINGS                                                                 ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+G_TBL = "📋 Stats Table"
+gTblPos = input.string("top_right", "Table position",
+                       options=["top_right","top_left","bottom_right","bottom_left","middle_right","middle_left"],
+                       group=G_TBL)
+gShowReference = input.bool(false, "Show reference section (24-hr grid + rejection / reclaim rates)",
+                            group=G_TBL,
+                            tooltip="Adds ~20 reference rows below the primary forecast block. Off by default — reference data is consulted on demand, not at every glance.")
+gMinSamples = input.int(20, "Minimum samples to show a probability",
+                        minval=1, maxval=500, group=G_TBL,
+                        tooltip="Cells with fewer than this many observations display '—' instead of a probability. Prevents 100% off n=2.")
+gTrackedOnly = input.bool(true, "Restrict to tracked hours only",
+                          group=G_TBL,
+                          tooltip="When on, stats only include hours inside the main indicator's tracked windows (00-15 NY + 18-24 NY). When off, every hour-of-day is tracked.")
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ TIME PRIMITIVES                                                          ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+NY_TZ = "America/New_York"
+
+int TF_SEC = timeframe.in_seconds("")
+bool IS_TF_MIN15   = TF_SEC == 900
+bool IS_TF_BELOW15 = TF_SEC < 900
+bool IS_TF_ABOVE15 = TF_SEC > 900
+
+// Predicate helpers — operate on an arbitrary (h, m) pair so the aggregator
+// can be driven from chart-native time OR 15m-resampled time.
+// On 15m granularity each quarter is exactly one bar:
+//   :00 bar → Q1   :15 bar → Q2   :30 bar → Q3   :45 bar → Q4
+quarterOfHourAt(int m)    => int(math.floor(m / 15)) + 1
+isHourOpenAt(int m)       => m == 0
+// Hour close on 15m semantics: the last 15m bar of any hour starts at :45.
+isHourCloseAt(int m)      => m == 45
+inTrackedHourAt(int h)    => (h >= 0 and h < 16) or h >= 18
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ AGGREGATORS                                                              ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+type QuarterAgg
+    int   qIdx
+    float high_ = na
+    float low_  = na
+    int   barCount = 0
+
+type HourAgg
+    int        hourOfDay
+    int        anchorBar
+    QuarterAgg q1 = na
+    QuarterAgg q2 = na
+    QuarterAgg q3 = na
+    QuarterAgg q4 = na
+    // Box-rejection state used by stat #3
+    float box05Hi = na
+    float box05Lo = na
+    bool  box05Locked = false
+    bool  rej10Up = false
+    bool  rej10Dn = false
+    bool  rej05Up = false
+    bool  rej05Dn = false
+
+hourHigh(HourAgg h) =>
+    float hi = na
+    if not na(h.q1) and (na(hi) or h.q1.high_ > hi)
+        hi := h.q1.high_
+    if not na(h.q2) and (na(hi) or h.q2.high_ > hi)
+        hi := h.q2.high_
+    if not na(h.q3) and (na(hi) or h.q3.high_ > hi)
+        hi := h.q3.high_
+    if not na(h.q4) and (na(hi) or h.q4.high_ > hi)
+        hi := h.q4.high_
+    hi
+
+hourLow(HourAgg h) =>
+    float lo = na
+    if not na(h.q1) and (na(lo) or h.q1.low_ < lo)
+        lo := h.q1.low_
+    if not na(h.q2) and (na(lo) or h.q2.low_ < lo)
+        lo := h.q2.low_
+    if not na(h.q3) and (na(lo) or h.q3.low_ < lo)
+        lo := h.q3.low_
+    if not na(h.q4) and (na(lo) or h.q4.low_ < lo)
+        lo := h.q4.low_
+    lo
+
+classifyHour(HourAgg h) =>
+    string cls = "doji"
+    if not na(h.q1) and not na(h.q2) and not na(h.q3) and not na(h.q4)
+        h1 = h.q1.high_, h2 = h.q2.high_, h3 = h.q3.high_, h4 = h.q4.high_
+        l1 = h.q1.low_,  l2 = h.q2.low_,  l3 = h.q3.low_,  l4 = h.q4.low_
+        if h1 < h2 and h2 < h3 and h3 < h4 and l1 < l2 and l2 < l3 and l3 < l4
+            cls := "line-up"
+        else if h1 > h2 and h2 > h3 and h3 > h4 and l1 > l2 and l2 > l3 and l3 > l4
+            cls := "line-down"
+    cls
+
+var HourAgg curHour = na
+
+// Per-15m-bar aggregation. Mutates fields of `curHour` (in-place, allowed since
+// Pine UDTs are reference types) and the quarter under it. Hour-spawn is
+// handled at driver scope below because Pine v6 disallows reassigning
+// global `var` references from inside functions.
+//
+// On 15m bars each quarter is one bar, so this function fires once per
+// quarter and the entire quarter's H/L is captured atomically.
+applyRunning15m(HourAgg h_curr, int m, float h_, float l_) =>
+    if not na(h_curr)
+        int qi = quarterOfHourAt(m)
+        QuarterAgg q = qi == 1 ? h_curr.q1 : qi == 2 ? h_curr.q2 : qi == 3 ? h_curr.q3 : h_curr.q4
+        if na(q)
+            q := QuarterAgg.new(qIdx = qi)
+            if qi == 1
+                h_curr.q1 := q
+            else if qi == 2
+                h_curr.q2 := q
+            else if qi == 3
+                h_curr.q3 := q
+            else
+                h_curr.q4 := q
+        if na(q.high_) or h_ > q.high_
+            q.high_ := h_
+        if na(q.low_) or l_ < q.low_
+            q.low_ := l_
+        q.barCount += 1
+        // Note: box-lock band tracking (stat #3) is disabled on 15m — that
+        // logic requires the minute :00-:04 sub-window which doesn't exist
+        // at this resolution. The box05* fields stay as `na` and stat #3
+        // simply records nothing.
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ STAT #5 — Hour-of-day breakout rate                                      ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+var array<int> breakoutCount = array.new<int>(24, 0)
+var array<int> visitCount    = array.new<int>(24, 0)
+var HourAgg priorHourS5 = na
+
+// Called once per hour close (from the per-bar driver). Returns true so the
+// caller knows to advance priorHourS5 := curHour after stats are recorded.
+recordStat5(HourAgg h_curr, HourAgg h_prior) =>
+    if not na(h_curr) and not na(h_prior)
+        float curHi = hourHigh(h_curr)
+        float curLo = hourLow(h_curr)
+        float priHi = hourHigh(h_prior)
+        float priLo = hourLow(h_prior)
+        if not na(curHi) and not na(curLo) and not na(priHi) and not na(priLo)
+            int bucket = h_curr.hourOfDay
+            bool brokeOut = curHi > priHi or curLo < priLo
+            array.set(visitCount, bucket, array.get(visitCount, bucket) + 1)
+            if brokeOut
+                array.set(breakoutCount, bucket, array.get(breakoutCount, bucket) + 1)
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ STAT #2 — Q3-close → hour classification probability                     ║
+// ║ Signature: 4-char string h12/h23/l12/l23, each ∈ {u, d, e}.              ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+sigChar(float a, float b) =>
+    string c = "e"
+    if b > a
+        c := "u"
+    else if b < a
+        c := "d"
+    c
+
+encodeSigQ3(HourAgg h) =>
+    string s = ""
+    if not na(h.q1) and not na(h.q2) and not na(h.q3)
+        s := sigChar(h.q1.high_, h.q2.high_) + sigChar(h.q2.high_, h.q3.high_) +
+             sigChar(h.q1.low_,  h.q2.low_)  + sigChar(h.q2.low_,  h.q3.low_)
+    s
+
+var map<string, int> sigLineUp = map.new<string, int>()
+var map<string, int> sigLineDn = map.new<string, int>()
+var map<string, int> sigDoji   = map.new<string, int>()
+var map<string, int> sigTotal  = map.new<string, int>()
+
+mapInc(map<string, int> m, string k) =>
+    int cur = map.contains(m, k) ? map.get(m, k) : 0
+    map.put(m, k, cur + 1)
+
+mapGetOr0(map<string, int> m, string k) =>
+    map.contains(m, k) ? map.get(m, k) : 0
+
+// Called once per hour close.
+recordStat2(HourAgg h_curr) =>
+    if not na(h_curr) and not na(h_curr.q1) and not na(h_curr.q2) and not na(h_curr.q3) and not na(h_curr.q4)
+        string sig = encodeSigQ3(h_curr)
+        if sig != ""
+            string cls = classifyHour(h_curr)
+            mapInc(sigTotal, sig)
+            if cls == "line-up"
+                mapInc(sigLineUp, sig)
+            else if cls == "line-down"
+                mapInc(sigLineDn, sig)
+            else
+                mapInc(sigDoji, sig)
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ STAT #1 — Quarter extension probability (per stage)                      ║
+// ║                                                                          ║
+// ║ At each quarter close (Q1, Q2, Q3), encode the current "holder state"   ║
+// ║ as a string key. After the next quarter closes, record which of 4       ║
+// ║ outcomes happened: hi-extend / lo-extend / both / inside.                ║
+// ║                                                                          ║
+// ║ State encoding:                                                          ║
+// ║   After Q1: state = "q1" (always — only one quarter exists)             ║
+// ║   After Q2: state = "<hi_holder><lo_holder>" e.g. "12" means Q1 hi,Q2 lo║
+// ║   After Q3: state = "<hi_holder><lo_holder>" with values from {1,2,3}   ║
+// ║                                                                          ║
+// ║ Outcomes counted: hi (next Q extended high), lo, both, inside (neither).║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+holderOfHi(HourAgg h, int upTo) =>
+    int holder = 1
+    float hi = na
+    if upTo >= 1 and not na(h.q1)
+        hi := h.q1.high_
+        holder := 1
+    if upTo >= 2 and not na(h.q2) and (na(hi) or h.q2.high_ > hi)
+        hi := h.q2.high_
+        holder := 2
+    if upTo >= 3 and not na(h.q3) and (na(hi) or h.q3.high_ > hi)
+        hi := h.q3.high_
+        holder := 3
+    holder
+
+holderOfLo(HourAgg h, int upTo) =>
+    int holder = 1
+    float lo = na
+    if upTo >= 1 and not na(h.q1)
+        lo := h.q1.low_
+        holder := 1
+    if upTo >= 2 and not na(h.q2) and (na(lo) or h.q2.low_ < lo)
+        lo := h.q2.low_
+        holder := 2
+    if upTo >= 3 and not na(h.q3) and (na(lo) or h.q3.low_ < lo)
+        lo := h.q3.low_
+        holder := 3
+    holder
+
+stateAfter(HourAgg h, int afterQ) =>
+    string s = ""
+    if afterQ == 1
+        s := "q1"
+    else if afterQ == 2
+        s := str.tostring(holderOfHi(h, 2)) + str.tostring(holderOfLo(h, 2))
+    else if afterQ == 3
+        s := str.tostring(holderOfHi(h, 3)) + str.tostring(holderOfLo(h, 3))
+    s
+
+// Outcome classifier: did `nextQ` extend the high/low of the prior state?
+// Prior hi/lo is hourHigh/Low computed across quarters 1..nextQ-1.
+classifyExtension(HourAgg h, int nextQ) =>
+    string outcome = "inside"
+    QuarterAgg q = nextQ == 2 ? h.q2 : nextQ == 3 ? h.q3 : h.q4
+    if not na(q)
+        // Prior hi/lo across quarters strictly before nextQ
+        float priHi = na
+        float priLo = na
+        if nextQ >= 2 and not na(h.q1)
+            priHi := h.q1.high_
+            priLo := h.q1.low_
+        if nextQ >= 3 and not na(h.q2)
+            priHi := na(priHi) ? h.q2.high_ : math.max(priHi, h.q2.high_)
+            priLo := na(priLo) ? h.q2.low_  : math.min(priLo, h.q2.low_)
+        if nextQ >= 4 and not na(h.q3)
+            priHi := na(priHi) ? h.q3.high_ : math.max(priHi, h.q3.high_)
+            priLo := na(priLo) ? h.q3.low_  : math.min(priLo, h.q3.low_)
+        if not na(priHi) and not na(priLo)
+            bool extHi = q.high_ > priHi
+            bool extLo = q.low_  < priLo
+            if extHi and extLo
+                outcome := "both"
+            else if extHi
+                outcome := "hi"
+            else if extLo
+                outcome := "lo"
+    outcome
+
+// Three (stage → state → outcome) counters. Stage is the just-closed Q.
+// Maps keyed by "<stage>|<state>"; outcome split into 4 maps.
+var map<string, int> extHi     = map.new<string, int>()
+var map<string, int> extLo     = map.new<string, int>()
+var map<string, int> extBoth   = map.new<string, int>()
+var map<string, int> extInside = map.new<string, int>()
+var map<string, int> extTotal  = map.new<string, int>()
+
+recordExtension(int stage, string state, string outcome) =>
+    string k = str.tostring(stage) + "|" + state
+    mapInc(extTotal, k)
+    if outcome == "hi"
+        mapInc(extHi, k)
+    else if outcome == "lo"
+        mapInc(extLo, k)
+    else if outcome == "both"
+        mapInc(extBoth, k)
+    else
+        mapInc(extInside, k)
+
+// Called once per hour close. Records three (stage → outcome) tuples:
+//   stage 1: state from Q1, outcome from Q2
+//   stage 2: state from Q1+Q2, outcome from Q3
+//   stage 3: state from Q1+Q2+Q3, outcome from Q4
+recordStat1(HourAgg h_curr) =>
+    if not na(h_curr)
+        if not na(h_curr.q1) and not na(h_curr.q2)
+            recordExtension(1, stateAfter(h_curr, 1), classifyExtension(h_curr, 2))
+        if not na(h_curr.q1) and not na(h_curr.q2) and not na(h_curr.q3)
+            recordExtension(2, stateAfter(h_curr, 2), classifyExtension(h_curr, 3))
+        if not na(h_curr.q1) and not na(h_curr.q2) and not na(h_curr.q3) and not na(h_curr.q4)
+            recordExtension(3, stateAfter(h_curr, 3), classifyExtension(h_curr, 4))
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ STAT #3 — Band rejection follow-through                                  ║
+// ║                                                                          ║
+// ║ Band levels (from box05Hi/Lo locked at :05 on 5m):                       ║
+// ║   u10 = boxHi × 1.0010   u05 = boxHi × 1.0005                            ║
+// ║   l05 = boxLo × 0.9995   l10 = boxLo × 0.9990                            ║
+// ║                                                                          ║
+// ║ Per (level, side), record:                                               ║
+// ║   fired  = at least one bar in the hour wicked past the band            ║
+// ║   reverse = hour closed on the OPPOSITE side of the box mid              ║
+// ║                                                                          ║
+// ║ "Reverse" definition: upper rejection reverses if close < boxMid;        ║
+// ║ lower rejection reverses if close > boxMid.                              ║
+// ║                                                                          ║
+// ║ Box mid = (box05Hi + box05Lo) / 2.                                       ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+var array<int> rejFired   = array.new<int>(4, 0)  // [10up, 10dn, 05up, 05dn]
+var array<int> rejReverse = array.new<int>(4, 0)
+
+// Stat #3 is disabled on 15m. These stubs are kept (rather than removed)
+// so the driver loop's call sequence stays uniform across stats. The
+// reference section's renderer skips the band-rejection rows entirely.
+// Returns `false` (typed) so Pine v6 doesn't require an `na`-with-types
+// annotation per CE10096.
+applyRunningStat3(HourAgg h_curr, int m, float h_, float l_) =>
+    false
+
+recordStat3(HourAgg h_curr, float c_) =>
+    false
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ STAT #4 — In-stat / out-of-stat extreme reclaim rate                     ║
+// ║                                                                          ║
+// ║ At hour close, find the strict high-holder and low-holder among Q1-Q4.   ║
+// ║ Confirm with the opposite-break rule (matches main indicator's stat tag) ║
+// ║ before counting. Categorize:                                             ║
+// ║   in-stat-hi  = Q1 or Q4 holds high                                      ║
+// ║   out-stat-hi = Q2 or Q3 holds high                                      ║
+// ║   in-stat-lo  = Q1 or Q4 holds low                                       ║
+// ║   out-stat-lo = Q2 or Q3 holds low                                       ║
+// ║                                                                          ║
+// ║ "Reclaimed" criterion: hour close on the OPPOSITE side of the hour mid.  ║
+// ║   For a high holder: reclaimed if close < hourMid                        ║
+// ║   For a low holder:  reclaimed if close > hourMid                        ║
+// ║                                                                          ║
+// ║ Hour mid = (hourHigh + hourLow) / 2.                                     ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+quartersFor(HourAgg h, int idx) =>
+    QuarterAgg q = idx == 1 ? h.q1 : idx == 2 ? h.q2 : idx == 3 ? h.q3 : h.q4
+    q
+
+brokeBelow(HourAgg h, int holderIdx, float holderLow) =>
+    bool broke = false
+    for j = 1 to 4
+        if j != holderIdx
+            QuarterAgg qj = quartersFor(h, j)
+            if not na(qj) and qj.low_ < holderLow
+                broke := true
+    broke
+
+brokeAbove(HourAgg h, int holderIdx, float holderHigh) =>
+    bool broke = false
+    for j = 1 to 4
+        if j != holderIdx
+            QuarterAgg qj = quartersFor(h, j)
+            if not na(qj) and qj.high_ > holderHigh
+                broke := true
+    broke
+
+var array<int> reclaimFired   = array.new<int>(4, 0)  // [in-hi, out-hi, in-lo, out-lo]
+var array<int> reclaimSucc    = array.new<int>(4, 0)
+
+recordStat4(HourAgg h_curr, float c_) =>
+    if not na(h_curr) and not na(h_curr.q1) and not na(h_curr.q2) and not na(h_curr.q3) and not na(h_curr.q4)
+        float hi = hourHigh(h_curr)
+        float lo = hourLow(h_curr)
+        if not na(hi) and not na(lo) and hi != lo
+            float hourMid = (hi + lo) / 2.0
+
+            int qHiIdx = na
+            for qi = 1 to 4
+                int idx = 5 - qi
+                QuarterAgg qx = quartersFor(h_curr, idx)
+                if na(qHiIdx) and not na(qx) and qx.high_ == hi
+                    qHiIdx := idx
+            int qLoIdx = na
+            for qi = 1 to 4
+                int idx = 5 - qi
+                QuarterAgg qx = quartersFor(h_curr, idx)
+                if na(qLoIdx) and not na(qx) and qx.low_ == lo
+                    qLoIdx := idx
+
+            if not na(qHiIdx)
+                QuarterAgg qH = quartersFor(h_curr, qHiIdx)
+                if not na(qH) and brokeBelow(h_curr, qHiIdx, qH.low_)
+                    bool inStat = qHiIdx == 1 or qHiIdx == 4
+                    bool reclaimed = c_ < hourMid
+                    int bucket = inStat ? 0 : 1
+                    array.set(reclaimFired, bucket, array.get(reclaimFired, bucket) + 1)
+                    if reclaimed
+                        array.set(reclaimSucc, bucket, array.get(reclaimSucc, bucket) + 1)
+
+            if not na(qLoIdx)
+                QuarterAgg qL = quartersFor(h_curr, qLoIdx)
+                if not na(qL) and brokeAbove(h_curr, qLoIdx, qL.high_)
+                    bool inStat = qLoIdx == 1 or qLoIdx == 4
+                    bool reclaimed = c_ > hourMid
+                    int bucket = inStat ? 2 : 3
+                    array.set(reclaimFired, bucket, array.get(reclaimFired, bucket) + 1)
+                    if reclaimed
+                        array.set(reclaimSucc, bucket, array.get(reclaimSucc, bucket) + 1)
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ TF-AWARE DATA SOURCING                                                   ║
+// ║                                                                          ║
+// ║ Three branches feed the aggregator with 15m-resolution data:            ║
+// ║   · Chart TF == 15m  → native bar (current chart bar's H/L/C/time)      ║
+// ║   · Chart TF < 15m   → request.security("15", ...) returns the 15m      ║
+// ║                        bar's close-time snapshot; fire only when a new  ║
+// ║                        15m bar locks.                                   ║
+// ║   · Chart TF > 15m   → request.security_lower_tf returns an ARRAY of    ║
+// ║                        every 15m bar contained in the chart bar.        ║
+// ║                                                                          ║
+// ║ The per-15m-bar logic is inlined (not wrapped in a function) because   ║
+// ║ Pine v6 forbids functions from reassigning global `var` references,    ║
+// ║ and the hour-spawn / priorHourS5-advance steps need exactly that.      ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+// Branch 1: native 15m. Read chart-native time/OHLC and feed directly.
+if IS_TF_MIN15
+    int _Hn = hour(time, NY_TZ)
+    int _Mn = minute(time, NY_TZ)
+    if isHourOpenAt(_Mn) and (not gTrackedOnly or inTrackedHourAt(_Hn))
+        curHour := HourAgg.new(hourOfDay = _Hn, anchorBar = bar_index)
+    applyRunning15m(curHour, _Mn, high, low)
+    applyRunningStat3(curHour, _Mn, high, low)
+    if isHourCloseAt(_Mn)
+        recordStat5(curHour, priorHourS5)
+        recordStat2(curHour)
+        recordStat1(curHour)
+        recordStat3(curHour, close)
+        recordStat4(curHour, close)
+        priorHourS5 := curHour
+
+// Branch 2: sub-15m chart. Pull the in-progress 15m bar via request.security
+// with lookahead_off so each 15m close prints exactly once on the chart bar
+// that contains it.
+if IS_TF_BELOW15
+    [_h15, _l15, _c15, _t15] = request.security(syminfo.tickerid, "15",
+                                                [high, low, close, time],
+                                                lookahead=barmerge.lookahead_off)
+    // Fire only when a new 15m close just printed (t15 advanced this bar).
+    bool _t15_advanced = not na(_t15) and (na(_t15[1]) or _t15 != _t15[1])
+    if _t15_advanced
+        int _Hn = hour(_t15, NY_TZ)
+        int _Mn = minute(_t15, NY_TZ)
+        if isHourOpenAt(_Mn) and (not gTrackedOnly or inTrackedHourAt(_Hn))
+            curHour := HourAgg.new(hourOfDay = _Hn, anchorBar = bar_index)
+        applyRunning15m(curHour, _Mn, _h15, _l15)
+        applyRunningStat3(curHour, _Mn, _h15, _l15)
+        if isHourCloseAt(_Mn)
+            recordStat5(curHour, priorHourS5)
+            recordStat2(curHour)
+            recordStat1(curHour)
+            recordStat3(curHour, _c15)
+            recordStat4(curHour, _c15)
+            priorHourS5 := curHour
+
+// Branch 3: chart TF > 15m. Each chart bar covers multiple 15m bars; iterate
+// over them in order via request.security_lower_tf.
+if IS_TF_ABOVE15
+    array<float> _h15arr = request.security_lower_tf(syminfo.tickerid, "15", high)
+    array<float> _l15arr = request.security_lower_tf(syminfo.tickerid, "15", low)
+    array<float> _c15arr = request.security_lower_tf(syminfo.tickerid, "15", close)
+    array<int>   _t15arr = request.security_lower_tf(syminfo.tickerid, "15", time)
+    if array.size(_t15arr) > 0
+        for i = 0 to array.size(_t15arr) - 1
+            int _t15 = array.get(_t15arr, i)
+            int _Hn = hour(_t15, NY_TZ)
+            int _Mn = minute(_t15, NY_TZ)
+            float _h15 = array.get(_h15arr, i)
+            float _l15 = array.get(_l15arr, i)
+            float _c15 = array.get(_c15arr, i)
+            if isHourOpenAt(_Mn) and (not gTrackedOnly or inTrackedHourAt(_Hn))
+                curHour := HourAgg.new(hourOfDay = _Hn, anchorBar = bar_index)
+            applyRunning15m(curHour, _Mn, _h15, _l15)
+            applyRunningStat3(curHour, _Mn, _h15, _l15)
+            if isHourCloseAt(_Mn)
+                recordStat5(curHour, priorHourS5)
+                recordStat2(curHour)
+                recordStat1(curHour)
+                recordStat3(curHour, _c15)
+                recordStat4(curHour, _c15)
+                priorHourS5 := curHour
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ RENDER HELPERS                                                           ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+tablePosFor() =>
+    var p = position.top_right
+    p := gTblPos == "top_left"      ? position.top_left      :
+         gTblPos == "bottom_right"  ? position.bottom_right  :
+         gTblPos == "bottom_left"   ? position.bottom_left   :
+         gTblPos == "middle_right"  ? position.middle_right  :
+         gTblPos == "middle_left"   ? position.middle_left   :
+                                      position.top_right
+    p
+
+format12h(int h24) =>
+    int h12 = h24 % 12 == 0 ? 12 : h24 % 12
+    string suffix = h24 < 12 ? "a" : "p"
+    str.tostring(h12) + suffix
+
+fmtPct(int hits, int total) =>
+    string s = "—"
+    if total >= gMinSamples and total > 0
+        float pct = 100.0 * hits / total
+        s := str.tostring(math.round(pct)) + "%"
+    s
+
+breakoutColor(int hits, int total) =>
+    color c = pal_on_surface()
+    if total >= gMinSamples and total > 0
+        float pct = 100.0 * hits / total
+        if pct >= 65
+            c := pal_table_long()
+        else if pct <= 35
+            c := pal_table_short()
+    c
+
+// Glyphs:
+//   ▲ ▼ ⇕ ◦ — hi-extend / lo-extend / both-extend / inside
+//   ▲ ▼ ◆   — line-up / line-down / doji
+//   ↺       — reclaim
+//   ↻       — rejection reverse
+GLYPH_HI     = "▲"
+GLYPH_LO     = "▼"
+GLYPH_BOTH   = "⇕"
+GLYPH_INSIDE = "◦"
+GLYPH_DOJI   = "◆"
+
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ RENDER — single table, refreshed on last bar only                        ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+// Layout: 4 columns, rows allocated dynamically. With reference off ≈10 rows;
+// with reference on ≈35 rows. We size the table to its max (35) and leave
+// unused rows empty.
+var table statsTbl = na
+
+// Each "stage" label predicts the NEXT quarter from the state of all prior
+// quarters. Stage 1 = "Q1 → Q2", stage 2 = "Q2 → Q3", stage 3 = "Q3 → Q4".
+// The bracketed text shows which earlier quarter currently holds the high/low.
+stageStateDisplay(HourAgg h, int stage) =>
+    string s = ""
+    if stage == 1
+        s := "Q1 → Q2"
+    else if stage == 2
+        s := "Q2 → Q3"
+        if not na(h.q1) and not na(h.q2)
+            int hh = holderOfHi(h, 2), ll = holderOfLo(h, 2)
+            s := s + " (hi=Q" + str.tostring(hh) + " lo=Q" + str.tostring(ll) + ")"
+    else if stage == 3
+        s := "Q3 → Q4"
+        if not na(h.q1) and not na(h.q2) and not na(h.q3)
+            int hh = holderOfHi(h, 3), ll = holderOfLo(h, 3)
+            s := s + " (hi=Q" + str.tostring(hh) + " lo=Q" + str.tostring(ll) + ")"
+    s
+
+// Returns 4 probability strings for a given (stage, state): hi / lo / both / inside.
+extensionProbs(int stage, string state) =>
+    string k = str.tostring(stage) + "|" + state
+    int n = mapGetOr0(extTotal, k)
+    string pHi = fmtPct(mapGetOr0(extHi,     k), n)
+    string pLo = fmtPct(mapGetOr0(extLo,     k), n)
+    string pBo = fmtPct(mapGetOr0(extBoth,   k), n)
+    string pIn = fmtPct(mapGetOr0(extInside, k), n)
+    [pHi, pLo, pBo, pIn, n]
+
+if barstate.islast
+    if na(statsTbl)
+        statsTbl := table.new(tablePosFor(), 4, 40,
+                              bgcolor=pal_surface(),
+                              border_color=pal_table_header_bg(),
+                              border_width=1,
+                              frame_color=pal_table_text(),
+                              frame_width=1)
+
+    int row = 0
+
+    // ═════════════════════════════════════════════════════════════════════
+    // SECTION 1 — HOUR CONTEXT (always shown)
+    // ═════════════════════════════════════════════════════════════════════
+    table.cell(statsTbl, 0, row, "HOUR CONTEXT",
+               text_color=pal_on_surface(), text_size=size.small,
+               bgcolor=pal_table_header_bg())
+    table.cell(statsTbl, 1, row, "", bgcolor=pal_table_header_bg())
+    table.cell(statsTbl, 2, row, "", bgcolor=pal_table_header_bg())
+    table.cell(statsTbl, 3, row, "", bgcolor=pal_table_header_bg())
+    row += 1
+
+    // Use chart-native NY hour for the "current / next" display — this is
+    // "what hour is the user looking at" and is meaningful on any TF.
+    int curH = hour(time, NY_TZ)
+    int nxtH = (curH + 1) % 24
+    int curN = array.get(visitCount, curH)
+    int curB = array.get(breakoutCount, curH)
+    int nxtN = array.get(visitCount, nxtH)
+    int nxtB = array.get(breakoutCount, nxtH)
+    table.cell(statsTbl, 0, row, "Curr " + format12h(curH),
+               text_color=pal_on_surface(), text_size=size.small)
+    table.cell(statsTbl, 1, row, fmtPct(curB, curN),
+               text_color=breakoutColor(curB, curN), text_size=size.small)
+    table.cell(statsTbl, 2, row, "n=" + str.tostring(curN),
+               text_color=pal_on_surface(), text_size=size.small)
+    table.cell(statsTbl, 3, row, "", text_size=size.small)
+    row += 1
+    table.cell(statsTbl, 0, row, "Next " + format12h(nxtH),
+               text_color=pal_on_surface(), text_size=size.small)
+    table.cell(statsTbl, 1, row, fmtPct(nxtB, nxtN),
+               text_color=breakoutColor(nxtB, nxtN), text_size=size.small)
+    table.cell(statsTbl, 2, row, "n=" + str.tostring(nxtN),
+               text_color=pal_on_surface(), text_size=size.small)
+    table.cell(statsTbl, 3, row, "", text_size=size.small)
+    row += 1
+
+    // ═════════════════════════════════════════════════════════════════════
+    // SECTION 2 — LIVE FORECAST (always shown)
+    // ═════════════════════════════════════════════════════════════════════
+    table.cell(statsTbl, 0, row, "LIVE FORECAST",
+               text_color=pal_on_surface(), text_size=size.small,
+               bgcolor=pal_table_header_bg())
+    table.cell(statsTbl, 1, row, GLYPH_HI + " hi",
+               text_color=pal_table_long(), text_size=size.small,
+               bgcolor=pal_table_header_bg())
+    table.cell(statsTbl, 2, row, GLYPH_LO + " lo",
+               text_color=pal_table_short(), text_size=size.small,
+               bgcolor=pal_table_header_bg())
+    table.cell(statsTbl, 3, row, "both / inside",
+               text_color=pal_on_surface(), text_size=size.small,
+               bgcolor=pal_table_header_bg())
+    row += 1
+
+    // Three per-stage forecast rows. Each shows the CURRENT state of the live
+    // hour and the conditional probabilities for the *next* quarter's outcome.
+    // Row is hidden (placeholder) until the prerequisite quarters are filled.
+    for stage = 1 to 3
+        string state = ""
+        bool ready = false
+        if not na(curHour)
+            if stage == 1 and not na(curHour.q1)
+                state := stateAfter(curHour, 1)
+                ready := true
+            else if stage == 2 and not na(curHour.q1) and not na(curHour.q2)
+                state := stateAfter(curHour, 2)
+                ready := true
+            else if stage == 3 and not na(curHour.q1) and not na(curHour.q2) and not na(curHour.q3)
+                state := stateAfter(curHour, 3)
+                ready := true
+
+        // Placeholder label: "Q2 → Q3 (pending)" etc — predicts the
+        // quarter AFTER the one we're still waiting on, so use stage+1.
+        int targetQ = stage + 1
+        string pendingLabel = "Q" + str.tostring(stage) + " → Q" + str.tostring(targetQ) + " (pending)"
+        string stateLabel = ready ? stageStateDisplay(curHour, stage) : pendingLabel
+
+        if ready
+            [pHi, pLo, pBo, pIn, n] = extensionProbs(stage, state)
+            table.cell(statsTbl, 0, row, stateLabel,
+                       text_color=pal_on_surface(), text_size=size.small)
+            table.cell(statsTbl, 1, row, pHi,
+                       text_color=pal_table_long(), text_size=size.small)
+            table.cell(statsTbl, 2, row, pLo,
+                       text_color=pal_table_short(), text_size=size.small)
+            table.cell(statsTbl, 3, row, pBo + " / " + pIn + "  n=" + str.tostring(n),
+                       text_color=pal_on_surface(), text_size=size.small)
+        else
+            table.cell(statsTbl, 0, row, stateLabel,
+                       text_color=pal_table_muted(), text_size=size.small)
+            table.cell(statsTbl, 1, row, "", text_size=size.small)
+            table.cell(statsTbl, 2, row, "", text_size=size.small)
+            table.cell(statsTbl, 3, row, "", text_size=size.small)
+        row += 1
+
+    // Stat #2: hour-class forecast at Q3-close (line-up / line-down / doji).
+    string liveSig = ""
+    if not na(curHour) and not na(curHour.q1) and not na(curHour.q2) and not na(curHour.q3)
+        liveSig := encodeSigQ3(curHour)
+
+    int sigN = liveSig == "" ? 0 : mapGetOr0(sigTotal, liveSig)
+    int sigU = liveSig == "" ? 0 : mapGetOr0(sigLineUp, liveSig)
+    int sigD = liveSig == "" ? 0 : mapGetOr0(sigLineDn, liveSig)
+    int sigJ = liveSig == "" ? 0 : mapGetOr0(sigDoji, liveSig)
+    string sigLabel = liveSig == "" ? "Q3 sig → Hour class (pending)" : "Q3 sig → Hour class (" + liveSig + ")"
+    if liveSig == ""
+        table.cell(statsTbl, 0, row, sigLabel,
+                   text_color=pal_table_muted(), text_size=size.small)
+        table.cell(statsTbl, 1, row, "", text_size=size.small)
+        table.cell(statsTbl, 2, row, "", text_size=size.small)
+        table.cell(statsTbl, 3, row, "", text_size=size.small)
+    else
+        table.cell(statsTbl, 0, row, sigLabel,
+                   text_color=pal_on_surface(), text_size=size.small)
+        table.cell(statsTbl, 1, row, GLYPH_HI + " " + fmtPct(sigU, sigN),
+                   text_color=pal_table_long(), text_size=size.small)
+        table.cell(statsTbl, 2, row, GLYPH_LO + " " + fmtPct(sigD, sigN),
+                   text_color=pal_table_short(), text_size=size.small)
+        table.cell(statsTbl, 3, row, GLYPH_DOJI + " " + fmtPct(sigJ, sigN) + "  n=" + str.tostring(sigN),
+                   text_color=pal_table_warn(), text_size=size.small)
+    row += 1
+
+    // ═════════════════════════════════════════════════════════════════════
+    // SECTION 3 — REFERENCE (toggleable)
+    // ═════════════════════════════════════════════════════════════════════
+    if gShowReference
+        // ── 3a. Stat Extreme Reclaim ───────────────────────────────────
+        // (Band rejection section is disabled on 15m — that stat needs
+        //  sub-15m resolution to detect rejections inside Q1.)
+        table.cell(statsTbl, 0, row, "STAT EXTREME RECLAIM",
+                   text_color=pal_on_surface(), text_size=size.small,
+                   bgcolor=pal_table_header_bg())
+        table.cell(statsTbl, 1, row, "", bgcolor=pal_table_header_bg())
+        table.cell(statsTbl, 2, row, "P(reclaim)", text_color=pal_on_surface(), text_size=size.small,
+                   bgcolor=pal_table_header_bg())
+        table.cell(statsTbl, 3, row, "n", text_color=pal_on_surface(), text_size=size.small,
+                   bgcolor=pal_table_header_bg())
+        row += 1
+
+        string [] recLabels = array.from(
+             "In-stat " + GLYPH_HI + " (Q1/Q4 high)",
+             "Out-stat " + GLYPH_HI + " (Q2/Q3 high)",
+             "In-stat " + GLYPH_LO + " (Q1/Q4 low)",
+             "Out-stat " + GLYPH_LO + " (Q2/Q3 low)")
+        for i = 0 to 3
+            int fired = array.get(reclaimFired, i)
+            int succ  = array.get(reclaimSucc, i)
+            table.cell(statsTbl, 0, row, array.get(recLabels, i),
+                       text_color=pal_on_surface(), text_size=size.small)
+            table.cell(statsTbl, 1, row, "", text_size=size.small)
+            table.cell(statsTbl, 2, row, fmtPct(succ, fired),
+                       text_color=breakoutColor(succ, fired), text_size=size.small)
+            table.cell(statsTbl, 3, row, str.tostring(fired),
+                       text_color=pal_on_surface(), text_size=size.small)
+            row += 1
+
+        // ── 3b. Hour-of-Day Breakout Grid (24 hours) ───────────────────
+        table.cell(statsTbl, 0, row, "HOUR-OF-DAY BREAKOUT GRID",
+                   text_color=pal_on_surface(), text_size=size.small,
+                   bgcolor=pal_table_header_bg())
+        table.cell(statsTbl, 1, row, "", bgcolor=pal_table_header_bg())
+        table.cell(statsTbl, 2, row, "", bgcolor=pal_table_header_bg())
+        table.cell(statsTbl, 3, row, "", bgcolor=pal_table_header_bg())
+        row += 1
+        table.cell(statsTbl, 0, row, "Hr",  text_color=pal_on_surface(), text_size=size.small)
+        table.cell(statsTbl, 1, row, "P/n", text_color=pal_on_surface(), text_size=size.small)
+        table.cell(statsTbl, 2, row, "Hr",  text_color=pal_on_surface(), text_size=size.small)
+        table.cell(statsTbl, 3, row, "P/n", text_color=pal_on_surface(), text_size=size.small)
+        row += 1
+        for i = 0 to 11
+            int leftH  = i
+            int rightH = i + 12
+            int leftN  = array.get(visitCount, leftH)
+            int leftB  = array.get(breakoutCount, leftH)
+            int rightN = array.get(visitCount, rightH)
+            int rightB = array.get(breakoutCount, rightH)
+            table.cell(statsTbl, 0, row, format12h(leftH),
+                       text_color=pal_on_surface(), text_size=size.small)
+            table.cell(statsTbl, 1, row, fmtPct(leftB, leftN) + "/" + str.tostring(leftN),
+                       text_color=breakoutColor(leftB, leftN), text_size=size.small)
+            table.cell(statsTbl, 2, row, format12h(rightH),
+                       text_color=pal_on_surface(), text_size=size.small)
+            table.cell(statsTbl, 3, row, fmtPct(rightB, rightN) + "/" + str.tostring(rightN),
+                       text_color=breakoutColor(rightB, rightN), text_size=size.small)
+            row += 1
+
+    // ── Footer: data lineage ──────────────────────────────────────────────
+    // Always-shown small footer so the user knows the stats are sourced
+    // from 15m bars, regardless of what TF their chart is set to.
+    string srcLabel = "data: 15m bars"
+    if IS_TF_BELOW15
+        srcLabel := srcLabel + " (resampled up from " + timeframe.period + ")"
+    else if IS_TF_ABOVE15
+        srcLabel := srcLabel + " (drilled down from " + timeframe.period + ")"
+    table.cell(statsTbl, 0, row, srcLabel,
+               text_color=pal_table_muted(), text_size=size.small,
+               bgcolor=pal_table_header_bg())
+    table.cell(statsTbl, 1, row, "", bgcolor=pal_table_header_bg())
+    table.cell(statsTbl, 2, row, "", bgcolor=pal_table_header_bg())
+    table.cell(statsTbl, 3, row, "", bgcolor=pal_table_header_bg())

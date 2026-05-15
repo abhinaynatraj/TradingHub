@@ -142,7 +142,8 @@ class TestBuildModelStats:
         assert 'tspot_breakdown' in result
 
     def test_risk_stats(self):
-        """risk_stats computed correctly."""
+        """risk_stats computed correctly. R-only schema (account-agnostic
+        post-2026-04 refactor). Dollar fields and ACCOUNT_SIZE were removed."""
         df = _make_resolved_df(100)
         cfg = dict(label='Test', sweep_tf_min=60, cisd_tf_min=5,
                    min_range=12, session_hrs=(7.0, 16.0))
@@ -150,10 +151,12 @@ class TestBuildModelStats:
                                        stop_mult=1.0, target_mult=1.0,
                                        profile_key='test', profile_type='mult')
         rs = result['risk_stats']
-        assert 'total_pnl_usd' in rs
-        assert 'min_equity_usd' in rs
-        assert 'max_dd_pct' in rs
-        assert rs['account_size'] == ms.ACCOUNT_SIZE
+        # Current R-only fields
+        for field in ('trades', 'wins', 'losses', 'avg_win_r', 'avg_loss_r',
+                      'max_consec_wins', 'max_consec_losses',
+                      'avg_consec_wins', 'avg_consec_losses', 'ce'):
+            assert field in rs, f"missing field: {field}"
+        assert rs['trades'] == rs['wins'] + rs['losses']
 
     def test_recent_trades(self):
         """recent_trades list is included."""

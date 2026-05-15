@@ -57,6 +57,12 @@ export function setActiveF3(v) { activeF3 = v; }
 export let activeF4 = false;
 export function setActiveF4(v) { activeF4 = v; }
 
+export let activeP42 = false;
+export function setActiveP42(v) { activeP42 = v; }
+
+export let activePd = false;
+export function setActivePd(v) { activePd = v; }
+
 export function setActivePageTab(v) { activePageTab = v; }
 
 export const FILTER_STORAGE_KEY = 'fractal-filters-v1';
@@ -99,12 +105,5 @@ export const PROFILE_LABELS = {
   'raw_measure': 'Raw Measure',
 };
 export const PCT_PROFILES = new Set();
-export const CLS_META = {
-  dwp:          {label:'DWP',    sub:'Directional With Pullback', dot:'#22d3ee', color:'var(--blue)'},
-  dnp:          {label:'DNP',    sub:'Directional No Pullback',   dot:'#f59e0b', color:'var(--amber)'},
-  r1:           {label:'R1',     sub:'Range Day Type 1',          dot:'#3b82f6', color:'var(--blue)'},
-  r2:           {label:'R2',     sub:'Range Day Type 2',          dot:'#8b5cf6', color:'var(--purple)'},
-  unclassified: {label:'Unclas', sub:'Unclassified Days',         dot:'#4a6480', color:'var(--text-muted)'},
-};
 export const EQ_ACCT = 2000, EQ_RPT = 200;
-export const DASHBOARD_SCHEMA_VERSION = 1;
+export const DASHBOARD_SCHEMA_VERSION = 2;

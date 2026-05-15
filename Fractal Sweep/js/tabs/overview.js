@@ -1,4 +1,4 @@
-import { activeModel, activeMode, activeCisd, activeProfile, activeTF, activeSmt, activeF3, activeF4, MODEL_KEYS, MODEL_LABELS, RR_PROFILES, PROFILE_LABELS, PCT_PROFILES, CLS_META, SVG_FONT, isDark, activePageTab, setActiveModel, setActiveProfile, setActiveTF } from '../state.js';
+import { activeModel, activeMode, activeCisd, activeProfile, activeTF, activeSmt, activeF3, activeF4, MODEL_KEYS, MODEL_LABELS, RR_PROFILES, PROFILE_LABELS, PCT_PROFILES, SVG_FONT, isDark, activePageTab, setActiveModel, setActiveProfile, setActiveTF } from '../state.js';
 import { pct, evFmt, pfFmt, evCls, wrHeatClr, wrHeatTxt, fmtDateRange, _tradingDaysFromRange } from '../utils.js';
 import { C, lineChart, rDistChart, filterWaterfall, dirCards, drawSetupViz, _buildEquityPts, renderEquityCurveFS, renderOverviewEquityCurve } from '../charts.js';
 import { getProfileData, getActiveTFData, getFilteredD, getSmtD, getAvailableProfiles, loadProfile } from '../data.js';
@@ -8,42 +8,6 @@ import { renderMAEStudy, renderMFEStudy } from './excursion.js';
 import { updateFilterChipDeltas } from './filters.js';
 import { renderRecentTrades } from './trades.js';
 import { switchSMT, switchF3, switchF4, customRanges, applyCustomRanges } from '../walkforward.js';
-
-function renderClassificationBreakdown(){
-  const container = document.getElementById('classification-breakdown');
-  if (!container) return;
-  const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
-  const profileD = getProfileData(fullKey, activeProfile);
-  const D = activeSmt || activeF3 || activeF4 ? getFilteredD(getActiveTFData(profileD)) : getActiveTFData(profileD);
-  const live = D?.by_classification;
-  const cd = live
-    ? { dwp: live.DWP, dnp: live.DNP, r1: live.R1, r2: live.R2, unclassified: live.Unclassified }
-    : null;
-  const cCfg = (meta, cls) => {
-    if (!cls || !cls.n || cls.n <= 0) {
-      return `<div class="cls-tile" style="border-top:2px solid ${meta.dot};opacity:0.45">
-                <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">${meta.label}</div>
-                <div style="font-family:var(--font-display);font-size:15px;font-weight:800;color:${meta.color};letter-spacing:-0.02em;line-height:1">${meta.label}</div>
-                <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-top:3px">${meta.sub}</div>
-                <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);margin-top:6px">No trades in selected period</div>
-              </div>`;
-    }
-    const wrPct = (cls.wr * 100).toFixed(1);
-    return `<div class="cls-tile" style="border-top:2px solid ${meta.dot}">
-              <div style="display:flex;justify-content:space-between;align-items:baseline">
-                <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">${meta.label}</div>
-                <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);letter-spacing:.04em">${cls.n||0} trades</div>
-              </div>
-              <div style="font-family:var(--font-display);font-size:15px;font-weight:800;color:${meta.color};letter-spacing:-0.02em;line-height:1">${meta.label}</div>
-              <div style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-top:3px">${meta.sub}</div>
-              <div style="display:flex;gap:10px;margin-top:8px">
-                <div><span style="font-family:var(--font-data);font-size:18px;font-weight:700;color:${wrPct>=50?'var(--green)':'var(--red)'}">${wrPct}%</span><span style="font-size:9px;color:var(--text-muted);display:block">Win Rate</span></div>
-                <div><span style="font-family:var(--font-data);font-size:18px;font-weight:700;color:${cls.ev!=null?(cls.ev>0?'var(--green)':'var(--red)'):'var(--text-muted)'}">${cls.ev!=null?(cls.ev>0?'+':'')+cls.ev.toFixed(3)+'R':'—'}</span><span style="font-size:9px;color:var(--text-muted);display:block">EV</span></div>
-              </div>
-            </div>`;
-  };
-  container.innerHTML = Object.entries(CLS_META).map(([key, meta]) => (cd?.[key] ? cCfg(meta, cd[key]) : cCfg(meta, null))).join('');
-}
 
 function renderModelDropdown(){
   const sel = document.getElementById('model-select');
@@ -213,7 +177,6 @@ function renderModel(D){
   if (activePageTab === 'trades') renderRecentTrades(0);
 
   renderOverviewEquityCurve(D);
-  renderClassificationBreakdown();
   renderProfileComparison();
   renderVerdict(document.getElementById('overview-verdict-panel'));
 }

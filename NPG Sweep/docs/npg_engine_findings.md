@@ -141,3 +141,38 @@ Silver, by contrast, is highly load-bearing here. It has no Fractal Sweep analog
 - Walk-forward / regime analysis on NPG setups (do the +0.31R EV on D_1H and the Silver edge persist year-over-year, or is it concentrated in a few regimes?)
 - Session filter (`session != OTHER`, or RTH-only) to drop low-liquidity overnight noise.
 - Investigate why SMT is near-noise here vs. strongest-single-filter in Fractal Sweep — is series_multi already absorbing the divergence signal?
+
+## Silver back-port to Fractal Sweep — Phase 2 result
+
+Silver was ported into the Fractal Sweep engine in Phase 2 (commit on `npg-dashboard-phase2` branch). The Phase 1 finding generalised — and then some.
+
+**Marginal edge alongside the F3+F4+SMT baseline (1H_5M, ~12y NQ):**
+
+| Combo | N | WR | EV | PF |
+|---|---|---|---|---|
+| F3+F4+SMT (baseline) | 1,715 | 59.0% | +0.180R | 1.44 |
+| F3+F4+SMT+Silver | 59 | 76.3% | +0.525R | 3.21 |
+
+ΔWR: **+17.26pp** · ΔEV: **+0.345R**
+
+Verdict: **PASSES** the +1%WR / +0.05R-EV gate by a wide margin.
+
+Silver dominates every filter combination on the Fractal Sweep engine — the top 8 EV combos out of 16 all include Silver. Even Silver alone (286 trades, +0.622R EV, PF 4.30) crushes the previous best F3+F4+SMT combo (+0.180R EV, PF 1.44). The catch: trade volume drops dramatically (286 → 59 with the full F3+F4+SMT+Silver stack — roughly 5/year). Silver is a quality filter, not a sole strategy, but it's a remarkably strong one.
+
+Two implications:
+1. **Silver's edge is real and not specific to NPG's CISD definition.** It works on FS's single-bar engulf CISD too, which means the "late-week + aggressive close" gate is capturing something about market microstructure (likely weekly-cycle distribution timing) that's orthogonal to the CISD spec.
+2. **Silver belongs in the Fractal Sweep dashboard's chip set** alongside F3/F4/SMT. Done in Task 14.
+
+Top-EV combos (1H_5M, simple_1r profile):
+
+| Rank | Combo | N | WR | EV | PF |
+|---|---|---|---|---|---|
+| 1 | F3 + Silver | 233 | 82.0% | +0.639R | 4.55 |
+| 2 | Silver | 286 | 81.1% | +0.622R | 4.30 |
+| 3 | F3+F4+Silver | 161 | 80.1% | +0.602R | 4.03 |
+| 4 | F4+Silver | 190 | 79.5% | +0.589R | 3.87 |
+| 5 | F3+SMT+Silver | 73 | 78.1% | +0.562R | 3.56 |
+| 6 | F3+F4+SMT+Silver | 59 | 76.3% | +0.525R | 3.21 |
+| 7 | SMT+Silver | 78 | 75.6% | +0.513R | 3.10 |
+| 8 | F4+SMT+Silver | 62 | 74.2% | +0.484R | 2.88 |
+| 9 | F3+F4+SMT (no Silver) | 1,715 | 59.0% | +0.180R | 1.44 |

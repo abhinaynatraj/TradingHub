@@ -71,8 +71,41 @@ def agg(rows: list[dict]) -> dict:
     if rows and "risk_pts" in rows[0]:
         risk_vals = [r["risk_pts"] for r in rows]
         result["avg_risk_pts"] = sum(risk_vals) / len(risk_vals)
+    # Hourly-range-normalized MAE/MFE. Drop rows where mae_pct_hr is None
+    # (hour range was zero or unavailable) so a single missing value doesn't
+    # blow up the average. Matches Fractal Sweep's convention of attaching
+    # these per-trade and aggregating only over populated rows.
+    if rows and "mae_pct_hr" in rows[0]:
+        vals = [r["mae_pct_hr"] for r in rows if r.get("mae_pct_hr") is not None]
+        result["avg_mae_hr"] = (sum(vals) / len(vals)) if vals else None
+    if rows and "mfe_pct_hr" in rows[0]:
+        vals = [r["mfe_pct_hr"] for r in rows if r.get("mfe_pct_hr") is not None]
+        result["avg_mfe_hr"] = (sum(vals) / len(vals)) if vals else None
 
     return result
+
+
+# ─── Session classifier ──────────────────────────────────────────────────────
+# NY-local hour-of-day buckets used by `by_session` breakdowns. Matches
+# Fractal Sweep's convention (engine/model_stats.py:228-233):
+#   OVERNIGHT  00:00–07:00
+#   PRE        07:00–08:30
+#   NY1        08:30–11:30
+#   NY2        11:30–16:00
+#   AFTER      16:00–24:00
+# Pass an integer hour or a float (e.g. 11.5 for 11:30); the helper accepts both.
+def get_session(hr) -> str:
+    """Classify an NY-local hour-of-day into a trading-session bucket."""
+    hrf = float(hr)
+    if hrf < 7.0:
+        return "OVERNIGHT"
+    if hrf < 8.5:
+        return "PRE"
+    if hrf < 11.5:
+        return "NY1"
+    if hrf < 16.0:
+        return "NY2"
+    return "AFTER"
 
 
 def wilson_ci(wins: int, n: int, z: float = 1.96) -> tuple[float, float]:

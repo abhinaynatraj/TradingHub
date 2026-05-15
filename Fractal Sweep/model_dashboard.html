@@ -8,6 +8,11 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=IBM+Plex+Mono:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="css/dashboard.css"/>
+<!-- Shared theme handler — auto-wires .theme-opt buttons and persists
+     localStorage['hub-theme'] so theme syncs across hub + all dashboards.
+     app.js's module re-assigns window.applyTheme to a version that also
+     triggers chart redraw; that runs after this script. -->
+<script defer src="../Analysis/dashboard/shared.js"></script>
 </head>
 <body>
 <div id="tooltip"></div>
@@ -23,6 +28,8 @@
     <div class="hdr-wordmark">Sweep<em>Model</em></div>
     <div class="hdr-divider"></div>
     <div class="hdr-sub" id="hdr-sub">Multi-TF Probability Engine · NQ</div>
+    <div class="hdr-divider"></div>
+    <a class="hdr-link" href="model_explainer.html" style="font-family:var(--font-data);font-size:11px;color:var(--text-secondary);text-decoration:none;padding:4px 8px;border:1px solid var(--border-mid);border-radius:var(--radius-sm);">How the model works →</a>
   </div>
   <div class="hdr-right">
     <div class="demo-badge" id="demo-badge" style="display:none">⚠ Demo Data</div>
@@ -94,6 +101,10 @@
           <input type="checkbox" id="f4-checkbox" onchange="switchF4(this.checked)">
           <span>Closed Back Inside</span>
         </label>
+        <label class="filter-chk" title="Prior HTF candle's swept extreme formed in the last 30% of its window (≥ minute 42 of H1, ≥ minute 21 of 30M) — Amas ':42 rule'">
+          <input type="checkbox" id="p42-checkbox" onchange="switchP42(this.checked)">
+          <span>Late Extreme (:42)</span>
+        </label>
       </div>
     </div>
 
@@ -103,6 +114,10 @@
         <label class="filter-chk" title="NQ swept but ES did not">
           <input type="checkbox" id="smt-checkbox" onchange="switchSMT(this.checked)">
           <span>NQ-ES Divergence</span>
+        </label>
+        <label class="filter-chk" title="CISD bar closed in premium half (shorts) or discount half (longs) of prior HTF range — Fearing 'premium CISD'">
+          <input type="checkbox" id="pd-checkbox" onchange="switchPD(this.checked)">
+          <span>CISD in PD</span>
         </label>
       </div>
     </div>
@@ -229,9 +244,6 @@
 
 
     <div class="meta-row" id="meta-row"></div>
-
-    <div class="sec-label">Classification Breakdown</div>
-    <div id="classification-breakdown"></div>
 
     <div class="panel">
       <div class="ph"><span class="ph-title">Direction Summary · Long vs Short</span></div>

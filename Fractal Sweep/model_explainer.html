@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fractal Sweep · How the Model Works</title>
+  <link rel="stylesheet" href="../Analysis/dashboard/shared.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script defer src="../Analysis/dashboard/shared.js"></script>
+  <style>
+    body { background: var(--bg); color: var(--text-primary); font-family: var(--font-body); }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 0 24px 80px; }
+
+    .topbar {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 16px 24px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .topbar .crumb { font-family: var(--font-data); font-size: 11px; color: var(--text-muted); letter-spacing: .05em; text-transform: uppercase; }
+    .topbar .crumb a { color: var(--text-muted); text-decoration: none; }
+    .topbar .crumb a:hover { color: var(--text-primary); }
+    .topbar .nav-links { display: flex; gap: 14px; }
+    .topbar .nav-links a { font-family: var(--font-data); font-size: 12px; color: var(--text-secondary); text-decoration: none; padding: 4px 0; border-bottom: 1px solid transparent; }
+    .topbar .nav-links a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+    h1 { font-family: var(--font-display); font-weight: 800; font-size: 32px; margin: 8px 0 6px; letter-spacing: -0.01em; color: var(--text-primary); }
+    .subtitle { font-family: var(--font-display); font-weight: 400; font-size: 16px; color: var(--text-secondary); margin-bottom: 32px; }
+
+    h2 { font-family: var(--font-display); font-weight: 700; font-size: 22px; margin: 40px 0 12px; letter-spacing: -0.01em; color: var(--text-primary); }
+    h3 { font-family: var(--font-display); font-weight: 600; font-size: 16px; margin: 24px 0 8px; color: var(--text-primary); }
+
+    p { line-height: 1.6; color: var(--text-secondary); margin: 0 0 12px; }
+    p strong { color: var(--text-primary); font-weight: 600; }
+
+    .pitch { background: var(--bg-elev-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; margin-bottom: 32px; }
+    .pitch p { margin: 0; color: var(--text-primary); font-size: 15px; }
+
+    .step-card {
+      background: var(--bg-elev-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin: 16px 0;
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 24px;
+      align-items: center;
+    }
+    @media (max-width: 800px) { .step-card { grid-template-columns: 1fr; } }
+    .diagram { background: var(--bg-elev-2); border-radius: var(--radius-sm); padding: 12px; display: flex; align-items: center; justify-content: center; min-height: 200px; border: 1px solid var(--border); }
+    .diagram svg { display: block; width: 100%; height: auto; max-width: 320px; }
+
+    .diagram svg .grid-line { stroke: var(--border); stroke-width: 0.5; }
+    .diagram svg .level-line { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 4,4; }
+    .diagram svg .level-label { font-family: var(--font-data); font-size: 9px; fill: var(--text-muted); }
+    .diagram svg .accent-line { stroke: var(--amber); stroke-width: 1; stroke-dasharray: 4,4; }
+    .diagram svg .accent-label { font-family: var(--font-data); font-size: 9px; fill: var(--amber); }
+    .diagram svg .candle-stem-bull { stroke: var(--green); stroke-width: 1; }
+    .diagram svg .candle-body-bull  { fill: var(--green); fill-opacity: 0.55; stroke: var(--green); }
+    .diagram svg .candle-stem-bear { stroke: var(--red); stroke-width: 1; }
+    .diagram svg .candle-body-bear  { fill: var(--red); fill-opacity: 0.7; stroke: var(--red); }
+    .diagram svg .candle-stem-neutral { stroke: var(--text-secondary); stroke-width: 1; }
+    .diagram svg .candle-body-neutral { fill: var(--text-secondary); fill-opacity: 0.4; stroke: var(--text-secondary); }
+    .diagram svg .candle-label { font-family: var(--font-data); font-size: 9px; fill: var(--text-muted); }
+    .diagram svg .note { font-family: var(--font-data); font-size: 9px; fill: var(--amber); }
+    .diagram svg .note-line { stroke: var(--amber); stroke-width: 1; }
+    .diagram svg .marker-dot { fill: var(--text-secondary); }
+    .diagram svg .marker-label { font-family: var(--font-data); font-size: 9px; fill: var(--text-secondary); }
+    .diagram svg .target-line { stroke: var(--blue); stroke-width: 0.8; stroke-dasharray: 2,2; }
+    .diagram svg .target-label { font-family: var(--font-data); font-size: 9px; fill: var(--blue); }
+    .diagram svg .stop-line { stroke: var(--red); stroke-width: 0.8; stroke-dasharray: 2,2; }
+    .diagram svg .stop-label { font-family: var(--font-data); font-size: 9px; fill: var(--red); }
+    .diagram svg .pill-bg { fill: var(--amber); fill-opacity: 0.15; stroke: var(--amber); }
+    .diagram svg .pill-text { font-family: var(--font-data); font-size: 11px; fill: var(--amber); }
+    .diagram svg .fire-label { font-family: var(--font-data); font-size: 9px; fill: var(--red); font-weight: 700; }
+    .diagram svg .ok-label { font-family: var(--font-data); font-size: 9px; fill: var(--green); font-weight: 700; }
+    .diagram svg .zone-fill-bull { fill: var(--green); fill-opacity: 0.08; }
+    .diagram svg .zone-fill-bear { fill: var(--red); fill-opacity: 0.08; }
+
+    .step-num { font-family: var(--font-data); font-size: 11px; color: var(--accent); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 4px; }
+    .step-title { font-family: var(--font-display); font-weight: 700; font-size: 18px; margin: 0 0 6px; color: var(--text-primary); }
+    .step-body { font-size: 14px; line-height: 1.55; color: var(--text-secondary); }
+    .step-body code { font-family: var(--font-data); background: var(--bg-elev-2); padding: 1px 5px; border-radius: 3px; color: var(--text-primary); font-size: 12px; }
+    .step-body strong { color: var(--text-primary); }
+
+    /* Filter cards — denser grid layout for 5 filters */
+    .filter-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+      margin: 16px 0 24px;
+    }
+    @media (max-width: 800px) { .filter-grid { grid-template-columns: 1fr; } }
+    .filter-card {
+      background: var(--bg-elev-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 14px;
+      align-items: center;
+    }
+    .filter-card .mini-diagram { background: var(--bg-elev-2); border-radius: var(--radius-sm); padding: 6px; display: flex; align-items: center; justify-content: center; min-height: 90px; border: 1px solid var(--border); }
+    .filter-card .mini-diagram svg { display: block; width: 100%; height: auto; max-width: 110px; }
+    .filter-name { font-family: var(--font-data); font-size: 11px; color: var(--accent); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 3px; }
+    .filter-title { font-family: var(--font-display); font-weight: 700; font-size: 15px; color: var(--text-primary); margin-bottom: 6px; }
+    .filter-body { font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
+    .filter-body code { font-family: var(--font-data); background: var(--bg-elev-2); padding: 1px 4px; border-radius: 3px; color: var(--text-primary); font-size: 11px; }
+    .filter-body strong { color: var(--text-primary); }
+    .filter-stat { font-family: var(--font-data); font-size: 11px; color: var(--green); margin-top: 6px; letter-spacing: .02em; }
+    .filter-stat.neutral { color: var(--text-muted); }
+
+    .compare-table { width: 100%; border-collapse: collapse; margin: 12px 0 24px; font-size: 14px; }
+    .compare-table th, .compare-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .compare-table th { font-family: var(--font-data); font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: .05em; background: var(--bg-elev-1); font-weight: 600; }
+    .compare-table td { color: var(--text-secondary); }
+    .compare-table td:first-child { font-weight: 600; color: var(--text-primary); width: 22%; }
+    .compare-table td code { font-family: var(--font-data); font-size: 12px; color: var(--text-primary); background: var(--bg-elev-2); padding: 1px 5px; border-radius: 3px; }
+    .compare-table tr.section-row td { background: var(--bg-elev-1); font-family: var(--font-data); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); padding: 8px 12px; }
+    .compare-table strong { color: var(--text-primary); }
+
+    .callout { background: var(--bg-elev-1); border-left: 3px solid var(--accent); padding: 12px 16px; margin: 16px 0; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+    .callout p { margin: 0; color: var(--text-primary); font-size: 14px; }
+    .callout strong { color: var(--accent); }
+
+    .glossary { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 16px 0; }
+    @media (max-width: 700px) { .glossary { grid-template-columns: 1fr; } }
+    .glossary-card { background: var(--bg-elev-1); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; }
+    .glossary-term { font-family: var(--font-data); font-weight: 700; font-size: 13px; color: var(--accent); margin-bottom: 4px; letter-spacing: .02em; }
+    .glossary-def { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+    .glossary-def code { font-family: var(--font-data); font-size: 12px; color: var(--text-primary); background: var(--bg-elev-2); padding: 1px 5px; border-radius: 3px; }
+
+    .cta-row { display: flex; gap: 12px; margin-top: 32px; flex-wrap: wrap; }
+    .cta-btn { font-family: var(--font-data); font-size: 13px; font-weight: 600; padding: 10px 18px; border-radius: var(--radius-sm); border: 1px solid var(--border-mid); background: var(--bg-elev-2); color: var(--text-primary); text-decoration: none; transition: all .15s; }
+    .cta-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .cta-btn.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+    .cta-btn.primary:hover { opacity: .85; color: var(--bg); }
+
+    .tf-pair-row {
+      display: flex;
+      gap: 16px;
+      margin: 16px 0;
+      flex-wrap: wrap;
+    }
+    .tf-pair-card {
+      flex: 1;
+      min-width: 240px;
+      background: var(--bg-elev-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+    }
+    .tf-pair-title { font-family: var(--font-data); font-weight: 700; font-size: 13px; color: var(--accent); letter-spacing: .05em; margin-bottom: 6px; }
+    .tf-pair-body { font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
+  </style>
+</head>
+<body>
+
+  <div class="theme-picker" role="radiogroup" aria-label="Theme">
+    <button class="theme-opt" data-theme="dark"   title="Dark"   aria-label="Dark theme">☀</button>
+    <button class="theme-opt" data-theme="light"  title="Light"  aria-label="Light theme">☾</button>
+    <button class="theme-opt" data-theme="gold"   title="Gold"   aria-label="Gold theme">✦</button>
+    <button class="theme-opt" data-theme="indigo" title="Indigo" aria-label="Indigo theme">◆</button>
+  </div>
+
+  <div class="topbar">
+    <div class="crumb"><a href="../index.html">Statistic.ally</a> &nbsp;/&nbsp; <a href="model_dashboard.html">Fractal Sweep</a> &nbsp;/&nbsp; How it works</div>
+    <div class="nav-links">
+      <a href="model_dashboard.html">Dashboard →</a>
+      <a href="../NPG Sweep/npg_explainer.html">NPG Sweep</a>
+      <a href="../index.html">Hub</a>
+    </div>
+  </div>
+
+  <div class="wrap">
+
+    <h1>Fractal Sweep — How the Model Works</h1>
+    <p class="subtitle">A plain-English walkthrough, with diagrams, of what the engine looks for and why each filter exists.</p>
+
+    <div class="pitch">
+      <p><strong>One-sentence summary.</strong> Fractal Sweep watches for a specific 3-stage pattern (sweep → return → confirmation) on 12 years of NQ futures data, scores each trade as a clean win or loss at 1R, then layers five optional filters that you can toggle live in the dashboard to find the highest-edge combination.</p>
+    </div>
+
+    <h2>The three-stage pattern</h2>
+    <p>Every Fractal Sweep setup unfolds in three stages, all of which must happen inside the same higher-timeframe (HTF) candle's window. If any stage doesn't complete before the next HTF candle opens, the setup is discarded.</p>
+
+    <!-- Step 1 — Sweep -->
+    <div class="step-card">
+      <div class="diagram">
+        <svg viewBox="0 0 320 200" xmlns="http://www.w3.org/2000/svg" aria-label="Sweep: HTF candle wicks above prior candle's high">
+          <defs>
+            <pattern id="grid-s1" width="40" height="20" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 20" fill="none" class="grid-line"/>
+            </pattern>
+          </defs>
+          <rect width="320" height="200" fill="url(#grid-s1)" />
+
+          <!-- prior candle range zone -->
+          <rect x="0" y="60" width="320" height="80" class="zone-fill-bull"/>
+          <line x1="0" y1="60" x2="320" y2="60" class="level-line"/>
+          <text x="6" y="54" class="level-label">prior high (target liquidity)</text>
+          <line x1="0" y1="140" x2="320" y2="140" class="level-line"/>
+          <text x="6" y="155" class="level-label">prior low</text>
+
+          <!-- prev candle -->
+          <line x1="100" y1="70" x2="100" y2="140" class="candle-stem-neutral"/>
+          <rect x="92" y="78" width="16" height="55" class="candle-body-neutral"/>
+          <text x="86" y="178" class="candle-label">prev</text>
+
+          <!-- sweep candle: wicks above prior high -->
+          <line x1="200" y1="35" x2="200" y2="120" class="candle-stem-bear"/>
+          <rect x="192" y="70" width="16" height="40" class="candle-body-bear"/>
+          <text x="186" y="178" class="candle-label">sweep</text>
+
+          <line x1="220" y1="42" x2="270" y2="32" class="note-line"/>
+          <text x="245" y="28" class="note">sweep extreme</text>
+        </svg>
+      </div>
+      <div>
+        <div class="step-num">Stage 1</div>
+        <div class="step-title">Sweep — grabbing liquidity</div>
+        <div class="step-body">
+          On the HTF chart (1-hour or 30-minute), a candle <strong>wicks above the prior candle's high</strong> (or below its low). The price that gets touched is called the <code>sweep_extreme</code>.
+          <br><br>
+          This is liquidity-grab behavior: stop-losses and buy-stops sit just above old highs, so a quick wick takes them out. The setup is short-biased if the high was swept, long-biased if the low was swept.
+          <br><br>
+          The sweep can happen at any minute within the HTF candle — the engine records exactly when.
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2 — Return -->
+    <div class="step-card">
+      <div class="diagram">
+        <svg viewBox="0 0 320 200" xmlns="http://www.w3.org/2000/svg" aria-label="Return: price drops back inside prior range">
+          <defs>
+            <pattern id="grid-s2" width="40" height="20" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 20" fill="none" class="grid-line"/>
+            </pattern>
+          </defs>
+          <rect width="320" height="200" fill="url(#grid-s2)" />
+
+          <rect x="0" y="60" width="320" height="80" class="zone-fill-bull"/>
+          <line x1="0" y1="60" x2="320" y2="60" class="level-line"/>
+          <text x="6" y="54" class="level-label">prior high</text>
+          <line x1="0" y1="140" x2="320" y2="140" class="level-line"/>
+
+          <!-- sweep already happened to the left, dim -->
+          <line x1="60" y1="35" x2="60" y2="120" class="candle-stem-bear" stroke-opacity="0.35"/>
+          <rect x="52" y="70" width="16" height="40" class="candle-body-bear" fill-opacity="0.25"/>
+
+          <!-- next few bars walking down -->
+          <line x1="120" y1="50" x2="120" y2="100" class="candle-stem-bear"/>
+          <rect x="114" y="60" width="12" height="30" class="candle-body-bear"/>
+          <line x1="160" y1="65" x2="160" y2="115" class="candle-stem-bear"/>
+          <rect x="154" y="75" width="12" height="30" class="candle-body-bear"/>
+
+          <!-- return bar: closes back inside the prior range -->
+          <line x1="220" y1="55" x2="220" y2="115" class="candle-stem-bear"/>
+          <rect x="214" y="70" width="12" height="40" class="candle-body-bear" fill-opacity="0.85"/>
+          <circle cx="220" cy="108" r="3" class="marker-dot"/>
+          <text x="228" y="112" class="ok-label">closes back inside</text>
+        </svg>
+      </div>
+      <div>
+        <div class="step-num">Stage 2</div>
+        <div class="step-title">Return — back inside the range</div>
+        <div class="step-body">
+          After the sweep, price has to <strong>come back inside the prior candle's range</strong>. The first bar that closes back inside is the "return bar."
+          <br><br>
+          Why this matters: if price keeps running past the swept level, the sweep was real momentum — not a fake-out. Coming back inside is the first sign of rejection.
+          <br><br>
+          Without a return, no trade. The setup is dead.
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3 — CISD -->
+    <div class="step-card">
+      <div class="diagram">
+        <svg viewBox="0 0 320 200" xmlns="http://www.w3.org/2000/svg" aria-label="CISD: single bar closes back through the level">
+          <defs>
+            <pattern id="grid-s3" width="40" height="20" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 20" fill="none" class="grid-line"/>
+            </pattern>
+          </defs>
+          <rect width="320" height="200" fill="url(#grid-s3)" />
+
+          <line x1="0" y1="85" x2="320" y2="85" class="accent-line"/>
+          <text x="6" y="79" class="accent-label">cisd_level (open of earliest run bar)</text>
+
+          <!-- bullish run before sweep -->
+          <line x1="50" y1="100" x2="50" y2="155" class="candle-stem-bull"/>
+          <rect x="44" y="115" width="12" height="30" class="candle-body-bull"/>
+          <line x1="90" y1="85"  x2="90" y2="135" class="candle-stem-bull"/>
+          <rect x="84" y="95"  width="12" height="30" class="candle-body-bull"/>
+          <line x1="130" y1="75" x2="130" y2="120" class="candle-stem-bull"/>
+          <rect x="124" y="83" width="12" height="28" class="candle-body-bull"/>
+
+          <!-- CISD bar: single close through the level -->
+          <line x1="220" y1="60" x2="220" y2="140" class="candle-stem-bear"/>
+          <rect x="214" y="75" width="12" height="50" class="candle-body-bear" fill-opacity="0.85"/>
+          <circle cx="220" cy="123" r="3" class="marker-dot"/>
+          <text x="232" y="127" class="fire-label">FIRE</text>
+          <text x="232" y="139" class="commit-label">close &lt; cisd_level</text>
+        </svg>
+      </div>
+      <div>
+        <div class="step-num">Stage 3</div>
+        <div class="step-title">CISD — change in state of delivery</div>
+        <div class="step-body">
+          On the lower timeframe (5-minute or 3-minute), the engine walks backward from the return bar and finds the run of <em>opposing</em> candles that built the move up. The <code>cisd_level</code> is the <strong>open of the earliest candle in that run</strong>.
+          <br><br>
+          The CISD <strong>fires</strong> when a single new candle closes back through that level — for a short setup, a candle closes below <code>cisd_level</code>. That close is the confirmation that delivery has switched direction.
+          <br><br>
+          Entry = open of the next bar after CISD fires. Stop = the original sweep extreme. Target = 1R.
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4 — Entry / Stop / Target -->
+    <div class="step-card">
+      <div class="diagram">
+        <svg viewBox="0 0 320 220" xmlns="http://www.w3.org/2000/svg" aria-label="Entry, stop, target: 1R risk-reward">
+          <defs>
+            <pattern id="grid-s4" width="40" height="20" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 20" fill="none" class="grid-line"/>
+            </pattern>
+          </defs>
+          <rect width="320" height="220" fill="url(#grid-s4)" />
+
+          <line x1="0" y1="30"  x2="320" y2="30"  class="stop-line"/>
+          <text x="220" y="26"  class="stop-label">stop = sweep extreme</text>
+
+          <line x1="0" y1="100" x2="320" y2="100" class="level-line"/>
+          <text x="220" y="96"  class="level-label">entry (next bar open)</text>
+
+          <line x1="0" y1="170" x2="320" y2="170" class="target-line"/>
+          <text x="220" y="166" class="target-label">target = 1R</text>
+
+          <!-- arrow showing risk distance -->
+          <line x1="50" y1="30" x2="50" y2="100" stroke="var(--red)" stroke-width="1.5"/>
+          <text x="58" y="68" class="stop-label">risk</text>
+
+          <!-- arrow showing reward distance -->
+          <line x1="50" y1="100" x2="50" y2="170" stroke="var(--green)" stroke-width="1.5"/>
+          <text x="58" y="138" class="ok-label">+1R</text>
+        </svg>
+      </div>
+      <div>
+        <div class="step-num">Stage 4</div>
+        <div class="step-title">Outcome — 1R or stopped out</div>
+        <div class="step-body">
+          Once the trade is live, the engine walks forward 1-minute bars and tracks whichever level price hits first.
+          <br><br>
+          <strong>Stop loss:</strong> the original sweep extreme. If price comes back to take it out, the trade loses 1R.<br>
+          <strong>Target:</strong> 1R measured from entry. If price reaches it, the trade wins 1R.<br>
+          <strong>Tie-break:</strong> if the bar's high-low range covers both stop and target, the stop wins (the engine matches the Pine indicator's intrabar tie behavior).
+          <br><br>
+          Every trade is a clean <code>+1R</code> or <code>−1R</code>, which makes win-rate the headline metric.
+        </div>
+      </div>
+    </div>
+
+    <h2>Two timeframe pairs</h2>
+    <p>Fractal Sweep runs the same pattern detection across two timeframe combinations — each is a separate model with its own stats. Both default to the same risk profile (1R target).</p>
+
+    <div class="tf-pair-row">
+      <div class="tf-pair-card">
+        <div class="tf-pair-title">1H_5M</div>
+        <div class="tf-pair-body">Sweep happens on the <strong>1-hour</strong> candle. CISD confirmation is read on the <strong>5-minute</strong> chart. Slower, ~140 trades/year. Cleaner signal, larger swings.</div>
+      </div>
+      <div class="tf-pair-card">
+        <div class="tf-pair-title">30M_3M</div>
+        <div class="tf-pair-body">Sweep on the <strong>30-minute</strong> candle, CISD on <strong>3-minute</strong>. ~270 trades/year — roughly double the frequency. More noise, but more setups to filter.</div>
+      </div>
+    </div>
+
+    <h2>The five filters</h2>
+    <p>The model has no meaningful edge on its own — baseline win-rate is around 50%, which is the trade tax (commissions, slippage) territory. The edge comes from <strong>filters</strong>. Each filter is optional, toggleable live in the dashboard, and adds a requirement on top of the base 3-stage pattern.</p>
+
+    <div class="filter-grid">
+
+      <!-- F3 — Shallow Sweep -->
+      <div class="filter-card">
+        <div class="mini-diagram">
+          <svg viewBox="0 0 110 90" xmlns="http://www.w3.org/2000/svg" aria-label="F3: sweep wick is shallow, less than 50% of prior range">
+            <rect x="0" y="20" width="110" height="50" class="zone-fill-bull"/>
+            <line x1="0" y1="20" x2="110" y2="20" class="level-line"/>
+            <line x1="0" y1="70" x2="110" y2="70" class="level-line"/>
+            <line x1="40" y1="30" x2="40" y2="60" class="candle-stem-neutral"/>
+            <rect x="34" y="35" width="12" height="20" class="candle-body-neutral"/>
+            <!-- sweep wicks above by a small amount -->
+            <line x1="70" y1="10" x2="70" y2="50" class="candle-stem-bear"/>
+            <rect x="64" y="30" width="12" height="15" class="candle-body-bear"/>
+            <text x="78" y="14" class="note">shallow</text>
+          </svg>
+        </div>
+        <div>
+          <div class="filter-name">F3</div>
+          <div class="filter-title">Shallow Sweep</div>
+          <div class="filter-body">
+            The sweep wick has to be <strong>50% or less</strong> of the prior candle's full range. Tickle the level, don't punch through it.
+            <div class="filter-stat">+3.4% WR · +0.061R EV</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- F4 — Closed Back Inside -->
+      <div class="filter-card">
+        <div class="mini-diagram">
+          <svg viewBox="0 0 110 90" xmlns="http://www.w3.org/2000/svg" aria-label="F4: return bar's close is back inside prior range">
+            <rect x="0" y="20" width="110" height="50" class="zone-fill-bull"/>
+            <line x1="0" y1="20" x2="110" y2="20" class="level-line"/>
+            <line x1="0" y1="70" x2="110" y2="70" class="level-line"/>
+            <line x1="55" y1="10" x2="55" y2="60" class="candle-stem-bear"/>
+            <rect x="49" y="30" width="12" height="25" class="candle-body-bear" fill-opacity="0.85"/>
+            <circle cx="55" cy="53" r="2.5" class="marker-dot"/>
+            <text x="62" y="58" class="ok-label">inside</text>
+          </svg>
+        </div>
+        <div>
+          <div class="filter-name">F4</div>
+          <div class="filter-title">Closed Back Inside</div>
+          <div class="filter-body">
+            The return bar's <strong>close</strong> must sit back inside the prior HTF range — not just the wick.
+            <div class="filter-stat neutral">noise alone · useful in combos</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SMT — NQ-ES Divergence -->
+      <div class="filter-card">
+        <div class="mini-diagram">
+          <svg viewBox="0 0 110 90" xmlns="http://www.w3.org/2000/svg" aria-label="SMT: NQ sweeps but ES does not">
+            <line x1="0" y1="25" x2="110" y2="25" class="level-line"/>
+            <line x1="30" y1="15" x2="30" y2="55" class="candle-stem-bear"/>
+            <rect x="24" y="28" width="12" height="20" class="candle-body-bear"/>
+            <text x="22" y="68" class="candle-label">NQ ✓</text>
+            <line x1="80" y1="30" x2="80" y2="55" class="candle-stem-neutral"/>
+            <rect x="74" y="35" width="12" height="15" class="candle-body-neutral"/>
+            <text x="72" y="68" class="candle-label">ES ✗</text>
+          </svg>
+        </div>
+        <div>
+          <div class="filter-name">SMT</div>
+          <div class="filter-title">NQ-ES Divergence</div>
+          <div class="filter-body">
+            NQ swept its level but <strong>ES did not</strong> sweep its corresponding level. Structural disagreement = stronger signal.
+            <div class="filter-stat">+7.8% WR · +0.150R EV  (strongest)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- P42 — Late Extreme -->
+      <div class="filter-card">
+        <div class="mini-diagram">
+          <svg viewBox="0 0 110 90" xmlns="http://www.w3.org/2000/svg" aria-label="P42: swept extreme formed in the last 30 percent of the prior HTF candle">
+            <rect x="0" y="20" width="110" height="60" class="zone-fill-bull"/>
+            <line x1="0" y1="20" x2="110" y2="20" class="level-line"/>
+            <line x1="0" y1="80" x2="110" y2="80" class="level-line"/>
+            <!-- timeline strip -->
+            <rect x="10" y="60" width="60" height="6" fill="var(--bg)" stroke="var(--text-muted)" stroke-width="0.5"/>
+            <rect x="55" y="60" width="35" height="6" class="pill-bg" fill-opacity="0.4"/>
+            <text x="55" y="58" class="accent-label">:42</text>
+            <line x1="78" y1="25" x2="78" y2="50" class="candle-stem-bear"/>
+            <rect x="72" y="33" width="12" height="15" class="candle-body-bear"/>
+            <text x="86" y="46" class="ok-label">late</text>
+          </svg>
+        </div>
+        <div>
+          <div class="filter-name">P42</div>
+          <div class="filter-title">Late Extreme (:42)</div>
+          <div class="filter-body">
+            The prior HTF candle's swept extreme had to form in the <strong>last 30%</strong> of that candle's window — past minute :42 on H1, minute :21 on 30M. From Amas's "magic number."
+            <div class="filter-stat neutral">+1.7% over SMT (1H) · marginal alone</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PD — CISD in PD -->
+      <div class="filter-card">
+        <div class="mini-diagram">
+          <svg viewBox="0 0 110 90" xmlns="http://www.w3.org/2000/svg" aria-label="PD: CISD closes in the premium half (shorts) or discount half (longs)">
+            <rect x="0" y="15" width="110" height="60" class="zone-fill-bull"/>
+            <line x1="0" y1="15" x2="110" y2="15" class="level-line"/>
+            <line x1="0" y1="75" x2="110" y2="75" class="level-line"/>
+            <line x1="0" y1="45" x2="110" y2="45" class="accent-line"/>
+            <text x="4" y="42" class="accent-label">50%</text>
+            <line x1="65" y1="20" x2="65" y2="55" class="candle-stem-bear"/>
+            <rect x="59" y="25" width="12" height="20" class="candle-body-bear" fill-opacity="0.85"/>
+            <circle cx="65" cy="43" r="2.5" class="marker-dot"/>
+            <text x="74" y="32" class="ok-label">in premium</text>
+          </svg>
+        </div>
+        <div>
+          <div class="filter-name">PD</div>
+          <div class="filter-title">CISD in PD</div>
+          <div class="filter-body">
+            For shorts, the CISD bar's close must sit in the <strong>premium half</strong> of the prior HTF range (≥ 50%). For longs, the discount half (≤ 50%). From Fearing's "premium CISD" thesis.
+            <div class="filter-stat">+3.2% (1H) / +3.7% (30M) over SMT</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="callout">
+      <p><strong>Why filters matter so much.</strong> Without filters, baseline WR sits around 50% — no edge. Stacked: <code>F3 ∧ F4 ∧ SMT</code> reaches ~59% WR. Add the new Phase-1 filters (<code>+ PD</code>) and the best combo climbs to ~63% WR on the 1H model. The dashboard's Filters tab enumerates all 32 combinations so you can see which mix has the highest EV for any timeframe pair.</p>
+    </div>
+
+    <h2>How is this different from NPG Sweep?</h2>
+    <p>Both engines watch a similar high-level pattern (sweep → return → confirmation) on the same database. The differences are in the details.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Aspect</th><th>Fractal Sweep</th><th>NPG Sweep</th></tr>
+      </thead>
+      <tbody>
+        <tr class="section-row"><td colspan="3">Setup detection</td></tr>
+        <tr>
+          <td>Sweep definition</td>
+          <td>Sweep + return-to-range. F4 filter enforces the close-back-inside check explicitly.</td>
+          <td><strong>Wick Lick</strong>: same shape, with an explicit double-sweep exclusion (candles touching both extremes are skipped).</td>
+        </tr>
+        <tr>
+          <td>CISD definition</td>
+          <td><strong>Single-bar engulf.</strong> One close past the cisd_level fires the trade.</td>
+          <td><strong>Series-based.</strong> Walks back, builds an opposing-candle series (up to 20 bars), fires only when a close breaks the entire series.</td>
+        </tr>
+        <tr class="section-row"><td colspan="3">Outcome scoring</td></tr>
+        <tr>
+          <td>Target</td>
+          <td><strong>1R</strong>, 100% exit at target. Clean win/loss.</td>
+          <td><strong>Four levels</strong> at 0.5×, 1.0×, 1.5×, 2.0× of series range. 25% scale-out at each.</td>
+        </tr>
+        <tr>
+          <td>Composite outcome</td>
+          <td>Always exactly +1R or −1R.</td>
+          <td>Weighted sum — partial wins are possible if TPs hit before the stop.</td>
+        </tr>
+        <tr class="section-row"><td colspan="3">Filters</td></tr>
+        <tr>
+          <td>Built-in</td>
+          <td>F3, F4, SMT, P42, PD — five filters, 32 combinations.</td>
+          <td>SMT, Silver (late-week + aggressive close).</td>
+        </tr>
+        <tr class="section-row"><td colspan="3">Bookkeeping</td></tr>
+        <tr>
+          <td>Anchor window</td>
+          <td>All three stages must complete inside the same HTF candle's window.</td>
+          <td>Same.</td>
+        </tr>
+        <tr>
+          <td>Same-bar TP/SL tie</td>
+          <td>SL wins.</td>
+          <td>SL wins.</td>
+        </tr>
+        <tr>
+          <td>Data source</td>
+          <td><code>candle_science.duckdb</code> · <code>nq_1m</code> / <code>es_1m</code></td>
+          <td>Same DB, read-only.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Glossary</h2>
+    <div class="glossary">
+      <div class="glossary-card">
+        <div class="glossary-term">Sweep</div>
+        <div class="glossary-def">When a candle's high or low pokes past a prior candle's extreme. The "sweep extreme" is the actual price reached — typically where stop-losses live.</div>
+      </div>
+      <div class="glossary-card">
+        <div class="glossary-term">Return bar</div>
+        <div class="glossary-def">The first bar after the sweep whose close comes back inside the prior candle's range. Marks the start of the rejection.</div>
+      </div>
+      <div class="glossary-card">
+        <div class="glossary-term">CISD</div>
+        <div class="glossary-def">Change in State of Delivery. The cisd_level is the open of the earliest candle in the run that built the swept extreme; CISD "fires" when a close breaks that level.</div>
+      </div>
+      <div class="glossary-card">
+        <div class="glossary-term">1R</div>
+        <div class="glossary-def">One unit of risk = absolute distance from entry to stop. A trade that wins exactly its risk distance = +1R. Stopped out = −1R.</div>
+      </div>
+      <div class="glossary-card">
+        <div class="glossary-term">EV</div>
+        <div class="glossary-def">Expected value, in R-units per trade. <code>EV = WR × +1 + (1 − WR) × −1</code> for the simple 1R profile. A coin-flip is 0R EV; +0.10R EV is a real edge.</div>
+      </div>
+      <div class="glossary-card">
+        <div class="glossary-term">PF</div>
+        <div class="glossary-def">Profit factor. Sum of winning R-units divided by sum of losing R-units. A PF of 1.50 means winners earn 1.5× the size of losers (assuming equal counts).</div>
+      </div>
+      <div class="glossary-card">
+        <div class="glossary-term">SMT</div>
+        <div class="glossary-def">Smart Money Tool — divergence between NQ and ES. If NQ sweeps but ES doesn't, it's an SMT — historically the strongest single edge in the model.</div>
+      </div>
+      <div class="glossary-card">
+        <div class="glossary-term">Anchor window</div>
+        <div class="glossary-def">The time bucket of the HTF candle (1 hour or 30 minutes). Sweep, return, and CISD must all happen inside one window. Setups that bleed past the next HTF candle are discarded.</div>
+      </div>
+    </div>
+
+    <h2>Where to go next</h2>
+    <div class="cta-row">
+      <a class="cta-btn primary" href="model_dashboard.html">Open the Fractal Sweep dashboard</a>
+      <a class="cta-btn" href="../NPG Sweep/npg_explainer.html">Compare with NPG Sweep</a>
+      <a class="cta-btn" href="../index.html">Back to hub</a>
+    </div>
+
+  </div>
+</body>
+</html>

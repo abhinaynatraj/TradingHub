@@ -78,16 +78,11 @@ DB_PATH   = Path(__file__).parent.parent / 'candle_science.duckdb'
 OUT_PATH  = Path(__file__).parent.parent / 'model_stats.json'
 TABLE     = 'nq_1m'
 
-# Daily classification (DWP/DNP/R1/R2) is no longer wired up — the classifier
-# source lived in the deleted NY1 FPFVG folder. `DATE_CLASSIFICATION` remains
-# an empty dict so downstream aggregations that read it degrade gracefully.
-DATE_CLASSIFICATION = {}
-
 # ── SCHEMA VERSION ────────────────────────────────────────────────────────────
 # Increment this integer whenever the model_stats.json structure changes in a
 # way that would break the dashboard (field renames, removed keys, type changes).
 # The dashboard reads this at startup and warns the user if the cached file is stale.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # ── GLOBAL CONSTANTS ──────────────────────────────────────────────────────────
 POINT_VALUE      = 2.0    # $ per point for MNQ (Micro NQ); NQ = 20.0
@@ -1355,10 +1350,50 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
             # F4: return bar's close sits back inside the prior HTF range.
             #   LONG  → ret_close >= prior low  (above the swept low)
             #   SHORT → ret_close <= prior high (below the swept high)
+            prior_low_val  = float(s_low[i - 1])
+            prior_high_val = float(s_high[i - 1])
             if direction == 'LONG':
-                passes_f4 = bool(ret_close >= float(s_low[i - 1]))
+                passes_f4 = bool(ret_close >= prior_low_val)
             else:
-                passes_f4 = bool(ret_close <= float(s_high[i - 1]))
+                passes_f4 = bool(ret_close <= prior_high_val)
+
+            # P42 (Amas late-extreme) — find when the swept extreme of the
+            # *prior* HTF candle was printed within that candle's window.
+            # Pass if the extreme is in the last 30% of the candle (>= minute
+            # 42 of H1, >= minute 21 of 30M; threshold is full_tf_min * 0.7).
+            prior_start_ns = int(s_ts[i - 1])
+            prior_end_ns   = prior_start_ns + full_tf_ns - NS_PER_MIN
+            p_q_s = int(np.searchsorted(m1_ts, prior_start_ns, side='left'))
+            p_q_e = int(np.searchsorted(m1_ts, prior_end_ns,   side='right'))
+            passes_p42 = False
+            prior_extreme_minute_offset = None
+            prior_extreme_minute_pct    = None
+            if p_q_e > p_q_s:
+                if direction == 'SHORT':
+                    extreme_rel = int(np.argmax(m1_high[p_q_s:p_q_e]))
+                else:
+                    extreme_rel = int(np.argmin(m1_low[p_q_s:p_q_e]))
+                extreme_ts_ns = int(m1_ts[p_q_s + extreme_rel])
+                offset_min = (extreme_ts_ns - prior_start_ns) // NS_PER_MIN
+                prior_extreme_minute_offset = int(offset_min)
+                prior_extreme_minute_pct    = round(offset_min / (full_tf_ns // NS_PER_MIN), 4)
+                # 70% threshold: H1 → 42, 30M → 21
+                threshold_min = int((full_tf_ns // NS_PER_MIN) * 0.7)
+                passes_p42 = bool(offset_min >= threshold_min)
+
+            # PD_CISD (Fearing CISD-in-PD) — CISD bar's close sits in the
+            # premium half (shorts) or discount half (longs) of the prior
+            # HTF range. Continuous companion `cisd_pd_pct` stored on the
+            # row so the dashboard can later threshold at finer levels
+            # (e.g., 0.75 / 0.25 quartiles) without re-running the engine.
+            # Computed against the *return bar's* close as a proxy for
+            # CISD location; the actual CISD-bar close is recomputed below
+            # once we know cisd_c_idx and `_cisd_close` is final.
+            # Note: `cisd_pd_pct` and `passes_pd_cisd` are updated after
+            # CISD resolution; here we leave defaults that the no-CISD
+            # path uses.
+            passes_pd_cisd = False
+            cisd_pd_pct    = None
 
             # Default supporting-FVG flags. Real values are computed once we
             # know entry_price and entry_idx (after CISD fires + entry bar
@@ -1377,12 +1412,21 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                 sweep_ext     = round(float(sweep_ext), 2),
                 sweep_pct     = round(_sweep_pct_row, 3),
                 sweep_extreme = round(float(sweep_extreme), 2),
+                prior_high    = round(prior_high_val, 2),
+                prior_low     = round(prior_low_val, 2),
                 sweep_mode    = 'PREV',
                 passes_f3     = passes_f3,
                 passes_f4     = passes_f4,
                 cisd_mode     = 'CISD',
                 ref_lookback  = ref_lookback,
                 smt           = smt_divergence,
+                passes_p42                  = passes_p42,
+                prior_extreme_minute_offset = prior_extreme_minute_offset,
+                prior_extreme_minute_pct    = prior_extreme_minute_pct,
+                # CISD-derived fields populated after CISD resolution below;
+                # the no-CISD path keeps these defaults.
+                passes_pd_cisd = passes_pd_cisd,
+                cisd_pd_pct    = cisd_pd_pct,
                 passes_fvg_cisd_strict = passes_fvg_cisd_strict,
                 passes_fvg_cisd_loose  = passes_fvg_cisd_loose,
                 passes_fvg_1m_strict   = passes_fvg_1m_strict,
@@ -1450,6 +1494,19 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
 
             _cisd_close = float(c_arrs['close'][cisd_c_idx])
 
+            # PD_CISD (Fearing CISD-in-PD): location of CISD bar's close
+            # within the prior HTF range. Long passes if close is in the
+            # discount half (≤0.50); short passes if in premium (≥0.50).
+            _prior_range = prior_high_val - prior_low_val
+            if _prior_range > 0:
+                _cisd_pd_pct = round((_cisd_close - prior_low_val) / _prior_range, 4)
+            else:
+                _cisd_pd_pct = 0.5
+            if direction == 'SHORT':
+                _passes_pd_cisd = bool(_cisd_pd_pct >= 0.5)
+            else:
+                _passes_pd_cisd = bool(_cisd_pd_pct <= 0.5)
+
             base_row.update(
                 date         = str(_entry_date),
                 dow          = int(m1_dow[entry_start]),
@@ -1461,6 +1518,8 @@ def detect_setups_base(m1_arrs, s_arrs, c_arrs, model_key, model_cfg,
                 cisd_level   = round(cisd_level, 2) if cisd_level is not None else None,
                 hour_range_pts = round(_hr_rng, 2),
                 cisd_close      = round(_cisd_close, 2),
+                cisd_pd_pct     = _cisd_pd_pct,
+                passes_pd_cisd  = _passes_pd_cisd,
                 rejected_by  = rejected_by,
                 # profile-dependent fields — filled by apply_profile_and_resolve
                 stop_price   = None,
@@ -1827,6 +1886,20 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
             s = agg(g); s.update(smt=bool(smt_val))
             smt_summary.append(s)
 
+    # P42 (late-extreme) breakdown
+    p42_summary = []
+    if 'passes_p42' in wl.columns:
+        for p42_val, g in wl.groupby('passes_p42'):
+            s = agg(g); s.update(passes_p42=bool(p42_val))
+            p42_summary.append(s)
+
+    # PD_CISD breakdown
+    pd_cisd_summary = []
+    if 'passes_pd_cisd' in wl.columns:
+        for pd_val, g in wl.groupby('passes_pd_cisd'):
+            s = agg(g); s.update(passes_pd_cisd=bool(pd_val))
+            pd_cisd_summary.append(s)
+
     # ── Supporting FVG breakdown ─────────────────────────────────────────────
     # Each leaf is the result of agg() on a boolean-mask slice of wl.
     # Cells: per-TF (cisd / m1 / any) × geometry (strict / loose / none) +
@@ -1965,6 +2038,8 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
                    'sweep_extreme','target_price','risk_pts','r','outcome',
                    'mae_pct','mfe_pct','mae_pct_hr','mfe_pct_hr','hour_range_pts','smt',
                    'cisd_close','passes_f3','passes_f4',
+                   'passes_p42','prior_extreme_minute_offset','prior_extreme_minute_pct',
+                   'passes_pd_cisd','cisd_pd_pct','prior_high','prior_low',
                    'cisd_level','sl_price','level_33','level_50','level_66',
                    'deepest_adverse_price']
     # Only include columns that actually exist in wl_full (defensive against
@@ -1974,8 +2049,6 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
                    .sort_values('date', ascending=False)
                    .copy())
     recent_rows['dow_name'] = recent_rows['dow'].map(lambda d: DOW_NAMES.get(int(d), '?'))
-    recent_rows['classification'] = recent_rows['date'].astype(str).str[:10].map(
-        lambda d: DATE_CLASSIFICATION.get(d, 'Unclassified'))
     recent_trades = recent_rows.to_dict('records')
     for t in recent_trades:
         t['date'] = str(t['date'])[:10]
@@ -2158,6 +2231,8 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         'r_hist':        r_hist,
         'dir_summary':   dir_summary,
         'smt_summary':   smt_summary,
+        'p42_summary':   p42_summary,
+        'pd_cisd_summary': pd_cisd_summary,
         'fvg_summary':   fvg_summary,
         'risk_dist':     risk_dist,
         'filter_impact': filter_impact,
@@ -2181,7 +2256,6 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         'recent_trades':    recent_trades,
         'risk_stats':       risk_stats,
         'structural_stats': structural_stats,
-        'by_classification': _compute_by_classification(wl_sorted),
         'by_tf':            _compute_by_tf(wl, wl_sorted, stop_mult, target_mult,
                                            sl_pct_val, tp_pct_val, agg,
                                            HR_LABELS, DOW_NAMES,
@@ -2189,40 +2263,8 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
     }
 
 
-def _compute_by_classification(wl_sorted: 'pd.DataFrame') -> dict:
-    """Compute WR / PF / PnL / Sharpe / MaxDD per day classification."""
-    if not DATE_CLASSIFICATION or wl_sorted is None or len(wl_sorted) == 0:
-        return {}
-    cls_order = ['DWP', 'DNP', 'R1', 'R2', 'Unclassified']
-    result = {}
-    for cls in cls_order:
-        dates = {d for d, c in DATE_CLASSIFICATION.items() if c == cls}
-        sub = wl_sorted[wl_sorted['date'].astype(str).str[:10].isin(dates)].copy()
-        n = len(sub)
-        if n == 0:
-            result[cls] = None
-            continue
-        wins   = int((sub['win'] == 1).sum())
-        losses = n - wins
-        wr     = round(wins / n * 100, 2)
-        gross_win  = float(sub.loc[sub['win'] == 1, 'r'].sum())
-        gross_loss = abs(float(sub.loc[sub['win'] == 0, 'r'].sum()))
-        pf     = round(gross_win / gross_loss, 3) if gross_loss > 0 else 0.0
-        ev     = round(float(sub['r'].sum()) / n, 3)
-        result[cls] = {
-            'trades':  n,
-            'wins':    wins,
-            'losses':  losses,
-            'wr':      wr,
-            'ev':      ev,
-            'pf':      pf,
-        }
-    return result
-
-
 def _build_slice_stats(wl_sub, stop_mult, target_mult, agg_fn, hr_labels,
-                       dow_names, date_classification=None, *,
-                       wl_sub_full=None):
+                       dow_names, *, wl_sub_full=None):
     """Build compact stats for a sub-timeframe slice. Used by _compute_by_tf and
     per-TF split profile resolution.
 
@@ -2310,14 +2352,13 @@ def _build_slice_stats(wl_sub, stop_mult, target_mult, agg_fn, hr_labels,
     recent_cols = ['date','direction','hr','mn','session','dow','entry_price',
                    'sweep_extreme','target_price','risk_pts','r','outcome',
                    'mae_pct','mfe_pct','mae_pct_hr','mfe_pct_hr','hour_range_pts','smt',
-                   'cisd_close','passes_f3','passes_f4']
+                   'cisd_close','passes_f3','passes_f4',
+                   'passes_p42','prior_extreme_minute_offset','prior_extreme_minute_pct',
+                   'passes_pd_cisd','cisd_pd_pct','prior_high','prior_low']
     rt_source = wl_sub_full if wl_sub_full is not None else wl_sub
     available = [c for c in recent_cols if c in rt_source.columns]
     rt = rt_source[available].sort_values('date', ascending=False).copy()
     rt['dow_name'] = rt['dow'].map(lambda d: dow_names.get(int(d), '?'))
-    _dc = date_classification or DATE_CLASSIFICATION
-    rt['classification'] = rt['date'].astype(str).str[:10].map(
-        lambda d: _dc.get(d, 'Unclassified'))
     recent_trades = rt.to_dict('records')
     for t in recent_trades:
         t['date'] = str(t['date'])[:10]
@@ -2349,7 +2390,6 @@ def _build_slice_stats(wl_sub, stop_mult, target_mult, agg_fn, hr_labels,
         'dir_summary':     ds,
         'by_year':         by_yr,
         'r_hist':          r_hist,
-        'by_classification': _compute_by_classification(ws_sorted),
         'mae_heatmap':       _build_excursion_heatmap(wl_sub, 'mae_pct'),
         'mfe_heatmap':       _build_excursion_heatmap(wl_sub, 'mfe_pct'),
         'recent_trades':   recent_trades,
@@ -2445,13 +2485,15 @@ def compute_filter_variants(df_all):
       - cumulative_additive: adding filters one at a time in optimal order
       - best_combo: the filter combination that maximizes EV
     """
-    FILTERS = ['F3', 'F4', 'SMT']
+    FILTERS = ['F3', 'F4', 'SMT', 'P42', 'PD']
     FILTER_LABELS = {
         'F3':   'Shallow Sweep (F3)',
         'F4':   'Closed Back Inside (F4)',
         'SMT':  'NQ-ES Divergence',
+        'P42':  'Late Extreme (:42)',
+        'PD':   'CISD in PD',
     }
-    POSITIVE_FILTERS = {'F3', 'F4', 'SMT'}
+    POSITIVE_FILTERS = {'F3', 'F4', 'SMT', 'P42', 'PD'}
 
     def stats_of(df):
         wl = df[df['outcome'].isin(['WIN', 'LOSS'])].copy()
@@ -2496,9 +2538,11 @@ def compute_filter_variants(df_all):
 
     # Base: all valid trades (no rejected_by filters — SKIP/INVALID already excluded)
     all_valid = df_all[~df_all['outcome'].isin(['SKIP', 'INVALID'])].copy()
-    has_f3 = 'passes_f3' in all_valid.columns
-    has_f4 = 'passes_f4' in all_valid.columns
+    has_f3  = 'passes_f3' in all_valid.columns
+    has_f4  = 'passes_f4' in all_valid.columns
     has_smt = 'smt' in all_valid.columns
+    has_p42 = 'passes_p42' in all_valid.columns
+    has_pd  = 'passes_pd_cisd' in all_valid.columns
     # Helper: apply a set of filters to all_valid
     def apply_filters(active_set):
         """Return trades that pass all filters in active_set."""
@@ -2513,6 +2557,12 @@ def compute_filter_variants(df_all):
             elif f == 'SMT':
                 if has_smt:
                     mask &= all_valid['smt'] == True
+            elif f == 'P42':
+                if has_p42:
+                    mask &= all_valid['passes_p42'] == True
+            elif f == 'PD':
+                if has_pd:
+                    mask &= all_valid['passes_pd_cisd'] == True
         return all_valid[mask]
 
     # Baseline = unfiltered. F3/F4 are now also enumerable filters

@@ -1,57 +1,1058 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hourly Analysis · Statistic.ally</title>
+  <title>NQ Hourly Analysis · Statistic.ally</title>
   <link rel="stylesheet" href="shared.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script defer src="shared.js"></script>
+  <style>
+    body { background: var(--bg); color: var(--text-primary); font-family: var(--font-body); margin: 0; }
+
+    /* Header */
+    .hdr { display:flex; justify-content:space-between; align-items:center; padding:14px 24px; border-bottom:1px solid var(--border); background:var(--bg-elev-1); flex-wrap:wrap; gap:12px; }
+    .hdr-left { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+    .hub-back { color:var(--text-secondary); text-decoration:none; display:flex; align-items:center; gap:6px; font-family:var(--font-display); font-weight:600; }
+    .hub-back:hover { color:var(--text-primary); }
+    .hub-back em { font-style:normal; color:var(--accent); }
+    .hdr-divider { width:1px; height:22px; background:var(--border); }
+    .hdr-wordmark { font-family:var(--font-display); font-weight:800; font-size:18px; color:var(--text-primary); letter-spacing:-0.01em; }
+    .hdr-wordmark em { font-style:normal; color:var(--accent); }
+    .hdr-sub { font-family:var(--font-data); font-size:11px; color:var(--text-muted); letter-spacing:.05em; text-transform:uppercase; }
+    .hdr-link { font-family:var(--font-data); font-size:11px; color:var(--text-secondary); text-decoration:none; padding:4px 8px; border:1px solid var(--border-mid); border-radius:var(--radius-sm); }
+    .hdr-link:hover { color:var(--accent); border-color:var(--accent); }
+    .hdr-right { display:flex; align-items:center; gap:10px; }
+
+    /* Two-column layout */
+    .layout { display:grid; grid-template-columns: 260px 1fr; min-height: calc(100vh - 60px); }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); }
+    }
+
+    /* Unified sidebar — docked, sticky-top so nav stays visible, padding
+       18px 16px 24px / gap 14px to match Fractal Sweep / NPG / Amas. */
+    .sidebar {
+      background: var(--bg-elev-1);
+      border-right: 1px solid var(--border);
+      padding: 18px 16px 24px;
+      display: flex; flex-direction: column; gap: 14px;
+      position: sticky; top: 60px;
+      align-self: flex-start;
+      height: calc(100vh - 60px); overflow-y: auto;
+    }
+    /* Spacing between sections is handled by .sidebar's gap (14px). */
+    .sb-section { display: flex; flex-direction: column; gap: 6px; }
+    .sb-label { display:block; font-family:var(--font-data); font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px; }
+    .sel-drop { width:100%; padding:7px 10px; background:var(--bg-elev-2); color:var(--text-primary); border:1px solid var(--border-mid); border-radius:var(--radius-sm); font-family:var(--font-data); font-size:12px; cursor:pointer; }
+
+    .sb-multi { display:flex; flex-wrap:wrap; gap:4px; }
+    .sb-pill { padding:3px 8px; border-radius:999px; border:1px solid var(--border-mid); background:var(--bg-elev-2); color:var(--text-secondary); font-family:var(--font-data); font-size:11px; cursor:pointer; transition: all .15s; user-select:none; }
+    .sb-pill:hover { color:var(--text-primary); border-color:var(--border-hi); }
+    .sb-pill.active { color:var(--accent); border-color:var(--accent); background:var(--bg-elev-1); }
+
+    .sb-nav { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+    .sb-nav-btn { text-align: left; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; color: var(--text-secondary); font-family: var(--font-data); font-size: 12px; cursor: pointer; transition: all .15s; }
+    .sb-nav-btn:hover { background: var(--bg-elev-2); color: var(--text-primary); }
+    .sb-nav-btn.active { background: var(--bg-elev-2); color: var(--accent); border-left: 2px solid var(--accent); padding-left: 10px; font-weight: 600; }
+
+    /* Main pane */
+    .main { padding: 22px 28px 60px; max-width: 1280px; }
+    .page-pane { display: none; }
+    .page-pane.active { display: block; }
+    .sec-label { font-family: var(--font-data); font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: .05em; margin: 22px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    .sec-label:first-child { margin-top: 0; }
+
+    /* Edge ribbon */
+    .edge-ribbon { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+    @media (max-width: 700px) { .edge-ribbon { grid-template-columns: repeat(2, 1fr); } }
+    .ribbon-cell { background: var(--bg-elev-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+    .ribbon-label { font-family: var(--font-data); font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
+    .ribbon-value { font-family: var(--font-data); font-size: 22px; font-weight: 700; color: var(--text-primary); }
+    .ribbon-value.positive { color: var(--green); }
+    .ribbon-value.negative { color: var(--red); }
+    .ribbon-sub { font-family: var(--font-data); font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+
+    /* Cards */
+    .card { background: var(--bg-elev-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin: 10px 0; }
+    .card-title { font-family: var(--font-data); font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: .05em; margin-bottom: 10px; font-weight: 600; }
+    .card-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.5; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    /* Tables */
+    .tbl { width: 100%; border-collapse: collapse; font-family: var(--font-data); font-size: 12px; }
+    .tbl th { text-align: left; padding: 8px 10px; color: var(--text-muted); font-weight: 500; font-size: 10px; text-transform: uppercase; border-bottom: 1px solid var(--border); letter-spacing: .05em; }
+    .tbl th.num, .tbl td.num { text-align: right; }
+    .tbl td { padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--text-primary); }
+    .tbl tr:last-child td { border-bottom: none; }
+    .tbl tr:hover td { background: var(--bg-elev-2); }
+    .tbl .pos { color: var(--green); }
+    .tbl .neg { color: var(--red); }
+    .heat-cell-pad { padding-left: 10px; padding-right: 10px; border-radius: var(--radius-sm); }
+
+    /* Bars */
+    .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-family: var(--font-data); font-size: 11px; }
+    .bar-label { width: 92px; color: var(--text-muted); }
+    .bar-track { flex: 1; background: var(--bar-track); height: 18px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+    .bar-fill { height: 100%; background: var(--accent); transition: width .2s; }
+    .bar-pct { width: 72px; text-align: right; color: var(--text-primary); }
+
+    /* Heatmap */
+    .heatmap-grid { display: grid; gap: 2px; font-family: var(--font-data); font-size: 10px; }
+    .heat-cell { padding: 6px 4px; text-align: center; border-radius: 3px; color: var(--text-primary); }
+    .heat-label { font-size: 9px; color: var(--text-muted); text-align: center; padding: 4px 2px; }
+    .heat-tooltip { font-size: 9px; color: var(--text-muted); margin-top: 6px; }
+
+    /* Pagination */
+    .pagination { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-family: var(--font-data); font-size: 12px; }
+    .page-btn { padding: 5px 10px; background: var(--bg-elev-2); color: var(--text-primary); border: 1px solid var(--border-mid); border-radius: var(--radius-sm); cursor: pointer; font-family: var(--font-data); font-size: 12px; }
+    .page-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .page-btn:disabled { opacity: .4; cursor: not-allowed; }
+    .page-info { color: var(--text-muted); }
+
+    .loading { color: var(--text-muted); font-family: var(--font-data); font-size: 12px; padding: 24px 0; text-align: center; }
+    .empty { color: var(--text-muted); font-family: var(--font-data); font-size: 12px; padding: 18px 0; text-align: center; }
+    .error { color: var(--red); font-family: var(--font-data); font-size: 12px; padding: 18px 0; }
+
+    .filter-summary-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; font-family: var(--font-data); font-size: 11px; }
+    .filter-summary-bar .chip-active { padding: 3px 9px; background: var(--green-tint); color: var(--green); border: 1px solid var(--green-border); border-radius: 999px; }
+
+    .quarter-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0; }
+    .quarter-cell { background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; text-align: center; }
+    .quarter-cell .q-name { font-family: var(--font-data); font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; }
+    .quarter-cell .q-window { font-family: var(--font-data); font-size: 10px; color: var(--text-muted); margin-bottom: 8px; }
+    .quarter-cell .q-value { font-family: var(--font-data); font-size: 22px; font-weight: 700; color: var(--text-primary); }
+    .quarter-cell .q-value.peak { color: var(--accent); }
+    .quarter-cell .q-sub { font-family: var(--font-data); font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+  </style>
 </head>
 <body>
-  <button class="theme-toggle" onclick="toggleTheme()">theme</button>
-  <div class="container">
-    <nav>
-      <a href="../../index.html">← Statistic.ally hub</a>
-    </nav>
-    <h1>NQ Hourly Analysis</h1>
 
-    <div id="manifest-card" class="card">
-      <div class="metric-label">Loading manifest...</div>
-    </div>
-
-    <div class="card-grid">
-      <a href="breakout.html" class="card" style="text-decoration:none;color:inherit;">
-        <h2>Breakout Follow-Through</h2>
-        <p style="color:var(--text-secondary);margin-top:8px;">When an hourly candle closes above the prior hour's high (or below the prior low), how often does the next hour take out the newly-formed extreme — and in which quarter?</p>
-      </a>
-      <a href="quarters.html" class="card" style="text-decoration:none;color:inherit;">
-        <h2>Quarter-of-the-Hour Study</h2>
-        <p style="color:var(--text-secondary);margin-top:8px;">In-depth analysis of intra-hour price action: where highs/lows form, sequencing, conditional shifts (Q1 → Q4), early-extreme persistence, and Q1-range expansion.</p>
-      </a>
+<header class="hdr">
+  <div class="hdr-left">
+    <a class="hub-back" href="../../index.html">
+      <span>←</span>
+      <span>Statistic<em>.ally</em></span>
+    </a>
+    <div class="hdr-divider"></div>
+    <div class="hdr-wordmark">Hourly<em>Analysis</em></div>
+    <div class="hdr-divider"></div>
+    <div class="hdr-sub">NQ Intraday · Breakout &amp; Quarter Studies</div>
+    <div class="hdr-divider"></div>
+    <a class="hdr-link" href="explainer.html">How the studies work →</a>
+  </div>
+  <div class="hdr-right">
+    <div class="theme-picker" role="radiogroup" aria-label="Theme">
+      <button class="theme-opt" data-theme="dark"   title="Dark"   aria-label="Dark theme">☀</button>
+      <button class="theme-opt" data-theme="light"  title="Light"  aria-label="Light theme">☾</button>
+      <button class="theme-opt" data-theme="gold"   title="Gold"   aria-label="Gold theme">✦</button>
+      <button class="theme-opt" data-theme="indigo" title="Indigo" aria-label="Indigo theme">◆</button>
     </div>
   </div>
+</header>
 
-  <script src="shared.js"></script>
-  <script>
-    (async () => {
-      try {
-        const resp = await fetch('../data/manifest.json');
-        const m = await resp.json();
-        const card = document.getElementById('manifest-card');
-        card.innerHTML = `
-          <div class="card-grid">
-            <div><div class="metric-label">Date range</div><div class="metric-value" style="font-size:18px;">${m.date_range_start.slice(0,10)} → ${m.date_range_end.slice(0,10)}</div></div>
-            <div><div class="metric-label">Total hours</div><div class="metric-value">${fmtNum(m.total_hours)}</div></div>
-            <div><div class="metric-label">Bullish breakouts</div><div class="metric-value">${fmtNum(m.n_bullish_breakouts)}</div></div>
-            <div><div class="metric-label">Bearish breakouts</div><div class="metric-value">${fmtNum(m.n_bearish_breakouts)}</div></div>
-            <div><div class="metric-label">Last run</div><div class="metric-value" style="font-size:14px;">${m.run_timestamp_utc.slice(0,16)}Z</div></div>
-          </div>
-        `;
-      } catch (e) {
-        document.getElementById('manifest-card').innerHTML =
-          `<div class="metric-label">Could not load manifest: ${e.message}. Run <code>python Analysis/engine/run_all.py</code> first.</div>`;
+<div class="layout">
+
+  <aside class="sidebar">
+
+    <div class="sb-section">
+      <label class="sb-label">Year Range</label>
+      <select id="year-select" class="sel-drop">
+        <option value="all">All (2014–2026)</option>
+        <option value="recent">Recent 5 years</option>
+        <option value="2024">2024</option>
+        <option value="2025">2025</option>
+        <option value="2026">2026</option>
+        <option value="2014-2019">2014–2019</option>
+        <option value="2020-2023">2020–2023</option>
+      </select>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">Hour-of-Day (ET)</label>
+      <select id="hour-select" class="sel-drop">
+        <option value="all">All hours</option>
+        <option value="rth">RTH only (09–15)</option>
+        <option value="ny-am">NY morning (09–11)</option>
+        <option value="ny-pm">NY afternoon (12–15)</option>
+        <option value="london">London (03–07)</option>
+        <option value="asia">Asia (19–01)</option>
+      </select>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">Day of Week</label>
+      <div class="sb-multi" id="dow-pills">
+        <span class="sb-pill active" data-dow="0">Mon</span>
+        <span class="sb-pill active" data-dow="1">Tue</span>
+        <span class="sb-pill active" data-dow="2">Wed</span>
+        <span class="sb-pill active" data-dow="3">Thu</span>
+        <span class="sb-pill active" data-dow="4">Fri</span>
+      </div>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">Breakout Direction</label>
+      <select id="direction-select" class="sel-drop">
+        <option value="all">All</option>
+        <option value="bullish">Bullish only</option>
+        <option value="bearish">Bearish only</option>
+      </select>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">Min sample / cell</label>
+      <select id="mincount-select" class="sel-drop">
+        <option value="0">No minimum</option>
+        <option value="20" selected>≥ 20</option>
+        <option value="50">≥ 50</option>
+        <option value="100">≥ 100</option>
+      </select>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">View</label>
+      <div class="sb-nav" id="nav-tabs">
+        <button class="sb-nav-btn active" data-tab="overview">Overview</button>
+        <button class="sb-nav-btn" data-tab="breakout">Breakout</button>
+        <button class="sb-nav-btn" data-tab="quarters">Quarters</button>
+        <button class="sb-nav-btn" data-tab="edge">Edge</button>
+        <button class="sb-nav-btn" data-tab="conditional">Conditional</button>
+        <button class="sb-nav-btn" data-tab="data">Data</button>
+      </div>
+    </div>
+
+  </aside>
+
+  <main class="main">
+
+    <div class="filter-summary-bar" id="filter-summary-bar"></div>
+
+    <!-- OVERVIEW -->
+    <div class="page-pane active" id="pane-overview">
+      <div class="sec-label">Coverage</div>
+      <div class="edge-ribbon" id="overview-ribbon"><div class="loading">Loading…</div></div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Breakout Study · Headline Rates</div>
+          <div class="card-sub">Of hours that broke prior-hour range, how often did the next hour continue vs reverse?</div>
+          <div id="overview-breakout"><div class="loading">Loading…</div></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Quarter Study · Where Extremes Form</div>
+          <div class="card-sub">Across every NQ hourly candle, which 15-minute quarter held the hour's high vs low?</div>
+          <div id="overview-quarters"><div class="loading">Loading…</div></div>
+        </div>
+      </div>
+
+      <div class="sec-label">What this dashboard measures</div>
+      <div class="card">
+        <p style="line-height:1.6;color:var(--text-secondary);margin:0;font-size:14px">
+          Two complementary studies on every NQ 1-hour candle since 2014. The <strong>Breakout Study</strong> asks
+          what happens <em>after</em> an hour breaks the prior hour's range — does the next hour push further (follow-through)
+          or fade right back (reversal)? The <strong>Quarter Study</strong> asks what happens <em>inside</em> each hour —
+          where do the high and low form across the four 15-minute quarters? Both studies share the same filter set in
+          the sidebar; switch between tabs to see each study's headline metrics, the Edge tab for temporal stability and
+          hour-of-day patterns, and the Conditional tab for cross-quarter probability tables.
+        </p>
+      </div>
+    </div>
+
+    <!-- BREAKOUT -->
+    <div class="page-pane" id="pane-breakout">
+      <div class="sec-label">Breakout Rates · Filtered Slice</div>
+      <div class="edge-ribbon" id="breakout-ribbon"><div class="loading">Loading…</div></div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Follow-Through · After a Bullish Breakout</div>
+          <div class="card-sub">Next hour takes out the breakout hour's high (continuation).</div>
+          <div id="breakout-bull-ft"><div class="loading">Loading…</div></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Follow-Through · After a Bearish Breakout</div>
+          <div class="card-sub">Next hour takes out the breakout hour's low.</div>
+          <div id="breakout-bear-ft"><div class="loading">Loading…</div></div>
+        </div>
+      </div>
+
+      <div class="sec-label">Immediate Reversal · % That Faded Right Back</div>
+      <div class="card">
+        <div class="card-sub">Hour broke out, but next hour closed back inside the breakout bar's body.</div>
+        <div id="breakout-reversal"><div class="loading">Loading…</div></div>
+      </div>
+
+      <div class="sec-label">Take-Out Timing · Which Quarter of H2 Hit the Continuation Level?</div>
+      <div class="card">
+        <div class="card-sub">When the next hour did follow through, in which 15-minute window did it pierce the breakout extreme?</div>
+        <div id="breakout-takeout"><div class="loading">Loading…</div></div>
+      </div>
+
+      <div class="sec-label">H1 Open Position vs Prior-Hour Midpoint</div>
+      <div class="card">
+        <div class="card-sub">Did the breakout hour open above or below the prior hour's midpoint? Predicts follow-through probability.</div>
+        <div id="breakout-prevmid"><div class="loading">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- QUARTERS -->
+    <div class="page-pane" id="pane-quarters">
+      <div class="sec-label">Where the Hourly High Forms · By Quarter</div>
+      <div class="card">
+        <div class="card-sub">For every hourly candle in the filtered set, count which quarter contained the hour's high.</div>
+        <div class="quarter-strip" id="quarters-of-high"></div>
+      </div>
+
+      <div class="sec-label">Where the Hourly Low Forms · By Quarter</div>
+      <div class="card">
+        <div class="card-sub">Same for the hour's low. Q1 and Q4 dominate — extremes cluster at hour boundaries.</div>
+        <div class="quarter-strip" id="quarters-of-low"></div>
+      </div>
+
+      <div class="sec-label">High or Low First?</div>
+      <div class="card">
+        <div class="card-sub">When both extremes are formed, which comes first chronologically? Roughly 50/50, but the small edge matters for direction-aware setups.</div>
+        <div id="quarters-extreme-first"><div class="loading">Loading…</div></div>
+      </div>
+
+      <div class="sec-label">Per-Quarter Direction Bias · Each Quarter's Up/Down Rate</div>
+      <div class="card">
+        <div class="card-sub">Treating each 15-min quarter as its own candle, how often does it close higher than it opened?</div>
+        <div id="quarters-bias"><div class="loading">Loading…</div></div>
+      </div>
+
+      <div class="sec-label">Per-Quarter Volatility · Average Range</div>
+      <div class="card">
+        <div class="card-sub">Mean high-low range per quarter, in points. Q1 typically widest (opens absorb overnight info).</div>
+        <div id="quarters-range"><div class="loading">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- EDGE -->
+    <div class="page-pane" id="pane-edge">
+      <div class="sec-label">Temporal Stability · Bullish Follow-Through Rate by Year</div>
+      <div class="card">
+        <div class="card-sub">Is the breakout edge stable across years, or did it decay? Each bar = bullish FT rate that year.</div>
+        <div id="edge-yearly"><div class="loading">Loading…</div></div>
+      </div>
+
+      <div class="sec-label">Hour × Day-of-Week Heatmap · Bullish Follow-Through Rate</div>
+      <div class="card">
+        <div class="card-sub">Where on the clock does the breakout actually hold? Hours/days are NY local time.</div>
+        <div id="edge-heatmap"><div class="loading">Loading…</div></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Best 10 (Hour, DoW) Cells · Highest Follow-Through</div>
+          <div id="edge-best"><div class="loading">Loading…</div></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Worst 10 (Hour, DoW) Cells · Lowest Follow-Through</div>
+          <div id="edge-worst"><div class="loading">Loading…</div></div>
+        </div>
+      </div>
+
+      <div class="sec-label">Direction Symmetry · Bullish vs Bearish Breakout Edge</div>
+      <div class="card">
+        <div class="card-sub">Long-side edge vs short-side edge in the same filter. A divergence between them is a regime-asymmetry signal.</div>
+        <div id="edge-direction"><div class="loading">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- CONDITIONAL -->
+    <div class="page-pane" id="pane-conditional">
+      <div class="sec-label">Q1 Direction → Subsequent Quarter Behavior</div>
+      <div class="card">
+        <div class="card-sub">If Q1 (:00–:14) closed up, what's the chance each later quarter also closes up? Q1 sets the tone — does it hold?</div>
+        <div id="cond-q1-cascade"><div class="loading">Loading…</div></div>
+      </div>
+
+      <div class="sec-label">Where the Hourly High Forms — Conditioned on Q1 Direction</div>
+      <div class="card">
+        <div class="card-sub">If Q1 closed bullish, is the hour's high more likely later (Q4) vs earlier (Q1)? Conditional cross-tab.</div>
+        <div id="cond-q1-high"><div class="loading">Loading…</div></div>
+      </div>
+
+      <div class="sec-label">Hour Direction → "High First" vs "Low First"</div>
+      <div class="card">
+        <div class="card-sub">When the hour closes green, did the high come before the low or after? Shows whether the move was a "rip and hold" or a "dip and recover."</div>
+        <div id="cond-dir-extreme"><div class="loading">Loading…</div></div>
+      </div>
+
+      <div class="sec-label">Q1 Range Quartile → Hour Range Expansion</div>
+      <div class="card">
+        <div class="card-sub">Bucket Q1 range into quartiles and see the average full-hour range that follows. Q1 range is a strong predictor of intraday expansion.</div>
+        <div id="cond-q1-expansion"><div class="loading">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- DATA -->
+    <div class="page-pane" id="pane-data">
+      <div class="sec-label">Row-Level Data</div>
+      <div class="card">
+        <div class="card-sub">Toggle between the two studies. Filtered by sidebar settings. Newest first.</div>
+        <div style="margin-bottom:12px">
+          <select id="data-source-select" class="sel-drop" style="max-width:280px;display:inline-block">
+            <option value="breakout">Breakout study — per-hour rows</option>
+            <option value="quarters">Quarter study — per-hour quarter features</option>
+          </select>
+        </div>
+        <div id="data-table"><div class="loading">Loading…</div></div>
+        <div class="pagination" id="data-pagination"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+const DOW_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const STATE = {
+  year: 'all',
+  hour: 'all',
+  dows: new Set([0,1,2,3,4]),
+  direction: 'all',
+  minCount: 20,
+  tab: 'overview',
+  dataSource: 'breakout',
+  dataPage: 0,
+};
+const ROWS_PER_PAGE = 25;
+
+async function loadViews() {
+  await window.loadParquet('../data/breakout/breakouts.parquet', 'br');
+  await window.loadParquet('../data/quarters/quarter_features.parquet', 'qf');
+}
+
+function commonWhereParts() {
+  const parts = [];
+  if (STATE.year === 'recent')         parts.push('year >= 2022');
+  else if (STATE.year === '2014-2019') parts.push('year BETWEEN 2014 AND 2019');
+  else if (STATE.year === '2020-2023') parts.push('year BETWEEN 2020 AND 2023');
+  else if (/^\d{4}$/.test(STATE.year)) parts.push(`year = ${STATE.year}`);
+
+  if (STATE.hour === 'rth')         parts.push('hour_of_day_et BETWEEN 9 AND 15');
+  else if (STATE.hour === 'ny-am')  parts.push('hour_of_day_et BETWEEN 9 AND 11');
+  else if (STATE.hour === 'ny-pm')  parts.push('hour_of_day_et BETWEEN 12 AND 15');
+  else if (STATE.hour === 'london') parts.push('hour_of_day_et BETWEEN 3 AND 7');
+  else if (STATE.hour === 'asia')   parts.push('(hour_of_day_et >= 19 OR hour_of_day_et <= 1)');
+
+  if (STATE.dows.size > 0 && STATE.dows.size < 5) {
+    const list = Array.from(STATE.dows).join(',');
+    parts.push(`dow IN (${list})`);
+  }
+  return parts;
+}
+function buildBreakoutWhere(includeDirection = true) {
+  const parts = commonWhereParts();
+  if (includeDirection && STATE.direction !== 'all') parts.push(`breakout = '${STATE.direction}'`);
+  return parts.length ? 'WHERE ' + parts.join(' AND ') : '';
+}
+function buildQuartersWhere() {
+  const parts = commonWhereParts();
+  return parts.length ? 'WHERE ' + parts.join(' AND ') : '';
+}
+
+const fmtN  = n => Number(n).toLocaleString();
+const fmtPct = n => (n == null || isNaN(n)) ? '—' : (n * 100).toFixed(1) + '%';
+
+function rateHeat(rate) {
+  if (rate == null || isNaN(rate)) return '';
+  const t = Math.max(-1, Math.min(1, (rate - 0.5) * 4));
+  if (t >= 0) return `background:rgba(34,197,94,${(t * 0.30).toFixed(2)})`;
+  return `background:rgba(239,68,68,${(-t * 0.30).toFixed(2)})`;
+}
+
+function renderFilterSummary() {
+  const chips = [];
+  if (STATE.year !== 'all')      chips.push(`Years: ${STATE.year}`);
+  if (STATE.hour !== 'all')      chips.push(`Hours: ${STATE.hour}`);
+  const dowCount = STATE.dows.size;
+  if (dowCount < 5)              chips.push(`Days: ${Array.from(STATE.dows).map(d => DOW_NAMES[d]).join('/')}`);
+  if (STATE.direction !== 'all') chips.push(`Direction: ${STATE.direction}`);
+  if (STATE.minCount > 0)        chips.push(`Min N: ${STATE.minCount}`);
+  if (chips.length === 0)        chips.push('No filters · full dataset');
+  document.getElementById('filter-summary-bar').innerHTML =
+    chips.map(c => `<span class="chip-active">${c}</span>`).join('');
+}
+
+// ── OVERVIEW ─────────────────────────────────────────────────────────
+async function renderOverview() {
+  const where = buildBreakoutWhere(false);
+  const cov = (await window.query(`
+    SELECT COUNT(*) AS n_total,
+      COUNT(*) FILTER (WHERE breakout != 'no_prev') AS n_classifiable,
+      COUNT(*) FILTER (WHERE breakout = 'bullish') AS n_bull,
+      COUNT(*) FILTER (WHERE breakout = 'bearish') AS n_bear,
+      MIN(year) AS yr_min, MAX(year) AS yr_max
+    FROM br ${where}`))[0];
+  document.getElementById('overview-ribbon').innerHTML = `
+    <div class="ribbon-cell"><div class="ribbon-label">Hours in slice</div><div class="ribbon-value">${fmtN(+cov.n_total)}</div><div class="ribbon-sub">${cov.yr_min}–${cov.yr_max}</div></div>
+    <div class="ribbon-cell"><div class="ribbon-label">Classifiable</div><div class="ribbon-value">${fmtN(+cov.n_classifiable)}</div><div class="ribbon-sub">have prior hour</div></div>
+    <div class="ribbon-cell"><div class="ribbon-label">Bullish breakouts</div><div class="ribbon-value positive">${fmtN(+cov.n_bull)}</div><div class="ribbon-sub">closed &gt; prev high</div></div>
+    <div class="ribbon-cell"><div class="ribbon-label">Bearish breakouts</div><div class="ribbon-value negative">${fmtN(+cov.n_bear)}</div><div class="ribbon-sub">closed &lt; prev low</div></div>
+  `;
+
+  const bk = (await window.query(`
+    SELECT
+      AVG(CASE WHEN breakout = 'bullish' AND followthrough THEN 1.0 WHEN breakout = 'bullish' THEN 0.0 END) AS bull_ft,
+      AVG(CASE WHEN breakout = 'bearish' AND followthrough THEN 1.0 WHEN breakout = 'bearish' THEN 0.0 END) AS bear_ft,
+      AVG(CASE WHEN breakout = 'bullish' AND immediate_reversal THEN 1.0 WHEN breakout = 'bullish' THEN 0.0 END) AS bull_rev,
+      AVG(CASE WHEN breakout = 'bearish' AND immediate_reversal THEN 1.0 WHEN breakout = 'bearish' THEN 0.0 END) AS bear_rev
+    FROM br ${where}`))[0];
+  document.getElementById('overview-breakout').innerHTML = `
+    <table class="tbl">
+      <thead><tr><th>Side</th><th class="num">Follow-Through</th><th class="num">Immediate Reversal</th></tr></thead>
+      <tbody>
+        <tr><td><strong class="pos">Bullish</strong></td><td class="num heat-cell-pad" style="${rateHeat(+bk.bull_ft)}">${fmtPct(+bk.bull_ft)}</td><td class="num">${fmtPct(+bk.bull_rev)}</td></tr>
+        <tr><td><strong class="neg">Bearish</strong></td><td class="num heat-cell-pad" style="${rateHeat(+bk.bear_ft)}">${fmtPct(+bk.bear_ft)}</td><td class="num">${fmtPct(+bk.bear_rev)}</td></tr>
+      </tbody>
+    </table>`;
+
+  const qWhere = buildQuartersWhere();
+  const qh = await window.query(`SELECT q_of_high AS q, COUNT(*) AS n FROM qf ${qWhere ? qWhere + ' AND' : 'WHERE'} q_of_high IS NOT NULL GROUP BY q ORDER BY q`);
+  const ql = await window.query(`SELECT q_of_low  AS q, COUNT(*) AS n FROM qf ${qWhere ? qWhere + ' AND' : 'WHERE'} q_of_low  IS NOT NULL GROUP BY q ORDER BY q`);
+  const totalH = qh.reduce((s,r) => s + +r.n, 0);
+  const totalL = ql.reduce((s,r) => s + +r.n, 0);
+  document.getElementById('overview-quarters').innerHTML = `
+    <table class="tbl">
+      <thead><tr><th>Quarter</th><th class="num">% of Highs</th><th class="num">% of Lows</th></tr></thead>
+      <tbody>
+        ${[1,2,3,4].map(q => {
+          const hRow = qh.find(r => +r.q === q);
+          const lRow = ql.find(r => +r.q === q);
+          const hPct = hRow && totalH > 0 ? (+hRow.n / totalH) : null;
+          const lPct = lRow && totalL > 0 ? (+lRow.n / totalL) : null;
+          return `<tr><td>Q${q} <span style="color:var(--text-muted)">(${(q-1)*15}–${q*15-1})</span></td>
+            <td class="num">${fmtPct(hPct)}</td>
+            <td class="num">${fmtPct(lPct)}</td></tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+// ── BREAKOUT ─────────────────────────────────────────────────────────
+async function renderBreakout() {
+  const where = buildBreakoutWhere(false);
+  const r = (await window.query(`
+    SELECT
+      COUNT(*) FILTER (WHERE breakout = 'bullish') AS n_bull,
+      COUNT(*) FILTER (WHERE breakout = 'bearish') AS n_bear,
+      AVG(CASE WHEN breakout = 'bullish' AND followthrough THEN 1.0 WHEN breakout = 'bullish' THEN 0.0 END) AS bull_ft,
+      AVG(CASE WHEN breakout = 'bearish' AND followthrough THEN 1.0 WHEN breakout = 'bearish' THEN 0.0 END) AS bear_ft,
+      AVG(CASE WHEN breakout = 'bullish' AND immediate_reversal THEN 1.0 WHEN breakout = 'bullish' THEN 0.0 END) AS bull_rev,
+      AVG(CASE WHEN breakout = 'bearish' AND immediate_reversal THEN 1.0 WHEN breakout = 'bearish' THEN 0.0 END) AS bear_rev
+    FROM br ${where}`))[0];
+  document.getElementById('breakout-ribbon').innerHTML = `
+    <div class="ribbon-cell"><div class="ribbon-label">Bullish Breakouts</div><div class="ribbon-value positive">${fmtN(+r.n_bull)}</div></div>
+    <div class="ribbon-cell"><div class="ribbon-label">Bearish Breakouts</div><div class="ribbon-value negative">${fmtN(+r.n_bear)}</div></div>
+    <div class="ribbon-cell"><div class="ribbon-label">Bull FT Rate</div><div class="ribbon-value">${fmtPct(+r.bull_ft)}</div></div>
+    <div class="ribbon-cell"><div class="ribbon-label">Bear FT Rate</div><div class="ribbon-value">${fmtPct(+r.bear_ft)}</div></div>
+  `;
+  document.getElementById('breakout-bull-ft').innerHTML = renderDualBar(+r.bull_ft, 1 - +r.bull_ft);
+  document.getElementById('breakout-bear-ft').innerHTML = renderDualBar(+r.bear_ft, 1 - +r.bear_ft);
+  document.getElementById('breakout-reversal').innerHTML = `
+    <table class="tbl">
+      <thead><tr><th>Side</th><th class="num">Immediate Reversal Rate</th><th class="num">Stayed Through</th></tr></thead>
+      <tbody>
+        <tr><td><strong class="pos">Bullish breakout</strong></td><td class="num">${fmtPct(+r.bull_rev)}</td><td class="num">${fmtPct(1 - +r.bull_rev)}</td></tr>
+        <tr><td><strong class="neg">Bearish breakout</strong></td><td class="num">${fmtPct(+r.bear_rev)}</td><td class="num">${fmtPct(1 - +r.bear_rev)}</td></tr>
+      </tbody>
+    </table>`;
+
+  const tk = await window.query(`
+    SELECT takeout_quarter_of_h2 AS q, COUNT(*) AS n
+    FROM br ${where ? where + ' AND' : 'WHERE'} followthrough = TRUE AND takeout_quarter_of_h2 IS NOT NULL
+    GROUP BY q ORDER BY q`);
+  const tkTotal = tk.reduce((s,r) => s + +r.n, 0);
+  const peakN = tkTotal > 0 ? Math.max(...tk.map(r => +r.n)) : 0;
+  document.getElementById('breakout-takeout').innerHTML = `
+    <div class="quarter-strip">
+      ${[1,2,3,4].map(q => {
+        const row = tk.find(r => +r.q === q);
+        const n = row ? +row.n : 0;
+        const pct = tkTotal > 0 ? n / tkTotal : 0;
+        const isPeak = n === peakN && n > 0;
+        return `<div class="quarter-cell">
+          <div class="q-name">Q${q}</div>
+          <div class="q-window">${(q-1)*15}–${q*15-1} min</div>
+          <div class="q-value ${isPeak ? 'peak' : ''}">${fmtPct(pct)}</div>
+          <div class="q-sub">${fmtN(n)} hours</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+
+  const pm = await window.query(`
+    SELECT h1_open_vs_prev_mid AS pos, breakout AS dir, COUNT(*) AS n,
+      AVG(CASE WHEN followthrough THEN 1.0 ELSE 0.0 END) AS ft
+    FROM br ${where ? where + ' AND' : 'WHERE'} h1_open_vs_prev_mid IS NOT NULL AND breakout IN ('bullish','bearish')
+    GROUP BY pos, dir ORDER BY dir, pos`);
+  document.getElementById('breakout-prevmid').innerHTML = `
+    <table class="tbl">
+      <thead><tr><th>Breakout</th><th>H1 open vs prev mid</th><th class="num">N</th><th class="num">FT Rate</th></tr></thead>
+      <tbody>
+        ${pm.map(row => `<tr>
+          <td><strong class="${row.dir === 'bullish' ? 'pos' : 'neg'}">${row.dir}</strong></td>
+          <td>${row.pos}</td>
+          <td class="num">${fmtN(+row.n)}</td>
+          <td class="num heat-cell-pad" style="${rateHeat(+row.ft)}">${fmtPct(+row.ft)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function renderDualBar(pct1, pct2) {
+  return `
+    <div class="bar-row">
+      <span class="bar-label pos">Follow-Through</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${(pct1*100).toFixed(1)}%;background:var(--green)"></div></div>
+      <span class="bar-pct">${fmtPct(pct1)}</span>
+    </div>
+    <div class="bar-row">
+      <span class="bar-label neg">No Follow-Through</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${(pct2*100).toFixed(1)}%;background:var(--red)"></div></div>
+      <span class="bar-pct">${fmtPct(pct2)}</span>
+    </div>`;
+}
+
+// ── QUARTERS ─────────────────────────────────────────────────────────
+async function renderQuarters() {
+  const where = buildQuartersWhere();
+  const qh = await window.query(`SELECT q_of_high AS q, COUNT(*) AS n FROM qf ${where ? where + ' AND' : 'WHERE'} q_of_high IS NOT NULL GROUP BY q ORDER BY q`);
+  const ql = await window.query(`SELECT q_of_low  AS q, COUNT(*) AS n FROM qf ${where ? where + ' AND' : 'WHERE'} q_of_low  IS NOT NULL GROUP BY q ORDER BY q`);
+  document.getElementById('quarters-of-high').innerHTML = renderQuarterStripCells(qh);
+  document.getElementById('quarters-of-low').innerHTML  = renderQuarterStripCells(ql);
+
+  const ef = await window.query(`SELECT extreme_first AS ef, COUNT(*) AS n FROM qf ${where ? where + ' AND' : 'WHERE'} extreme_first IS NOT NULL GROUP BY ef`);
+  const total = ef.reduce((s,r) => s + +r.n, 0);
+  const labelMap = {H:'High first', L:'Low first', T:'Tied (same quarter)'};
+  document.getElementById('quarters-extreme-first').innerHTML = `
+    <table class="tbl">
+      <thead><tr><th>Order</th><th class="num">N</th><th class="num">Share</th></tr></thead>
+      <tbody>
+        ${ef.map(row => {
+          const pct = total > 0 ? +row.n / total : 0;
+          return `<tr><td>${labelMap[row.ef] || row.ef}</td><td class="num">${fmtN(+row.n)}</td><td class="num">${fmtPct(pct)}</td></tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+
+  const bias = (await window.query(`
+    SELECT
+      AVG(CASE WHEN q1_dir = 1 THEN 1.0 WHEN q1_dir = -1 THEN 0.0 END) AS q1,
+      AVG(CASE WHEN q2_dir = 1 THEN 1.0 WHEN q2_dir = -1 THEN 0.0 END) AS q2,
+      AVG(CASE WHEN q3_dir = 1 THEN 1.0 WHEN q3_dir = -1 THEN 0.0 END) AS q3,
+      AVG(CASE WHEN q4_dir = 1 THEN 1.0 WHEN q4_dir = -1 THEN 0.0 END) AS q4
+    FROM qf ${where}`))[0];
+  document.getElementById('quarters-bias').innerHTML = `
+    <table class="tbl">
+      <thead><tr><th>Quarter</th><th class="num">Up Rate</th><th class="num">Down Rate</th></tr></thead>
+      <tbody>
+        ${['q1','q2','q3','q4'].map((k, i) => {
+          const up = +bias[k];
+          return `<tr><td><strong>Q${i+1}</strong></td>
+            <td class="num heat-cell-pad" style="${rateHeat(up)}">${fmtPct(up)}</td>
+            <td class="num">${fmtPct(1 - up)}</td></tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+
+  const rng = (await window.query(`
+    SELECT AVG(q1_range) AS q1, AVG(q2_range) AS q2, AVG(q3_range) AS q3, AVG(q4_range) AS q4,
+      AVG(hour_range) AS hr
+    FROM qf ${where}`))[0];
+  const maxR = Math.max(+rng.q1, +rng.q2, +rng.q3, +rng.q4);
+  document.getElementById('quarters-range').innerHTML = `
+    ${['q1','q2','q3','q4'].map((k, i) => `
+      <div class="bar-row">
+        <span class="bar-label">Q${i+1}</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${(+rng[k]/maxR*100).toFixed(1)}%"></div></div>
+        <span class="bar-pct">${(+rng[k]).toFixed(2)} pts</span>
+      </div>
+    `).join('')}
+    <div class="heat-tooltip">Full hour average range: ${(+rng.hr).toFixed(2)} pts</div>`;
+}
+
+function renderQuarterStripCells(rows) {
+  const total = rows.reduce((s,r) => s + +r.n, 0);
+  const peak = total > 0 ? Math.max(...rows.map(r => +r.n)) : 0;
+  return [1,2,3,4].map(q => {
+    const row = rows.find(r => +r.q === q);
+    const n = row ? +row.n : 0;
+    const pct = total > 0 ? n / total : 0;
+    const isPeak = n === peak && n > 0;
+    return `<div class="quarter-cell">
+      <div class="q-name">Q${q}</div>
+      <div class="q-window">${(q-1)*15}–${q*15-1} min</div>
+      <div class="q-value ${isPeak ? 'peak' : ''}">${fmtPct(pct)}</div>
+      <div class="q-sub">${fmtN(n)} hours</div>
+    </div>`;
+  }).join('');
+}
+
+// ── EDGE ─────────────────────────────────────────────────────────────
+async function renderEdge() {
+  const where = buildBreakoutWhere(false);
+
+  const yearly = await window.query(`
+    SELECT year,
+      COUNT(*) FILTER (WHERE breakout = 'bullish') AS n,
+      AVG(CASE WHEN breakout = 'bullish' AND followthrough THEN 1.0 WHEN breakout = 'bullish' THEN 0.0 END) AS ft
+    FROM br ${where}
+    GROUP BY year HAVING n >= ${Math.max(STATE.minCount, 1)}
+    ORDER BY year`);
+  if (!yearly.length) {
+    document.getElementById('edge-yearly').innerHTML = '<div class="empty">No years pass the min-count filter.</div>';
+  } else {
+    const W = 900, H = 200, PAD_L = 40, PAD_R = 20, PAD_Y = 24, PAD_BOT = 30;
+    const innerW = W - PAD_L - PAD_R, innerH = H - PAD_Y - PAD_BOT;
+    const xStep = innerW / yearly.length;
+    const minFT = 0.30, maxFT = 0.70;
+    const yToPx = ft => PAD_Y + innerH - ((ft - minFT) / (maxFT - minFT)) * innerH;
+    let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:${H}px">`;
+    [0.40, 0.50, 0.60].forEach(g => {
+      svg += `<line x1="${PAD_L}" y1="${yToPx(g)}" x2="${W-PAD_R}" y2="${yToPx(g)}" stroke="var(--border)" stroke-width="1" stroke-dasharray="3,3"/>`;
+      svg += `<text x="6" y="${(yToPx(g)+3).toFixed(1)}" font-family="JetBrains Mono,monospace" font-size="10" fill="var(--text-muted)">${(g*100).toFixed(0)}%</text>`;
+    });
+    yearly.forEach((d, i) => {
+      const x = PAD_L + i*xStep + 4;
+      const w = xStep - 8;
+      const y = yToPx(+d.ft);
+      const h = (H - PAD_BOT) - y;
+      const color = +d.ft >= 0.5 ? 'var(--green)' : 'var(--red)';
+      svg += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${color}" fill-opacity="0.7"><title>${d.year}: ${(d.ft*100).toFixed(1)}% · ${fmtN(+d.n)} bullish</title></rect>`;
+      svg += `<text x="${(x + w/2).toFixed(1)}" y="${(H-12).toFixed(1)}" font-family="JetBrains Mono,monospace" font-size="10" fill="var(--text-muted)" text-anchor="middle">${d.year}</text>`;
+      svg += `<text x="${(x + w/2).toFixed(1)}" y="${(y - 4).toFixed(1)}" font-family="JetBrains Mono,monospace" font-size="9" fill="${color}" text-anchor="middle">${(d.ft*100).toFixed(0)}%</text>`;
+    });
+    svg += '</svg>';
+    document.getElementById('edge-yearly').innerHTML = svg;
+  }
+
+  const grid = await window.query(`
+    SELECT hour_of_day_et AS hr, dow,
+      COUNT(*) FILTER (WHERE breakout = 'bullish') AS n,
+      AVG(CASE WHEN breakout = 'bullish' AND followthrough THEN 1.0 WHEN breakout = 'bullish' THEN 0.0 END) AS ft
+    FROM br ${where}
+    GROUP BY hr, dow`);
+  const cells = {};
+  grid.forEach(r => { cells[`${r.hr}_${r.dow}`] = { n: +r.n, ft: +r.ft }; });
+  const hours = Array.from({length: 24}, (_, i) => i);
+  const dows = [0,1,2,3,4];
+  let html = `<div class="heatmap-grid" style="grid-template-columns: 70px repeat(24, 1fr)">
+    <div class="heat-label"></div>${hours.map(h => `<div class="heat-label">${String(h).padStart(2,'0')}</div>`).join('')}`;
+  dows.forEach(d => {
+    html += `<div class="heat-label" style="text-align:right;padding-right:8px">${DOW_NAMES[d]}</div>`;
+    hours.forEach(h => {
+      const c = cells[`${h}_${d}`];
+      if (!c || c.n < STATE.minCount) {
+        html += `<div class="heat-cell" style="background:var(--bg-elev-2);color:var(--text-faint)" title="${DOW_NAMES[d]} ${h}:00 · N=${c?c.n:0} below min ${STATE.minCount}">·</div>`;
+      } else {
+        const style = rateHeat(c.ft);
+        html += `<div class="heat-cell" style="${style}" title="${DOW_NAMES[d]} ${h}:00 · N=${c.n} · FT=${(c.ft*100).toFixed(1)}%">${(c.ft*100).toFixed(0)}</div>`;
       }
-    })();
-  </script>
+    });
+  });
+  html += '</div><div class="heat-tooltip">Cell = bullish follow-through rate · "·" indicates below the min-count threshold from the sidebar.</div>';
+  document.getElementById('edge-heatmap').innerHTML = html;
+
+  const renderConvictionTable = (rows) => `
+    <table class="tbl">
+      <thead><tr><th>Setup</th><th class="num">N</th><th class="num">FT Rate</th></tr></thead>
+      <tbody>${rows.map(r => `<tr>
+        <td>${DOW_NAMES[+r.dow]} ${String(r.hr).padStart(2,'0')}:00</td>
+        <td class="num">${fmtN(+r.n)}</td>
+        <td class="num heat-cell-pad" style="${rateHeat(+r.ft)}">${fmtPct(+r.ft)}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  const bestSql = `
+    SELECT hour_of_day_et AS hr, dow,
+      COUNT(*) FILTER (WHERE breakout = 'bullish') AS n,
+      AVG(CASE WHEN breakout = 'bullish' AND followthrough THEN 1.0 WHEN breakout = 'bullish' THEN 0.0 END) AS ft
+    FROM br ${where}
+    GROUP BY hr, dow HAVING n >= ${STATE.minCount}
+    ORDER BY ft DESC LIMIT 10`;
+  const worstSql = `
+    SELECT hour_of_day_et AS hr, dow,
+      COUNT(*) FILTER (WHERE breakout = 'bullish') AS n,
+      AVG(CASE WHEN breakout = 'bullish' AND followthrough THEN 1.0 WHEN breakout = 'bullish' THEN 0.0 END) AS ft
+    FROM br ${where}
+    GROUP BY hr, dow HAVING n >= ${STATE.minCount}
+    ORDER BY ft ASC LIMIT 10`;
+  const [best, worst] = await Promise.all([window.query(bestSql), window.query(worstSql)]);
+  document.getElementById('edge-best').innerHTML  = best.length  ? renderConvictionTable(best)  : '<div class="empty">No cells pass min-count.</div>';
+  document.getElementById('edge-worst').innerHTML = worst.length ? renderConvictionTable(worst) : '<div class="empty">No cells pass min-count.</div>';
+
+  const ds = (await window.query(`
+    SELECT
+      COUNT(*) FILTER (WHERE breakout = 'bullish') AS n_bull,
+      COUNT(*) FILTER (WHERE breakout = 'bearish') AS n_bear,
+      AVG(CASE WHEN breakout = 'bullish' AND followthrough THEN 1.0 WHEN breakout = 'bullish' THEN 0.0 END) AS bull_ft,
+      AVG(CASE WHEN breakout = 'bearish' AND followthrough THEN 1.0 WHEN breakout = 'bearish' THEN 0.0 END) AS bear_ft
+    FROM br ${where}`))[0];
+  const delta = (+ds.bull_ft) - (+ds.bear_ft);
+  document.getElementById('edge-direction').innerHTML = `
+    <table class="tbl">
+      <thead><tr><th>Side</th><th class="num">N</th><th class="num">Follow-Through</th></tr></thead>
+      <tbody>
+        <tr><td><strong class="pos">Bullish</strong></td><td class="num">${fmtN(+ds.n_bull)}</td><td class="num heat-cell-pad" style="${rateHeat(+ds.bull_ft)}">${fmtPct(+ds.bull_ft)}</td></tr>
+        <tr><td><strong class="neg">Bearish</strong></td><td class="num">${fmtN(+ds.n_bear)}</td><td class="num heat-cell-pad" style="${rateHeat(+ds.bear_ft)}">${fmtPct(+ds.bear_ft)}</td></tr>
+        <tr><td colspan="2" style="color:var(--text-muted)">Bullish − Bearish edge delta</td><td class="num"><span class="${delta >= 0 ? 'pos' : 'neg'}">${delta >= 0 ? '+' : ''}${(delta*100).toFixed(2)}%</span></td></tr>
+      </tbody>
+    </table>`;
+}
+
+// ── CONDITIONAL ──────────────────────────────────────────────────────
+async function renderConditional() {
+  const where = buildQuartersWhere();
+
+  const cascade = (await window.query(`
+    SELECT
+      AVG(CASE WHEN q1_dir=1 AND q2_dir=1 THEN 1.0 WHEN q1_dir=1 THEN 0.0 END) AS q2_up_given_q1_up,
+      AVG(CASE WHEN q1_dir=1 AND q3_dir=1 THEN 1.0 WHEN q1_dir=1 THEN 0.0 END) AS q3_up_given_q1_up,
+      AVG(CASE WHEN q1_dir=1 AND q4_dir=1 THEN 1.0 WHEN q1_dir=1 THEN 0.0 END) AS q4_up_given_q1_up,
+      AVG(CASE WHEN q1_dir=-1 AND q2_dir=1 THEN 1.0 WHEN q1_dir=-1 THEN 0.0 END) AS q2_up_given_q1_down,
+      AVG(CASE WHEN q1_dir=-1 AND q3_dir=1 THEN 1.0 WHEN q1_dir=-1 THEN 0.0 END) AS q3_up_given_q1_down,
+      AVG(CASE WHEN q1_dir=-1 AND q4_dir=1 THEN 1.0 WHEN q1_dir=-1 THEN 0.0 END) AS q4_up_given_q1_down,
+      AVG(CASE WHEN q2_dir=1 THEN 1.0 WHEN q2_dir=-1 THEN 0.0 END) AS q2_up_uncond,
+      AVG(CASE WHEN q3_dir=1 THEN 1.0 WHEN q3_dir=-1 THEN 0.0 END) AS q3_up_uncond,
+      AVG(CASE WHEN q4_dir=1 THEN 1.0 WHEN q4_dir=-1 THEN 0.0 END) AS q4_up_uncond
+    FROM qf ${where}`))[0];
+  document.getElementById('cond-q1-cascade').innerHTML = `
+    <table class="tbl">
+      <thead><tr><th>Condition</th><th class="num">P(Q2 up)</th><th class="num">P(Q3 up)</th><th class="num">P(Q4 up)</th></tr></thead>
+      <tbody>
+        <tr><td>Unconditional</td>
+          <td class="num">${fmtPct(+cascade.q2_up_uncond)}</td>
+          <td class="num">${fmtPct(+cascade.q3_up_uncond)}</td>
+          <td class="num">${fmtPct(+cascade.q4_up_uncond)}</td></tr>
+        <tr><td><strong class="pos">Given Q1 up</strong></td>
+          <td class="num heat-cell-pad" style="${rateHeat(+cascade.q2_up_given_q1_up)}">${fmtPct(+cascade.q2_up_given_q1_up)}</td>
+          <td class="num heat-cell-pad" style="${rateHeat(+cascade.q3_up_given_q1_up)}">${fmtPct(+cascade.q3_up_given_q1_up)}</td>
+          <td class="num heat-cell-pad" style="${rateHeat(+cascade.q4_up_given_q1_up)}">${fmtPct(+cascade.q4_up_given_q1_up)}</td></tr>
+        <tr><td><strong class="neg">Given Q1 down</strong></td>
+          <td class="num heat-cell-pad" style="${rateHeat(+cascade.q2_up_given_q1_down)}">${fmtPct(+cascade.q2_up_given_q1_down)}</td>
+          <td class="num heat-cell-pad" style="${rateHeat(+cascade.q3_up_given_q1_down)}">${fmtPct(+cascade.q3_up_given_q1_down)}</td>
+          <td class="num heat-cell-pad" style="${rateHeat(+cascade.q4_up_given_q1_down)}">${fmtPct(+cascade.q4_up_given_q1_down)}</td></tr>
+      </tbody>
+    </table>`;
+
+  const cond = (await window.query(`
+    SELECT
+      AVG(CASE WHEN q1_dir=1 AND q_of_high=1 THEN 1.0 WHEN q1_dir=1 THEN 0.0 END) AS h_q1_given_q1_up,
+      AVG(CASE WHEN q1_dir=1 AND q_of_high=2 THEN 1.0 WHEN q1_dir=1 THEN 0.0 END) AS h_q2_given_q1_up,
+      AVG(CASE WHEN q1_dir=1 AND q_of_high=3 THEN 1.0 WHEN q1_dir=1 THEN 0.0 END) AS h_q3_given_q1_up,
+      AVG(CASE WHEN q1_dir=1 AND q_of_high=4 THEN 1.0 WHEN q1_dir=1 THEN 0.0 END) AS h_q4_given_q1_up,
+      AVG(CASE WHEN q1_dir=-1 AND q_of_high=1 THEN 1.0 WHEN q1_dir=-1 THEN 0.0 END) AS h_q1_given_q1_down,
+      AVG(CASE WHEN q1_dir=-1 AND q_of_high=2 THEN 1.0 WHEN q1_dir=-1 THEN 0.0 END) AS h_q2_given_q1_down,
+      AVG(CASE WHEN q1_dir=-1 AND q_of_high=3 THEN 1.0 WHEN q1_dir=-1 THEN 0.0 END) AS h_q3_given_q1_down,
+      AVG(CASE WHEN q1_dir=-1 AND q_of_high=4 THEN 1.0 WHEN q1_dir=-1 THEN 0.0 END) AS h_q4_given_q1_down
+    FROM qf ${where}`))[0];
+  document.getElementById('cond-q1-high').innerHTML = `
+    <table class="tbl">
+      <thead><tr><th>Q1 closed</th><th class="num">High in Q1</th><th class="num">High in Q2</th><th class="num">High in Q3</th><th class="num">High in Q4</th></tr></thead>
+      <tbody>
+        <tr><td><strong class="pos">Up</strong></td>
+          <td class="num">${fmtPct(+cond.h_q1_given_q1_up)}</td>
+          <td class="num">${fmtPct(+cond.h_q2_given_q1_up)}</td>
+          <td class="num">${fmtPct(+cond.h_q3_given_q1_up)}</td>
+          <td class="num">${fmtPct(+cond.h_q4_given_q1_up)}</td></tr>
+        <tr><td><strong class="neg">Down</strong></td>
+          <td class="num">${fmtPct(+cond.h_q1_given_q1_down)}</td>
+          <td class="num">${fmtPct(+cond.h_q2_given_q1_down)}</td>
+          <td class="num">${fmtPct(+cond.h_q3_given_q1_down)}</td>
+          <td class="num">${fmtPct(+cond.h_q4_given_q1_down)}</td></tr>
+      </tbody>
+    </table>`;
+
+  const ext = await window.query(`
+    SELECT hour_dir AS d, extreme_first AS ef, COUNT(*) AS n
+    FROM qf ${where ? where + ' AND' : 'WHERE'} extreme_first IS NOT NULL AND hour_dir IN (-1,1)
+    GROUP BY d, ef`);
+  const buckets = { '1': { H:0, L:0, T:0 }, '-1': { H:0, L:0, T:0 } };
+  ext.forEach(r => { if (buckets[String(r.d)]) buckets[String(r.d)][r.ef] = +r.n; });
+  const sumFor = d => buckets[d].H + buckets[d].L + buckets[d].T;
+  const dirTotal = { '1': sumFor('1'), '-1': sumFor('-1') };
+  document.getElementById('cond-dir-extreme').innerHTML = `
+    <table class="tbl">
+      <thead><tr><th>Hour closed</th><th class="num">High first</th><th class="num">Low first</th><th class="num">Tied</th><th class="num">N</th></tr></thead>
+      <tbody>
+        <tr><td><strong class="pos">Up</strong></td>
+          <td class="num">${fmtPct(buckets['1'].H / dirTotal['1'])}</td>
+          <td class="num">${fmtPct(buckets['1'].L / dirTotal['1'])}</td>
+          <td class="num">${fmtPct(buckets['1'].T / dirTotal['1'])}</td>
+          <td class="num">${fmtN(dirTotal['1'])}</td></tr>
+        <tr><td><strong class="neg">Down</strong></td>
+          <td class="num">${fmtPct(buckets['-1'].H / dirTotal['-1'])}</td>
+          <td class="num">${fmtPct(buckets['-1'].L / dirTotal['-1'])}</td>
+          <td class="num">${fmtPct(buckets['-1'].T / dirTotal['-1'])}</td>
+          <td class="num">${fmtN(dirTotal['-1'])}</td></tr>
+      </tbody>
+    </table>
+    <div class="heat-tooltip">"High first" = hourly high formed in an earlier quarter than the hourly low. Up-hours tend to print high last (steady push); down-hours tend to print low last (capitulation).</div>`;
+
+  const exp = await window.query(`
+    WITH ranked AS (
+      SELECT q1_range, hour_range, NTILE(4) OVER (ORDER BY q1_range) AS q1_bucket
+      FROM qf ${where ? where + ' AND' : 'WHERE'} q1_range IS NOT NULL AND hour_range IS NOT NULL
+    )
+    SELECT q1_bucket,
+      COUNT(*) AS n,
+      AVG(q1_range) AS avg_q1,
+      AVG(hour_range) AS avg_hour,
+      AVG(hour_range / NULLIF(q1_range, 0)) AS multiplier
+    FROM ranked GROUP BY q1_bucket ORDER BY q1_bucket`);
+  const labels = ['Q1 small', 'Q1 medium', 'Q1 large', 'Q1 very large'];
+  document.getElementById('cond-q1-expansion').innerHTML = `
+    <table class="tbl">
+      <thead><tr><th>Q1 size bucket</th><th class="num">N</th><th class="num">Avg Q1 range</th><th class="num">Avg hour range</th><th class="num">Expansion ratio</th></tr></thead>
+      <tbody>
+        ${exp.map(r => `<tr>
+          <td>${labels[+r.q1_bucket - 1] || `Q1 bucket ${r.q1_bucket}`}</td>
+          <td class="num">${fmtN(+r.n)}</td>
+          <td class="num">${(+r.avg_q1).toFixed(2)} pts</td>
+          <td class="num">${(+r.avg_hour).toFixed(2)} pts</td>
+          <td class="num"><strong>${(+r.multiplier).toFixed(2)}×</strong></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    <div class="heat-tooltip">Hour-range = Q1-range × multiplier. Lower buckets typically have higher expansion ratios.</div>`;
+}
+
+// ── DATA ─────────────────────────────────────────────────────────────
+async function renderData() {
+  const isBreakout = STATE.dataSource === 'breakout';
+  const view = isBreakout ? 'br' : 'qf';
+  const where = isBreakout ? buildBreakoutWhere(true) : buildQuartersWhere();
+  const offset = STATE.dataPage * ROWS_PER_PAGE;
+  const cnt = (await window.query(`SELECT COUNT(*) AS n FROM ${view} ${where}`))[0];
+  const total = +cnt.n;
+  let cols, sql;
+  if (isBreakout) {
+    cols = ['Hour (UTC)', 'DoW', 'Open', 'High', 'Low', 'Close', 'Breakout', 'Follow-thru', 'Imm. reversal'];
+    sql = `SELECT hour_start_et, dow, hour_of_day_et, open, high, low, close, breakout, followthrough, immediate_reversal
+           FROM ${view} ${where} ORDER BY hour_start_et DESC LIMIT ${ROWS_PER_PAGE} OFFSET ${offset}`;
+  } else {
+    cols = ['Hour (UTC)', 'DoW', 'Hour Open', 'Hour Close', 'High Q', 'Low Q', 'Extreme first', 'Hour range'];
+    sql = `SELECT hour_start_et, dow, hour_of_day_et, open, close, q_of_high, q_of_low, extreme_first, hour_range
+           FROM ${view} ${where} ORDER BY hour_start_et DESC LIMIT ${ROWS_PER_PAGE} OFFSET ${offset}`;
+  }
+  const rows = await window.query(sql);
+  const body = rows.map(r => {
+    const ts = new Date(r.hour_start_et);
+    const dateStr = ts.toISOString().slice(0, 13).replace('T', ' ') + ':00';
+    if (isBreakout) {
+      const bk = r.breakout === 'bullish' ? '<span class="pos">bullish</span>'
+               : r.breakout === 'bearish' ? '<span class="neg">bearish</span>'
+               : `<span style="color:var(--text-muted)">${r.breakout || '—'}</span>`;
+      const ft = r.followthrough === true ? '<span class="pos">●</span>' : r.followthrough === false ? '<span style="color:var(--text-faint)">○</span>' : '—';
+      const ir = r.immediate_reversal === true ? '<span class="neg">●</span>' : r.immediate_reversal === false ? '<span style="color:var(--text-faint)">○</span>' : '—';
+      return `<tr>
+        <td>${dateStr}</td><td>${DOW_NAMES[+r.dow]}</td>
+        <td class="num">${r.open ? (+r.open).toFixed(2) : '—'}</td>
+        <td class="num">${r.high ? (+r.high).toFixed(2) : '—'}</td>
+        <td class="num">${r.low ? (+r.low).toFixed(2) : '—'}</td>
+        <td class="num">${r.close ? (+r.close).toFixed(2) : '—'}</td>
+        <td>${bk}</td><td>${ft}</td><td>${ir}</td>
+      </tr>`;
+    } else {
+      return `<tr>
+        <td>${dateStr}</td><td>${DOW_NAMES[+r.dow]}</td>
+        <td class="num">${r.open ? (+r.open).toFixed(2) : '—'}</td>
+        <td class="num">${r.close ? (+r.close).toFixed(2) : '—'}</td>
+        <td class="num">${r.q_of_high ? 'Q' + r.q_of_high : '—'}</td>
+        <td class="num">${r.q_of_low ? 'Q' + r.q_of_low : '—'}</td>
+        <td>${r.extreme_first || '—'}</td>
+        <td class="num">${r.hour_range ? (+r.hour_range).toFixed(2) : '—'}</td>
+      </tr>`;
+    }
+  }).join('');
+  document.getElementById('data-table').innerHTML = `
+    <table class="tbl">
+      <thead><tr>${cols.map((c, i) => `<th class="${i >= 2 ? 'num' : ''}">${c}</th>`).join('')}</tr></thead>
+      <tbody>${body}</tbody>
+    </table>`;
+  const totalPages = Math.ceil(total / ROWS_PER_PAGE);
+  document.getElementById('data-pagination').innerHTML = `
+    <button class="page-btn" id="data-prev" ${STATE.dataPage === 0 ? 'disabled' : ''}>← Prev</button>
+    <span class="page-info">Page ${STATE.dataPage + 1} of ${Math.max(1, totalPages)} · ${fmtN(total)} rows</span>
+    <button class="page-btn" id="data-next" ${STATE.dataPage >= totalPages - 1 ? 'disabled' : ''}>Next →</button>
+  `;
+  document.getElementById('data-prev')?.addEventListener('click', () => { if (STATE.dataPage > 0) { STATE.dataPage--; renderData(); } });
+  document.getElementById('data-next')?.addEventListener('click', () => { STATE.dataPage++; renderData(); });
+}
+
+// ── Orchestration ────────────────────────────────────────────────────
+async function renderActive() {
+  renderFilterSummary();
+  document.querySelectorAll('.page-pane .error').forEach(el => el.remove());
+  try {
+    if      (STATE.tab === 'overview')    await renderOverview();
+    else if (STATE.tab === 'breakout')    await renderBreakout();
+    else if (STATE.tab === 'quarters')    await renderQuarters();
+    else if (STATE.tab === 'edge')        await renderEdge();
+    else if (STATE.tab === 'conditional') await renderConditional();
+    else if (STATE.tab === 'data')        await renderData();
+  } catch (e) {
+    console.error(e);
+    const pane = document.querySelector('.page-pane.active');
+    if (pane) pane.insertAdjacentHTML('afterbegin', `<div class="error">Render error: ${e.message}</div>`);
+  }
+}
+
+function bindUI() {
+  document.getElementById('year-select').addEventListener('change', e => { STATE.year = e.target.value; STATE.dataPage = 0; renderActive(); });
+  document.getElementById('hour-select').addEventListener('change', e => { STATE.hour = e.target.value; STATE.dataPage = 0; renderActive(); });
+  document.getElementById('direction-select').addEventListener('change', e => { STATE.direction = e.target.value; STATE.dataPage = 0; renderActive(); });
+  document.getElementById('mincount-select').addEventListener('change', e => { STATE.minCount = +e.target.value; renderActive(); });
+  document.getElementById('data-source-select').addEventListener('change', e => { STATE.dataSource = e.target.value; STATE.dataPage = 0; renderData(); });
+
+  document.querySelectorAll('#dow-pills .sb-pill').forEach(p => {
+    p.addEventListener('click', () => {
+      const d = +p.dataset.dow;
+      if (STATE.dows.has(d)) STATE.dows.delete(d); else STATE.dows.add(d);
+      p.classList.toggle('active');
+      STATE.dataPage = 0;
+      renderActive();
+    });
+  });
+
+  document.querySelectorAll('#nav-tabs .sb-nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#nav-tabs .sb-nav-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const tab = btn.dataset.tab;
+      STATE.tab = tab;
+      document.querySelectorAll('.page-pane').forEach(p => p.classList.remove('active'));
+      document.getElementById(`pane-${tab}`).classList.add('active');
+      renderActive();
+    });
+  });
+}
+
+async function init() {
+  try {
+    if (typeof window.loadParquet !== 'function' || typeof window.query !== 'function') {
+      throw new Error('shared.js helpers (loadParquet/query) not loaded — check that shared.js is reachable.');
+    }
+    await loadViews();
+    bindUI();
+    renderActive();
+  } catch (e) {
+    document.querySelector('.main').innerHTML = `<div class="error">Failed to load parquet views: ${e.message}<br><br>Make sure you're serving from the Statistic.ally root and the engine has been run.</div>`;
+    console.error(e);
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+
 </body>
 </html>

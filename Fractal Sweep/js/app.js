@@ -15,7 +15,7 @@ import { updateFilterChipDeltas } from './tabs/filters.js';
 import { renderRecentTrades } from './tabs/trades.js';
 import { renderMAEStudy, renderMFEStudy } from './tabs/excursion.js';
 import { renderFilterVariants } from './verdict.js';
-import { switchSMT, switchF3, switchF4, _restoreFilters,
+import { switchSMT, switchF3, switchF4, switchP42, switchPD, _restoreFilters,
          renderRangeSlots, addCustomRange, removeRange, updateRange, saveAndRenderRanges,
          applyCustomRanges, switchCustomTab, customRanges,
          setRenderActive } from './walkforward.js';
@@ -190,6 +190,8 @@ window.applyTheme = applyTheme;
 window.switchSMT = switchSMT;
 window.switchF3 = switchF3;
 window.switchF4 = switchF4;
+window.switchP42 = switchP42;
+window.switchPD = switchPD;
 window.switchModel = switchModel;
 window.switchProfile = switchProfile;
 window.switchTF = switchTF;
@@ -224,19 +226,22 @@ if(savedTF){
   }
 }
 
-// Init demo data as immediate fallback
-setData({
-  '1H_5M_PREV_CISD': DEMO['1H_5M_PREV_CISD'],
-  '30M_3M_PREV_CISD': DEMO['30M_3M_PREV_CISD'],
-  '15M_1M_PREV_CISD': DEMO['15M_1M_PREV_CISD'],
-});
-
-// Restore saved theme
+// Restore saved theme. The .theme-opt button click handlers are auto-wired
+// by Analysis/dashboard/shared.js (loaded as a deferred script in <head>).
+// shared.js calls window.applyTheme — and because this module's
+// `window.applyTheme = applyTheme` assignment above runs later, the
+// local applyTheme (with chart redraw) wins.
 if(_savedTheme){ applyTheme(_savedTheme); setCurrentTheme(_savedTheme); }
 
-render();
-updateTabVisibility();
-drawSetupViz();
+// Show a loading overlay while model_stats.json is being fetched. Demo data
+// is kept as a *fallback* only — used if the fetch fails — to avoid the
+// flash of placeholder stats (~280 MB JSON takes a moment to parse).
+const _mainEl = document.querySelector('main') || document.body;
+const _loadingEl = document.createElement('div');
+_loadingEl.id = 'initial-loading';
+_loadingEl.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-family:var(--font-data);color:var(--text-secondary);font-size:13px;';
+_loadingEl.innerHTML = '<div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted)">Sweep Model</div><div>Loading <code style="font-family:var(--font-data);color:var(--text-primary)">model_stats.json</code>…</div>';
+document.body.appendChild(_loadingEl);
 
 // Load real data from /data API (profile-by-profile, much faster than full JSON)
 initProfileData()
@@ -251,10 +256,24 @@ initProfileData()
     drawSetupViz();
   })
   .catch(e => {
-    console.warn('[sweep] /data API failed:', e, '— using demo data');
+    console.warn('[sweep] fetch failed:', e, '— falling back to demo data');
+    // Fall back to demo data only on fetch failure (file missing / 404 / parse error).
+    setData({
+      '1H_5M_PREV_CISD': DEMO['1H_5M_PREV_CISD'],
+      '30M_3M_PREV_CISD': DEMO['30M_3M_PREV_CISD'],
+      '15M_1M_PREV_CISD': DEMO['15M_1M_PREV_CISD'],
+    });
     setIsDemo(true);
     const badge = document.getElementById('demo-badge');
-    if (badge) badge.style.display = '';
+    if(badge){ badge.style.display = ''; }
+    render();
+    updateTabVisibility();
+    drawSetupViz();
+  })
+  .finally(() => {
+    // Hide the loading overlay either way once a render has happened.
+    const overlay = document.getElementById('initial-loading');
+    if(overlay) overlay.remove();
   });
 
 // JSON file upload handler

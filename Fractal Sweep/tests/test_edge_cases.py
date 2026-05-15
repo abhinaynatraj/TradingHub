@@ -360,25 +360,21 @@ class TestBuildModelStatsEdgeCases:
             'mfe_pct_hr': rng.uniform(10, 200, n),
         })
 
-    def test_risk_stats_blown_check(self):
-        """Equity curve blown flag (line 1647)."""
+    def test_risk_stats_has_streak_fields(self):
+        """risk_stats includes consecutive-win/loss tracking under R-only schema.
+        The deprecated 'blown' dollar-account flag was removed in the 2026-04
+        account-agnostic refactor."""
         cfg = dict(label='T', sweep_tf_min=60, cisd_tf_min=5,
                    min_range=12, session_hrs=(7.0, 16.0))
         df = self._make_df(50)
         result = ms.build_model_stats(df, 100, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
                                        profile_key='t', profile_type='mult')
-        assert 'blown' in result['risk_stats']
-
-    def test_classification_breakdown(self):
-        """by_classification is populated (line 1815+)."""
-        cfg = dict(label='T', sweep_tf_min=60, cisd_tf_min=5,
-                   min_range=12, session_hrs=(7.0, 16.0))
-        df = self._make_df(100)
-        result = ms.build_model_stats(df, 200, '1H_5M', cfg,
-                                       stop_mult=1.0, target_mult=1.0,
-                                       profile_key='t', profile_type='mult')
-        assert 'by_classification' in result
+        rs = result['risk_stats']
+        assert 'max_consec_wins' in rs
+        assert 'max_consec_losses' in rs
+        assert 'avg_consec_wins' in rs
+        assert 'avg_consec_losses' in rs
 
     def test_r_hist(self):
         """R distribution histogram (line 1716+)."""

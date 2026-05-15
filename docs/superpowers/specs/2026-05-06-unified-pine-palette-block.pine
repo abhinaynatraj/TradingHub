@@ -1,0 +1,120 @@
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 🎨 CANONICAL PALETTE BLOCK — REFERENCE COPY                              ║
+// ║ Source of truth: this file. When this block changes, copy verbatim into: ║
+// ║   - Analysis/pine/quarter_theory.pine                                    ║
+// ║   - Analysis/pine/quarter_theory_stats.pine                              ║
+// ║   - Fractal Sweep/pine/fractal_sweep.pine                                ║
+// ║   - Fractal Sweep/pine/ttfm+fadi.pine                                    ║
+// ║ Spec: docs/superpowers/specs/2026-05-06-unified-pine-palette-design.md   ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+// ── Theme input ──────────────────────────────────────────────────────────────
+var string G_THEME = "🎨 Theme"
+gTheme = input.string("Auto", "Theme",
+                      options=["Auto", "Dark", "Light"],
+                      group=G_THEME,
+                      tooltip="Auto reads chart bg brightness; Dark/Light forces the palette.")
+
+// ── Mode resolution (single source of truth) ─────────────────────────────────
+// `chart.bg_color` returns the actual chart background; mean(r,g,b) > 127 = light.
+// IMPORTANT: palette state is `var`-declared with literal defaults, then
+// assigned ONCE on `barstate.isfirst`. `chart.bg_color` is a series in Pine v6;
+// reading it (even as a `var` initializer) makes Pine treat downstream
+// expressions as series-typed and grows the historical-buffer requirement
+// on every live bar — eventually exceeding max_bars_back and silently
+// killing rendering. The barstate.isfirst gate confines the series read
+// to a single bar.
+var bool _AUTO_IS_LIGHT = false
+var bool IS_LIGHT_MODE  = false
+
+// ── Role base colors (ink-tier, alpha 0) ─────────────────────────────────────
+// Dark mode = Tailwind 400-500; Light mode = Tailwind 600-700. True mirror.
+// Defaults are dark-mode values; overridden in the barstate.isfirst block below.
+var color P_LONG_BASE   = #34d399  // emerald
+var color P_SHORT_BASE  = #f87171  // red
+var color P_WARN_BASE   = #fbbf24  // amber
+var color P_INFO_BASE   = #38bdf8  // sky
+var color P_ACCENT_BASE = #a78bfa  // violet
+var color P_STRUCT_BASE = #cbd5e1  // slate
+var color P_INK         = #f1f5f9  // slate extreme (label/table text)
+var color P_SURFACE     = #334155  // pill/table bg — always slate-700 in BOTH modes (elevated card pattern, like a tooltip)
+var color P_ON_SURFACE  = #f1f5f9  // text/icons on top of P_SURFACE — always slate-100 (light) for guaranteed contrast against the dark card
+
+if barstate.isfirst
+    _AUTO_IS_LIGHT := (color.r(chart.bg_color) + color.g(chart.bg_color) + color.b(chart.bg_color)) / 3.0 > 127
+    IS_LIGHT_MODE  := gTheme == "Light" or (gTheme == "Auto" and _AUTO_IS_LIGHT)
+    P_LONG_BASE    := IS_LIGHT_MODE ? #047857 : #34d399
+    P_SHORT_BASE   := IS_LIGHT_MODE ? #b91c1c : #f87171
+    P_WARN_BASE    := IS_LIGHT_MODE ? #b45309 : #fbbf24
+    P_INFO_BASE    := IS_LIGHT_MODE ? #0369a1 : #38bdf8
+    P_ACCENT_BASE  := IS_LIGHT_MODE ? #6d28d9 : #a78bfa
+    P_STRUCT_BASE  := IS_LIGHT_MODE ? #475569 : #cbd5e1
+    P_INK          := IS_LIGHT_MODE ? #0f172a : #f1f5f9
+
+// ── Tier helpers — apply opacity to any base color ───────────────────────────
+tier_ink(color c)     => color.new(c, 0)
+tier_strong(color c)  => color.new(c, 25)
+tier_mid(color c)     => color.new(c, 60)
+tier_soft(color c)    => color.new(c, 85)
+tier_whisper(color c) => color.new(c, 95)
+
+// ── Composite resolvers — drawing code reads only these ──────────────────────
+pal_long_ink()       => tier_ink(P_LONG_BASE)
+pal_long_strong()    => tier_strong(P_LONG_BASE)
+pal_long_mid()       => tier_mid(P_LONG_BASE)
+pal_long_soft()      => tier_soft(P_LONG_BASE)
+pal_long_whisper()   => tier_whisper(P_LONG_BASE)
+
+pal_short_ink()      => tier_ink(P_SHORT_BASE)
+pal_short_strong()   => tier_strong(P_SHORT_BASE)
+pal_short_mid()      => tier_mid(P_SHORT_BASE)
+pal_short_soft()     => tier_soft(P_SHORT_BASE)
+pal_short_whisper()  => tier_whisper(P_SHORT_BASE)
+
+pal_warn_ink()       => tier_ink(P_WARN_BASE)
+pal_warn_strong()    => tier_strong(P_WARN_BASE)
+pal_warn_mid()       => tier_mid(P_WARN_BASE)
+pal_warn_soft()      => tier_soft(P_WARN_BASE)
+pal_warn_whisper()   => tier_whisper(P_WARN_BASE)
+
+pal_info_ink()       => tier_ink(P_INFO_BASE)
+pal_info_strong()    => tier_strong(P_INFO_BASE)
+pal_info_mid()       => tier_mid(P_INFO_BASE)
+pal_info_soft()      => tier_soft(P_INFO_BASE)
+pal_info_whisper()   => tier_whisper(P_INFO_BASE)
+
+pal_accent_ink()     => tier_ink(P_ACCENT_BASE)
+pal_accent_strong()  => tier_strong(P_ACCENT_BASE)
+pal_accent_mid()     => tier_mid(P_ACCENT_BASE)
+pal_accent_soft()    => tier_soft(P_ACCENT_BASE)
+pal_accent_whisper() => tier_whisper(P_ACCENT_BASE)
+
+pal_struct_ink()     => tier_ink(P_STRUCT_BASE)
+pal_struct_strong()  => tier_strong(P_STRUCT_BASE)
+pal_struct_mid()     => tier_mid(P_STRUCT_BASE)
+pal_struct_soft()    => tier_soft(P_STRUCT_BASE)
+pal_struct_whisper() => tier_whisper(P_STRUCT_BASE)
+
+pal_ink()            => P_INK
+pal_surface()        => P_SURFACE
+pal_surface_strong() => tier_strong(P_SURFACE)
+pal_surface_soft()   => tier_soft(P_SURFACE)
+pal_on_surface()     => P_ON_SURFACE
+
+// ── Table tokens — for stats / scoreboard tables ─────────────────────────────
+// Built on top of the base palette but tuned for legibility against the solid
+// dark P_SURFACE bg.
+//   pal_table_header_bg() — slate-900 (#0f172a) in BOTH modes. Always darker
+//                           than the always-dark P_SURFACE body bg so the
+//                           header reads as a deep band regardless of chart
+//                           theme. Pairs with pal_on_surface() text.
+//                           (Earlier mode-aware version went LIGHT in light
+//                           mode, making white-on-light text invisible.)
+//   pal_table_text()      — opaque on-surface text. Same as pal_on_surface();
+//                           routed via a table-specific token for future tuning.
+//   pal_table_muted()     — 50%-transparent on-surface for placeholder rows.
+//                           Visibly dimmer than primary text but still legible.
+pal_table_header_bg() => #0f172a
+pal_table_text()      => P_ON_SURFACE
+pal_table_muted()     => color.new(P_ON_SURFACE, 50)
+// ╚══════════════════════════════════════════════════════════════════════════╝

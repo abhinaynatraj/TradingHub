@@ -173,12 +173,9 @@ def run_pairing(m1, sweep_tf_min, cisd_tf_min, profile='series_multi',
 
         trades.append(dict(
             direction=ev['direction'],
-            sweep_ts_ns=ev['sweep_ts_ns'],
             sweep_extreme=ev['sweep_extreme'],
             entry_price=entry_price,
             sl_price=sl_price,
-            risk_pts=risk_pts,
-            targets=targets,
             hits=outcome['hits'],
             sl_hit=outcome.get('sl_hit', False),
             composite_r=outcome['composite_r'],
@@ -186,11 +183,10 @@ def run_pairing(m1, sweep_tf_min, cisd_tf_min, profile='series_multi',
             mfe_pts=outcome['mfe_pts'],
             silver=silver_flag,
             smt=smt_flag,
-            body_cisd=body_confirm,
             hour=_hour_of_day_et(int(cisd_tf['ts_ns'][entry_idx_cisd_tf])),
             dow=_day_of_week_et(int(cisd_tf['ts_ns'][entry_idx_cisd_tf])),
             series_range=cisd['series_range'],
-            series_count=cisd['series_count'],
+            entry_ts_ns=int(cisd_tf['ts_ns'][entry_idx_cisd_tf]),
         ))
 
     summary = dict(
@@ -254,7 +250,21 @@ def main():
     m1 = load_1m(args.table)
     m1_es = None if (args.no_smt or args.table == 'es_1m') else load_1m('es_1m')
 
-    out = {}
+    # Output paths
+    parquet_dir = OUT_PATH.parent / 'data'
+    parquet_dir.mkdir(exist_ok=True)
+    summary_out = {}
+    manifest = dict(
+        schema_version=1,
+        run_timestamp_utc=__import__('datetime').datetime.utcnow().isoformat() + 'Z',
+        pairings=list(args.pairings),
+        profiles=list(args.profiles),
+        files={},
+    )
+
+    # Lazy import to keep pyarrow optional at module-load time
+    from parquet_writer import write_trades_parquet
+
     for pairing in args.pairings:
         cfg = PAIRINGS[pairing]
         for profile in args.profiles:
@@ -269,15 +279,26 @@ def main():
                 multipliers=MULTIPLIERS,
                 m1_es=m1_es,
             )
-            out[key] = result['summary']
-            out[key]['n_trades'] = len(result['trades'])
-            out[key]['_trades'] = result['trades']   # kept for downstream filtering
+            trades = result['trades']
+
+            # Write parquet (one file per pairing/profile)
+            slug = key.replace('/', '_')
+            pq_path = parquet_dir / f"trades_{slug}.parquet"
+            write_trades_parquet(trades, str(pq_path))
+            manifest['files'][key] = f"data/trades_{slug}.parquet"
+            print(f"  → {pq_path.name} ({len(trades):,} trades)")
+
+            # Slim summary for hub card / sanity reads (NO _trades)
+            summary = result['summary']
+            summary['n_trades'] = len(trades)
+            summary.pop('_trades', None)
+            summary_out[key] = summary
 
     print(f"[3] Writing {OUT_PATH}")
     with open(OUT_PATH, 'w') as f:
-        json.dump(out, f, default=_json_default)
+        json.dump(dict(summary=summary_out, manifest=manifest), f, default=_json_default)
     print(f"  Written: {OUT_PATH}")
-    return out
+    return summary_out
 
 
 def _json_default(obj):

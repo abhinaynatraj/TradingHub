@@ -216,9 +216,9 @@ class TestFilterVariantsSmt:
 
         result = ms.compute_filter_variants(df)
         assert 'all_combinations' in result
-        # 3 runtime filter dimensions: F3, F4, SMT. Loop includes the
-        # empty set, so 2**3 = 8.
-        assert len(result['all_combinations']) == 2**3
+        # 5 runtime filter dimensions: F3, F4, SMT, P42, PD. Loop includes the
+        # empty set, so 2**5 = 32.
+        assert len(result['all_combinations']) == 2**5
         # SMT combos should exist
         smt_combos = [c for c in result['all_combinations']
                       if 'NQ-ES' in (c.get('label') or '') or 'SMT' in (c.get('label') or '')]
@@ -267,25 +267,32 @@ class TestBuildModelStatsEquity:
             'mfe_pct_hr': rng.uniform(10, 200, n),
         })
 
-    def test_equity_min_tracked(self):
-        """min_equity_usd is tracked correctly (line 1659)."""
+    def test_loss_streak_tracked(self):
+        """Consecutive-loss tracking exists in risk_stats (R-only schema).
+        Replaces deprecated min_equity_usd/ACCOUNT_SIZE assertion."""
         cfg = dict(label='T', sweep_tf_min=60, cisd_tf_min=5,
                    min_range=12, session_hrs=(7.0, 16.0))
-        df = self._make_df(50, wr=0.5)  # lower WR to hit min equity
+        df = self._make_df(50, wr=0.5)
         result = ms.build_model_stats(df, 100, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
                                        profile_key='t', profile_type='mult')
-        assert result['risk_stats']['min_equity_usd'] <= ms.ACCOUNT_SIZE
+        rs = result['risk_stats']
+        assert 'max_consec_losses' in rs
+        assert rs['max_consec_losses'] >= 1
 
-    def test_all_losses_blown(self):
-        """All losses should blow the account."""
+    def test_all_losses_max_loss_streak(self):
+        """All-losses df should have max_consec_losses == n (full streak).
+        Replaces deprecated 'blown' flag assertion."""
         cfg = dict(label='T', sweep_tf_min=60, cisd_tf_min=5,
                    min_range=12, session_hrs=(7.0, 16.0))
         df = self._make_df(30, wr=0.0)  # all losses
         result = ms.build_model_stats(df, 100, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
                                        profile_key='t', profile_type='mult')
-        assert result['risk_stats']['blown'] == True
+        rs = result['risk_stats']
+        assert rs['losses'] == 30
+        assert rs['wins'] == 0
+        assert rs['max_consec_losses'] == 30
 
     def test_filter_variants_in_output(self):
         """filter_variants is present in output."""
