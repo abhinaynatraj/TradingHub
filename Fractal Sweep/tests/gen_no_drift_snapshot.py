@@ -1,0 +1,168 @@
+"""
+Generate a baseline snapshot of dashboard-equivalent computations from
+model_stats.json BEFORE the slim-JSON migration. Re-run after migration
+and compare via test_no_drift.py.
+
+Output: tests/fixtures/no_drift_snapshot.json
+"""
+import json
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+JSON_PATH = ROOT / "model_stats.json"
+OUT_PATH = ROOT / "tests" / "fixtures" / "no_drift_snapshot.json"
+
+# Fixed coverage: every model × simple_1r × every canonical period.
+MODELS = ["1H_5M_PREV_CISD", "30M_3M_PREV_CISD", "15M_1M_PREV_CISD"]
+PROFILE = "simple_1r"
+PERIODS = ["all", "2y", "1y", "6m", "3m", "1m"]
+
+
+def _percentile(xs, p):
+    """Linear-interp percentile (matches numpy default)."""
+    if not xs:
+        return None
+    xs = sorted(xs)
+    k = (len(xs) - 1) * p
+    f = int(k)
+    c = min(f + 1, len(xs) - 1)
+    if f == c:
+        return xs[f]
+    return xs[f] + (xs[c] - xs[f]) * (k - f)
+
+
+def _dir_summary(trades):
+    """Compute dir_summary {long: {wr, ev, pf}, short: {...}} from trade rows."""
+    out = {}
+    for direction in ("long", "short"):
+        sub = [t for t in trades if (t.get("direction") or "").lower() == direction]
+        n = len(sub)
+        if n == 0:
+            out[direction] = {"n": 0, "wr": None, "ev": None, "pf": None}
+            continue
+        wins = [t for t in sub if t.get("outcome") == "WIN"]
+        sum_win = sum(t.get("r", 0) for t in wins)
+        sum_loss = sum(abs(t.get("r", 0)) for t in sub if t.get("outcome") == "LOSS")
+        wr = len(wins) / n
+        ev = (sum_win - sum_loss) / n
+        pf = sum_win / sum_loss if sum_loss > 0 else None
+        out[direction] = {
+            "n": n,
+            "wr": round(wr, 4),
+            "ev": round(ev, 4),
+            "pf": round(pf, 4) if pf is not None else None,
+        }
+    return out
+
+
+def _by_hour(trades):
+    """Count trades by hour (0-23)."""
+    out = {}
+    for t in trades:
+        h = t.get("hr")
+        if h is None:
+            continue
+        out[str(h)] = out.get(str(h), 0) + 1
+    return out
+
+
+def _top_combos(trades, n=5):
+    """Top 5 (hr, dow, direction) combos by EV, min 6 trades."""
+    combos = {}
+    for t in trades:
+        hr, dow, dir_ = t.get("hr"), t.get("dow"), t.get("direction")
+        if hr is None or dow is None:
+            continue
+        key = f"{hr}_{dow}_{dir_}"
+        c = combos.setdefault(key, {"hr": hr, "dow": dow, "direction": dir_, "n": 0, "sum_r": 0.0, "wins": 0})
+        c["n"] += 1
+        c["sum_r"] += t.get("r", 0)
+        if t.get("outcome") == "WIN":
+            c["wins"] += 1
+    rows = [c for c in combos.values() if c["n"] >= 6]
+    for c in rows:
+        c["ev"] = round(c["sum_r"] / c["n"], 4)
+        c["wr"] = round(c["wins"] / c["n"], 4)
+    rows.sort(key=lambda r: r["ev"], reverse=True)
+    return rows[:n]
+
+
+def _excursion_pcts(trades, field):
+    """Return {p50, p75, p90} of a percent field across all trades."""
+    vals = [t.get(field) for t in trades if t.get(field) is not None]
+    return {
+        "p50": _percentile(vals, 0.50),
+        "p75": _percentile(vals, 0.75),
+        "p90": _percentile(vals, 0.90),
+    }
+
+
+def _verdict_score(profile_data, trades):
+    """Mirror what verdict.js produces — a single composite score.
+
+    The exact formula lives in verdict.js. For drift detection we capture
+    the inputs that feed the score so post-migration we can verify identity.
+    """
+    if not trades:
+        return None
+    wins = [t for t in trades if t.get("outcome") == "WIN"]
+    n = len(trades)
+    wr = len(wins) / n
+    sum_win = sum(t.get("r", 0) for t in wins)
+    sum_loss = sum(abs(t.get("r", 0)) for t in trades if t.get("outcome") == "LOSS")
+    ev = (sum_win - sum_loss) / n
+    pf = sum_win / sum_loss if sum_loss > 0 else None
+    return {
+        "n": n,
+        "wr": round(wr, 4),
+        "ev": round(ev, 4),
+        "pf": round(pf, 4) if pf is not None else None,
+    }
+
+
+def _trades_for_period(profile_data, period):
+    """Pull the trade rows the JSON currently exposes for a given period."""
+    if period == "all":
+        return profile_data.get("recent_trades", [])
+    by_tf = profile_data.get("by_tf", {})
+    slice_ = by_tf.get(period)
+    if not slice_:
+        return []
+    return slice_.get("recent_trades", [])
+
+
+def build_snapshot():
+    if not JSON_PATH.exists():
+        raise SystemExit(f"missing: {JSON_PATH}. Run engine/model_stats.py first.")
+    with open(JSON_PATH) as f:
+        data = json.load(f)
+
+    snap = {}
+    for model in MODELS:
+        model_data = data.get(model)
+        if not model_data:
+            continue
+        profile_data = model_data.get("profiles", {}).get(PROFILE)
+        if not profile_data:
+            continue
+        snap[model] = {}
+        for period in PERIODS:
+            trades = _trades_for_period(profile_data, period)
+            snap[model][period] = {
+                "n_trades": len(trades),
+                "verdict_inputs": _verdict_score(profile_data, trades),
+                "dir_summary": _dir_summary(trades),
+                "by_hour_counts": _by_hour(trades),
+                "top_combos": _top_combos(trades, 5),
+                "mae_pct": _excursion_pcts(trades, "mae_pct"),
+                "mfe_pct": _excursion_pcts(trades, "mfe_pct"),
+            }
+    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(OUT_PATH, "w") as f:
+        json.dump(snap, f, indent=2, sort_keys=True)
+    print(f"snapshot written: {OUT_PATH}")
+    print(f"models covered: {list(snap.keys())}")
+
+
+if __name__ == "__main__":
+    build_snapshot()
