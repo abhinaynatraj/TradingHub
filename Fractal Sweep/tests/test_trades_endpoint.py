@@ -145,3 +145,23 @@ def test_get_trades_refreshes_when_parquet_mtime_changes(parquet_exists, monkeyp
     cached_df_second = server._parquet_cache.get("fractal_sweep")
     # After the re-read, the cached DataFrame should be a NEW object (was reloaded)
     assert cached_df_second is not cached_df_first
+
+
+def test_get_trades_raw_measure_no_nan_in_response(parquet_exists):
+    """raw_measure rows have NaN for stop_price/target_price (no SL/TP for
+    measurement-only profile). The /trades response must serialize them as
+    null, not NaN — RFC 7159 disallows NaN and browsers reject it."""
+    import math
+    import json
+    result = server._get_trades("fractal_sweep", "1H_5M_PREV_CISD", "raw_measure",
+                                 period="all", date_from=None, date_to=None, limit=None)
+    assert result is not None
+    assert result["count"] > 0
+    # Verify no float NaN sneaks into the records.
+    for row in result["trades"]:
+        for k, v in row.items():
+            assert not (isinstance(v, float) and math.isnan(v)), \
+                f"NaN leaked in raw_measure response for field {k!r} (row date={row.get('date')})"
+    # Verify the serialized form is strict-compliant JSON (no NaN literal).
+    serialized = json.dumps(result, allow_nan=False)
+    assert "NaN" not in serialized

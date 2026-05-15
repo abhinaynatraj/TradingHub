@@ -177,12 +177,21 @@ def _get_trades(
     if df.empty:
         return {"trades": [], "count": 0}
 
-    records = df.where(pd.notna(df), None).to_dict("records")
+    records = df.to_dict("records")
+    # Scrub NaN values to None. pandas can't store None in float-typed columns
+    # (auto-coerces back to NaN), so we must do this on the plain-Python dicts
+    # AFTER to_dict("records"). NaN in JSON output is invalid per RFC 7159 —
+    # browsers reject it. Affects raw_measure rows where stop_price /
+    # target_price are NaN (no SL/TP for measurement-only profile).
+    import math
     for r in records:
         r["date"] = str(r["date"])[:19]
         for k in ("dow", "hr", "mn", "yr"):
-            if r.get(k) is not None:
+            if r.get(k) is not None and not (isinstance(r[k], float) and math.isnan(r[k])):
                 r[k] = int(r[k])
+        for k, v in list(r.items()):
+            if isinstance(v, float) and math.isnan(v):
+                r[k] = None
 
     return {"trades": records, "count": len(records)}
 
