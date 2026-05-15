@@ -7,7 +7,7 @@ import { activePageTab, RAW_TABS, RAW_TAB_LABELS,
          setActiveTF, setIsDemo, setActivePageTab, setCurrentTheme } from './state.js';
 import { applyTheme, _savedTheme } from './theme.js';
 import { fmtDateRange, triggerCSVDownload, csvEscape, showTip, hideTip } from './utils.js';
-import { getProfileData, getActiveTFData, getSmtD, applyLoadedData, DEMO, DATA, setData, initProfileData, loadProfile, getActiveTrades } from './data.js';
+import { getProfileData, getActiveTFData, getSmtD, applyLoadedData, DEMO, DATA, setData, initProfileData, loadProfile, getActiveTrades, invalidateTradesCache } from './data.js';
 import { drawSetupViz, renderOverviewEquityCurve, lineChart, rDistChart, renderEquityCurveFS } from './charts.js';
 import { renderModel, renderModelDropdown, renderProfileDropdown, switchProfile, switchTF, renderControls, switchModel, updateProfileFromSelectors } from './tabs/overview.js';
 import { renderEdgeStudy } from './tabs/edge.js';
@@ -169,11 +169,22 @@ function pollRecalc(){
       if(s.status==='ok'){
         clearInterval(iv);
         btn.textContent='✓ Done — reloading…';
-        setTimeout(()=>{
-          fetch('./model_stats.json').then(r=>r.json()).then(applyLoadedData).finally(()=>{
-            btn.textContent='⟳ Recalculate';btn.disabled=false;
-          });
-        },400);
+        setTimeout(async ()=>{
+          // Engine just regenerated model_stats.json + model_stats.parquet.
+          // Invalidate the trade cache for the current model (parquet
+          // contents may have shifted) and force /data refetch by clearing
+          // DATA[fullKey], then re-prime via initProfileData (which loads
+          // aggregates + trades for the initial period).
+          const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
+          invalidateTradesCache(fullKey);
+          if (DATA[fullKey]) DATA[fullKey] = { profiles: {} };
+          try {
+            await initProfileData();
+            window.render();
+          } finally {
+            btn.textContent='⟳ Recalculate'; btn.disabled=false;
+          }
+        }, 400);
       } else if(s.status==='error'){
         clearInterval(iv);
         btn.textContent='⚠ Engine error';

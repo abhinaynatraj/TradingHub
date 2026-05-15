@@ -68,7 +68,8 @@ def _get_data(engine: str) -> dict | None:
 
 
 # ── Parquet trade cache ──────────────────────────────────────────────────────
-_parquet_cache: dict[str, object] = {}  # engine → DataFrame
+_parquet_cache: dict[str, object] = {}        # engine → DataFrame
+_last_parquet_mtimes: dict[str, float] = {}   # engine → mtime when loaded
 
 def _parse_full_key(full_key: str) -> tuple[str, str, str]:
     """Decompose JSON-style key '1H_5M_PREV_CISD' into (model_key, sweep_mode, cisd_mode).
@@ -132,8 +133,12 @@ def _get_trades(
     if has_period and period not in VALID_PERIODS:
         return {"error": f"invalid period '{period}'. Valid: {sorted(VALID_PERIODS)}"}
 
-    if engine not in _parquet_cache:
+    # Re-read parquet if the file's mtime has changed (e.g. after a recalc).
+    # Matches _get_data's pattern so /trades doesn't serve stale data.
+    mtime = path.stat().st_mtime
+    if engine not in _parquet_cache or _last_parquet_mtimes.get(engine) != mtime:
         _parquet_cache[engine] = pd.read_parquet(path)
+        _last_parquet_mtimes[engine] = mtime
 
     df = _parquet_cache[engine]
 

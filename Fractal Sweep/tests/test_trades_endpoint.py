@@ -114,3 +114,34 @@ def test_get_trades_malformed_model_returns_error(parquet_exists):
                                  period="all", date_from=None, date_to=None, limit=None)
     assert result is not None
     assert "error" in result, f"expected error dict, got: {result}"
+
+
+def test_get_trades_refreshes_when_parquet_mtime_changes(parquet_exists, monkeypatch):
+    """If parquet's mtime changes (engine recalc rewrote it), the next /trades
+    call must read the new file, not the in-memory cache."""
+    import importlib
+    # Force a fresh server module so we start with empty caches
+    if hasattr(server, "_parquet_cache"):
+        server._parquet_cache.clear()
+    if hasattr(server, "_last_parquet_mtimes"):
+        server._last_parquet_mtimes.clear()
+
+    # Prime the cache
+    r1 = server._get_trades("fractal_sweep", "1H_5M_PREV_CISD", "simple_1r",
+                              period="all", date_from=None, date_to=None, limit=None)
+    assert r1 is not None
+    assert r1["count"] > 0
+    cached_df_first = server._parquet_cache.get("fractal_sweep")
+    assert cached_df_first is not None
+
+    # Bump the recorded mtime backwards to simulate "the file was rewritten newer than what we cached"
+    server._last_parquet_mtimes["fractal_sweep"] = 0.0
+
+    # Next call must re-read the parquet (new DataFrame object)
+    r2 = server._get_trades("fractal_sweep", "1H_5M_PREV_CISD", "simple_1r",
+                              period="all", date_from=None, date_to=None, limit=None)
+    assert r2 is not None
+    assert r2["count"] == r1["count"]  # data shouldn't have actually changed
+    cached_df_second = server._parquet_cache.get("fractal_sweep")
+    # After the re-read, the cached DataFrame should be a NEW object (was reloaded)
+    assert cached_df_second is not cached_df_first
