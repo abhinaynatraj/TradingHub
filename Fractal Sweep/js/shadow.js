@@ -82,9 +82,18 @@ async function _check(fullKey, profile, period) {
     const p = _normalize(pSorted[i], 'parquet');
     for (const f of FIELDS) {
       const a = j[f], b = p[f];
-      const ok = (a == null && b == null) || (typeof a === 'number'
-        ? Math.abs((a||0) - (b||0)) < 1e-4
-        : a === b);
+      let ok;
+      if (a == null && b == null) {
+        ok = true;
+      } else if (typeof a === 'number' || typeof b === 'number') {
+        ok = Math.abs((a||0) - (b||0)) < 1e-4;
+      } else if (f === 'date') {
+        // JSON dates are "YYYY-MM-DD" (10 chars); parquet dates are
+        // "YYYY-MM-DDTHH:MM:SS" (19 chars). Compare by the date portion only.
+        ok = String(a).slice(0, 10) === String(b).slice(0, 10);
+      } else {
+        ok = a === b;
+      }
       if (!ok) {
         console.error('[shadow]', k, `row ${i} field ${f}: json=${a} parquet=${b}`);
         mismatches++;
