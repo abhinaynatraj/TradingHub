@@ -14,8 +14,20 @@ function renderModelDropdown(){
   if (!sel) return;
   sel.innerHTML = MODEL_KEYS.map(k => `<option value="${k}" ${k===activeModel?'selected':''}>${MODEL_LABELS[k]||k}</option>`).join('');
 }
-function switchModel(k){
+async function switchModel(k){
   setActiveModel(k);
+  // Lazy-load the new model's profile data and trade rows before render.
+  // Without this, DATA[newFullKey] is still the empty {profiles:{}} placeholder
+  // from loadModelList, so renderModel(null) shows "No data".
+  const fullKey = `${k}_${activeMode}_${activeCisd}`;
+  try {
+    await loadProfile(fullKey, activeProfile);
+    if (activeTF !== 'custom') {
+      await loadTrades(fullKey, activeProfile, activeTF || 'all');
+    }
+  } catch (e) {
+    console.warn('[sweep] switchModel load failed:', e);
+  }
   window.render();
 }
 
