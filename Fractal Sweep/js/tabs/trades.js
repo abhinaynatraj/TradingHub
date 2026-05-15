@@ -16,6 +16,7 @@ async function fetchTrades() {
     engine: 'fractal_sweep',
     model: fullKey,
     profile: activeProfile,
+    period: 'all',
     limit: '12000',
   });
   const r = await fetch('/trades?' + params);

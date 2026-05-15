@@ -70,12 +70,45 @@ def _get_data(engine: str) -> dict | None:
 # ── Parquet trade cache ──────────────────────────────────────────────────────
 _parquet_cache: dict[str, object] = {}  # engine → DataFrame
 
+def _parse_full_key(full_key: str) -> tuple[str, str, str]:
+    """Decompose JSON-style key '1H_5M_PREV_CISD' into (model_key, sweep_mode, cisd_mode).
+
+    Parquet stores these as 3 separate columns; the JSON dashboard concatenates them
+    as `{model_key}_{sweep_mode}_{cisd_mode}`. Splitting from the right keeps the
+    model name intact even when it contains underscores (e.g. '1H_5M').
+    """
+    parts = full_key.rsplit("_", 2)
+    if len(parts) != 3:
+        raise ValueError(f"unexpected full_key shape: {full_key!r}")
+    return parts[0], parts[1], parts[2]
+
+
 def _get_trades(
     engine: str,
     model: str | None,
     profile: str | None,
-    limit: int,
+    period: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int | None = None,
 ) -> dict | None:
+    """Slice the engine's parquet trade table.
+
+    Args:
+      model: JSON-style full key, e.g. '1H_5M_PREV_CISD'. Decomposed into
+             (model_key, sweep_mode, cisd_mode) before filtering the parquet.
+      period: one of '2y'|'1y'|'6m'|'3m'|'1m'|'all'. Anchored to MAX(date)
+              in the parquet (NOT today() — keeps results reproducible).
+              Day counts (730/365/182/91/30) match engine's _compute_by_tf.
+      date_from, date_to: arbitrary YYYY-MM-DD window. XOR with `period`.
+      limit: optional row cap (applied after sorting by date desc).
+
+    Returns: {"trades": [...], "count": N} on success;
+             {"error": "..."} on parameter validation failure;
+             None if parquet not present for the engine.
+
+    EXPIRED setups are filtered out to match JSON recent_trades semantics.
+    """
     import pandas as pd
 
     pq_paths = {
@@ -85,23 +118,64 @@ def _get_trades(
     if not path or not path.exists():
         return None
 
+    # XOR: exactly one of (period) or (date_from AND date_to)
+    has_period = period is not None
+    has_range = date_from is not None or date_to is not None
+    if has_period and has_range:
+        return {"error": "specify either period OR from/to, not both"}
+    if not has_period and not has_range:
+        return {"error": "specify period or from/to"}
+    if has_range and not (date_from and date_to):
+        return {"error": "from and to are both required"}
+
+    VALID_PERIODS = {"all", "2y", "1y", "6m", "3m", "1m"}
+    if has_period and period not in VALID_PERIODS:
+        return {"error": f"invalid period '{period}'. Valid: {sorted(VALID_PERIODS)}"}
+
     if engine not in _parquet_cache:
         _parquet_cache[engine] = pd.read_parquet(path)
 
     df = _parquet_cache[engine]
+
     if model:
-        df = df[df["model_key"] == model]
+        try:
+            model_key, sweep_mode, cisd_mode = _parse_full_key(model)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        df = df[
+            (df["model_key"] == model_key)
+            & (df["sweep_mode"] == sweep_mode)
+            & (df["cisd_mode"] == cisd_mode)
+        ]
     if profile:
         df = df[df["profile_key"] == profile]
+
+    # Exclude EXPIRED setups — JSON recent_trades does the same.
+    df = df[df["outcome"] != "EXPIRED"]
 
     if df.empty:
         return {"trades": [], "count": 0}
 
-    df = df.sort_values("date", ascending=False).head(limit)
+    dates = pd.to_datetime(df["date"])
+
+    if has_period and period != "all":
+        days_lookup = {"2y": 730, "1y": 365, "6m": 182, "3m": 91, "1m": 30}
+        cutoff = dates.max() - pd.Timedelta(days=days_lookup[period])
+        df = df[dates >= cutoff]
+
+    if has_range:
+        df = df[(dates >= pd.Timestamp(date_from)) & (dates <= pd.Timestamp(date_to + " 23:59:59"))]
+
+    if limit is not None:
+        df = df.sort_values("date", ascending=False).head(limit)
+
+    if df.empty:
+        return {"trades": [], "count": 0}
+
     records = df.where(pd.notna(df), None).to_dict("records")
     for r in records:
         r["date"] = str(r["date"])[:19]
-        for k in ("dow", "hr", "mn"):
+        for k in ("dow", "hr", "mn", "yr"):
             if r.get(k) is not None:
                 r[k] = int(r[k])
 
@@ -228,13 +302,22 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         if parsed.path == "/trades":
-            engine  = (qs.get("engine")  or [""])[0]
-            model   = (qs.get("model")   or [None])[0]
-            profile = (qs.get("profile") or [None])[0]
-            limit   = int((qs.get("limit") or [12000])[0])
-            result  = _get_trades(engine, model, profile, limit)
+            engine    = (qs.get("engine")    or [""])[0]
+            model     = (qs.get("model")     or [None])[0]
+            profile   = (qs.get("profile")   or [None])[0]
+            period    = (qs.get("period")    or [None])[0]
+            date_from = (qs.get("from")      or [None])[0]
+            date_to   = (qs.get("to")        or [None])[0]
+            limit_str = (qs.get("limit")     or [None])[0]
+            limit     = int(limit_str) if limit_str else None
+            result = _get_trades(engine, model, profile,
+                                  period=period, date_from=date_from, date_to=date_to,
+                                  limit=limit)
             if result is None:
-                self._json(404, {"error": "No trade data found"})
+                self._json(404, {"error": f"no parquet for engine '{engine}'"})
+                return
+            if "error" in result:
+                self._json(400, result)
                 return
             self._json(200, result)
             return
