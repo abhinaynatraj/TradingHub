@@ -130,6 +130,43 @@ async function loadProfile(fullKey, profileKey) {
   return null;
 }
 
+// ── Trade row fetcher ────────────────────────────────────────────────────────
+// Trades live in model_stats.parquet, served by /trades. Cached per
+// (fullKey, profile, periodOrRangeKey). Parquet column names are canonical —
+// consumers must read stop_price (not sl_price) and derive dow_name from dow.
+async function loadTrades(fullKey, profileKey, periodOrRange) {
+  const cacheKey = typeof periodOrRange === 'string'
+    ? periodOrRange
+    : `${periodOrRange.from}:${periodOrRange.to}`;
+
+  if (!DATA[fullKey]) DATA[fullKey] = { profiles: {} };
+  if (!DATA[fullKey].trades) DATA[fullKey].trades = {};
+  const cache = DATA[fullKey].trades;
+  const profCache = cache[profileKey] || (cache[profileKey] = {});
+  if (profCache[cacheKey]) return profCache[cacheKey];
+
+  const qs = new URLSearchParams({
+    engine: 'fractal_sweep',
+    model: fullKey,
+    profile: profileKey,
+  });
+  if (typeof periodOrRange === 'string') {
+    qs.set('period', periodOrRange);
+  } else {
+    qs.set('from', periodOrRange.from);
+    qs.set('to', periodOrRange.to);
+  }
+  const r = await fetch('/trades?' + qs.toString());
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const data = await r.json();
+  profCache[cacheKey] = data.trades || [];
+  return profCache[cacheKey];
+}
+
+function invalidateTradesCache(fullKey) {
+  if (DATA[fullKey] && DATA[fullKey].trades) DATA[fullKey].trades = {};
+}
+
 async function initProfileData() {
   const models = await loadModelList();
   const fullKey = '1H_5M_PREV_CISD';
@@ -426,3 +463,4 @@ export { getFilteredD };
 export { getSmtD };
 export { applyLoadedData };
 export { initProfileData, loadProfile };
+export { loadTrades, invalidateTradesCache };
