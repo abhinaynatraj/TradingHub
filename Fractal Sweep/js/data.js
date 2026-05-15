@@ -193,6 +193,28 @@ function activeFullKey() {
   return `${activeModel}_${activeMode}_${activeCisd}`;
 }
 
+// Resolves the trade row array for the current dashboard view.
+// Reads from the loadTrades cache populated by switchTF/switchProfile/initProfileData.
+// Falls back to D.recent_trades (JSON path) during Phase 3 rollout — fallback
+// removed in Phase 5 (Task 11). For the verdict-profile-comparison case
+// (iterating multiple profiles), keep reading pd.recent_trades directly until
+// a follow-up task migrates that path.
+function getActiveTrades(D) {
+  const fullKey = activeFullKey();
+  let periodKey;
+  if (activeTF === 'custom') {
+    const range = customRanges && customRanges[0];
+    periodKey = (range && range.start && range.end) ? `${range.start}:${range.end}` : 'all';
+  } else {
+    periodKey = activeTF || 'all';
+  }
+  const cached = DATA[fullKey]?.trades?.[activeProfile]?.[periodKey];
+  // Distinguish "not yet fetched" (undefined → fallback) from "fetched and empty"
+  // (propagate so callers see the correct empty-period semantic).
+  if (cached !== undefined) return cached;
+  return (D?.recent_trades) || [];
+}
+
 // Helper — resolve active profile data (handles both flat DEMO and {profiles:{}} real JSON)
 function getProfileData(fullKey, profile) {
   const base = DATA[fullKey];
@@ -496,4 +518,4 @@ export { getFilteredD };
 export { getSmtD };
 export { applyLoadedData };
 export { initProfileData, loadProfile };
-export { loadTrades, invalidateTradesCache };
+export { loadTrades, invalidateTradesCache, getActiveTrades };

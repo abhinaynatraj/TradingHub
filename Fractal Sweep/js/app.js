@@ -7,7 +7,7 @@ import { activePageTab, RAW_TABS, RAW_TAB_LABELS,
          setActiveTF, setIsDemo, setActivePageTab, setCurrentTheme } from './state.js';
 import { applyTheme, _savedTheme } from './theme.js';
 import { fmtDateRange, triggerCSVDownload, csvEscape, showTip, hideTip } from './utils.js';
-import { getProfileData, getActiveTFData, getSmtD, applyLoadedData, DEMO, DATA, setData, initProfileData, loadProfile } from './data.js';
+import { getProfileData, getActiveTFData, getSmtD, applyLoadedData, DEMO, DATA, setData, initProfileData, loadProfile, getActiveTrades } from './data.js';
 import { drawSetupViz, renderOverviewEquityCurve, lineChart, rDistChart, renderEquityCurveFS } from './charts.js';
 import { renderModel, renderModelDropdown, renderProfileDropdown, switchProfile, switchTF, renderControls, switchModel, updateProfileFromSelectors } from './tabs/overview.js';
 import { renderEdgeStudy } from './tabs/edge.js';
@@ -127,12 +127,19 @@ function downloadFSTrades() {
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
   const baseD = getProfileData(fullKey, activeProfile);
   const D = getActiveTFData(baseD);
-  const trades = D?.recent_trades;
+  const trades = getActiveTrades(D);
   if (!trades || !trades.length) return;
+  // Parquet rows have `dow` (int) but no `dow_name`. Derive it so CSV columns
+  // align regardless of whether trades came from parquet or legacy JSON.
+  const DOW_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const tradesWithDowName = trades.map(t => ({
+    ...t,
+    dow_name: t.dow_name || DOW_NAMES[t.dow] || ''
+  }));
   const headers = ['date','direction','session','hr','mn','dow_name','entry_price','sweep_extreme','target_price','risk_pts','r','outcome'];
   const tf = activeTF || 'all';
   const filename = `fractal_sweep_${activeModel}_${activeProfile}_${tf}_${new Date().toISOString().slice(0,10)}.csv`;
-  triggerCSVDownload(trades, headers, filename);
+  triggerCSVDownload(tradesWithDowName, headers, filename);
 }
 
 // ── Recalc button (calls local server.py) ───────────────────────────────────

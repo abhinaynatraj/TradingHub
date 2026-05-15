@@ -1,7 +1,7 @@
 import { _excSegment, SVG_FONT, isDark, activeProfile, activeTF, activeSmt, activeF3, activeF4 } from '../state.js';
 import { C, _heatColor, _drawMAEProbCurve, _drawMFEProbCurve, _drawExcursionHeatmap } from '../charts.js';
 import { pct, evFmt, evCls, pfFmt } from '../utils.js';
-import { getFilteredD } from '../data.js';
+import { getFilteredD, getActiveTrades } from '../data.js';
 import { getSmtFilteredTrades, computeRangeStats, computeTrainParams, resolveWithStopCap, resolveWithMFETarget } from '../walkforward.js';
 
 function computeRichStudy(trades, field) {
@@ -235,7 +235,7 @@ function renderMAEStudy(D) {
 
   // Compute MAE stats client-side from recent_trades so data matches selected Period/TF/Profile
   const isRaw = activeProfile === 'raw_measure';
-  const allTrades = getSmtFilteredTrades(D?.recent_trades || []);
+  const allTrades = getSmtFilteredTrades(getActiveTrades(D));
   const winTrades = isRaw ? [] : allTrades.filter(t => t.outcome === 'WIN');
   const lossTrades = isRaw ? [] : allTrades.filter(t => t.outcome === 'LOSS');
   const maeAll = computeRichStudy(allTrades, 'mae_pct');
@@ -484,7 +484,7 @@ function renderMFEStudy(D) {
 
   // Compute MFE stats client-side from recent_trades so data matches selected Period/TF/Profile
   const isRaw = activeProfile === 'raw_measure';
-  const allTrades = getSmtFilteredTrades(D?.recent_trades || []);
+  const allTrades = getSmtFilteredTrades(getActiveTrades(D));
   const winTrades = isRaw ? [] : allTrades.filter(t => t.outcome === 'WIN');
   const lossTrades = isRaw ? [] : allTrades.filter(t => t.outcome === 'LOSS');
   const mfeAll = computeRichStudy(allTrades, 'mfe_pct');
