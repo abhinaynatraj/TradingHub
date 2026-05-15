@@ -115,7 +115,9 @@ export async function shadowCheck() {
   await _check(fullKey, activeProfile, activeTF || 'all');
 }
 
-// Auto-trigger after each window.renderActive() call by wrapping it.
+// Auto-trigger after each render. switchTF goes through window.renderActive;
+// switchProfile/switchModel go through window.render. Wrap both so shadow
+// fires regardless of which transition the user triggered.
 const _origRenderActive = window.renderActive;
 if (_origRenderActive) {
   window.renderActive = function() {
@@ -124,4 +126,12 @@ if (_origRenderActive) {
     return result;
   };
 }
-console.log('[shadow] mode active — comparing parquet vs JSON trades on each renderActive()');
+const _origRender = window.render;
+if (_origRender) {
+  window.render = function() {
+    const result = _origRender.apply(this, arguments);
+    shadowCheck();
+    return result;
+  };
+}
+console.log('[shadow] mode active — comparing parquet vs JSON trades on each render');
