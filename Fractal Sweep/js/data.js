@@ -1,4 +1,5 @@
 import { isDemo, activeModel, activeMode, activeCisd, activeProfile, activeTF, MODEL_KEYS, MODEL_LABELS, RR_PROFILES, PROFILE_LABELS, PCT_PROFILES, DASHBOARD_SCHEMA_VERSION, activeSmt, activeF3, activeF4, activeP42, activePd, setIsDemo, setActiveModel, setActiveMode, setActiveCisd, setActiveProfile } from './state.js';
+import { customRanges } from './walkforward.js';
 function makeDemoModel(key, label, mode, cisd, wrBase, evBase, pfBase, riskMed, spd){
   const fi=[
     {label:'Baseline (unfiltered)',n:Math.round(6200*(riskMed/18)),wr:wrBase-0.07,ev:evBase-0.22,pf:pfBase-0.58,removed:0},
@@ -179,6 +180,13 @@ async function initProfileData() {
   return true;
 }
 
+// Reconstruct the JSON-style full model key from current state. Used by
+// trade-cache lookups in getFilteredD/getActiveTrades. State vars live in
+// state.js; this is a convenience to avoid recomputing the string in 6 places.
+function activeFullKey() {
+  return `${activeModel}_${activeMode}_${activeCisd}`;
+}
+
 // Helper — resolve active profile data (handles both flat DEMO and {profiles:{}} real JSON)
 function getProfileData(fullKey, profile) {
   const base = DATA[fullKey];
@@ -225,7 +233,24 @@ function getActiveTFData(fullProfileData){
 function getFilteredD(D) {
   const anyActive = activeSmt || activeF3 || activeF4 || activeP42 || activePd;
   if (!anyActive) return D;
-  const rawTrades = D?.recent_trades;
+  // Trades come from the loadTrades cache (populated by switchTF/switchProfile
+  // in Phase 3, or by the trades-tab fetcher). Fall back to D.recent_trades
+  // for the JSON path until Phase 4 (Task 10) when the engine stops writing
+  // recent_trades to JSON. The fallback is removed in Phase 5 (Task 11).
+  const _fullKey = activeFullKey();
+  let _periodKey;
+  if (activeTF === 'custom') {
+    const _range = customRanges && customRanges[0];
+    _periodKey = (_range && _range.start && _range.end) ? `${_range.start}:${_range.end}` : 'all';
+  } else {
+    _periodKey = activeTF || 'all';
+  }
+  const _cached = DATA[_fullKey]?.trades?.[activeProfile]?.[_periodKey];
+  // Distinguish "not yet fetched" (undefined → fall back to D.recent_trades
+  // for the JSON path) from "fetched and empty" (e.g. period 1m with no
+  // trades → propagate the empty array so the legitimate-empty guard below
+  // returns base stats, not all-time stats).
+  const rawTrades = (_cached !== undefined) ? _cached : D?.recent_trades;
   if (!rawTrades || !rawTrades.length) return D;
   let trades = rawTrades;
   if (activeSmt) trades = trades.filter(t => t.smt === true);
@@ -332,7 +357,9 @@ function getFilteredD(D) {
   trades.forEach(t => {
     const dow = t.dow, dir = t.direction;
     if (dow == null) return;
-    const dn = t.dow_name || DOW_NAMES_MAP[dow] || String(dow);
+    // Parquet rows have `dow` (int) but no `dow_name`. JSON rows have both.
+    // Prefer deriving from `dow` so the same code works for both sources.
+    const dn = DOW_NAMES_MAP[dow] ?? t.dow_name ?? String(dow);
     const key = `${dow}_${dir}`;
     if (!dowMap[key]) dowMap[key] = emptyBucket({ dow, dow_name: dn, direction: dir });
     addTrade(dowMap[key], t);
@@ -395,7 +422,7 @@ function getFilteredD(D) {
     if (t.hr == null || t.dow == null) return;
     const key = `${t.hr}_${t.dow}_${t.direction}`;
     if (!comboMap[key]) {
-      const dn = t.dow_name || DOW_NAMES[t.dow] || String(t.dow);
+      const dn = DOW_NAMES[t.dow] ?? t.dow_name ?? String(t.dow);
       comboMap[key] = { hr: t.hr, dow: t.dow, dow_name: dn, direction: t.direction,
         label: `${dn} ${String(t.hr).padStart(2,'0')}:00 ${t.direction}`,
         n: 0, wins: 0, sumR: 0, sumAbsR: 0, sumMae: 0, sumMfe: 0, sumMaeHr: 0, sumMfeHr: 0 };
