@@ -1,0 +1,1759 @@
+// Statistic.ally — Fractal Sweep CISD Indicator
+// https://github.com/abhinaynatraj/TradingHub
+//@version=5
+indicator("Fractal Sweep", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=500)
+
+// ── INPUTS ────────────────────────────────────────────────────────────────────
+// Five top-level groups organized by signal flow:
+//   1. Setup  — detection + filter rules (what counts as a setup)
+//   2. Trade  — SL/TP/R:R + position sizing (what to do once it fires)
+//   3. Chart  — which visual elements to render + scoreboard
+//   4. SMT    — ES divergence flag + source symbol (opt-in)
+//   5. Style  — colors, line styles, label positions (appearance)
+
+// ── 1. SETUP ──────────────────────────────────────────────────────────────────
+var string G_SETUP = "Setup Detection"
+min_risk      = input.float(3.0,   "Min Risk (pts)",       group=G_SETUP, tooltip="Reject setups where |entry - SL| is below this threshold.")
+max_risk      = input.float(112.5, "Max Risk (pts)",       group=G_SETUP, tooltip="Reject setups where |entry - SL| exceeds this. MNQ default: $225 ÷ $2/pt = 112.5 pts.")
+cisd_lookback = input.int(100,     "CISD Lookback Bars",   group=G_SETUP, tooltip="Max bars to scan backward from the return bar for the CISD delivery run. 100 is effectively unlimited.")
+// Setup-quality filters default OFF. Toggle on for stricter quality.
+req_shallow_sweep  = input.bool(false, "Shallow Sweep (F3)",         group=G_SETUP, tooltip="Require sweep extent ≤ 50% of prior candle's range.")
+req_closed_back    = input.bool(false, "Closed Back Inside (F4)",    group=G_SETUP, tooltip="Require the return bar to close back inside prior range.")
+
+// ── 2. TRADE ──────────────────────────────────────────────────────────────────
+var string G_TRADE = "Trade Management"
+entry_mode      = input.string("Market", "Entry Point",     options=["Market", "L33", "L50", "L66"], group=G_TRADE, tooltip="Market = next bar open. L33/L50/L66 = limit at cascade retracement levels between CISD OB and SL.")
+target_ref      = input.string("Entry", "Target Reference", options=["Entry", "OB Open"],           group=G_TRADE, tooltip="Entry = TP measured from entry price. OB Open = TP measured from CISD / order-block opening price.")
+show_cascade    = input.bool(false, "Show Cascade Levels", group=G_TRADE, tooltip="Draw L33/L50/L66 retracement lines between CISD level and SL.")
+sl_mode         = input.string("Sweep Extreme", "Stop-Loss At", options=["Sweep Extreme", "CISD Level"], group=G_TRADE, tooltip="Sweep Extreme = structural SL at the wick. CISD Level = tighter SL at the CISD line.")
+// ── Final TP ──
+tp_mode         = input.string("R:R Ratio", "TP Mode", options=["R:R Ratio", "Projection Level"], group=G_TRADE, tooltip="R:R Ratio = TP at N× risk from reference. Projection Level = TP at a CISD series projection multiple.")
+rr_ratio        = input.float(1.0, "R:R Target", group=G_TRADE, step=0.5, minval=0.5, tooltip="Used when TP Mode = R:R Ratio. TP = reference + risk × N.")
+tp_proj         = input.float(1.0, "TP Projection", group=G_TRADE, step=0.5, minval=0.25, tooltip="Used when TP Mode = Projection Level. TP at this multiple of the CISD series range from the CISD level.")
+// ── Partial TP (TP1) ──
+use_partial     = input.bool(false, "Use Partial TP", group=G_TRADE, tooltip="Enable a first take-profit level to scale out part of the position.")
+tp1_mode        = input.string("R:R Ratio", "TP1 Mode", options=["R:R Ratio", "Projection Level"], group=G_TRADE, tooltip="Same as TP Mode, but for the partial take-profit.")
+tp1_rr          = input.float(0.5, "TP1 R:R Target", group=G_TRADE, step=0.25, minval=0.25, tooltip="Used when TP1 Mode = R:R Ratio.")
+tp1_proj        = input.float(0.5, "TP1 Projection", group=G_TRADE, step=0.25, minval=0.25, tooltip="Used when TP1 Mode = Projection Level.")
+partial_pct     = input.float(50.0, "Partial Size %", group=G_TRADE, minval=10, maxval=90, step=5, tooltip="% of position to close at TP1. Contracts rounded UP (e.g. 50% of 5 = 3).")
+risk_usd        = input.float(225.0, "Risk per Trade ($)",    group=G_TRADE, minval=1.0, step=25,   tooltip="Dollar risk per trade. Default $225 = 1 MNQ at max stop (112.5 pts × $2/pt).")
+point_value_usd = input.float(2.0,   "$ per Point",           group=G_TRADE, minval=0.01, step=0.5,  tooltip="MNQ = $2.00/pt · NQ = $20.00/pt · MES = $1.25/pt · ES = $12.50/pt")
+truncate_on_hit = input.bool(true,   "Truncate on TP/SL Hit", group=G_TRADE, tooltip="Shrink R:R box + entry/SL/TP lines when price resolves. Sweep & CISD lines stay for context.")
+
+// ── 3. CHART DISPLAY ─────────────────────────────────────────────────────────
+var string G_CHART = "Chart Display"
+show_trade_setup     = input.bool(true,  "Show Trade Setup",            group=G_CHART, tooltip="Master toggle for the R:R trade setup drawings (risk/reward boxes, entry/SL/TP lines, pills, size badge, midlines, outcome markers, over-risk boxes). Sweep and CISD lines remain visible regardless.")
+max_setups           = input.int(5,  "Max Setups on Chart",   group=G_CHART, minval=1, maxval=20, tooltip="How many past setups stay drawn on the chart. Older ones get pruned. Independent of Scorecard Last-N.")
+show_outcome_markers = input.bool(true,  "Show Outcome Markers (✓/✗)", group=G_CHART, tooltip="Drop ✓ at TP hit or ✗ at SL hit under each resolved R:R box.")
+show_rr_pills        = input.bool(false, "Show Entry/SL/TP Pills",     group=G_CHART, tooltip="Price-tagged pill labels at the right edge of each R:R box. Off by default to reduce clutter — hover the lines to see the values.")
+show_size_badge      = input.bool(true,  "Show Position Size",         group=G_CHART, tooltip="Muted label above each R:R box showing recommended contract count.")
+show_midlines        = input.bool(false, "Show 50% Midpoints",         group=G_CHART, tooltip="Dashed BE (risk midpoint) and Take-Partial (reward midpoint) lines.")
+show_scoreboard      = input.bool(true,  "Show Scoreboard",            group=G_CHART, tooltip="Top-right table tracking resolved setups.")
+scoreboard_scope     = input.string("Today", "Scorecard Scope", options=["Today", "Last N Trades", "All Time"], group=G_CHART, tooltip="Today = resets at 18:00 ET session open. Last N Trades = rolling window sized by Scorecard Last-N. All Time = every resolved trade in the loaded chart history (note: TradingView limits how many bars are loaded per chart — older trades fall off the back).")
+scoreboard_n         = input.int(20, "Scorecard Last-N",       group=G_CHART, minval=1, maxval=500, tooltip="Window size used when Scorecard Scope = Last N Trades. Independent of Max Setups on Chart.")
+show_debug           = input.bool(false, "Show Debug Label",           group=G_CHART, tooltip="Developer-only state panel; leave off.")
+// T-Spot sub-group — advanced structural overlays, all default off
+show_tspot           = input.bool(false,       "T-Spot Zone",             group=G_CHART, tooltip="Violet box around the sweep bar's log-midpoint / close range.")
+show_c_labels        = input.bool(false,       "T-Spot C2/C3 Labels",     group=G_CHART)
+show_tspot_type      = input.bool(false,       "T-Spot Type Label",       group=G_CHART, tooltip="Tags setup as ProTrend / Normal / Expansive based on sweep depth.")
+show_proj            = input.bool(false,       "CISD Projections",        group=G_CHART, tooltip="Dotted lines at multiples of the CISD series range above/below the CISD level.")
+proj_levels_str      = input.string("0.5,1.0,1.5,2.0", "Projection Levels", group=G_CHART, tooltip="Comma-separated multiples of the CISD series range.")
+tspot_transp         = input.int(85,           "T-Spot Transparency",     group=G_CHART, minval=0, maxval=100)
+
+// ── 4. SMT DIVERGENCE (opt-in confirmation) ──────────────────────────────────
+var string G_SMT = "SMT Divergence"
+show_smt   = input.bool(true,    "Show SMT Labels",           group=G_SMT, tooltip="Tag each setup with SMT / NO SMT. Triggers a second security() call on the comparison symbol.")
+smt_symbol = input.string("ES1!", "Comparison Symbol",        group=G_SMT, tooltip="Typically ES1! for NQ charts. SMT = NQ swept but ES didn't.")
+
+// ── 5. STYLE ──────────────────────────────────────────────────────────────────
+var string G_STYLE = "Style"
+color_mode      = input.string("Light", "Color Mode",         options=["Light", "Dark", "Custom"],    group=G_STYLE, tooltip="Light: default palette. Dark: brighter hues + opaque R:R fills. Custom: uses the per-element color inputs below.")
+rr_extend       = input.int(20,    "R:R Box Width (bars)",    group=G_STYLE, minval=5, maxval=100)
+sweep_style_inp = input.string("Dotted", "Sweep Line Style",  options=["Dotted", "Dashed", "Solid"],  group=G_STYLE)
+cisd_style_inp  = input.string("Dotted", "CISD Line Style",   options=["Dotted", "Dashed", "Solid"],  group=G_STYLE)
+sweep_text      = input.string("Sweep of", "Sweep Label Text",group=G_STYLE, tooltip="TF is appended automatically.")
+cisd_text       = input.string("CISD",     "CISD Label Text", group=G_STYLE, tooltip="TF is appended automatically.")
+sweep_lbl_pos   = input.string("Right", "Sweep Label Position", options=["Left", "Right"],  group=G_STYLE)
+cisd_lbl_pos    = input.string("Right", "CISD Label Position",  options=["Left", "Right"],  group=G_STYLE)
+rr_lbl_pos      = input.string("Right", "R:R Pill Position",    options=["Left", "Right"],  group=G_STYLE)
+// Custom palette — only active when Color Mode = "Custom".
+c_sweep_c        = input.color(#f59e0b, "Sweep Level (Custom)",    group=G_STYLE, tooltip="Amber — swept HTF high/low.")
+c_cisd_c         = input.color(#3b82f6, "CISD Level (Custom)",     group=G_STYLE, tooltip="Blue — CISD confirmation line.")
+c_sl_c           = input.color(#ef4444, "Stop Loss (Custom)",      group=G_STYLE)
+c_tp_c           = input.color(#06b6d4, "Take Profit (Custom)",    group=G_STYLE)
+c_tspot_c        = input.color(#8b5cf6, "T-Spot Zone (Custom)",    group=G_STYLE)
+c_mid_c          = input.color(#94a3b8, "Midpoint (Custom)",       group=G_STYLE)
+c_overrisk_c     = input.color(#ff6600, "Over-Risk Warning (Custom)", group=G_STYLE)
+c_proj_c         = input.color(#64748b, "CISD Projection (Custom)", group=G_STYLE)
+c_dbg_c          = input.color(#0f172a, "Debug/Scoreboard BG (Custom)", group=G_STYLE)
+proj_color       = input.color(color.gray, "CISD Projection Line (Custom)", group=G_STYLE)
+rr_entry_col     = input.color(color.new(#e2e8f0, 0),   "Entry Line (Custom)",   group=G_STYLE)
+rr_risk_col_c    = input.color(color.new(#ef4444, 85),  "Risk Zone Fill (Custom)",   group=G_STYLE)
+rr_risk_border_c = input.color(color.new(#ef4444, 40),  "Risk Zone Border (Custom)", group=G_STYLE)
+rr_rew_col_c     = input.color(color.new(#06b6d4, 85),  "Reward Zone Fill (Custom)", group=G_STYLE)
+rr_rew_border_c  = input.color(color.new(#06b6d4, 40),  "Reward Zone Border (Custom)", group=G_STYLE)
+rr_lbl_tp_col    = input.color(color.new(#06b6d4, 20),  "TP Pill Color (Custom)",    group=G_STYLE)
+rr_lbl_sl_col    = input.color(color.new(#ef4444, 20),  "SL Pill Color (Custom)",    group=G_STYLE)
+rr_lbl_en_col    = input.color(color.new(#64748b, 40),  "Entry Pill Color (Custom)", group=G_STYLE)
+
+// Resolve active palette. Light = current defaults; Dark = brighter hues.
+_light = color_mode == "Light"
+_dark  = color_mode == "Dark"
+c_sweep    = _light ? #f59e0b : _dark ? #fbbf24 : c_sweep_c
+c_cisd     = _light ? #3b82f6 : _dark ? #60a5fa : c_cisd_c
+c_sl       = _light ? #ef4444 : _dark ? #f87171 : c_sl_c
+c_tp       = _light ? #06b6d4 : _dark ? #22d3ee : c_tp_c
+c_tspot    = _light ? #8b5cf6 : _dark ? #a78bfa : c_tspot_c
+c_mid      = _light ? #94a3b8 : _dark ? #cbd5e1 : c_mid_c
+c_overrisk = _light ? #ff6600 : _dark ? #fb923c : c_overrisk_c
+c_proj     = _light ? #64748b : _dark ? #94a3b8 : c_proj_c
+c_dbg      = _light ? #0f172a : _dark ? #1e293b : c_dbg_c
+
+// R:R box fills/borders. Dark mode drops transparency from 85 → 70 so the
+// red/cyan zones remain visible against a black background.
+rr_risk_col    = _light ? color.new(#ef4444, 85) : _dark ? color.new(c_sl, 70) : rr_risk_col_c
+rr_risk_border = _light ? color.new(#ef4444, 40) : _dark ? color.new(c_sl, 30) : rr_risk_border_c
+rr_rew_col     = _light ? color.new(#06b6d4, 85) : _dark ? color.new(c_tp, 70) : rr_rew_col_c
+rr_rew_border  = _light ? color.new(#06b6d4, 40) : _dark ? color.new(c_tp, 30) : rr_rew_border_c
+
+// R:R label text color: dark in light mode for readability, light in dark mode.
+// Custom mode keeps color.white for backward compat with existing setups.
+c_rr_lbl_text  = _light ? #0f172a : _dark ? #f1f5f9 : color.white
+// SIZE badge background — muted slate so it's informative without shouting.
+// Keeps the label readable but visually secondary to entry/SL/TP.
+c_size_bg      = _light ? color.new(#94a3b8, 60) : _dark ? color.new(#64748b, 50) : color.new(c_mid, 60)
+
+// ── STYLE HELPERS ─────────────────────────────────────────────────────────────
+// "Right" → anchor at END of line, text flows right → style_label_left
+// "Left"  → anchor at START of line, text flows left → style_label_right
+sweep_lstyle    = sweep_style_inp == "Dashed" ? line.style_dashed : sweep_style_inp == "Solid" ? line.style_solid : line.style_dotted
+cisd_lstyle     = cisd_style_inp  == "Dashed" ? line.style_dashed : cisd_style_inp  == "Solid" ? line.style_solid : line.style_dotted
+sweep_lbl_style = sweep_lbl_pos == "Right" ? label.style_label_left  : label.style_label_right
+cisd_lbl_style  = cisd_lbl_pos  == "Right" ? label.style_label_left  : label.style_label_right
+rr_lbl_style    = rr_lbl_pos    == "Right" ? label.style_label_left  : label.style_label_right
+// x-position offset: Right = end of line, Left = start of line
+sweep_lbl_x  = sweep_lbl_pos == "Right" ? rr_extend + 15 : 0
+cisd_lbl_x   = cisd_lbl_pos  == "Right" ? rr_extend      : 0
+rr_lbl_x     = rr_lbl_pos    == "Right" ? rr_extend      : 0
+
+// ── AUTO COMBO FROM CHART TIMEFRAME ──────────────────────────────────────────
+// 5M → 1H/5M | 3M → 30M/3M | other → inactive
+var string sweep_tf_lbl = ""
+var string cisd_tf_lbl  = ""
+var string combo        = ""
+var bool   tf_supported = false
+
+if timeframe.period == "5"
+    sweep_tf_lbl := "1H"
+    cisd_tf_lbl  := "5M"
+    combo        := "1H/5M"
+    tf_supported := true
+else if timeframe.period == "3"
+    sweep_tf_lbl := "30M"
+    cisd_tf_lbl  := "3M"
+    combo        := "30M/3M"
+    tf_supported := true
+else if timeframe.period == "1"
+    sweep_tf_lbl := "15M"
+    cisd_tf_lbl  := "1M"
+    combo        := "15M/1M"
+    tf_supported := true
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+// Logarithmic midpoint — weights toward the dominant wick (same as TTFM)
+f_log_mid(float _h, float _l, float _o, float _c) =>
+    log_h = math.log(_h)
+    log_l = math.log(_l)
+    log_o = math.log(_o)
+    log_c = math.log(_c)
+    body_sz = math.abs(log_c - log_o)
+    upper_w = log_h - math.max(log_o, log_c)
+    lower_w = math.min(log_o, log_c) - log_l
+    log_mid = math.max(upper_w, lower_w) > body_sz ? (upper_w > lower_w ? log_h - upper_w / 2 : log_l + lower_w / 2) : (log_h + log_l) / 2
+    math.exp(log_mid)
+
+// ── ANCHOR CANDLE — batched tuple fetches (1 call per TF instead of 3) ────────
+// Pine v5 requires literal strings in request.security timeframe arg.
+// Each tuple packs [high[1], low[1], time] into one call.
+[ph_60, pl_60, at_60] = request.security(syminfo.tickerid, "60", [high[1], low[1], time], lookahead=barmerge.lookahead_on)
+[ph_30, pl_30, at_30] = request.security(syminfo.tickerid, "30", [high[1], low[1], time], lookahead=barmerge.lookahead_on)
+
+// ── ES ANCHOR CANDLE — only fetched when SMT is enabled ──────────────────────
+// request.security must be at global scope; use syminfo.tickerid as no-op when SMT off.
+_smt_src = show_smt ? smt_symbol : syminfo.tickerid
+[es_ph_60, es_pl_60] = request.security(_smt_src, "60", [high[1], low[1]], lookahead=barmerge.lookahead_on)
+[es_ph_30, es_pl_30] = request.security(_smt_src, "30", [high[1], low[1]], lookahead=barmerge.lookahead_on)
+[es_ltf_high, es_ltf_low] = request.security(_smt_src, timeframe.period, [high, low])
+
+// ── TF SELECTORS — single ternary per value, aliased for readability ──────────
+prior_high    = timeframe.period == "5" ? ph_60  : ph_30
+prior_low     = timeframe.period == "5" ? pl_60  : pl_30
+anchor_time   = timeframe.period == "5" ? at_60  : at_30
+es_prior_high = timeframe.period == "5" ? es_ph_60 : es_ph_30
+es_prior_low  = timeframe.period == "5" ? es_pl_60 : es_pl_30
+is_new_anchor = ta.change(anchor_time) != 0
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+var float anc_hi          = na
+var float anc_lo          = na
+var int   elapsed         = 0
+var bool  swept_long      = false
+var bool  swept_short     = false
+var float sweep_ext_long  = na
+var float sweep_ext_short = na
+var int   sweep_bar_long  = na
+var int   sweep_bar_short = na
+var bool  ret_long        = false
+var bool  ret_short       = false
+var bool  alerted_long    = false
+var bool  alerted_short   = false
+// drawing object refs for cleanup
+var line  sweep_line_long   = na
+var label sweep_lbl_long    = na
+var line  sweep_line_short  = na
+var label sweep_lbl_short   = na
+var line  cisd_prev_long    = na
+var line  cisd_prev_short   = na
+var label cisd_prev_lbl_long  = na
+var label cisd_prev_lbl_short = na
+// bar index of the candle that made the prior TF high / low
+var int   anc_hi_bar        = na
+var int   anc_lo_bar        = na
+// sweep candle data for T-Spot zone
+var float sweep_logmid_long  = na
+var float sweep_logmid_short = na
+var float sweep_close_long   = na
+var float sweep_close_short  = na
+var float sweep_pct_long     = na
+var float sweep_pct_short    = na
+// bar index where return-to-range happened (CISD scans backward from here)
+var int   ret_bar_long       = na
+var int   ret_bar_short      = na
+// close of the return bar — used by F4 Closed Back Inside filter
+var float ret_close_long     = na
+var float ret_close_short    = na
+// SMT divergence — true if ES did NOT sweep its corresponding level when NQ swept
+var bool  smt_long           = false
+var bool  smt_short          = false
+// deferred draw state — FIRE block sets these; DRAW block renders them on next bar's open
+var bool  draw_long          = false
+var bool  draw_short         = false
+var float draw_sweep_ext_long  = na   // structural SL level (sweep extreme)
+var float draw_sweep_ext_short = na
+var int   draw_sl_anchor_long  = na
+var int   draw_sl_anchor_short = na
+var float draw_cisd_lvl_long   = na
+var float draw_cisd_lvl_short  = na
+var int   draw_cisd_bar_long   = na
+var int   draw_cisd_bar_short  = na
+var float draw_anc_lo          = na
+var float draw_anc_hi          = na
+var int   draw_anc_lo_bar      = na
+var int   draw_anc_hi_bar      = na
+var bool  draw_smt_long        = false
+var bool  draw_smt_short       = false
+var float draw_sweep_pct_long  = na
+var float draw_sweep_pct_short = na
+var float draw_sweep_logmid_long  = na
+var float draw_sweep_logmid_short = na
+var float draw_sweep_close_long   = na
+var float draw_sweep_close_short  = na
+var int   draw_sweep_bar_long  = na
+var int   draw_sweep_bar_short = na
+var int   draw_cisd_long_off   = na
+var int   draw_cisd_short_off  = na
+// v2: cascade level entry + OB-based target state
+var float draw_entry_long      = na
+var float draw_entry_short     = na
+var float draw_target_ref_long  = na
+var float draw_target_ref_short = na
+var float draw_risk_long       = na
+var float draw_risk_short      = na
+// v2: partial TP state
+var float draw_tp1_long        = na
+var float draw_tp1_short       = na
+var bool  draw_use_partial     = false
+var float draw_cisd_series_range = na
+// arrays to track fired setup drawings for cleanup when exceeding max_setups
+var fired_lines  = array.new_line()
+var fired_labels = array.new_label()
+var fired_boxes  = array.new_box()
+// per-setup drawing counts: [nLines, nLabels, nBoxes] for each setup
+var setup_line_counts  = array.new_int()
+var setup_label_counts = array.new_int()
+var setup_box_counts   = array.new_int()
+// Outcome markers (✓/✗) — kept in a dedicated pool so they don't leak into
+// fired_labels uncounted. Each marker records the bar_index of its parent
+// setup's entry, so we can prune markers whose parent setup was pruned.
+var outcome_markers = array.new_label()
+var outcome_parent_bar = array.new_int()
+// Parallel to setup_*_counts: the entry bar_index of each tracked setup, so
+// outcome pruning can identify which parents still live.
+var setup_entry_bars = array.new_int()
+// Scoreboard counters — today's resolved trade tallies (reset each session day),
+// split by direction. Session day = chart's exchange-local day.
+var int   score_long_wins    = 0
+var int   score_long_losses  = 0
+var int   score_short_wins   = 0
+var int   score_short_losses = 0
+var float score_long_pts     = 0.0
+var float score_short_pts    = 0.0
+var float score_long_pnl     = 0.0
+var float score_short_pnl    = 0.0
+var int   score_day          = na
+var table scoreboard_tbl     = na
+// All-time counters — never reset. Scoreboard "All Time" mode reads these.
+var int   score_all_long_wins    = 0
+var int   score_all_long_losses  = 0
+var int   score_all_short_wins   = 0
+var int   score_all_short_losses = 0
+var float score_all_long_pts     = 0.0
+var float score_all_short_pts    = 0.0
+var float score_all_long_pnl     = 0.0
+var float score_all_short_pnl    = 0.0
+// Setup counters — count every fired setup (resolved or not, including over-risk).
+// today resets at session boundary; all-time accumulates; n_days tracks the
+// number of distinct session days seen, used to derive setups/day average.
+var int   setups_today      = 0
+var int   setups_all_time   = 0
+var int   n_session_days    = 0
+// Rolling window of recent trades — one entry per resolved trade. Scoreboard
+// "Last N Trades" mode re-aggregates the tail of each array at render time.
+// Pnl is NOT stored (it's re-derived from pts × contracts at render, so live
+// risk/point-value input changes propagate through).
+var trades_dir     = array.new_int()     // 1 = long, -1 = short
+var trades_pts     = array.new_float()   // signed points realized per trade
+var trades_risk    = array.new_float()   // |entry - sl| in pts (for contract recalc)
+
+// Reset the scoreboard at each new futures session (18:00 ET open).
+// Bars at or after 18:00 exchange time belong to the NEXT trading day;
+// shifting the day key by +1 when hour >= 18 bundles the overnight session
+// with the following day's RTH. score_day = YYYYMMDD of the session day.
+_hr_now  = hour(time, syminfo.timezone)
+_sess_ts = time + (_hr_now >= 18 ? 6 * 3600 * 1000 : 0)
+_sess_day = dayofmonth(_sess_ts, syminfo.timezone) + 100 * month(_sess_ts, syminfo.timezone) + 10000 * year(_sess_ts, syminfo.timezone)
+if na(score_day) or _sess_day != score_day
+    score_day          := _sess_day
+    score_long_wins    := 0
+    score_long_losses  := 0
+    score_short_wins   := 0
+    score_short_losses := 0
+    score_long_pts     := 0.0
+    score_short_pts    := 0.0
+    score_long_pnl     := 0.0
+    score_short_pnl    := 0.0
+    setups_today       := 0
+    n_session_days     += 1
+// Active (unresolved) setups — parallel arrays. Resolve to TP/SL hits post-fire.
+var active_dir        = array.new_int()     //  1 = long, -1 = short
+var active_tp         = array.new_float()
+var active_sl         = array.new_float()
+var active_entry      = array.new_float()
+var active_risk_box   = array.new_box()
+var active_reward_box = array.new_box()
+var active_entry_ln   = array.new_line()
+var active_sl_ln      = array.new_line()
+var active_tp_lbl     = array.new_label()
+var active_sl_lbl     = array.new_label()
+var active_entry_lbl  = array.new_label()
+var active_cisd_ln    = array.new_line()
+var active_sweep_ln   = array.new_line()
+var active_cisd_lbl   = array.new_label()
+var active_sweep_lbl  = array.new_label()
+var active_entry_bar  = array.new_int()
+// Partial TP1 tracking
+var active_tp1        = array.new_float()
+var active_tp1_ln     = array.new_line()
+var active_tp1_lbl    = array.new_label()
+var active_tp1_n      = array.new_int()
+// Variable-count per-setup extras (midlines, projections, T-Spot zone+line).
+// Flat pools hold all extras; each setup records how many it owns. To find
+// setup _i's slice we sum the counts of setups [0.._i-1] → that's the start
+// offset, and the count tells us the length.
+var active_extra_lines   = array.new_line()
+var active_extra_labels  = array.new_label()
+var active_extra_boxes   = array.new_box()
+var active_extra_ln_count  = array.new_int()
+var active_extra_lbl_count = array.new_int()
+var active_extra_bx_count  = array.new_int()
+// snapshot sizes before registering a new setup's drawings
+var int _snap_lines  = 0
+var int _snap_labels = 0
+var int _snap_boxes  = 0
+
+// helper: register a fired drawing for later cleanup
+f_reg_line(line l)   => array.push(fired_lines, l)
+f_reg_label(label l) => array.push(fired_labels, l)
+f_reg_box(box b)     => array.push(fired_boxes, b)
+// helpers: register drawing AND push it into the active-extras pool (for truncation).
+// The push into active_extra_* is gated on truncate_on_hit so the pool stays in
+// sync with the per-setup count arrays (which are also gated on truncate_on_hit).
+f_reg_line_active(line l)   =>
+    array.push(fired_lines, l)
+    if truncate_on_hit
+        array.push(active_extra_lines, l)
+f_reg_label_active(label l) =>
+    array.push(fired_labels, l)
+    if truncate_on_hit
+        array.push(active_extra_labels, l)
+f_reg_box_active(box b)     =>
+    array.push(fired_boxes, b)
+    if truncate_on_hit
+        array.push(active_extra_boxes, b)
+
+// ── ANCHOR RESET ──────────────────────────────────────────────────────────────
+if is_new_anchor and tf_supported
+    // Capture fired state BEFORE resetting — used to preserve fired drawings
+    _was_alerted_long  = alerted_long
+    _was_alerted_short = alerted_short
+    anc_hi          := prior_high
+    anc_lo          := prior_low
+    elapsed         := 0
+    swept_long      := false
+    swept_short     := false
+    sweep_ext_long  := na
+    sweep_ext_short := na
+    sweep_bar_long   := na
+    sweep_bar_short  := na
+    sweep_logmid_long  := na
+    sweep_logmid_short := na
+    sweep_close_long   := na
+    sweep_close_short  := na
+    sweep_pct_long     := na
+    sweep_pct_short    := na
+    ret_bar_long       := na
+    ret_bar_short      := na
+    ret_close_long     := na
+    ret_close_short    := na
+    smt_long        := false
+    smt_short       := false
+    ret_long        := false
+    ret_short       := false
+    alerted_long    := false
+    alerted_short   := false
+    // find the FIRST (earliest) LTF bar within the prior HTF period that reached the high/low
+    // Scan from newest (k=1) outward. Track the last match seen. Stop when we leave the period.
+    // This way we find the earliest match within the prior period, not from older periods.
+    _tol = syminfo.mintick * 2
+    _htf_bars = timeframe.period == "5" ? 12 : 10
+    anc_hi_bar := bar_index - 1
+    anc_lo_bar := bar_index - 1
+    // Scan newest to oldest: each match overwrites with an older bar.
+    // At the end, anc_hi_bar/anc_lo_bar = earliest match within the scan range.
+    for k = 1 to _htf_bars
+        if k >= bar_index
+            break
+        if high[k] >= anc_hi - _tol
+            anc_hi_bar := bar_index - k
+    for k = 1 to _htf_bars
+        if k >= bar_index
+            break
+        if low[k] <= anc_lo + _tol
+            anc_lo_bar := bar_index - k
+    // clean up UNFIRED drawings only — fired setups keep their drawings
+    if not _was_alerted_long
+        line.delete(sweep_line_long)
+        sweep_line_long  := na
+        label.delete(sweep_lbl_long)
+        sweep_lbl_long   := na
+    else
+        // detach refs so fired drawings aren't deleted later
+        sweep_line_long  := na
+        sweep_lbl_long   := na
+    if not _was_alerted_short
+        line.delete(sweep_line_short)
+        sweep_line_short := na
+        label.delete(sweep_lbl_short)
+        sweep_lbl_short  := na
+    else
+        sweep_line_short := na
+        sweep_lbl_short  := na
+    // CISD previews are always pending — always clean up
+    line.delete(cisd_prev_long)
+    cisd_prev_long      := na
+    label.delete(cisd_prev_lbl_long)
+    cisd_prev_lbl_long  := na
+    line.delete(cisd_prev_short)
+    cisd_prev_short     := na
+    label.delete(cisd_prev_lbl_short)
+    cisd_prev_lbl_short := na
+    // ── Draw sweep lines for pre-seeded setups ───────────────────────────────
+    if swept_long
+        ps_x = sweep_lbl_pos == "Right" ? bar_index + rr_extend : anc_lo_bar
+        sweep_line_long := line.new(anc_lo_bar, anc_lo, bar_index + rr_extend, anc_lo, color=color.new(c_sweep, 25), width=1, style=line.style_dashed)
+        sweep_lbl_long  := label.new(ps_x, anc_lo, sweep_text + " " + sweep_tf_lbl, color=color.new(c_sweep, 100), textcolor=color.new(c_sweep, 25), style=sweep_lbl_style, size=size.small)
+    if swept_short
+        ps_x = sweep_lbl_pos == "Right" ? bar_index + rr_extend : anc_hi_bar
+        sweep_line_short := line.new(anc_hi_bar, anc_hi, bar_index + rr_extend, anc_hi, color=color.new(c_sweep, 25), width=1, style=line.style_dashed)
+        sweep_lbl_short  := label.new(ps_x, anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(c_sweep, 100), textcolor=color.new(c_sweep, 25), style=sweep_lbl_style, size=size.small)
+
+
+// ── BAR COUNTER + RUNNING SWEEP EXTREMES ─────────────────────────────────────
+// Track per-period running min low / max high to find deepest sweep extreme
+// without a retrospective loop at detection time.
+elapsed += 1
+var float period_min_low  = na   // lowest low seen this HTF period below anc_lo
+var float period_max_high = na   // highest high seen this HTF period above anc_hi
+var int   period_min_bar  = na
+var int   period_max_bar  = na
+
+if is_new_anchor
+    period_min_low  := na
+    period_max_high := na
+    period_min_bar  := na
+    period_max_bar  := na
+
+if tf_supported and not na(anc_lo)
+    if low < anc_lo
+        if na(period_min_low) or low < period_min_low
+            period_min_low := low
+            period_min_bar := bar_index
+    if high > anc_hi
+        if na(period_max_high) or high > period_max_high
+            period_max_high := high
+            period_max_bar  := bar_index
+
+// After sweep detection, keep SL = period's true extreme until CISD fires.
+// Matches Python engine (sweep_extreme = max/min over all sweeping bars in period).
+if swept_long and not alerted_long and not na(period_min_low)
+    sweep_ext_long := period_min_low
+    sweep_bar_long := period_min_bar
+if swept_short and not alerted_short and not na(period_max_high)
+    sweep_ext_short := period_max_high
+    sweep_bar_short := period_max_bar
+
+// ── PHASE 1: SWEEP ────────────────────────────────────────────────────────────
+// Detects sweeps anywhere within the HTF period.
+// Sweep extreme uses running min/max — no retrospective loop needed.
+if tf_supported and not na(anc_hi) and not na(anc_lo)
+    ref_range = anc_hi - anc_lo
+    if not swept_long
+        ext = anc_lo - low
+        if low < anc_lo
+            swept_long        := true
+            sweep_ext_long    := not na(period_min_low)  ? period_min_low  : low
+            sweep_bar_long    := not na(period_min_bar)  ? period_min_bar  : bar_index
+            sweep_logmid_long := f_log_mid(high, low, open, close)
+            sweep_close_long  := close
+            sweep_pct_long    := ref_range > 0 ? ext / ref_range : 0.0
+            sweep_x_long    = sweep_lbl_pos == "Right" ? bar_index + rr_extend : anc_lo_bar
+            sweep_line_long := line.new(anc_lo_bar, anc_lo, bar_index + rr_extend, anc_lo, color=color.new(c_sweep, 25), width=1, style=line.style_dashed)
+            sweep_lbl_long  := label.new(sweep_x_long, anc_lo, sweep_text + " " + sweep_tf_lbl, color=color.new(c_sweep, 100), textcolor=color.new(c_sweep, 25), style=sweep_lbl_style, size=size.small)
+            if show_smt and not na(es_prior_low)
+                smt_long := es_ltf_low > es_prior_low
+    if not swept_short
+        ext = high - anc_hi
+        if high > anc_hi
+            swept_short        := true
+            sweep_ext_short    := not na(period_max_high) ? period_max_high : high
+            sweep_bar_short    := not na(period_max_bar)  ? period_max_bar  : bar_index
+            sweep_logmid_short := f_log_mid(high, low, open, close)
+            sweep_close_short  := close
+            sweep_pct_short    := ref_range > 0 ? ext / ref_range : 0.0
+            sweep_x_short    = sweep_lbl_pos == "Right" ? bar_index + rr_extend : anc_hi_bar
+            sweep_line_short := line.new(anc_hi_bar, anc_hi, bar_index + rr_extend, anc_hi, color=color.new(c_sweep, 25), width=1, style=line.style_dashed)
+            sweep_lbl_short  := label.new(sweep_x_short, anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(c_sweep, 100), textcolor=color.new(c_sweep, 25), style=sweep_lbl_style, size=size.small)
+            if show_smt and not na(es_prior_high)
+                smt_short := es_ltf_high < es_prior_high
+
+// ── PHASE 2: RETURN TO RANGE ──────────────────────────────────────────────────
+// Return can happen anytime after sweep within the HTF period.
+// Must be a LATER bar than the sweep bar — otherwise a bullish-close sweep
+// candle would register as its own "return" and lock ret_close outside the range.
+can_return = swept_long or swept_short
+if can_return
+    if swept_long  and not ret_long  and not na(sweep_bar_long)  and bar_index > sweep_bar_long  and high >= anc_lo
+        ret_long       := true
+        ret_bar_long   := bar_index
+        ret_close_long := close
+    if swept_short and not ret_short and not na(sweep_bar_short) and bar_index > sweep_bar_short and low <= anc_hi
+        ret_short       := true
+        ret_bar_short   := bar_index
+        ret_close_short := close
+
+// ── PHASE 3: CISD (matches backtest _find_cisd) ──────────────────────────────
+// Scan backward from RETURN BAR to find the consecutive opposing delivery run.
+// CISD level = open of the FIRST (earliest) candle in that run.
+// Fire when current bar closes through that level.
+//
+// Algorithm (same as Python _find_cisd):
+//   1. From ret_bar, scan backward — skip dojis, find nearest opposing candle
+//   2. Continue backward through consecutive opposing candles (skip dojis)
+//   3. Stop when a same-direction candle is hit
+//   4. CISD level = open of the run_start (earliest opposing candle)
+
+f_cisd_long(int ret_bar) =>
+    // LONG: scan backward from ret_bar, skip dojis and bullish candles,
+    // find nearest bearish candle, then walk back through consecutive bearish run.
+    // CISD level = open of earliest bearish candle in the run.
+    cisd_lvl = float(na)
+    cisd_off = 0
+    if not na(ret_bar)
+        offset = bar_index - ret_bar
+        nearest_k = 0
+        for step = 1 to cisd_lookback
+            k = offset + step
+            if k >= bar_index
+                break
+            if close[k] == open[k]
+                continue
+            if close[k] < open[k]
+                nearest_k := k
+                break
+        if nearest_k > 0
+            run_start_k = nearest_k
+            for step2 = nearest_k + 1 to cisd_lookback
+                if step2 >= bar_index
+                    break
+                if close[step2] == open[step2]
+                    continue
+                if close[step2] < open[step2]
+                    run_start_k := step2
+                else
+                    break
+            cisd_lvl := open[run_start_k]
+            cisd_off := run_start_k
+    [not na(cisd_lvl) and close > cisd_lvl, cisd_lvl, na(cisd_lvl) ? 0 : cisd_off]
+
+f_cisd_short(int ret_bar) =>
+    // SHORT: scan backward from ret_bar, skip dojis and bearish candles,
+    // find nearest bullish candle, then walk back through consecutive bullish run.
+    // CISD level = open of earliest bullish candle in the run.
+    cisd_lvl = float(na)
+    cisd_off = 0
+    if not na(ret_bar)
+        offset = bar_index - ret_bar
+        nearest_k = 0
+        for step = 1 to cisd_lookback
+            k = offset + step
+            if k >= bar_index
+                break
+            if close[k] == open[k]
+                continue
+            if close[k] > open[k]
+                nearest_k := k
+                break
+        if nearest_k > 0
+            run_start_k = nearest_k
+            for step2 = nearest_k + 1 to cisd_lookback
+                if step2 >= bar_index
+                    break
+                if close[step2] == open[step2]
+                    continue
+                if close[step2] > open[step2]
+                    run_start_k := step2
+                else
+                    break
+            cisd_lvl := open[run_start_k]
+            cisd_off := run_start_k
+    [not na(cisd_lvl) and close < cisd_lvl, cisd_lvl, na(cisd_lvl) ? 0 : cisd_off]
+
+// CISD scan runs on bar close only — no intrabar recomputation (saves 400+ iters/tick)
+var bool  cisd_long_fired  = false
+var float cisd_long_lvl    = na
+var int   cisd_long_off    = 0
+var bool  cisd_short_fired = false
+var float cisd_short_lvl   = na
+var int   cisd_short_off   = 0
+
+if barstate.isconfirmed
+    scan_bar_long  = not na(ret_bar_long)  ? ret_bar_long  : bar_index
+    scan_bar_short = not na(ret_bar_short) ? ret_bar_short : bar_index
+    [_clf, _clv, _clo] = f_cisd_long(scan_bar_long)
+    [_csf, _csv, _cso] = f_cisd_short(scan_bar_short)
+    cisd_long_fired  := _clf
+    cisd_long_lvl    := _clv
+    cisd_long_off    := _clo
+    cisd_short_fired := _csf
+    cisd_short_lvl   := _csv
+    cisd_short_off   := _cso
+
+// ── CISD PREVIEW — shown immediately when sweep is detected, updated on return ─
+if tf_supported
+    if swept_long and not alerted_long and not na(cisd_long_lvl)
+        line.delete(cisd_prev_long)
+        label.delete(cisd_prev_lbl_long)
+        cisd_prev_long     := line.new(bar_index - cisd_long_off, cisd_long_lvl, bar_index + 5, cisd_long_lvl, color=color.new(c_cisd, 50), width=1, style=line.style_dashed)
+        cisd_prev_lbl_long := label.new(bar_index + 5, cisd_long_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(c_cisd, 100), textcolor=color.new(c_cisd, 50), style=label.style_label_left, size=size.small)
+    else if not swept_long or alerted_long
+        line.delete(cisd_prev_long)
+        label.delete(cisd_prev_lbl_long)
+        cisd_prev_long     := na
+        cisd_prev_lbl_long := na
+    if swept_short and not alerted_short and not na(cisd_short_lvl)
+        line.delete(cisd_prev_short)
+        label.delete(cisd_prev_lbl_short)
+        cisd_prev_short     := line.new(bar_index - cisd_short_off, cisd_short_lvl, bar_index + 5, cisd_short_lvl, color=color.new(c_cisd, 50), width=1, style=line.style_dashed)
+        cisd_prev_lbl_short := label.new(bar_index + 5, cisd_short_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(c_cisd, 100), textcolor=color.new(c_cisd, 50), style=label.style_label_left, size=size.small)
+    else if not swept_short or alerted_short
+        line.delete(cisd_prev_short)
+        label.delete(cisd_prev_lbl_short)
+        cisd_prev_short     := na
+        cisd_prev_lbl_short := na
+
+// ── VALIDITY ──────────────────────────────────────────────────────────────────
+long_risk  = not na(sweep_ext_long)  ? math.abs(close - sweep_ext_long)  : 0.0
+short_risk = not na(sweep_ext_short) ? math.abs(close - sweep_ext_short) : 0.0
+
+// ── RUNTIME FILTER PREDICATES ─────────────────────────────────────────────────
+// Each predicate mirrors the Legacy engine's corresponding column.
+// F3 Shallow Sweep: sweep extent ≤ 50% of prior range
+pass_f3_long  = not na(sweep_pct_long)  ? sweep_pct_long  <= 0.50 : false
+pass_f3_short = not na(sweep_pct_short) ? sweep_pct_short <= 0.50 : false
+
+// F4 Closed Back Inside: return bar closed back inside the prior range
+// LONG: ret_close should be >= anc_lo (above the swept low)
+// SHORT: ret_close should be <= anc_hi (below the swept high)
+pass_f4_long  = not na(ret_close_long)  ? ret_close_long  >= anc_lo : false
+pass_f4_short = not na(ret_close_short) ? ret_close_short <= anc_hi : false
+
+// Combined filter pass (respects user toggles — OFF toggle = pass always)
+filt_pass_long  = (not req_shallow_sweep or pass_f3_long) and (not req_closed_back or pass_f4_long)
+filt_pass_short = (not req_shallow_sweep or pass_f3_short) and (not req_closed_back or pass_f4_short)
+
+long_base   = tf_supported and ret_long  and cisd_long_fired  and not alerted_long  and long_risk  >= min_risk and filt_pass_long
+short_base  = tf_supported and ret_short and cisd_short_fired and not alerted_short and short_risk >= min_risk and filt_pass_short
+long_valid  = long_base  and long_risk  <= max_risk
+short_valid = short_base and short_risk <= max_risk
+long_over   = long_base  and long_risk  > max_risk
+short_over  = short_base and short_risk > max_risk
+
+// ── CASCADE LEVELS (L33 / L50 / L66 between OB open and sweep extreme) ─────
+f_cascade_level(_cisd, _sweep, _frac) =>
+    span = _sweep - _cisd   // negative for LONG, positive for SHORT
+    _cisd + _frac * span
+
+// Resolve entry price based on selected entry_mode
+f_entry_price(_dir) =>
+    cis = _dir == "LONG" ? cisd_long_lvl : cisd_short_lvl
+    swe = _dir == "LONG" ? sweep_ext_long : sweep_ext_short
+    if entry_mode == "L33"
+        f_cascade_level(cis, swe, 0.3333)
+    else if entry_mode == "L50"
+        f_cascade_level(cis, swe, 0.5000)
+    else if entry_mode == "L66"
+        f_cascade_level(cis, swe, 0.6667)
+    else
+        close   // Market — use close as proxy for next bar open
+
+// Resolve target reference price
+f_target_ref(_dir, _entry) =>
+    if target_ref == "OB Open"
+        _dir == "LONG" ? cisd_long_lvl : cisd_short_lvl
+    else
+        _entry
+
+// Compute adjusted risk for alternate entry (level entries closer to SL)
+f_adjusted_risk(_dir, _entry) =>
+    math.abs(_entry - (_dir == "LONG" ? sweep_ext_long : sweep_ext_short))
+
+// Compute TP price — R:R based or projection-based
+f_compute_tp(_dir, _ref, _risk, _mode, _rr, _proj, _cisd_lvl, _sr) =>
+    if _mode == "Projection Level"
+        _dir == "LONG" ? _cisd_lvl + _sr * _proj : _cisd_lvl - _sr * _proj
+    else
+        _dir == "LONG" ? _ref + _risk * _rr : _ref - _risk * _rr
+
+// Partial contracts: round UP (e.g. 50% of 5 = 3 contracts at TP1)
+f_partial_contracts(_full_n, _pct) =>
+    _pct > 0 ? math.ceil(_full_n * _pct / 100.0) : 0
+
+// ── DEBUG ─────────────────────────────────────────────────────────────────────
+// Perf: only rebuild debug text once per bar close, not every tick.
+if show_debug and tf_supported and barstate.islast and barstate.isconfirmed
+    dbg = "elapsed=" + str.tostring(elapsed)
+         + "\nSWP_L=" + str.tostring(swept_long) + " RET_L=" + str.tostring(ret_long) + " ALT_L=" + str.tostring(alerted_long)
+         + "\nSWP_S=" + str.tostring(swept_short) + " RET_S=" + str.tostring(ret_short) + " ALT_S=" + str.tostring(alerted_short)
+         + "\nCISD_S_lvl=" + (not na(cisd_short_lvl) ? str.tostring(cisd_short_lvl, "#.##") : "na") + " fired=" + str.tostring(cisd_short_fired) + " off=" + str.tostring(cisd_short_off)
+         + "\nCISD_L_lvl=" + (not na(cisd_long_lvl) ? str.tostring(cisd_long_lvl, "#.##") : "na") + " fired=" + str.tostring(cisd_long_fired) + " off=" + str.tostring(cisd_long_off)
+         + "\nrisk_S=" + str.tostring(short_risk, "#.#") + " valid_S=" + str.tostring(short_valid)
+         + "\nanc_hi=" + str.tostring(anc_hi, "#.##") + " anc_lo=" + str.tostring(anc_lo, "#.##")
+         + "\nhi_bar_off=" + str.tostring(bar_index - anc_hi_bar) + " lo_bar_off=" + str.tostring(bar_index - anc_lo_bar)
+         + "\nsweep_ext_S=" + (not na(sweep_ext_short) ? str.tostring(sweep_ext_short, "#.##") : "na") + " sweep_pct_S=" + (not na(sweep_pct_short) ? str.tostring(sweep_pct_short, "#.###") : "na")
+         + "\nsweep_ext_L=" + (not na(sweep_ext_long) ? str.tostring(sweep_ext_long, "#.##") : "na") + " sweep_pct_L=" + (not na(sweep_pct_long) ? str.tostring(sweep_pct_long, "#.###") : "na")
+         + "\nF3_S=" + str.tostring(pass_f3_short) + " F4_S=" + str.tostring(pass_f4_short) + " filt_S=" + str.tostring(filt_pass_short)
+         + "\nF3_L=" + str.tostring(pass_f3_long) + " F4_L=" + str.tostring(pass_f4_long) + " filt_L=" + str.tostring(filt_pass_long)
+         + "\nfired_lines=" + str.tostring(array.size(fired_lines)) + " fired_labels=" + str.tostring(array.size(fired_labels)) + " fired_boxes=" + str.tostring(array.size(fired_boxes))
+         + "\nsetup_counts=" + str.tostring(array.size(setup_line_counts)) + " active_dir=" + str.tostring(array.size(active_dir)) + " outcomes=" + str.tostring(array.size(outcome_markers)) + " extras(ln/lbl/bx)=" + str.tostring(array.size(active_extra_lines)) + "/" + str.tostring(array.size(active_extra_labels)) + "/" + str.tostring(array.size(active_extra_boxes))
+    var label dbg_lbl = na
+    label.delete(dbg_lbl)
+    dbg_lbl := label.new(bar_index + 3, high, dbg, color=color.new(c_dbg, 20), textcolor=color.white, style=label.style_label_left, size=size.small, textalign=text.align_left)
+
+// ── SCOREBOARD — top-right table, scope = Today / Last N / All Time ─────────
+// Perf: the scoreboard block runs on every tick of the last bar. Rather than
+// rebuild the table on each tick, track a hash of the counter state and only
+// re-render when it changes (or on first render). Hash covers every input
+// that affects the displayed numbers — counters, scope, risk/pt-value inputs.
+var float _sb_state_hash = na
+_sb_new_hash = score_all_long_wins + score_all_long_losses * 31 + score_all_short_wins * 961 + score_all_short_losses * 29791 + score_all_long_pnl + score_all_short_pnl + risk_usd * 97 + point_value_usd * 103 + (scoreboard_scope == "Today" ? 1 : scoreboard_scope == "Last N Trades" ? 2 : 3) * 1000 + scoreboard_n * 7 + array.size(active_dir) * 13 + setups_all_time * 17 + setups_today * 19 + n_session_days * 23
+_sb_dirty = na(scoreboard_tbl) or _sb_new_hash != _sb_state_hash
+if show_scoreboard and barstate.islast and _sb_dirty
+    _sb_state_hash := _sb_new_hash
+    // Pick counter source based on the scope dropdown. For "Last N Trades"
+    // we re-aggregate the tail of the trades ring buffer; the other two
+    // modes read pre-accumulated counters directly.
+    _sb_lw  = 0
+    _sb_ll  = 0
+    _sb_sw  = 0
+    _sb_slo = 0
+    _sb_lpts = 0.0
+    _sb_spts = 0.0
+    _sb_lpnl = 0.0
+    _sb_spnl = 0.0
+    if scoreboard_scope == "All Time"
+        _sb_lw   := score_all_long_wins
+        _sb_ll   := score_all_long_losses
+        _sb_sw   := score_all_short_wins
+        _sb_slo  := score_all_short_losses
+        _sb_lpts := score_all_long_pts
+        _sb_spts := score_all_short_pts
+        _sb_lpnl := score_all_long_pnl
+        _sb_spnl := score_all_short_pnl
+    else if scoreboard_scope == "Last N Trades"
+        _n_trades = array.size(trades_dir)
+        _start = math.max(0, _n_trades - scoreboard_n)
+        if _start < _n_trades
+            for _ti = _start to _n_trades - 1
+                _tdir = array.get(trades_dir,  _ti)
+                _tpts = array.get(trades_pts,  _ti)
+                _trsk = array.get(trades_risk, _ti)
+                _tn   = _trsk > 0 ? math.floor(risk_usd / (_trsk * point_value_usd)) : 0
+                _tpnl = _tpts * _tn * point_value_usd
+                _is_win = _tpts > 0
+                if _tdir == 1
+                    if _is_win
+                        _sb_lw += 1
+                    else
+                        _sb_ll += 1
+                    _sb_lpts += _tpts
+                    _sb_lpnl += _tpnl
+                else
+                    if _is_win
+                        _sb_sw += 1
+                    else
+                        _sb_slo += 1
+                    _sb_spts += _tpts
+                    _sb_spnl += _tpnl
+    else
+        _sb_lw   := score_long_wins
+        _sb_ll   := score_long_losses
+        _sb_sw   := score_short_wins
+        _sb_slo  := score_short_losses
+        _sb_lpts := score_long_pts
+        _sb_spts := score_short_pts
+        _sb_lpnl := score_long_pnl
+        _sb_spnl := score_short_pnl
+    _total_wins   = _sb_lw + _sb_sw
+    _total_losses = _sb_ll + _sb_slo
+    _total_n      = _total_wins + _total_losses
+    _long_n       = _sb_lw + _sb_ll
+    _short_n      = _sb_sw + _sb_slo
+    _long_wr      = _long_n   > 0 ? _sb_lw  / _long_n   * 100 : 0.0
+    _short_wr     = _short_n  > 0 ? _sb_sw  / _short_n  * 100 : 0.0
+    _total_wr     = _total_n  > 0 ? _total_wins / _total_n  * 100 : 0.0
+    _total_pts    = _sb_lpts + _sb_spts
+    _total_pnl    = _sb_lpnl + _sb_spnl
+    _active_n     = array.size(active_dir)
+    // Date / scope label — for "Today" shows MM/DD, otherwise shows scope name.
+    _hdr_hr  = hour(time, syminfo.timezone)
+    _hdr_ts  = time + (_hdr_hr >= 18 ? 6 * 3600 * 1000 : 0)
+    _mm_dd_str = str.tostring(month(_hdr_ts, syminfo.timezone)) + "/" + str.tostring(dayofmonth(_hdr_ts, syminfo.timezone))
+    _date_str  = scoreboard_scope == "Today" ? _mm_dd_str : scoreboard_scope == "Last N Trades" ? "Last " + str.tostring(scoreboard_n) : "All Time"
+    // Theme-aware scoreboard palette. Light mode uses deep slate bg; dark mode
+    // uses a lighter slate so rows stand out against a pure-black chart bg.
+    _sb_bg    = _dark ? color.new(#0f172a, 0) : color.new(c_dbg, 0)
+    _sb_alt   = _dark ? color.new(#334155, 0) : color.new(#1e293b, 0)
+    _sb_text  = color.white
+    _sb_muted = _dark ? #e2e8f0 : #cbd5e1
+    _sb_tp    = _dark ? #34d399 : #10b981
+    _sb_sl    = _dark ? #f87171 : #ef4444
+    _sb_frame = _dark ? #64748b : #475569
+    // Helpers for signed color — green when positive, red when negative, neutral when zero.
+    _long_pts_col  = _sb_lpts   > 0 ? _sb_tp : _sb_lpts   < 0 ? _sb_sl : _sb_muted
+    _short_pts_col = _sb_spts   > 0 ? _sb_tp : _sb_spts   < 0 ? _sb_sl : _sb_muted
+    _total_pts_col = _total_pts > 0 ? _sb_tp : _total_pts < 0 ? _sb_sl : _sb_muted
+    _long_pnl_col  = _sb_lpnl   > 0 ? _sb_tp : _sb_lpnl   < 0 ? _sb_sl : _sb_muted
+    _short_pnl_col = _sb_spnl   > 0 ? _sb_tp : _sb_spnl   < 0 ? _sb_sl : _sb_muted
+    _total_pnl_col = _total_pnl > 0 ? _sb_tp : _total_pnl < 0 ? _sb_sl : _sb_muted
+    // Signed formatters — compute pre-built strings rather than nested functions.
+    _long_pts_str  = (_sb_lpts   >= 0 ? "+" : "")  + str.tostring(_sb_lpts, "#.##")
+    _short_pts_str = (_sb_spts   >= 0 ? "+" : "")  + str.tostring(_sb_spts, "#.##")
+    _total_pts_str = (_total_pts >= 0 ? "+" : "")  + str.tostring(_total_pts, "#.##")
+    _long_pnl_str  = (_sb_lpnl   >= 0 ? "+$" : "-$") + str.tostring(math.abs(_sb_lpnl), "#,###.##")
+    _short_pnl_str = (_sb_spnl   >= 0 ? "+$" : "-$") + str.tostring(math.abs(_sb_spnl), "#,###.##")
+    _total_pnl_str = (_total_pnl >= 0 ? "+$" : "-$") + str.tostring(math.abs(_total_pnl), "#,###.##")
+    // Uniform font size across every cell. WR strings fall back to "–" for
+    // empty directions to keep alignment clean.
+    _wr_long_str  = _long_n  > 0 ? str.tostring(_long_wr,  "#.#") + "%" : "–"
+    _wr_short_str = _short_n > 0 ? str.tostring(_short_wr, "#.#") + "%" : "–"
+    _wr_total_str = _total_n > 0 ? str.tostring(_total_wr, "#.#") + "%" : "–"
+    _meta_str     = combo + "  ·  $" + str.tostring(risk_usd, "#") + "/trade"
+    _footer_str   = _date_str + (_active_n > 0 ? "  ·  " + str.tostring(_active_n) + " pending" : "")
+    // Setups/Day — scope-aware. Today: today's count. Last N: avg over the
+    // tail window. All Time: total setups / number of session days seen.
+    _setups_per_day_str = ""
+    if scoreboard_scope == "Today"
+        _setups_per_day_str := str.tostring(setups_today)
+    else if scoreboard_scope == "Last N Trades"
+        _setups_per_day_str := n_session_days > 0 ? str.tostring(setups_all_time / n_session_days, "#.#") : "–"
+    else
+        _setups_per_day_str := n_session_days > 0 ? str.tostring(setups_all_time / n_session_days, "#.#") : "–"
+    table.delete(scoreboard_tbl)
+    // 4 columns (Metric / LONG / SHORT / TOTAL) × 10 rows (title + header + 7 metrics + footer).
+    scoreboard_tbl := table.new(position.top_right, 4, 10, bgcolor=_sb_bg, border_color=color.new(_sb_frame, 0), border_width=1, frame_color=color.new(_sb_frame, 0), frame_width=1)
+    // Title row — combo/risk info lives here between title and date.
+    _title_str = scoreboard_scope == "Today" ? "Today's Scorecard" : scoreboard_scope == "Last N Trades" ? "Recent Scorecard" : "All-Time Scorecard"
+    table.cell(scoreboard_tbl, 0, 0, _title_str, text_color=_sb_text,  bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 0, _meta_str,           text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 0, "",                  bgcolor=_sb_alt)
+    table.cell(scoreboard_tbl, 3, 0, _date_str,           text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
+    // Column header row — LONG / SHORT / TOTAL
+    table.cell(scoreboard_tbl, 0, 1, "",      text_color=_sb_text, bgcolor=_sb_alt)
+    table.cell(scoreboard_tbl, 1, 1, "LONG",  text_color=_sb_tp,   bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 1, "SHORT", text_color=_sb_sl,   bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 3, 1, "TOTAL", text_color=_sb_text, bgcolor=_sb_alt, text_size=size.small)
+    // Setups
+    table.cell(scoreboard_tbl, 0, 2, "Setups", text_color=_sb_muted, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 2, str.tostring(_long_n),   text_color=_sb_text, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 2, str.tostring(_short_n),  text_color=_sb_text, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 3, 2, str.tostring(_total_n),  text_color=_sb_text, bgcolor=_sb_bg, text_size=size.small)
+    // Setups/Day — total only (not split by direction). Today: today's count. Otherwise: avg over session days seen.
+    _setups_per_day_label = scoreboard_scope == "Today" ? "Setups (Today)" : "Setups/Day"
+    table.cell(scoreboard_tbl, 0, 3, _setups_per_day_label, text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 3, "", bgcolor=_sb_alt)
+    table.cell(scoreboard_tbl, 2, 3, "", bgcolor=_sb_alt)
+    table.cell(scoreboard_tbl, 3, 3, _setups_per_day_str, text_color=_sb_text, bgcolor=_sb_alt, text_size=size.small)
+    // Wins
+    table.cell(scoreboard_tbl, 0, 4, "Wins",   text_color=_sb_muted, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 4, str.tostring(_sb_lw),   text_color=_sb_tp, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 4, str.tostring(_sb_sw),   text_color=_sb_tp, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 3, 4, str.tostring(_total_wins),       text_color=_sb_tp, bgcolor=_sb_bg, text_size=size.small)
+    // Losses
+    table.cell(scoreboard_tbl, 0, 5, "Losses", text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 5, str.tostring(_sb_ll),   text_color=_sb_sl, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 5, str.tostring(_sb_slo),  text_color=_sb_sl, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 3, 5, str.tostring(_total_losses),       text_color=_sb_sl, bgcolor=_sb_alt, text_size=size.small)
+    // Win Rate
+    table.cell(scoreboard_tbl, 0, 6, "WR",     text_color=_sb_muted, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 6, _wr_long_str,  text_color=_sb_text, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 6, _wr_short_str, text_color=_sb_text, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 3, 6, _wr_total_str, text_color=_sb_text, bgcolor=_sb_bg, text_size=size.small)
+    // Points
+    table.cell(scoreboard_tbl, 0, 7, "Points", text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 7, _long_pts_str,  text_color=_long_pts_col,  bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 7, _short_pts_str, text_color=_short_pts_col, bgcolor=_sb_alt, text_size=size.small)
+    table.cell(scoreboard_tbl, 3, 7, _total_pts_str, text_color=_total_pts_col, bgcolor=_sb_alt, text_size=size.small)
+    // P&L
+    table.cell(scoreboard_tbl, 0, 8, "PnL",    text_color=_sb_muted, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 1, 8, _long_pnl_str,  text_color=_long_pnl_col,  bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 2, 8, _short_pnl_str, text_color=_short_pnl_col, bgcolor=_sb_bg, text_size=size.small)
+    table.cell(scoreboard_tbl, 3, 8, _total_pnl_str, text_color=_total_pnl_col, bgcolor=_sb_bg, text_size=size.small)
+    // Footer — only rendered when there are pending setups to announce.
+    if _active_n > 0
+        table.cell(scoreboard_tbl, 0, 9, str.tostring(_active_n) + " pending", text_color=_sb_muted, bgcolor=_sb_alt, text_size=size.small)
+        table.cell(scoreboard_tbl, 1, 9, "", bgcolor=_sb_alt)
+        table.cell(scoreboard_tbl, 2, 9, "", bgcolor=_sb_alt)
+        table.cell(scoreboard_tbl, 3, 9, "", bgcolor=_sb_alt)
+
+// ── RESOLVE ACTIVE SETUPS — truncate R:R drawings on TP/SL hit ───────────────
+// Walk from tail to head so we can pop resolved rows without index drift.
+// Intrabar wick-based: SL takes priority if both touched on the same bar.
+if truncate_on_hit and array.size(active_dir) > 0
+    _i = array.size(active_dir) - 1
+    while _i >= 0
+        _d  = array.get(active_dir,  _i)
+        _tp = array.get(active_tp,   _i)
+        _sl = array.get(active_sl,   _i)
+        _en = array.get(active_entry, _i)
+        _hit_sl = _d == 1 ? low  <= _sl : high >= _sl
+        _hit_tp = _d == 1 ? high >= _tp : low  <= _tp
+        _resolved_sl = _hit_sl
+        _resolved_tp = _hit_tp and not _hit_sl
+        if _resolved_sl or _resolved_tp
+            _rb = array.get(active_risk_box,   _i)
+            _wb = array.get(active_reward_box, _i)
+            _el = array.get(active_entry_ln,   _i)
+            _sn = array.get(active_sl_ln,      _i)
+            _tl = array.get(active_tp_lbl,     _i)
+            _snl= array.get(active_sl_lbl,     _i)
+            _enl= array.get(active_entry_lbl,  _i)
+            _cl = array.get(active_cisd_ln,    _i)
+            _wl = array.get(active_sweep_ln,   _i)
+            _cll= array.get(active_cisd_lbl,   _i)
+            _wll= array.get(active_sweep_lbl,  _i)
+            box.set_right(_rb, bar_index)
+            box.set_right(_wb, bar_index)
+            line.set_x2(_el,   bar_index)
+            line.set_x2(_sn,   bar_index)
+            line.set_x2(_cl,   bar_index)
+            line.set_x2(_wl,   bar_index)
+            // Re-anchor labels to the resolution bar so they don't float past the truncated edge
+            label.set_x(_tl,   bar_index + 1)
+            label.set_x(_snl,  bar_index + 1)
+            label.set_x(_enl,  bar_index + 1)
+            if cisd_lbl_pos == "Right"
+                label.set_x(_cll, bar_index + 1)
+            if sweep_lbl_pos == "Right"
+                label.set_x(_wll, bar_index + 1)
+            // Truncate extras (midlines, projections, T-Spot). Find this setup's
+            // slice by summing counts of preceding setups in the active lists.
+            // Guard against array-size mismatches (e.g. truncate_on_hit toggled).
+            _has_extras = _i < array.size(active_extra_ln_count)
+            _ln_off  = 0
+            _lbl_off = 0
+            _bx_off  = 0
+            if _has_extras and _i > 0
+                for _j = 0 to _i - 1
+                    _ln_off  += array.get(active_extra_ln_count,  _j)
+                    _lbl_off += array.get(active_extra_lbl_count, _j)
+                    _bx_off  += array.get(active_extra_bx_count,  _j)
+            _ln_n  = _has_extras ? array.get(active_extra_ln_count,  _i) : 0
+            _lbl_n = _has_extras ? array.get(active_extra_lbl_count, _i) : 0
+            _bx_n  = _has_extras ? array.get(active_extra_bx_count,  _i) : 0
+            if _ln_n > 0
+                for _k = 0 to _ln_n - 1
+                    line.set_x2(array.get(active_extra_lines, _ln_off + _k), bar_index)
+            if _lbl_n > 0
+                for _k = 0 to _lbl_n - 1
+                    label.set_x(array.get(active_extra_labels, _lbl_off + _k), bar_index + 1)
+            if _bx_n > 0
+                for _k = 0 to _bx_n - 1
+                    box.set_right(array.get(active_extra_boxes, _bx_off + _k), bar_index)
+            // Remove this setup's extras from the pool (from tail of slice to head)
+            if _ln_n > 0
+                for _k = 1 to _ln_n
+                    if array.size(active_extra_lines) > _ln_off
+                        array.remove(active_extra_lines, _ln_off)
+            if _lbl_n > 0
+                for _k = 1 to _lbl_n
+                    if array.size(active_extra_labels) > _lbl_off
+                        array.remove(active_extra_labels, _lbl_off)
+            if _bx_n > 0
+                for _k = 1 to _bx_n
+                    if array.size(active_extra_boxes) > _bx_off
+                        array.remove(active_extra_boxes, _bx_off)
+            if _has_extras
+                array.remove(active_extra_ln_count,  _i)
+                array.remove(active_extra_lbl_count, _i)
+                array.remove(active_extra_bx_count,  _i)
+            // Scoreboard: tally every resolved trade, split by direction.
+            // Win = +risk × rr; Loss = -risk. Points are signed; PnL = pts × contracts × $/pt.
+            _trade_risk_pts = math.abs(_en - _sl)
+            _trade_pts      = _resolved_sl ? -_trade_risk_pts : _trade_risk_pts * rr_ratio
+            _trade_n        = _trade_risk_pts > 0 ? math.floor(risk_usd / (_trade_risk_pts * point_value_usd)) : 0
+            _trade_pnl      = _trade_pts * _trade_n * point_value_usd
+            if _d == 1
+                if _resolved_sl
+                    score_long_losses += 1
+                    score_all_long_losses += 1
+                else
+                    score_long_wins += 1
+                    score_all_long_wins += 1
+                score_long_pts += _trade_pts
+                score_long_pnl += _trade_pnl
+                score_all_long_pts += _trade_pts
+                score_all_long_pnl += _trade_pnl
+            else
+                if _resolved_sl
+                    score_short_losses += 1
+                    score_all_short_losses += 1
+                else
+                    score_short_wins += 1
+                    score_all_short_wins += 1
+                score_short_pts += _trade_pts
+                score_short_pnl += _trade_pnl
+                score_all_short_pts += _trade_pts
+                score_all_short_pnl += _trade_pnl
+            // Rolling window: record this trade. Cap at 500 to match
+            // scoreboard_n's maxval — enough headroom for the longest "Last N".
+            array.push(trades_dir,  _d)
+            array.push(trades_pts,  _trade_pts)
+            array.push(trades_risk, _trade_risk_pts)
+            if array.size(trades_dir) > 500
+                array.shift(trades_dir)
+                array.shift(trades_pts)
+                array.shift(trades_risk)
+            if show_outcome_markers
+                // Anchor below the R:R box at its horizontal midpoint.
+                // Bottom edge = min(sl, tp): for LONG this is sl, for SHORT this is tp.
+                _entry_bar = array.size(active_entry_bar) > _i ? array.get(active_entry_bar, _i) : bar_index
+                _mark_x    = math.round((_entry_bar + bar_index) / 2)
+                _mark_y    = math.min(_sl, _tp)
+                _mark_text = _resolved_sl ? "✗" : "✓"
+                _mark_col  = _resolved_sl ? c_sl : c_tp
+                _mark_lbl  = label.new(_mark_x, _mark_y, _mark_text, color=_mark_col, textcolor=color.white, style=label.style_label_up, size=size.normal, tooltip=_resolved_sl ? "Stop loss hit" : "Take profit hit")
+                array.push(outcome_markers, _mark_lbl)
+                // Record parent setup's entry bar so pruning can delete this
+                // marker when the parent setup ages out of max_setups.
+                array.push(outcome_parent_bar, _entry_bar)
+            // Pop this setup from active tracking
+            array.remove(active_dir,        _i)
+            array.remove(active_tp,         _i)
+            array.remove(active_sl,         _i)
+            array.remove(active_entry,      _i)
+            array.remove(active_risk_box,   _i)
+            array.remove(active_reward_box, _i)
+            array.remove(active_entry_ln,   _i)
+            array.remove(active_sl_ln,      _i)
+            array.remove(active_tp_lbl,     _i)
+            array.remove(active_sl_lbl,     _i)
+            array.remove(active_entry_lbl,  _i)
+            array.remove(active_cisd_ln,    _i)
+            array.remove(active_sweep_ln,   _i)
+            array.remove(active_cisd_lbl,   _i)
+            array.remove(active_sweep_lbl,  _i)
+            if array.size(active_entry_bar) > _i
+                array.remove(active_entry_bar, _i)
+            if array.size(active_tp1) > _i
+                line.delete(   array.remove(active_tp1_ln,  _i))
+                label.delete(  array.remove(active_tp1_lbl, _i))
+                array.remove(active_tp1,     _i)
+                array.remove(active_tp1_n,   _i)
+        _i -= 1
+
+// ── CISD SERIES RANGE for projection-based TP ─────────────────────────────
+// Replicates the DRAW projection logic: walks backward from CISD candle
+// through all consecutive same-direction candles to find the delivery series range.
+f_cisd_series_range(_dir, _cisd_off) =>
+    _sr_hi = _dir == "LONG" ? high[_cisd_off + 1] : high[_cisd_off + 1]
+    _sr_lo = _dir == "LONG" ? low[_cisd_off + 1]  : low[_cisd_off + 1]
+    _s_rng = 0.0
+    first = true
+    for k = 1 to _cisd_off
+        _idx = _cisd_off + 1 - k
+        if _dir == "LONG"
+            if close[_idx] < open[_idx]
+                _sr_hi := math.max(_sr_hi, high[_idx])
+                _sr_lo := math.min(_sr_lo, low[_idx])
+            else
+                break
+        else
+            if close[_idx] > open[_idx]
+                _sr_hi := math.max(_sr_hi, high[_idx])
+                _sr_lo := math.min(_sr_lo, low[_idx])
+            else
+                break
+    _sr_hi - _sr_lo
+
+var float _cisd_series_range = na
+
+// ── FIRE: LONG — store draw state; R:R box drawn next bar at open (matches backtest entry) ─
+if long_valid
+    alerted_long     := true
+    draw_long        := true
+    setups_today    += 1
+    setups_all_time += 1
+    draw_sweep_ext_long   := sweep_ext_long
+    draw_sl_anchor_long   := not na(sweep_bar_long) ? sweep_bar_long : bar_index
+    draw_cisd_lvl_long    := cisd_long_lvl
+    draw_cisd_bar_long    := bar_index - cisd_long_off
+    draw_cisd_long_off    := cisd_long_off
+    draw_anc_lo           := anc_lo
+    draw_anc_lo_bar       := anc_lo_bar
+    draw_smt_long         := smt_long
+    draw_sweep_pct_long   := sweep_pct_long
+    draw_sweep_logmid_long  := sweep_logmid_long
+    draw_sweep_close_long   := sweep_close_long
+    draw_sweep_bar_long     := sweep_bar_long
+    // Store computed entry for DRAW phase
+    draw_entry_long        := f_entry_price("LONG")
+    draw_target_ref_long   := f_target_ref("LONG", draw_entry_long)
+    draw_risk_long         := math.abs(draw_entry_long - sweep_ext_long)
+    // CISD series range for projection-based TP
+    _cisd_series_range     := f_cisd_series_range("LONG", cisd_long_off)
+    draw_cisd_series_range := _cisd_series_range
+    // Compute final TP and optional partial TP1
+    draw_tp1_long    := use_partial ? f_compute_tp("LONG", draw_target_ref_long, draw_risk_long, tp1_mode, tp1_rr, tp1_proj, cisd_long_lvl, _cisd_series_range) : na
+    draw_use_partial := use_partial
+    // Clean up own CISD preview
+    line.delete(cisd_prev_long)
+    cisd_prev_long := na
+    label.delete(cisd_prev_lbl_long)
+    cisd_prev_lbl_long := na
+    // Clean up opposite side's pending drawings
+    if not alerted_short
+        line.delete(sweep_line_short)
+        sweep_line_short := na
+        label.delete(sweep_lbl_short)
+        sweep_lbl_short := na
+        line.delete(cisd_prev_short)
+        cisd_prev_short := na
+        label.delete(cisd_prev_lbl_short)
+        cisd_prev_lbl_short := na
+    if not na(sweep_line_long)
+        line.delete(sweep_line_long)
+        sweep_line_long := na
+    if not na(sweep_lbl_long)
+        label.delete(sweep_lbl_long)
+        sweep_lbl_long := na
+    // Emit webhook-ready JSON payload
+    _ent_L     = draw_entry_long
+    _tp_L      = f_compute_tp("LONG", draw_target_ref_long, draw_risk_long, tp_mode, rr_ratio, tp_proj, cisd_long_lvl, _cisd_series_range)
+    _n_long    = draw_risk_long > 0 ? math.floor(risk_usd / (draw_risk_long * point_value_usd)) : 0
+    _n_tp1_L   = use_partial ? f_partial_contracts(_n_long, partial_pct) : 0
+    alert('{"v":2,"id":"FS-' + syminfo.ticker + '-' + str.tostring(time) + '-LONG",' +
+          '"source":"fractal_sweep","ticker":"' + syminfo.ticker + '",' +
+          '"combo":"' + combo + '","direction":"LONG",' +
+          '"entry":' + str.tostring(_ent_L, "#.########") + ',' +
+          '"sl":' + str.tostring(sweep_ext_long, "#.########") + ',' +
+          '"tp":' + str.tostring(_tp_L, "#.########") + ',' +
+          (use_partial ? '"tp1":' + str.tostring(draw_tp1_long, "#.########") + ',' +
+           '"tp1_contracts":' + str.tostring(_n_tp1_L) + ',' : '') +
+          '"risk_pts":' + str.tostring(draw_risk_long, "#.##") + ',' +
+          '"contracts":' + str.tostring(_n_long) + ',' +
+          '"smt":' + (smt_long ? "true" : "false") + ',' +
+          '"fired_at_ms":' + str.tostring(timenow) + '}',
+          alert.freq_once_per_bar_close)
+
+// ── FIRE: SHORT — store draw state; R:R box drawn next bar at open ───────────
+if short_valid
+    alerted_short    := true
+    draw_short       := true
+    setups_today    += 1
+    setups_all_time += 1
+    draw_sweep_ext_short  := sweep_ext_short
+    draw_sl_anchor_short  := not na(sweep_bar_short) ? sweep_bar_short : bar_index
+    draw_cisd_lvl_short   := cisd_short_lvl
+    draw_cisd_bar_short   := bar_index - cisd_short_off
+    draw_cisd_short_off   := cisd_short_off
+    draw_anc_hi           := anc_hi
+    draw_anc_hi_bar       := anc_hi_bar
+    draw_smt_short        := smt_short
+    draw_sweep_pct_short  := sweep_pct_short
+    draw_sweep_logmid_short := sweep_logmid_short
+    draw_sweep_close_short  := sweep_close_short
+    draw_sweep_bar_short    := sweep_bar_short
+    // Store computed entry for DRAW phase
+    draw_entry_short       := f_entry_price("SHORT")
+    draw_target_ref_short  := f_target_ref("SHORT", draw_entry_short)
+    draw_risk_short        := math.abs(draw_entry_short - sweep_ext_short)
+    // Compute final TP and optional partial TP1
+    draw_tp1_short   := use_partial ? f_compute_tp("SHORT", draw_target_ref_short, draw_risk_short, tp1_mode, tp1_rr, tp1_proj, cisd_short_lvl, _cisd_series_range) : na
+    // Clean up own CISD preview
+    line.delete(cisd_prev_short)
+    cisd_prev_short := na
+    label.delete(cisd_prev_lbl_short)
+    cisd_prev_lbl_short := na
+    // Clean up opposite side's pending drawings
+    if not alerted_long
+        line.delete(sweep_line_long)
+        sweep_line_long := na
+        label.delete(sweep_lbl_long)
+        sweep_lbl_long := na
+        line.delete(cisd_prev_long)
+        cisd_prev_long := na
+        label.delete(cisd_prev_lbl_long)
+        cisd_prev_lbl_long := na
+    if not na(sweep_line_short)
+        line.delete(sweep_line_short)
+        sweep_line_short := na
+    if not na(sweep_lbl_short)
+        label.delete(sweep_lbl_short)
+        sweep_lbl_short := na
+    _ent_S     = draw_entry_short
+    _tp_S      = f_compute_tp("SHORT", draw_target_ref_short, draw_risk_short, tp_mode, rr_ratio, tp_proj, cisd_short_lvl, _cisd_series_range)
+    _n_short   = draw_risk_short > 0 ? math.floor(risk_usd / (draw_risk_short * point_value_usd)) : 0
+    _n_tp1_S   = use_partial ? f_partial_contracts(_n_short, partial_pct) : 0
+    alert('{"v":2,"id":"FS-' + syminfo.ticker + '-' + str.tostring(time) + '-SHORT",' +
+          '"source":"fractal_sweep","ticker":"' + syminfo.ticker + '",' +
+          '"combo":"' + combo + '","direction":"SHORT",' +
+          '"entry":' + str.tostring(_ent_S, "#.########") + ',' +
+          '"sl":' + str.tostring(sweep_ext_short, "#.########") + ',' +
+          '"tp":' + str.tostring(_tp_S, "#.########") + ',' +
+          (use_partial ? '"tp1":' + str.tostring(draw_tp1_short, "#.########") + ',' +
+           '"tp1_contracts":' + str.tostring(_n_tp1_S) + ',' : '') +
+          '"risk_pts":' + str.tostring(draw_risk_short, "#.##") + ',' +
+          '"contracts":' + str.tostring(_n_short) + ',' +
+          '"smt":' + (smt_short ? "true" : "false") + ',' +
+          '"fired_at_ms":' + str.tostring(timenow) + '}',
+          alert.freq_once_per_bar_close)
+
+// ── DRAW: LONG — runs on bar after FIRE; entry = open of this bar ─────────────
+// Gate on draw_long[1]: FIRE on bar N flags the state, DRAW runs on bar N+1
+// so `open` here is the real next-bar open (matches backtest entry semantics).
+if draw_long[1]
+    draw_long := false
+    _snap_lines  := array.size(fired_lines)
+    _snap_labels := array.size(fired_labels)
+    _snap_boxes  := array.size(fired_boxes)
+    entry = entry_mode == "Market" ? open : draw_entry_long
+    sl    = sl_mode == "CISD Level" ? draw_cisd_lvl_long : draw_sweep_ext_long
+    risk  = draw_risk_long
+    tp    = f_compute_tp("LONG", draw_target_ref_long, risk, tp_mode, rr_ratio, tp_proj, draw_cisd_lvl_long, _cisd_series_range)
+    tp1   = use_partial ? f_compute_tp("LONG", draw_target_ref_long, risk, tp1_mode, tp1_rr, tp1_proj, draw_cisd_lvl_long, _cisd_series_range) : na
+    r_end = bar_index + rr_extend
+    _filled_long = entry_mode == "Market" or low <= entry
+    _cisd_ln_L = line.new(draw_cisd_bar_long, draw_cisd_lvl_long, r_end, draw_cisd_lvl_long, color=c_cisd, width=2, style=line.style_solid)
+    f_reg_line(_cisd_ln_L)
+    cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : draw_cisd_bar_long
+    _cisd_lbl_draw_L = label.new(cisd_x, draw_cisd_lvl_long, cisd_text + " " + cisd_tf_lbl, color=color.new(c_cisd, 100), textcolor=c_cisd, style=cisd_lbl_style, size=size.small)
+    f_reg_label(_cisd_lbl_draw_L)
+    _sweep_ln_L = line.new(draw_anc_lo_bar, draw_anc_lo, r_end, draw_anc_lo, color=c_sweep, width=2, style=line.style_solid)
+    f_reg_line(_sweep_ln_L)
+    sweep_x = sweep_lbl_pos == "Right" ? r_end : draw_anc_lo_bar
+    _sweep_lbl_draw_L = label.new(sweep_x, draw_anc_lo, sweep_text + " " + sweep_tf_lbl, color=color.new(c_sweep, 100), textcolor=c_sweep, style=sweep_lbl_style, size=size.small)
+    f_reg_label(_sweep_lbl_draw_L)
+    // R:R trade setup drawings — gated by Show Trade Setup and entry fill
+    if show_trade_setup and _filled_long
+        _sl_ln_L    = line.new(draw_sl_anchor_long, sl, r_end, sl, color=c_sl, width=2, style=sweep_lstyle)
+        _risk_box_L = box.new(bar_index, entry, r_end, sl,  border_color=rr_risk_border, bgcolor=rr_risk_col)
+        _rew_box_L  = box.new(bar_index, tp,    r_end, entry, border_color=rr_rew_border,  bgcolor=rr_rew_col)
+        _entry_ln_L = line.new(bar_index, entry, r_end, entry, color=rr_entry_col, width=1, style=line.style_solid)
+        _contracts_L = risk > 0 ? math.floor(risk_usd / (risk * point_value_usd)) : 0
+        _tp_lbl = "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R"
+        // Pills are invisible when show_rr_pills=false — still created so the
+        // truncate/resolve paths can set_x on them without na guards.
+        _pill_bg_tp  = show_rr_pills ? rr_lbl_tp_col : color.new(color.black, 100)
+        _pill_bg_sl  = show_rr_pills ? rr_lbl_sl_col : color.new(color.black, 100)
+        _pill_bg_en  = show_rr_pills ? rr_lbl_en_col : color.new(color.black, 100)
+        _pill_fg     = show_rr_pills ? c_rr_lbl_text : color.new(color.black, 100)
+        _tp_lbl_L    = label.new(bar_index + rr_lbl_x, tp, _tp_lbl, color=_pill_bg_tp, textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
+        _entry_lbl_L = label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=_pill_bg_en, textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
+        _sl_lbl_L    = label.new(bar_index + rr_lbl_x, sl,    "SL  -" + str.tostring(risk, "#.##") + " pts", color=_pill_bg_sl, textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
+        // Contract size badge — compact, centered above the R:R box.
+        if show_size_badge
+            f_reg_label(label.new(math.round((bar_index + r_end) / 2), math.max(tp, sl), str.tostring(_contracts_L) + " contracts", color=c_size_bg, textcolor=c_rr_lbl_text, style=label.style_label_down, size=size.small, tooltip="Recommended contracts to keep dollar risk at $" + str.tostring(risk_usd, "#") + " given SL distance"))
+        // Partial TP1 line and badge
+        if use_partial and not na(tp1) and tp1 > entry and tp1 < tp
+            _tp1_n    = f_partial_contracts(_contracts_L, partial_pct)
+            _tp1_ln_L = line.new(bar_index, tp1, r_end, tp1, color=color.new(c_tp, 60), width=2, style=line.style_dashed)
+            f_reg_line(_tp1_ln_L)
+            _tp1_lbl_L = label.new(bar_index + rr_lbl_x, tp1, "TP1  +" + str.tostring(tp1 - entry, "#.##") + " pts  " + str.tostring(_tp1_n) + " ct", color=show_rr_pills ? rr_lbl_tp_col : color.new(color.black, 100), textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
+            f_reg_label(_tp1_lbl_L)
+            if truncate_on_hit
+                array.push(active_tp1, tp1)
+                array.push(active_tp1_ln, _tp1_ln_L)
+                array.push(active_tp1_lbl, _tp1_lbl_L)
+                array.push(active_tp1_n, _tp1_n)
+        f_reg_line(_sl_ln_L)
+        f_reg_box(_risk_box_L)
+        f_reg_box(_rew_box_L)
+        f_reg_line(_entry_ln_L)
+        f_reg_label(_tp_lbl_L)
+        f_reg_label(_entry_lbl_L)
+        f_reg_label(_sl_lbl_L)
+        // Track for TP/SL truncation — only if entry was actually filled
+        if truncate_on_hit and _filled_long
+            array.push(active_dir, 1)
+            array.push(active_tp, tp)
+            array.push(active_sl, sl)
+            array.push(active_entry, entry)
+            array.push(active_risk_box, _risk_box_L)
+            array.push(active_reward_box, _rew_box_L)
+            array.push(active_entry_ln, _entry_ln_L)
+            array.push(active_sl_ln, _sl_ln_L)
+            array.push(active_tp_lbl, _tp_lbl_L)
+            array.push(active_sl_lbl, _sl_lbl_L)
+            array.push(active_entry_lbl, _entry_lbl_L)
+            array.push(active_cisd_ln, _cisd_ln_L)
+            array.push(active_sweep_ln, _sweep_ln_L)
+            array.push(active_cisd_lbl, _cisd_lbl_draw_L)
+            array.push(active_sweep_lbl, _sweep_lbl_draw_L)
+            array.push(active_entry_bar, bar_index)
+    // Only record extras + setup counts if filled — unfilled setups bypass scoreboard
+    _ex_ln_start  = array.size(active_extra_lines)
+    _ex_lbl_start = array.size(active_extra_labels)
+    _ex_bx_start  = array.size(active_extra_boxes)
+    if show_trade_setup and show_midlines and risk > 0
+        _be_level      = entry - risk * 0.5
+        _partial_level = entry + risk * 0.5
+        _mid_col = color.new(c_mid, 30)
+        f_reg_line_active(line.new(bar_index, _be_level,      r_end, _be_level,      color=_mid_col, width=1, style=line.style_dashed))
+        f_reg_line_active(line.new(bar_index, _partial_level, r_end, _partial_level, color=_mid_col, width=1, style=line.style_dashed))
+        f_reg_label_active(label.new(bar_index + rr_lbl_x, _be_level,      "Move to BE", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
+        f_reg_label_active(label.new(bar_index + rr_lbl_x, _partial_level, "Take Partial", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
+    if show_tspot and not na(draw_sweep_logmid_long) and not na(draw_sweep_close_long)
+        tspot_top  = math.max(draw_sweep_logmid_long, draw_sweep_close_long)
+        tspot_bot  = math.min(draw_sweep_logmid_long, draw_sweep_close_long)
+        sb = not na(draw_sweep_bar_long) ? draw_sweep_bar_long : bar_index
+        f_reg_box_active(box.new(sb, tspot_top, r_end, tspot_bot, bgcolor=color.new(c_tspot, tspot_transp), border_color=color.new(c_tspot, tspot_transp + 5)))
+        f_reg_line_active(line.new(sb, draw_sweep_logmid_long, r_end, draw_sweep_logmid_long, color=c_tspot, width=1, style=line.style_dotted))
+    if show_c_labels
+        f_reg_label(label.new(draw_anc_lo_bar, draw_anc_lo, "C2", color=color.new(c_tspot, 100), textcolor=c_tspot, style=label.style_label_up, size=size.small))
+        f_reg_label(label.new(bar_index, draw_cisd_lvl_long, "C3", color=color.new(c_tspot, 100), textcolor=c_tspot, style=label.style_label_up, size=size.small))
+    if show_tspot_type and not na(draw_sweep_pct_long)
+        ttype = draw_sweep_pct_long < 0.30 ? "ProTrend" : draw_sweep_pct_long < 0.80 ? "Normal" : "Expansive"
+        f_reg_label(label.new(bar_index, tp, ttype + " LONG", color=color.new(c_tspot, 100), textcolor=c_tspot, style=label.style_label_down, size=size.tiny))
+    if show_proj and draw_cisd_long_off > 0
+        series_hi = high[draw_cisd_long_off + 1]
+        series_lo = low[draw_cisd_long_off + 1]
+        for k = 1 to draw_cisd_long_off
+            if close[draw_cisd_long_off + 1 - k] < open[draw_cisd_long_off + 1 - k]
+                series_hi := math.max(series_hi, high[draw_cisd_long_off + 1 - k])
+                series_lo := math.min(series_lo, low[draw_cisd_long_off + 1 - k])
+            else
+                break
+        s_range = series_hi - series_lo
+        if s_range > 0
+            levels = str.split(proj_levels_str, ",")
+            for i = 0 to array.size(levels) - 1
+                lv_str = str.trim(array.get(levels, i))
+                if lv_str != ""
+                    lv = str.tonumber(lv_str)
+                    if not na(lv)
+                        proj_price = draw_cisd_lvl_long + s_range * lv
+                        f_reg_line_active(line.new(bar_index, proj_price, r_end, proj_price, color=proj_color, width=1, style=line.style_dotted))
+                        f_reg_label_active(label.new(r_end, proj_price, str.tostring(lv), color=color.new(proj_color, 100), textcolor=proj_color, style=label.style_label_left, size=size.tiny))
+    if show_smt
+        if draw_smt_long
+            f_reg_label(label.new(bar_index, sl - (entry - sl) * 0.15, "SMT", color=color.new(color.green, 10), textcolor=c_rr_lbl_text, style=label.style_label_up, size=size.small))
+        else
+            f_reg_label(label.new(bar_index, sl - (entry - sl) * 0.15, "NO SMT", color=color.new(color.gray, 40), textcolor=c_rr_lbl_text, style=label.style_label_up, size=size.small))
+    // Record how many extras this setup owns so resolution can truncate them
+    if truncate_on_hit and _filled_short
+        array.push(active_extra_ln_count,  array.size(active_extra_lines)  - _ex_ln_start)
+        array.push(active_extra_lbl_count, array.size(active_extra_labels) - _ex_lbl_start)
+        array.push(active_extra_bx_count,  array.size(active_extra_boxes)  - _ex_bx_start)
+    if _filled_short
+        array.push(setup_line_counts,  array.size(fired_lines)  - _snap_lines)
+        array.push(setup_label_counts, array.size(fired_labels) - _snap_labels)
+        array.push(setup_box_counts,   array.size(fired_boxes)  - _snap_boxes)
+        array.push(setup_entry_bars,   bar_index)
+    while array.size(setup_line_counts) > max_setups
+        _nl = array.shift(setup_line_counts)
+        _nb = array.shift(setup_label_counts)
+        _nx = array.shift(setup_box_counts)
+        _pruned_bar = array.size(setup_entry_bars) > 0 ? array.shift(setup_entry_bars) : -1
+        if _pruned_bar >= 0 and array.size(outcome_parent_bar) > 0
+            _oi = 0
+            while _oi < array.size(outcome_parent_bar)
+                if array.get(outcome_parent_bar, _oi) == _pruned_bar
+                    label.delete(array.remove(outcome_markers, _oi))
+                    array.remove(outcome_parent_bar, _oi)
+                else
+                    _oi += 1
+        if _nl > 0
+            for _i = 1 to _nl
+                if array.size(fired_lines) > 0
+                    line.delete(array.shift(fired_lines))
+        if _nb > 0
+            for _i = 1 to _nb
+                if array.size(fired_labels) > 0
+                    label.delete(array.shift(fired_labels))
+        if _nx > 0
+            for _i = 1 to _nx
+                if array.size(fired_boxes) > 0
+                    box.delete(array.shift(fired_boxes))
+
+// ── DRAW: SHORT — runs on bar after FIRE; entry = open of this bar ────────────
+// Gate on draw_short[1]: FIRE on bar N flags the state, DRAW runs on bar N+1
+// so `open` here is the real next-bar open (matches backtest entry semantics).
+if draw_short[1]
+    draw_short := false
+    _snap_lines  := array.size(fired_lines)
+    _snap_labels := array.size(fired_labels)
+    _snap_boxes  := array.size(fired_boxes)
+    entry = entry_mode == "Market" ? open : draw_entry_short
+    sl    = sl_mode == "CISD Level" ? draw_cisd_lvl_short : draw_sweep_ext_short
+    risk  = draw_risk_short
+    tp    = f_compute_tp("SHORT", draw_target_ref_short, risk, tp_mode, rr_ratio, tp_proj, draw_cisd_lvl_short, _cisd_series_range)
+    tp1   = use_partial ? f_compute_tp("SHORT", draw_target_ref_short, risk, tp1_mode, tp1_rr, tp1_proj, draw_cisd_lvl_short, _cisd_series_range) : na
+    r_end = bar_index + rr_extend
+    _filled_short = entry_mode == "Market" or high >= entry
+    _cisd_ln_S = line.new(draw_cisd_bar_short, draw_cisd_lvl_short, r_end, draw_cisd_lvl_short, color=c_cisd, width=2, style=line.style_solid)
+    f_reg_line(_cisd_ln_S)
+    cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : draw_cisd_bar_short
+    _cisd_lbl_draw_S = label.new(cisd_x, draw_cisd_lvl_short, cisd_text + " " + cisd_tf_lbl, color=color.new(c_cisd, 100), textcolor=c_cisd, style=cisd_lbl_style, size=size.small)
+    f_reg_label(_cisd_lbl_draw_S)
+    _sweep_ln_S = line.new(draw_anc_hi_bar, draw_anc_hi, r_end, draw_anc_hi, color=c_sweep, width=2, style=line.style_solid)
+    f_reg_line(_sweep_ln_S)
+    sweep_x = sweep_lbl_pos == "Right" ? r_end : draw_anc_hi_bar
+    _sweep_lbl_draw_S = label.new(sweep_x, draw_anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(c_sweep, 100), textcolor=c_sweep, style=sweep_lbl_style, size=size.small)
+    f_reg_label(_sweep_lbl_draw_S)
+    // R:R trade setup drawings — gated by Show Trade Setup and entry fill
+    if show_trade_setup and _filled_short
+        _sl_ln_S    = line.new(draw_sl_anchor_short, sl, r_end, sl, color=c_sl, width=2, style=sweep_lstyle)
+        _risk_box_S = box.new(bar_index, sl,    r_end, entry, border_color=rr_risk_border, bgcolor=rr_risk_col)
+        _rew_box_S  = box.new(bar_index, entry, r_end, tp,    border_color=rr_rew_border,  bgcolor=rr_rew_col)
+        _entry_ln_S = line.new(bar_index, entry, r_end, entry, color=rr_entry_col, width=1, style=line.style_solid)
+        _contracts_S = risk > 0 ? math.floor(risk_usd / (risk * point_value_usd)) : 0
+        _tp_lbl = "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R"
+        _pill_bg_tp  = show_rr_pills ? rr_lbl_tp_col : color.new(color.black, 100)
+        _pill_bg_sl  = show_rr_pills ? rr_lbl_sl_col : color.new(color.black, 100)
+        _pill_bg_en  = show_rr_pills ? rr_lbl_en_col : color.new(color.black, 100)
+        _pill_fg     = show_rr_pills ? c_rr_lbl_text : color.new(color.black, 100)
+        _tp_lbl_S    = label.new(bar_index + rr_lbl_x, tp, _tp_lbl, color=_pill_bg_tp, textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
+        _entry_lbl_S = label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=_pill_bg_en, textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
+        _sl_lbl_S    = label.new(bar_index + rr_lbl_x, sl,    "SL  -" + str.tostring(risk, "#.##") + " pts", color=_pill_bg_sl, textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
+        // Contract size badge — compact, centered above the R:R box.
+        if show_size_badge
+            f_reg_label(label.new(math.round((bar_index + r_end) / 2), math.max(sl, tp), str.tostring(_contracts_S) + " contracts", color=c_size_bg, textcolor=c_rr_lbl_text, style=label.style_label_down, size=size.small, tooltip="Recommended contracts to keep dollar risk at $" + str.tostring(risk_usd, "#") + " given SL distance"))
+        // Partial TP1 line and badge (SHORT)
+        if use_partial and not na(tp1) and tp1 < entry and tp1 > tp
+            _tp1_n    = f_partial_contracts(_contracts_S, partial_pct)
+            _tp1_ln_S = line.new(bar_index, tp1, r_end, tp1, color=color.new(c_tp, 60), width=2, style=line.style_dashed)
+            f_reg_line(_tp1_ln_S)
+            _tp1_lbl_S = label.new(bar_index + rr_lbl_x, tp1, "TP1  +" + str.tostring(entry - tp1, "#.##") + " pts  " + str.tostring(_tp1_n) + " ct", color=show_rr_pills ? rr_lbl_tp_col : color.new(color.black, 100), textcolor=_pill_fg, style=rr_lbl_style, size=size.small)
+            f_reg_label(_tp1_lbl_S)
+            if truncate_on_hit
+                array.push(active_tp1, tp1)
+                array.push(active_tp1_ln, _tp1_ln_S)
+                array.push(active_tp1_lbl, _tp1_lbl_S)
+                array.push(active_tp1_n, _tp1_n)
+        f_reg_line(_sl_ln_S)
+        f_reg_box(_risk_box_S)
+        f_reg_box(_rew_box_S)
+        f_reg_line(_entry_ln_S)
+        f_reg_label(_tp_lbl_S)
+        f_reg_label(_entry_lbl_S)
+        f_reg_label(_sl_lbl_S)
+        // Track for TP/SL truncation — only if entry was actually filled
+        if truncate_on_hit and _filled_short
+            array.push(active_dir, -1)
+            array.push(active_tp, tp)
+            array.push(active_sl, sl)
+            array.push(active_entry, entry)
+            array.push(active_risk_box, _risk_box_S)
+            array.push(active_reward_box, _rew_box_S)
+            array.push(active_entry_ln, _entry_ln_S)
+            array.push(active_sl_ln, _sl_ln_S)
+            array.push(active_tp_lbl, _tp_lbl_S)
+            array.push(active_sl_lbl, _sl_lbl_S)
+            array.push(active_entry_lbl, _entry_lbl_S)
+            array.push(active_cisd_ln, _cisd_ln_S)
+            array.push(active_sweep_ln, _sweep_ln_S)
+            array.push(active_cisd_lbl, _cisd_lbl_draw_S)
+            array.push(active_sweep_lbl, _sweep_lbl_draw_S)
+            array.push(active_entry_bar, bar_index)
+    _ex_ln_start  = array.size(active_extra_lines)
+    _ex_lbl_start = array.size(active_extra_labels)
+    _ex_bx_start  = array.size(active_extra_boxes)
+    if show_trade_setup and show_midlines and risk > 0
+        _be_level      = entry + risk * 0.5
+        _partial_level = entry - risk * 0.5
+        _mid_col = color.new(c_mid, 30)
+        f_reg_line_active(line.new(bar_index, _be_level,      r_end, _be_level,      color=_mid_col, width=1, style=line.style_dashed))
+        f_reg_line_active(line.new(bar_index, _partial_level, r_end, _partial_level, color=_mid_col, width=1, style=line.style_dashed))
+        f_reg_label_active(label.new(bar_index + rr_lbl_x, _be_level,      "Move to BE", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
+        f_reg_label_active(label.new(bar_index + rr_lbl_x, _partial_level, "Take Partial", color=color.new(_mid_col, 100), textcolor=_mid_col, style=rr_lbl_style, size=size.tiny))
+    if show_tspot and not na(draw_sweep_logmid_short) and not na(draw_sweep_close_short)
+        tspot_top  = math.max(draw_sweep_logmid_short, draw_sweep_close_short)
+        tspot_bot  = math.min(draw_sweep_logmid_short, draw_sweep_close_short)
+        sb = not na(draw_sweep_bar_short) ? draw_sweep_bar_short : bar_index
+        f_reg_box_active(box.new(sb, tspot_top, r_end, tspot_bot, bgcolor=color.new(c_tspot, tspot_transp), border_color=color.new(c_tspot, tspot_transp + 5)))
+        f_reg_line_active(line.new(sb, draw_sweep_logmid_short, r_end, draw_sweep_logmid_short, color=c_tspot, width=1, style=line.style_dotted))
+    if show_c_labels
+        f_reg_label(label.new(draw_anc_hi_bar, draw_anc_hi, "C2", color=color.new(c_tspot, 100), textcolor=c_tspot, style=label.style_label_down, size=size.small))
+        f_reg_label(label.new(bar_index, draw_cisd_lvl_short, "C3", color=color.new(c_tspot, 100), textcolor=c_tspot, style=label.style_label_down, size=size.small))
+    if show_tspot_type and not na(draw_sweep_pct_short)
+        ttype = draw_sweep_pct_short < 0.30 ? "ProTrend" : draw_sweep_pct_short < 0.80 ? "Normal" : "Expansive"
+        f_reg_label(label.new(bar_index, tp, ttype + " SHORT", color=color.new(c_tspot, 100), textcolor=c_tspot, style=label.style_label_up, size=size.tiny))
+    if show_proj and draw_cisd_short_off > 0
+        series_hi = high[draw_cisd_short_off + 1]
+        series_lo = low[draw_cisd_short_off + 1]
+        for k = 1 to draw_cisd_short_off
+            if close[draw_cisd_short_off + 1 - k] > open[draw_cisd_short_off + 1 - k]
+                series_hi := math.max(series_hi, high[draw_cisd_short_off + 1 - k])
+                series_lo := math.min(series_lo, low[draw_cisd_short_off + 1 - k])
+            else
+                break
+        s_range = series_hi - series_lo
+        if s_range > 0
+            levels = str.split(proj_levels_str, ",")
+            for i = 0 to array.size(levels) - 1
+                lv_str = str.trim(array.get(levels, i))
+                if lv_str != ""
+                    lv = str.tonumber(lv_str)
+                    if not na(lv)
+                        proj_price = draw_cisd_lvl_short - s_range * lv
+                        f_reg_line_active(line.new(bar_index, proj_price, r_end, proj_price, color=proj_color, width=1, style=line.style_dotted))
+                        f_reg_label_active(label.new(r_end, proj_price, str.tostring(lv), color=color.new(proj_color, 100), textcolor=proj_color, style=label.style_label_left, size=size.tiny))
+    if show_smt
+        if draw_smt_short
+            f_reg_label(label.new(bar_index, sl + (sl - entry) * 0.15, "SMT", color=color.new(color.red, 10), textcolor=c_rr_lbl_text, style=label.style_label_down, size=size.small))
+        else
+            f_reg_label(label.new(bar_index, sl + (sl - entry) * 0.15, "NO SMT", color=color.new(color.gray, 40), textcolor=c_rr_lbl_text, style=label.style_label_down, size=size.small))
+    if truncate_on_hit
+        array.push(active_extra_ln_count,  array.size(active_extra_lines)  - _ex_ln_start)
+        array.push(active_extra_lbl_count, array.size(active_extra_labels) - _ex_lbl_start)
+        array.push(active_extra_bx_count,  array.size(active_extra_boxes)  - _ex_bx_start)
+    array.push(setup_line_counts,  array.size(fired_lines)  - _snap_lines)
+    array.push(setup_label_counts, array.size(fired_labels) - _snap_labels)
+    array.push(setup_box_counts,   array.size(fired_boxes)  - _snap_boxes)
+    array.push(setup_entry_bars,   bar_index)
+    while array.size(setup_line_counts) > max_setups
+        _nl = array.shift(setup_line_counts)
+        _nb = array.shift(setup_label_counts)
+        _nx = array.shift(setup_box_counts)
+        _pruned_bar = array.size(setup_entry_bars) > 0 ? array.shift(setup_entry_bars) : -1
+        if _pruned_bar >= 0 and array.size(outcome_parent_bar) > 0
+            _oi = 0
+            while _oi < array.size(outcome_parent_bar)
+                if array.get(outcome_parent_bar, _oi) == _pruned_bar
+                    label.delete(array.remove(outcome_markers, _oi))
+                    array.remove(outcome_parent_bar, _oi)
+                else
+                    _oi += 1
+        if _nl > 0
+            for _i = 1 to _nl
+                if array.size(fired_lines) > 0
+                    line.delete(array.shift(fired_lines))
+        if _nb > 0
+            for _i = 1 to _nb
+                if array.size(fired_labels) > 0
+                    label.delete(array.shift(fired_labels))
+        if _nx > 0
+            for _i = 1 to _nx
+                if array.size(fired_boxes) > 0
+                    box.delete(array.shift(fired_boxes))
+
+// ── FIRE: OVER-RISK LONG ─────────────────────────────────────────────────────
+// Setup is valid but risk exceeds max_risk — drawn muted (gray, dashed, no R:R box)
+if long_over
+    alerted_long := true
+    setups_today    += 1
+    setups_all_time += 1
+    line.delete(cisd_prev_long)
+    cisd_prev_long := na
+    label.delete(cisd_prev_lbl_long)
+    cisd_prev_lbl_long := na
+    if not alerted_short
+        line.delete(sweep_line_short)
+        sweep_line_short := na
+        label.delete(sweep_lbl_short)
+        sweep_lbl_short := na
+        line.delete(cisd_prev_short)
+        cisd_prev_short := na
+        label.delete(cisd_prev_lbl_short)
+        cisd_prev_lbl_short := na
+    _snap_lines  := array.size(fired_lines)
+    _snap_labels := array.size(fired_labels)
+    _snap_boxes  := array.size(fired_boxes)
+    entry = close
+    sl    = sweep_ext_long
+    risk  = entry - sl
+    tp    = entry + risk * rr_ratio
+    r_end = bar_index + rr_extend
+    _ov_col  = color.new(c_overrisk, 30)
+    cisd_bar = bar_index - cisd_long_off
+    if not na(sweep_line_long)
+        line.delete(sweep_line_long)
+    if not na(sweep_lbl_long)
+        label.delete(sweep_lbl_long)
+    f_reg_line(line.new(anc_lo_bar, anc_lo, r_end, anc_lo, color=_ov_col, width=1, style=line.style_dashed))
+    sweep_x = sweep_lbl_pos == "Right" ? r_end : anc_lo_bar
+    f_reg_label(label.new(sweep_x, anc_lo, sweep_text + " " + sweep_tf_lbl, color=color.new(c_overrisk, 100), textcolor=_ov_col, style=sweep_lbl_style, size=size.small))
+    f_reg_line(line.new(cisd_bar, cisd_long_lvl, r_end, cisd_long_lvl, color=_ov_col, width=1, style=line.style_dashed))
+    cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : cisd_bar
+    f_reg_label(label.new(cisd_x, cisd_long_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(c_overrisk, 100), textcolor=_ov_col, style=cisd_lbl_style, size=size.small))
+    sl_anchor = not na(sweep_bar_long) ? sweep_bar_long : bar_index
+    // R:R trade setup drawings — gated by Show Trade Setup
+    if show_trade_setup
+        f_reg_line(line.new(sl_anchor, sl, r_end, sl, color=_ov_col, width=1, style=line.style_dashed))
+        f_reg_line(line.new(bar_index, entry, r_end, entry, color=_ov_col, width=1, style=line.style_dashed))
+        f_reg_box(box.new(bar_index, entry, r_end, sl, border_color=color.new(c_sl, 60), bgcolor=color.new(c_sl, 92)))
+        f_reg_box(box.new(bar_index, tp, r_end, entry, border_color=color.new(c_tp, 60), bgcolor=color.new(c_tp, 92)))
+        if show_rr_pills
+            f_reg_label(label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=color.new(c_overrisk, 40), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
+            f_reg_label(label.new(bar_index + rr_lbl_x, sl, "SL  -" + str.tostring(risk, "#.##") + " pts", color=color.new(c_sl, 30), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
+            f_reg_label(label.new(bar_index + rr_lbl_x, tp, "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=color.new(c_tp, 30), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
+        f_reg_label(label.new(bar_index, tp + (tp - entry) * 0.1, "OVER RISK  " + str.tostring(risk, "#.#") + " pts", color=color.new(c_overrisk, 10), textcolor=color.white, style=label.style_label_down, size=size.small))
+    array.push(setup_line_counts,  array.size(fired_lines)  - _snap_lines)
+    array.push(setup_label_counts, array.size(fired_labels) - _snap_labels)
+    array.push(setup_box_counts,   array.size(fired_boxes)  - _snap_boxes)
+    array.push(setup_entry_bars,   bar_index)
+    while array.size(setup_line_counts) > max_setups
+        _nl = array.shift(setup_line_counts)
+        _nb = array.shift(setup_label_counts)
+        _nx = array.shift(setup_box_counts)
+        _pruned_bar = array.size(setup_entry_bars) > 0 ? array.shift(setup_entry_bars) : -1
+        if _pruned_bar >= 0 and array.size(outcome_parent_bar) > 0
+            _oi = 0
+            while _oi < array.size(outcome_parent_bar)
+                if array.get(outcome_parent_bar, _oi) == _pruned_bar
+                    label.delete(array.remove(outcome_markers, _oi))
+                    array.remove(outcome_parent_bar, _oi)
+                else
+                    _oi += 1
+        if _nl > 0
+            for _i = 1 to _nl
+                if array.size(fired_lines) > 0
+                    line.delete(array.shift(fired_lines))
+        if _nb > 0
+            for _i = 1 to _nb
+                if array.size(fired_labels) > 0
+                    label.delete(array.shift(fired_labels))
+        if _nx > 0
+            for _i = 1 to _nx
+                if array.size(fired_boxes) > 0
+                    box.delete(array.shift(fired_boxes))
+
+// ── FIRE: OVER-RISK SHORT ────────────────────────────────────────────────────
+if short_over
+    alerted_short := true
+    setups_today    += 1
+    setups_all_time += 1
+    line.delete(cisd_prev_short)
+    cisd_prev_short := na
+    label.delete(cisd_prev_lbl_short)
+    cisd_prev_lbl_short := na
+    if not alerted_long
+        line.delete(sweep_line_long)
+        sweep_line_long := na
+        label.delete(sweep_lbl_long)
+        sweep_lbl_long := na
+        line.delete(cisd_prev_long)
+        cisd_prev_long := na
+        label.delete(cisd_prev_lbl_long)
+        cisd_prev_lbl_long := na
+    _snap_lines  := array.size(fired_lines)
+    _snap_labels := array.size(fired_labels)
+    _snap_boxes  := array.size(fired_boxes)
+    entry = close
+    sl    = sweep_ext_short
+    risk  = sl - entry
+    tp    = entry - risk * rr_ratio
+    r_end = bar_index + rr_extend
+    _ov_col  = color.new(c_overrisk, 30)
+    cisd_bar = bar_index - cisd_short_off
+    if not na(sweep_line_short)
+        line.delete(sweep_line_short)
+    if not na(sweep_lbl_short)
+        label.delete(sweep_lbl_short)
+    f_reg_line(line.new(anc_hi_bar, anc_hi, r_end, anc_hi, color=_ov_col, width=1, style=line.style_dashed))
+    sweep_x = sweep_lbl_pos == "Right" ? r_end : anc_hi_bar
+    f_reg_label(label.new(sweep_x, anc_hi, sweep_text + " " + sweep_tf_lbl, color=color.new(c_overrisk, 100), textcolor=_ov_col, style=sweep_lbl_style, size=size.small))
+    f_reg_line(line.new(cisd_bar, cisd_short_lvl, r_end, cisd_short_lvl, color=_ov_col, width=1, style=line.style_dashed))
+    cisd_x = cisd_lbl_pos == "Right" ? bar_index + rr_extend : cisd_bar
+    f_reg_label(label.new(cisd_x, cisd_short_lvl, cisd_text + " " + cisd_tf_lbl, color=color.new(c_overrisk, 100), textcolor=_ov_col, style=cisd_lbl_style, size=size.small))
+    sl_anchor = not na(sweep_bar_short) ? sweep_bar_short : bar_index
+    // R:R trade setup drawings — gated by Show Trade Setup
+    if show_trade_setup
+        f_reg_line(line.new(sl_anchor, sl, r_end, sl, color=_ov_col, width=1, style=line.style_dashed))
+        f_reg_line(line.new(bar_index, entry, r_end, entry, color=_ov_col, width=1, style=line.style_dashed))
+        f_reg_box(box.new(bar_index, sl, r_end, entry, border_color=color.new(c_sl, 60), bgcolor=color.new(c_sl, 92)))
+        f_reg_box(box.new(bar_index, entry, r_end, tp, border_color=color.new(c_tp, 60), bgcolor=color.new(c_tp, 92)))
+        if show_rr_pills
+            f_reg_label(label.new(bar_index + rr_lbl_x, entry, "Entry  " + str.tostring(entry, "#.##"), color=color.new(c_overrisk, 40), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
+            f_reg_label(label.new(bar_index + rr_lbl_x, sl, "SL  -" + str.tostring(risk, "#.##") + " pts", color=color.new(c_sl, 30), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
+            f_reg_label(label.new(bar_index + rr_lbl_x, tp, "TP  +" + str.tostring(risk * rr_ratio, "#.##") + " pts  " + str.tostring(rr_ratio, "#.#") + "R", color=color.new(c_tp, 30), textcolor=c_rr_lbl_text, style=rr_lbl_style, size=size.small))
+        f_reg_label(label.new(bar_index, tp - (entry - tp) * 0.1, "OVER RISK  " + str.tostring(risk, "#.#") + " pts", color=color.new(c_overrisk, 10), textcolor=color.white, style=label.style_label_up, size=size.small))
+    array.push(setup_line_counts,  array.size(fired_lines)  - _snap_lines)
+    array.push(setup_label_counts, array.size(fired_labels) - _snap_labels)
+    array.push(setup_box_counts,   array.size(fired_boxes)  - _snap_boxes)
+    array.push(setup_entry_bars,   bar_index)
+    while array.size(setup_line_counts) > max_setups
+        _nl = array.shift(setup_line_counts)
+        _nb = array.shift(setup_label_counts)
+        _nx = array.shift(setup_box_counts)
+        _pruned_bar = array.size(setup_entry_bars) > 0 ? array.shift(setup_entry_bars) : -1
+        if _pruned_bar >= 0 and array.size(outcome_parent_bar) > 0
+            _oi = 0
+            while _oi < array.size(outcome_parent_bar)
+                if array.get(outcome_parent_bar, _oi) == _pruned_bar
+                    label.delete(array.remove(outcome_markers, _oi))
+                    array.remove(outcome_parent_bar, _oi)
+                else
+                    _oi += 1
+        if _nl > 0
+            for _i = 1 to _nl
+                if array.size(fired_lines) > 0
+                    line.delete(array.shift(fired_lines))
+        if _nb > 0
+            for _i = 1 to _nb
+                if array.size(fired_labels) > 0
+                    label.delete(array.shift(fired_labels))
+        if _nx > 0
+            for _i = 1 to _nx
+                if array.size(fired_boxes) > 0
+                    box.delete(array.shift(fired_boxes))
