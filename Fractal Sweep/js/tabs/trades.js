@@ -29,13 +29,13 @@ async function fetchTrades() {
 async function renderRecentTrades(page) {
   const el = document.getElementById('recent-trades-table');
   const pgEl = document.getElementById('recent-trades-pagination');
+  const titleEl = document.getElementById('trades-panel-title');
   if (!el) return;
 
   try {
     const rawTrades = await fetchTrades();
     if (!rawTrades || !rawTrades.length) {
       el.innerHTML = '<p style="color:var(--text-muted);font-size:13px;padding:8px 0;">No trades data. Run <code>python3 model_stats.py</code> to generate.</p>';
-      const titleEl = document.getElementById('trades-panel-title');
       if (titleEl) titleEl.textContent = 'Resolved Trades';
       if (pgEl) pgEl.style.display = 'none';
       return;
