@@ -170,13 +170,19 @@ function invalidateTradesCache(fullKey) {
 
 async function initProfileData() {
   const models = await loadModelList();
-  const fullKey = '1H_5M_PREV_CISD';
-  if (models.includes(fullKey)) {
-    await loadProfile(fullKey, 'simple_1r');
-    return true;
+  const preferredKey = '1H_5M_PREV_CISD';
+  const target = models.includes(preferredKey) ? preferredKey : (models.find(k => k !== '_meta') || preferredKey);
+  await loadProfile(target, 'simple_1r');
+  // Prime the trade cache for the initial period selection so getFilteredD
+  // and other consumers find trades immediately after initial render.
+  const initialTF = activeTF || 'all';
+  if (initialTF !== 'custom') {
+    try {
+      await loadTrades(target, 'simple_1r', initialTF);
+    } catch (e) {
+      console.warn('[sweep] initial loadTrades failed:', e);
+    }
   }
-  const firstModel = models.find(k => k !== '_meta') || fullKey;
-  await loadProfile(firstModel, 'simple_1r');
   return true;
 }
 

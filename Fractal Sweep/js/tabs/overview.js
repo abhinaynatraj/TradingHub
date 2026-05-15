@@ -1,7 +1,7 @@
 import { activeModel, activeMode, activeCisd, activeProfile, activeTF, activeSmt, activeF3, activeF4, MODEL_KEYS, MODEL_LABELS, RR_PROFILES, PROFILE_LABELS, PCT_PROFILES, SVG_FONT, isDark, activePageTab, setActiveModel, setActiveProfile, setActiveTF } from '../state.js';
 import { pct, evFmt, pfFmt, evCls, wrHeatClr, wrHeatTxt, fmtDateRange, _tradingDaysFromRange } from '../utils.js';
 import { C, lineChart, rDistChart, filterWaterfall, dirCards, drawSetupViz, _buildEquityPts, renderEquityCurveFS, renderOverviewEquityCurve } from '../charts.js';
-import { getProfileData, getActiveTFData, getFilteredD, getSmtD, getAvailableProfiles, loadProfile } from '../data.js';
+import { getProfileData, getActiveTFData, getFilteredD, getSmtD, getAvailableProfiles, loadProfile, loadTrades } from '../data.js';
 import { renderEdgeStudy } from './edge.js';
 import { renderFilterVariants, renderProfileComparison, renderVerdict } from '../verdict.js';
 import { renderMAEStudy, renderMFEStudy } from './excursion.js';
@@ -25,8 +25,12 @@ function renderProfileDropdown(){
 }
 async function switchProfile(pk){
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
-  // Ensure profile data is loaded from API
+  // Ensure profile data is loaded from API and trades cache is primed
+  // for the active period so getFilteredD finds them.
   await loadProfile(fullKey, pk);
+  if (activeTF !== 'custom') {
+    await loadTrades(fullKey, pk, activeTF || 'all');
+  }
   setActiveProfile(pk);
   updateProfileSelectorsFromKey(pk);
   window.render();
@@ -83,13 +87,21 @@ function updateProfileFromSelectors() {
   if (pk && pk !== activeProfile) switchProfile(pk);
 }
 
-function switchTF(tf){
+async function switchTF(tf){
   setActiveTF(tf);
   const builder = document.getElementById('custom-range-builder');
   if (builder) builder.style.display = tf === 'custom' ? '' : 'none';
   if (tf === 'custom') {
     if (customRanges.length === 0) addCustomRange();
     renderRangeSlots();
+  } else {
+    // Prime the trades cache for the new period so getFilteredD finds them.
+    const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
+    try {
+      await loadTrades(fullKey, activeProfile, tf);
+    } catch (e) {
+      console.warn('[sweep] loadTrades failed for', tf, e);
+    }
   }
   localStorage.setItem('fractal-active-tf', tf);
   window.renderActive();
