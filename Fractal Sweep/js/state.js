@@ -66,15 +66,43 @@ export function setActivePd(v) { activePd = v; }
 export function setActivePageTab(v) { activePageTab = v; }
 
 export const FILTER_STORAGE_KEY = 'fractal-filters-v1';
-export const RR_PROFILES = ['simple_1r', 'simple_1r5', 'simple_2r', 'ob_1r', 'ob_1r5', 'ob_2r', 'raw_measure'];
+export const RR_PROFILES = [
+  'simple_1r','simple_1r5','simple_2r',
+  'ob_1r','ob_1r5','ob_2r',
+  'l33_1r','l33_1r5','l33_2r',
+  'l50_1r','l50_1r5','l50_2r',
+  'l66_1r','l66_1r5','l66_2r',
+  'l33_ob_1r','l33_ob_1r5','l33_ob_2r',
+  'l50_ob_1r','l50_ob_1r5','l50_ob_2r',
+  'l66_ob_1r','l66_ob_1r5','l66_ob_2r',
+  'raw_measure',
+];
 export const PROFILE_LABELS = {
-  'simple_1r':    'Simple 1R — TP @ 1R · 100% exit · SL = sweep extreme',
-  'simple_1r5':   'Simple 1.5R — TP @ 1.5R · 100% exit · SL = sweep extreme',
-  'simple_2r':    'Simple 2R — TP @ 2R · 100% exit · SL = sweep extreme',
-  'ob_1r':        'OB 1R — TP @ 1R from OB open · SL = sweep extreme',
-  'ob_1r5':       'OB 1.5R — TP @ 1.5R from OB open · SL = sweep extreme',
-  'ob_2r':        'OB 2R — TP @ 2R from OB open · SL = sweep extreme',
-  'raw_measure':  'Raw Measure — no SL/TP · full-session MAE/MFE only',
+  'simple_1r':   'Simple 1R',
+  'simple_1r5':  'Simple 1.5R',
+  'simple_2r':   'Simple 2R',
+  'ob_1r':       'OB 1R',
+  'ob_1r5':      'OB 1.5R',
+  'ob_2r':       'OB 2R',
+  'l33_1r':      'L33 Entry · 1R',
+  'l33_1r5':     'L33 Entry · 1.5R',
+  'l33_2r':      'L33 Entry · 2R',
+  'l50_1r':      'L50 Entry · 1R',
+  'l50_1r5':     'L50 Entry · 1.5R',
+  'l50_2r':      'L50 Entry · 2R',
+  'l66_1r':      'L66 Entry · 1R',
+  'l66_1r5':     'L66 Entry · 1.5R',
+  'l66_2r':      'L66 Entry · 2R',
+  'l33_ob_1r':   'L33 · OB 1R',
+  'l33_ob_1r5':  'L33 · OB 1.5R',
+  'l33_ob_2r':   'L33 · OB 2R',
+  'l50_ob_1r':   'L50 · OB 1R',
+  'l50_ob_1r5':  'L50 · OB 1.5R',
+  'l50_ob_2r':   'L50 · OB 2R',
+  'l66_ob_1r':   'L66 · OB 1R',
+  'l66_ob_1r5':  'L66 · OB 1.5R',
+  'l66_ob_2r':   'L66 · OB 2R',
+  'raw_measure': 'Raw Measure',
 };
 export const PCT_PROFILES = new Set();
 export const EQ_ACCT = 2000, EQ_RPT = 200;

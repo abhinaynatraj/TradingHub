@@ -29,7 +29,8 @@ function renderProfileComparison(){
       <th style="padding:6px 8px;text-align:right;">Avg Risk</th>
     </tr></thead><tbody>`;
 
-  RR_PROFILES.forEach((pk, i) => {
+  const comparisonKeys = RR_PROFILES.filter(k => getProfileData(fullKey, k)).slice(0, 6);
+  comparisonKeys.forEach((pk, i) => {
     const d = getProfileData(fullKey, pk);
     if (!d) return;
     const m = d.meta || {};
@@ -115,7 +116,11 @@ function renderVerdict(targetEl, opts = {}) {
             n, wr, ev, pf, sharpe, maxDD: maxDD*100, blown: eq <= 0, smtWR, noSmtWR};
   }
 
-  const profileScores = Object.keys(base.profiles).map(scoreProfile).filter(Boolean);
+  // Score active profile + up to 5 others to avoid browser freeze with 25 profiles
+  const allKeys = Object.keys(base.profiles);
+  const keysToScore = new Set([activeProfile]);
+  for (const k of allKeys) { if (keysToScore.size >= 6) break; keysToScore.add(k); }
+  const profileScores = [...keysToScore].map(scoreProfile).filter(Boolean);
   if (profileScores.length === 0) { el.innerHTML = ''; return; }
 
   // Composite score

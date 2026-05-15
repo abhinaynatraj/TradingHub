@@ -1,8 +1,9 @@
 """
 TradingHub local server
 ========================
-Serves the static dashboards via HTTP and exposes a /recalc endpoint
-so the HTML dashboards can trigger engine recalculations.
+Serves the static dashboards via HTTP and exposes /recalc and /data endpoints
+so the HTML dashboards can trigger engine recalculations and load profile data
+on demand (instead of fetching the full model_stats.json).
 
 Run from repo root:
     python3 server.py
@@ -19,10 +20,16 @@ Recalc endpoint (POST):
     /recalc?engine=ttfm
     /recalc?engine=npg
     /recalc?engine=amas
+
+Data endpoint (GET):
+    /data?engine=fractal_sweep  → returns _meta + list of model keys
+    /data?engine=fractal_sweep&model=1H_5M_PREV_CISD&profile=simple_1r → returns that profile
 """
 
+import json
 import subprocess
 import sys
+import socket
 import threading
 import time
 from http.server import SimpleHTTPRequestHandler, HTTPServer
@@ -37,6 +44,87 @@ ENGINES = {
     "npg":           [sys.executable, "NPG Sweep/engine/npg_stats.py"],
     "amas":          [sys.executable, "Amas Models/engine/model_stats.py"],
 }
+
+# ── Data cache ────────────────────────────────────────────────────────────────
+_data_cache: dict[str, dict] = {}      # engine_key → full data
+_last_data_mtimes: dict[str, float] = {}  # engine_key → mtime when loaded
+
+def _get_data(engine: str) -> dict | None:
+    """Load model_stats.json into memory, caching it. Returns full data dict."""
+    json_paths = {
+        "fractal_sweep": ROOT / "Fractal Sweep" / "model_stats.json",
+        "amas":          ROOT / "Amas Models" / "model_stats.json",
+        "ttfm":          ROOT / "TTrades Fractal Model Analysis" / "model_stats.json",
+    }
+    path = json_paths.get(engine)
+    if not path or not path.exists():
+        return None
+    mtime = path.stat().st_mtime
+    if engine not in _data_cache or _last_data_mtimes.get(engine) != mtime:
+        with open(path, "r", encoding="utf-8") as f:
+            _data_cache[engine] = json.load(f)
+        _last_data_mtimes[engine] = mtime
+    return _data_cache.get(engine)
+
+
+# ── Parquet trade cache ──────────────────────────────────────────────────────
+_parquet_cache: dict[str, object] = {}  # engine → DataFrame
+
+def _get_trades(
+    engine: str,
+    model: str | None,
+    profile: str | None,
+    limit: int,
+) -> dict | None:
+    import pandas as pd
+
+    pq_paths = {
+        "fractal_sweep": ROOT / "Fractal Sweep" / "model_stats.parquet",
+    }
+    path = pq_paths.get(engine)
+    if not path or not path.exists():
+        return None
+
+    if engine not in _parquet_cache:
+        _parquet_cache[engine] = pd.read_parquet(path)
+
+    df = _parquet_cache[engine]
+    if model:
+        df = df[df["model_key"] == model]
+    if profile:
+        df = df[df["profile_key"] == profile]
+
+    if df.empty:
+        return {"trades": [], "count": 0}
+
+    df = df.sort_values("date", ascending=False).head(limit)
+    records = df.where(pd.notna(df), None).to_dict("records")
+    for r in records:
+        r["date"] = str(r["date"])[:19]
+        for k in ("dow", "hr", "mn"):
+            if r.get(k) is not None:
+                r[k] = int(r[k])
+
+    return {"trades": records, "count": len(records)}
+
+
+def _filter_data(full_data: dict, model: str | None, profile: str | None) -> dict | None:
+    """Extract _meta and optionally model/profile slice from full data."""
+    if model is None:
+        return {"_meta": full_data.get("_meta"), "models": sorted(k for k in full_data if k != "_meta")}
+    model_data = full_data.get(model)
+    if model_data is None:
+        return None
+    if profile is None:
+        keys = list(model_data.get("profiles", {}).keys())
+        return {model: {"profiles": {k: None for k in keys}}}
+    profiles = model_data.get("profiles", {})
+    pd = profiles.get(profile)
+    if pd is None and profiles:
+        pd = next(iter(profiles.values()))
+    if pd is None:
+        return None
+    return {model: {"profiles": {profile: pd}}}
 
 _recalc_state: dict[str, dict] = {}
 _recalc_lock = threading.Lock()
@@ -62,6 +150,23 @@ def _run_engine(engine_key: str, cmd: list[str]) -> None:
 
 
 class Handler(SimpleHTTPRequestHandler):
+    def handle(self):
+        """
+        Catch and ignore ConnectionResetErrors that occur when the browser 
+        cancels a request (e.g., when clicking around or refreshing quickly).
+        """
+        try:
+            super().handle()
+        except (ConnectionResetError, BrokenPipeError, socket.error):
+            # The client (browser) closed the connection before the server 
+            # finished sending data. This is completely safe to ignore.
+            pass
+    def handle_one_request(self):
+        try:
+            super().handle_one_request()
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            pass
+
     def log_message(self, fmt, *args):
         # Log recalc API calls; suppress noisy static-asset requests.
         if "/recalc" in (self.path or "") or self.command in ("POST", "OPTIONS"):
@@ -97,15 +202,47 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        qs = parse_qs(parsed.query)
+
         if parsed.path == "/recalc/status":
-            qs = parse_qs(parsed.query)
             engine = (qs.get("engine") or [""])[0]
             with _recalc_lock:
                 state = dict(_recalc_state.get(engine, {"status": "idle"}))
             state.pop("stderr", None)
             self._json(200, state)
             return
-        super().do_GET()
+
+        if parsed.path == "/data":
+            engine  = (qs.get("engine")  or [""])[0]
+            model   = (qs.get("model")   or [None])[0]
+            profile = (qs.get("profile") or [None])[0]
+            full_data = _get_data(engine)
+            if full_data is None:
+                self._json(404, {"error": f"No data for engine '{engine}'. Run the engine first."})
+                return
+            result = _filter_data(full_data, model, profile)
+            if result is None:
+                self._json(404, {"error": f"Model '{model}' not found"})
+                return
+            self._json(200, result)
+            return
+
+        if parsed.path == "/trades":
+            engine  = (qs.get("engine")  or [""])[0]
+            model   = (qs.get("model")   or [None])[0]
+            profile = (qs.get("profile") or [None])[0]
+            limit   = int((qs.get("limit") or [12000])[0])
+            result  = _get_trades(engine, model, profile, limit)
+            if result is None:
+                self._json(404, {"error": "No trade data found"})
+                return
+            self._json(200, result)
+            return
+
+        try:
+            super().do_GET()
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            pass
 
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
