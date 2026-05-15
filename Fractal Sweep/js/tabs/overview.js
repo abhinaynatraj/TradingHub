@@ -181,4 +181,4 @@ function renderModel(D){
   renderVerdict(document.getElementById('overview-verdict-panel'));
 }
 
-export { renderModel, renderModelDropdown, renderProfileDropdown, switchProfile, switchTF, renderControls, switchModel, renderClassificationBreakdown, updateProfileFromSelectors };
+export { renderModel, renderModelDropdown, renderProfileDropdown, switchProfile, switchTF, renderControls, switchModel, updateProfileFromSelectors };
