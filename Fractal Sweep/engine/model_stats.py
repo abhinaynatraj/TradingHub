@@ -2253,7 +2253,6 @@ def build_model_stats(df_raw, trading_days, model_key, model_cfg,
         'tspot_breakdown':  tspot_breakdown,
         'mae_heatmap':      _build_excursion_heatmap(wl, 'mae_pct'),
         'mfe_heatmap':      _build_excursion_heatmap(wl, 'mfe_pct'),
-        'recent_trades':    recent_trades,
         'risk_stats':       risk_stats,
         'structural_stats': structural_stats,
         'by_tf':            _compute_by_tf(wl, wl_sorted, stop_mult, target_mult,
@@ -2392,7 +2391,8 @@ def _build_slice_stats(wl_sub, stop_mult, target_mult, agg_fn, hr_labels,
         'r_hist':          r_hist,
         'mae_heatmap':       _build_excursion_heatmap(wl_sub, 'mae_pct'),
         'mfe_heatmap':       _build_excursion_heatmap(wl_sub, 'mfe_pct'),
-        'recent_trades':   recent_trades,
+        'date_start':        str(wl_sub['date'].min())[:10] if len(wl_sub) else None,
+        'date_end':          str(wl_sub['date'].max())[:10] if len(wl_sub) else None,
     }
 
 
