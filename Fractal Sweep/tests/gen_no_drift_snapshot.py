@@ -120,37 +120,51 @@ def _verdict_score(profile_data, trades):
     }
 
 
-def _trades_for_period(profile_data, period):
-    """Pull the trade rows the JSON currently exposes for a given period."""
-    if period == "all":
-        return profile_data.get("recent_trades", [])
-    by_tf = profile_data.get("by_tf", {})
-    slice_ = by_tf.get(period)
-    if not slice_:
+def _parse_full_key(full_key):
+    """JSON full key like '1H_5M_PREV_CISD' → (model_key, sweep_mode, cisd_mode)."""
+    parts = full_key.rsplit("_", 2)
+    return parts[0], parts[1], parts[2]
+
+
+_PARQUET_CACHE = {"df": None}
+
+def _trades_for_period(full_key, profile_key, period):
+    """Read trade rows from model_stats.parquet for the canonical period.
+
+    Day counts (730/365/182/91/30) match engine's _compute_by_tf exactly.
+    Excludes EXPIRED outcomes to match the old JSON recent_trades semantics.
+    """
+    import pandas as pd
+    if _PARQUET_CACHE["df"] is None:
+        _PARQUET_CACHE["df"] = pd.read_parquet(ROOT / "model_stats.parquet")
+    df = _PARQUET_CACHE["df"]
+    model_key, sweep_mode, cisd_mode = _parse_full_key(full_key)
+    df = df[
+        (df["model_key"] == model_key)
+        & (df["sweep_mode"] == sweep_mode)
+        & (df["cisd_mode"] == cisd_mode)
+        & (df["profile_key"] == profile_key)
+    ]
+    df = df[df["outcome"] != "EXPIRED"]
+    if period != "all":
+        days = {"2y": 730, "1y": 365, "6m": 182, "3m": 91, "1m": 30}[period]
+        dates = pd.to_datetime(df["date"])
+        cutoff = dates.max() - pd.Timedelta(days=days)
+        df = df[dates >= cutoff]
+    if df.empty:
         return []
-    return slice_.get("recent_trades", [])
+    return df.where(df.notna(), None).to_dict("records")
 
 
 def build_snapshot():
-    if not JSON_PATH.exists():
-        raise SystemExit(f"missing: {JSON_PATH}. Run engine/model_stats.py first.")
-    with open(JSON_PATH) as f:
-        data = json.load(f)
-
     snap = {}
     for model in MODELS:
-        model_data = data.get(model)
-        if not model_data:
-            continue
-        profile_data = model_data.get("profiles", {}).get(PROFILE)
-        if not profile_data:
-            continue
         snap[model] = {}
         for period in PERIODS:
-            trades = _trades_for_period(profile_data, period)
+            trades = _trades_for_period(model, PROFILE, period)
             snap[model][period] = {
                 "n_trades": len(trades),
-                "verdict_inputs": _verdict_score(profile_data, trades),
+                "verdict_inputs": _verdict_score(None, trades),
                 "dir_summary": _dir_summary(trades),
                 "by_hour_counts": _by_hour(trades),
                 "top_combos": _top_combos(trades, 5),
