@@ -193,12 +193,11 @@ function activeFullKey() {
   return `${activeModel}_${activeMode}_${activeCisd}`;
 }
 
-// Resolves the trade row array for the current dashboard view.
-// Reads from the loadTrades cache populated by switchTF/switchProfile/initProfileData.
-// Falls back to D.recent_trades (JSON path) during Phase 3 rollout — fallback
-// removed in Phase 5 (Task 11). For the verdict-profile-comparison case
-// (iterating multiple profiles), keep reading pd.recent_trades directly until
-// a follow-up task migrates that path.
+// Resolves the trade row array for the current dashboard view from the
+// loadTrades cache. JSON no longer carries recent_trades — parquet is the
+// only source. Returns [] if the cache has not been primed yet for this
+// (model, profile, period) tuple.
+// eslint-disable-next-line no-unused-vars -- D kept for API stability with 5 call sites
 function getActiveTrades(D) {
   const fullKey = activeFullKey();
   let periodKey;
@@ -208,11 +207,7 @@ function getActiveTrades(D) {
   } else {
     periodKey = activeTF || 'all';
   }
-  const cached = DATA[fullKey]?.trades?.[activeProfile]?.[periodKey];
-  // Distinguish "not yet fetched" (undefined → fallback) from "fetched and empty"
-  // (propagate so callers see the correct empty-period semantic).
-  if (cached !== undefined) return cached;
-  return (D?.recent_trades) || [];
+  return DATA[fullKey]?.trades?.[activeProfile]?.[periodKey] || [];
 }
 
 // Helper — resolve active profile data (handles both flat DEMO and {profiles:{}} real JSON)
@@ -261,10 +256,8 @@ function getActiveTFData(fullProfileData){
 function getFilteredD(D) {
   const anyActive = activeSmt || activeF3 || activeF4 || activeP42 || activePd;
   if (!anyActive) return D;
-  // Trades come from the loadTrades cache (populated by switchTF/switchProfile
-  // in Phase 3, or by the trades-tab fetcher). Fall back to D.recent_trades
-  // for the JSON path until Phase 4 (Task 10) when the engine stops writing
-  // recent_trades to JSON. The fallback is removed in Phase 5 (Task 11).
+  // Trades come from the loadTrades cache (populated by switchTF /
+  // switchProfile / initProfileData). JSON no longer carries recent_trades.
   const _fullKey = activeFullKey();
   let _periodKey;
   if (activeTF === 'custom') {
@@ -273,12 +266,7 @@ function getFilteredD(D) {
   } else {
     _periodKey = activeTF || 'all';
   }
-  const _cached = DATA[_fullKey]?.trades?.[activeProfile]?.[_periodKey];
-  // Distinguish "not yet fetched" (undefined → fall back to D.recent_trades
-  // for the JSON path) from "fetched and empty" (e.g. period 1m with no
-  // trades → propagate the empty array so the legitimate-empty guard below
-  // returns base stats, not all-time stats).
-  const rawTrades = (_cached !== undefined) ? _cached : D?.recent_trades;
+  const rawTrades = DATA[_fullKey]?.trades?.[activeProfile]?.[_periodKey] || [];
   if (!rawTrades || !rawTrades.length) return D;
   let trades = rawTrades;
   if (activeSmt) trades = trades.filter(t => t.smt === true);
