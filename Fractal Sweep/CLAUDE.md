@@ -11,11 +11,12 @@ Statistical backtesting engine for NQ and ES futures. Detects sweep + CISD setup
 ## Folder Layout
 ```
 Fractal Sweep/
-├── model_dashboard.html        dashboard (served from repo root)
-├── model_stats.json            engine output (gitignored, ~140 MB)
+├── model_dashboard.html        dashboard (served via repo-root server.py)
+├── model_stats.json            aggregate stats only (gitignored, ~56 MB)
+├── model_stats.parquet         trade rows (gitignored, ~78 MB) — served via /trades endpoint
 ├── candle_science.duckdb       shared DB (gitignored, ~550 MB)
 ├── engine/                     Python backtest code
-│   ├── model_stats.py          sweep+CISD detection engine
+│   ├── model_stats.py          sweep+CISD detection engine, writes JSON + parquet
 │   ├── daily_update.py         cron entry point — Databento fetch + rerun backtests
 │   ├── master_backtester.py    supporting tool
 │   ├── sltp_analyzer.py        supporting tool
@@ -29,21 +30,40 @@ Fractal Sweep/
 ├── data/                       raw Databento dumps (gitignored)
 ├── docs/                       standalone notes (indicator description, analysis write-ups)
 ├── assets/                     images used by the dashboard/hub
-└── tests/                      pytest suite — 215 pass · 0 skip as of 2026-04-29
+└── tests/                      pytest suite — 346 pass · 20 skip as of 2026-05-15
+                                   (includes test_no_drift.py drift gate +
+                                    test_trades_endpoint.py for /trades)
 ```
 
 ## Running
 All engine scripts self-locate — run them from the `Fractal Sweep/` folder (they resolve `candle_science.duckdb` and `model_stats.json` via `Path(__file__).parent.parent`).
 
 ```bash
-python3 engine/model_stats.py                         # all 3 sweep models
+python3 engine/model_stats.py                         # all 3 sweep models — writes JSON + parquet
 python3 engine/model_stats.py --models 1H_5M          # subset
 python3 engine/model_stats.py --table es_1m           # ES instead of NQ
 python3 -m pytest tests/ -q                           # test suite
 python3 engine/daily_update.py                        # fetch new bars from Databento
 ```
 
-Dashboard served from the repo root: `python3 -m http.server 8001`, then open `http://localhost:8001/Fractal Sweep/model_dashboard.html`.
+Dashboard served from the repo root: `python3 server.py`, then open `http://localhost:8001/Fractal Sweep/model_dashboard.html`. Use `server.py`, NOT `python3 -m http.server` — the dashboard requires the `/data`, `/trades`, and `/recalc` endpoints.
+
+## Data Architecture (post slim-JSON migration, 2026-05-15)
+
+**JSON contains aggregates only.** `model_stats.json` has 29 precomputed aggregate keys per profile (`meta`, `by_hour`, `by_dow`, `by_session`, `heatmap`, `filter_variants`, etc.) plus a `by_tf` block with the same shape per period (`2y`/`1y`/`6m`/`3m`/`1m`) — each sub-slice now also carries `date_start` / `date_end` strings. No `recent_trades` anywhere in JSON.
+
+**Parquet is the canonical trade-row source.** `model_stats.parquet` has 49 columns × ~1.4M rows (all 25 RR_PROFILES × 3 models × all resolved trades). The server's `/trades` endpoint:
+- Parses the JSON-style key `1H_5M_PREV_CISD` into 3 parquet columns (`model_key='1H_5M'`, `sweep_mode='PREV'`, `cisd_mode='CISD'`)
+- Filters by `profile_key` + excludes `outcome == 'EXPIRED'` (to match the old JSON `recent_trades` semantics)
+- Accepts `period=all|2y|1y|6m|3m|1m` (anchored to `MAX(date)` in parquet, day counts 730/365/182/91/30) OR `from=YYYY-MM-DD&to=YYYY-MM-DD` (XOR-validated)
+- Caches the parquet DataFrame and re-reads when `model_stats.parquet`'s mtime changes (e.g. after recalc)
+- Scrubs `NaN` to `None` before JSON-serializing (RFC 7159 violation otherwise — broke browsers on `raw_measure` rows)
+
+**Frontend cache.** `js/data.js` exposes `loadTrades(fullKey, profile, periodOrRange)` keyed by `(model, profile, period|"from:to")` and `getActiveTrades(D)` used by all six trade-row consumers (`verdict`, `walkforward`, `edge`, `excursion`, `filters`, `trades`, `app`). `switchProfile`/`switchTF`/`switchModel`/`initProfileData` all prime the cache before render.
+
+**Schema bridge (β).** JS reads parquet-native column names (`stop_price`, not `sl_price`; `dow` int, not `dow_name` string). No server-side aliasing. This keeps the door open for a future DuckDB-WASM migration where JS would read the parquet directly in-browser (matching the NPG / Hourly Analysis pattern).
+
+**Drift gate.** `tests/test_no_drift.py` regenerates a baseline snapshot from the current parquet and asserts trade-count + dir_summary + MAE/MFE percentiles match across 3 models × 6 periods. Regenerate the snapshot if the engine's RR_PROFILES list or resolution logic changes: `python3 tests/gen_no_drift_snapshot.py`.
 
 ## Trading Model
 - 3 timeframe pairs: `1H_5M`, `30M_3M`, `15M_1M`
@@ -88,7 +108,7 @@ Best practical combo (measured on the original 1H_5M and 30M_3M models — `15M_
 
 History note: prior versions of this engine had additional filters (HOUR_ALIGNED, PRIOR_COUNTER, PRIOR_ENGULFING, plus experimental H4_BIAS, DAILY_BIAS, PD_LIQUIDITY, P12_BIAS). All were tested over the full 12y dataset and removed in 2026-04-24 — they showed no standalone edge or were anti-edge. Only F3, F4, SMT remain.
 
-Filters work on **every Period** (All Time, 2y, 1y, 6m, 3m, 1m). `_compute_by_tf` builds `recent_trades` per sub-slice from `wl_full`, so runtime toggles update stats live without re-running the engine.
+Filters work on **every Period** (All Time, 2y, 1y, 6m, 3m, 1m). `_compute_by_tf` builds aggregate stats per sub-slice from `wl_full`. Trade rows for filter-chip recomputation come from `model_stats.parquet` via the `/trades?period=...` endpoint — `js/data.js` `getFilteredD` reads from `DATA[fullKey].trades[profile][periodKey]` (the `loadTrades` cache) and rebuilds `by_hour`/`by_session`/`by_dow`/`top_combos`/etc. client-side per filter toggle.
 
 ## SMT Divergence
 
@@ -100,12 +120,19 @@ SMT = NQ sweeps its HTF level but ES does **not** sweep its corresponding level.
 
 ## Risk Profiles (`RR_PROFILES` in `engine/model_stats.py`)
 
+25 total profiles spanning {entry: open/L33/L50/L66} × {target_ref: entry/OB} × {1R/1.5R/2R} plus `raw_measure`. The dashboard's Risk Profile dropdowns map UI selections to these keys via `js/tabs/overview.js::buildProfileKey`.
+
+Key examples:
+
 | profile_type | Key | Description |
 |---|---|---|
-| `mult` | `simple_1r` | SL = sweep extreme (1× base_risk); TP = 1R (100% exit) |
+| `mult` | `simple_1r` | Market entry, TP from entry, SL = sweep extreme, TP = 1R |
+| `mult` | `ob_1r` | Market entry, TP from CISD OB open, 1R |
+| `mult` | `l33_1r` | L33 limit entry, TP from entry, 1R |
+| `mult` | `l50_ob_2r` | L50 limit entry, TP from OB, 2R |
 | `raw` | `raw_measure` | No SL/TP — records full-session MAE/MFE only, `outcome='MEASURED'` |
 
-`simple_1r` is the default and drives all win/loss stats. `raw_measure` is the measurement-only profile used for MAE/MFE distribution studies.
+`simple_1r` is the default and drives all win/loss stats on the Overview tab. `raw_measure` is the measurement-only profile used for MAE/MFE distribution studies (Overview hero cards aren't meaningful for it — use the MAE/MFE tab).
 
 ### MAE/MFE Recommendation Logic
 - **PTQ**: highest reach_rate where P(positive exit | MFE ≥ X) ≥ 0.70, fallback 0.50
