@@ -20,11 +20,6 @@ import { switchSMT, switchF3, switchF4, switchP42, switchPD, _restoreFilters,
          applyCustomRanges, switchCustomTab, customRanges,
          setRenderActive } from './walkforward.js';
 
-// Shadow-mode runtime drift check — activated only by ?shadow=1
-if (new URLSearchParams(window.location.search).has('shadow')) {
-  import('./shadow.js');
-}
-
 // ── PAGE TAB NAVIGATION ────────────────────────────────────────────────────
 
 function updateTabVisibility() {
