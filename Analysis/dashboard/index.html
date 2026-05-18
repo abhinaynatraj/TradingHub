@@ -312,7 +312,7 @@
         <div class="card-sub">MAE (max adverse) / MFE (max favorable) excursion for an implied breakout trade entered at H2 open, exited at H2 close. Values are % of entry price.</div>
         <div id="breakout-excursion-by-hour" class="excursion-layout">
           <div id="breakout-excursion-table" class="excursion-table"><div class="loading">Loading…</div></div>
-          <div id="breakout-excursion-chart" class="excursion-chart"><canvas id="breakout-excursion-canvas"></canvas></div>
+          <div id="breakout-excursion-chart" class="excursion-chart"><div class="loading">Loading…</div></div>
         </div>
       </div>
     </div>
@@ -622,6 +622,188 @@ async function renderBreakout() {
         </tr>`).join('')}
       </tbody>
     </table>`;
+
+  await renderBreakoutExcursionByHour();
+}
+
+async function renderBreakoutExcursionByHour() {
+  const tableEl = document.getElementById('breakout-excursion-table');
+  const chartEl = document.getElementById('breakout-excursion-chart');
+  if (!tableEl || !chartEl) return;
+
+  // Same filter scope as the rest of the breakout tab (year/hour/dow/direction).
+  const where = buildBreakoutWhere(true);
+  const havingClause = STATE.minCount > 0 ? `HAVING n >= ${STATE.minCount}` : '';
+
+  let rows;
+  try {
+    rows = await window.query(`
+      SELECT
+        hour_of_day_et,
+        breakout,
+        COUNT(*) AS n,
+        AVG(h2_mae_pct)  AS avg_mae_pct,
+        AVG(h2_mfe_pct)  AS avg_mfe_pct,
+        quantile_cont(h2_mfe_pct, 0.9)  AS p90_mfe_pct,
+        quantile_cont(h2_mae_pct, 0.9)  AS p90_mae_pct
+      FROM br
+      ${where ? where + ' AND' : 'WHERE'} breakout IN ('bullish', 'bearish')
+        AND h2_mae_pct IS NOT NULL
+        AND h2_mfe_pct IS NOT NULL
+      GROUP BY hour_of_day_et, breakout
+      ${havingClause}
+      ORDER BY hour_of_day_et, breakout
+    `);
+  } catch (e) {
+    const msg = `<div style="color:var(--text-muted);font-size:12px;padding:12px">
+      Re-run <code>python3 Analysis/engine/run_all.py</code> to generate excursion data.
+    </div>`;
+    tableEl.innerHTML = msg;
+    chartEl.innerHTML = '';
+    console.warn('[excursion]', e);
+    return;
+  }
+
+  if (!rows || rows.length === 0) {
+    const msg = `<div style="color:var(--text-muted);font-size:12px;padding:12px">
+      No breakouts match the current filters.
+    </div>`;
+    tableEl.innerHTML = msg;
+    chartEl.innerHTML = '';
+    return;
+  }
+
+  // ── Render table ────────────────────────────────────────────────────────
+  const dirLabel = (d) => d === 'bullish' ? '↑ Bull' : '↓ Bear';
+  const fmt = (v) => v == null ? '—' : (+v).toFixed(3) + '%';
+  tableEl.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Hour ET</th>
+          <th>Dir</th>
+          <th class="num">N</th>
+          <th class="num">Avg MAE</th>
+          <th class="num">P90 MAE</th>
+          <th class="num">Avg MFE</th>
+          <th class="num">P90 MFE</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td>${r.hour_of_day_et}</td>
+            <td>${dirLabel(r.breakout)}</td>
+            <td class="num">${fmtN(+r.n)}</td>
+            <td class="num mae">${fmt(r.avg_mae_pct)}</td>
+            <td class="num mae">${fmt(r.p90_mae_pct)}</td>
+            <td class="num mfe">${fmt(r.avg_mfe_pct)}</td>
+            <td class="num mfe">${fmt(r.p90_mfe_pct)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+
+  // ── Render chart as inline SVG (grouped bars per hour) ──────────────────
+  // X-axis: hours. Per hour: 4 stacked bar pairs (Bull MFE/MAE + Bear MFE/MAE).
+  // No external dependencies — matches the dashboard's "zero CDN" rule.
+  const hours = [...new Set(rows.map(r => +r.hour_of_day_et))].sort((a, b) => a - b);
+  const bullByHour = new Map(rows.filter(r => r.breakout === 'bullish').map(r => [+r.hour_of_day_et, r]));
+  const bearByHour = new Map(rows.filter(r => r.breakout === 'bearish').map(r => [+r.hour_of_day_et, r]));
+
+  // Collect all values to find y-axis max.
+  const allVals = rows.flatMap(r => [+r.avg_mae_pct, +r.avg_mfe_pct]).filter(v => !isNaN(v) && v != null);
+  const yMax = Math.max(0.01, Math.max(...allVals));
+
+  // SVG dimensions
+  const W = 760, H = 260;
+  const PAD = { left: 48, right: 12, top: 16, bottom: 36 };
+  const plotW = W - PAD.left - PAD.right;
+  const plotH = H - PAD.top - PAD.bottom;
+
+  const hourCount = hours.length || 1;
+  const groupW = plotW / hourCount;           // width per hour group
+  const innerPad = groupW * 0.15;             // padding within each group
+  const barsPerGroup = 4;                     // Bull MFE, Bull MAE, Bear MFE, Bear MAE
+  const barW = Math.max(2, (groupW - 2 * innerPad) / barsPerGroup);
+
+  // Y-scale: pct -> pixel
+  const yScale = (v) => PAD.top + plotH - (v / yMax) * plotH;
+  const yAxisTicks = 4;
+  const tickVals = Array.from({length: yAxisTicks + 1}, (_, i) => (yMax / yAxisTicks) * i);
+
+  // Color palette — match the dashboard's existing greens/reds.
+  const COL = {
+    bullMfe: '#16a34a',  // strong green
+    bullMae: '#dc2626',  // strong red
+    bearMfe: '#86efac',  // light green
+    bearMae: '#fca5a5',  // light red
+  };
+
+  const escapeAttr = (s) => String(s).replace(/[<>"&]/g, (c) => ({'<':'&lt;','>':'&gt;','"':'&quot;','&':'&amp;'}[c]));
+
+  const bars = [];
+  hours.forEach((h, hi) => {
+    const x0 = PAD.left + hi * groupW + innerPad;
+    const bull = bullByHour.get(h);
+    const bear = bearByHour.get(h);
+    const series = [
+      { v: +bull?.avg_mfe_pct, c: COL.bullMfe, label: `Bull MFE (avg) · ${h}:00` },
+      { v: +bull?.avg_mae_pct, c: COL.bullMae, label: `Bull MAE (avg) · ${h}:00` },
+      { v: +bear?.avg_mfe_pct, c: COL.bearMfe, label: `Bear MFE (avg) · ${h}:00` },
+      { v: +bear?.avg_mae_pct, c: COL.bearMae, label: `Bear MAE (avg) · ${h}:00` },
+    ];
+    series.forEach((s, si) => {
+      if (s.v == null || isNaN(s.v)) return;
+      const bx = x0 + si * barW;
+      const by = yScale(s.v);
+      const bh = (PAD.top + plotH) - by;
+      bars.push(`<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${s.c}"><title>${escapeAttr(s.label)}: ${s.v.toFixed(3)}%</title></rect>`);
+    });
+  });
+
+  // Axes
+  const xAxisY = PAD.top + plotH;
+  const xLabels = hours.map((h, hi) => {
+    const cx = PAD.left + hi * groupW + groupW / 2;
+    return `<text x="${cx.toFixed(1)}" y="${(xAxisY + 14).toFixed(1)}" text-anchor="middle" font-size="10" fill="var(--text-muted)">${h}</text>`;
+  }).join('');
+  const yLabels = tickVals.map(v => {
+    const y = yScale(v);
+    return `
+      <line x1="${PAD.left}" y1="${y.toFixed(1)}" x2="${(W - PAD.right).toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="2,3" opacity="0.5"/>
+      <text x="${(PAD.left - 6).toFixed(1)}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="10" fill="var(--text-muted)">${v.toFixed(2)}%</text>`;
+  }).join('');
+
+  // Legend — only include series that actually have data after filters.
+  // When the user picks Bullish-only or Bearish-only, the opposite series
+  // never renders any bars; showing those entries in the legend is misleading.
+  const dirsPresent = new Set(rows.map(r => r.breakout));
+  const legendItems = [
+    ...(dirsPresent.has('bullish') ? [
+      { c: COL.bullMfe, label: 'Bull MFE' },
+      { c: COL.bullMae, label: 'Bull MAE' },
+    ] : []),
+    ...(dirsPresent.has('bearish') ? [
+      { c: COL.bearMfe, label: 'Bear MFE' },
+      { c: COL.bearMae, label: 'Bear MAE' },
+    ] : []),
+  ];
+  const legendHtml = legendItems.map(l => `
+    <span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:11px;color:var(--text-muted)">
+      <span style="display:inline-block;width:10px;height:10px;background:${l.c};border-radius:2px"></span>
+      ${l.label}
+    </span>`).join('');
+
+  chartEl.innerHTML = `
+    <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">${legendHtml}</div>
+    <svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" style="display:block;font-family:var(--font-data, monospace)">
+      ${yLabels}
+      ${bars.join('')}
+      <line x1="${PAD.left}" y1="${PAD.top}" x2="${PAD.left}" y2="${xAxisY.toFixed(1)}" stroke="var(--border)" stroke-width="1"/>
+      <line x1="${PAD.left}" y1="${xAxisY.toFixed(1)}" x2="${(W - PAD.right).toFixed(1)}" y2="${xAxisY.toFixed(1)}" stroke="var(--border)" stroke-width="1"/>
+      ${xLabels}
+      <text x="${(W / 2).toFixed(1)}" y="${(H - 2).toFixed(1)}" text-anchor="middle" font-size="10" fill="var(--text-muted)">Hour of Day (ET)</text>
+    </svg>`;
 }
 
 function renderDualBar(pct1, pct2) {
