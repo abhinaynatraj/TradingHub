@@ -87,3 +87,32 @@ def test_study_e_overshoot_metrics_are_populated(tmp_path, monkeypatch):
     # And positive (overshoot must be > 0 by definition)
     assert (s['q1_high_fail_overshoot_mean'] > 0).all()
     assert (s['q1_high_fail_overshoot_median'] > 0).all()
+
+
+def test_breakout_parquet_has_h2_excursion_columns(tmp_path, monkeypatch):
+    """breakouts.parquet must include h2_mae_pct + h2_mfe_pct columns after
+    run_all completes, with non-null values on actual breakout rows and
+    all non-null values >= 0 (excursion is absolute distance, clamped)."""
+    fake_engine = tmp_path / 'engine'
+    fake_engine.mkdir()
+    monkeypatch.setattr(run_all, 'HERE', fake_engine)
+    run_all.main(start='2025-09-01', end='2025-10-01')
+
+    import pandas as pd
+    df = pd.read_parquet(tmp_path / 'data' / 'breakout' / 'breakouts.parquet')
+    assert 'h2_mae_pct' in df.columns
+    assert 'h2_mfe_pct' in df.columns
+
+    # At least one bullish-breakout row should have non-null excursion
+    bull_with_data = df[(df['breakout'] == 'bullish') & df['h2_mae_pct'].notna()]
+    assert len(bull_with_data) > 0, "no bullish breakouts had populated h2_mae_pct"
+
+    # All non-null values must be >= 0 (clamped, never negative)
+    assert (df['h2_mae_pct'].dropna() >= 0).all(), "h2_mae_pct has negative values"
+    assert (df['h2_mfe_pct'].dropna() >= 0).all(), "h2_mfe_pct has negative values"
+
+    # Non-breakout rows should have NaN for both
+    non_bk = df[df['breakout'].isin(['neither', 'no_prev'])]
+    if len(non_bk) > 0:
+        assert non_bk['h2_mae_pct'].isna().all(), "non-breakout rows should have NaN h2_mae_pct"
+        assert non_bk['h2_mfe_pct'].isna().all(), "non-breakout rows should have NaN h2_mfe_pct"
