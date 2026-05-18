@@ -88,6 +88,11 @@
     .excursion-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
     .excursion-table td.mae { color: var(--red); }
     .excursion-table td.mfe { color: var(--green); }
+    .excursion-subtable { margin-bottom: 14px; }
+    .excursion-subtable:last-child { margin-bottom: 0; }
+    .excursion-subtable-title { font-family: var(--font-data); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+    .excursion-subtable-title.bull-title { color: var(--green); }
+    .excursion-subtable-title.bear-title { color: var(--red); }
     .excursion-chart { min-height: 240px; position: relative; }
     .excursion-chart canvas { max-width: 100%; }
 
@@ -673,35 +678,45 @@ async function renderBreakoutExcursionByHour() {
     return;
   }
 
-  // ── Render table ────────────────────────────────────────────────────────
-  const dirLabel = (d) => d === 'bullish' ? '↑ Bull' : '↓ Bear';
+  // ── Render tables — bull and bear split into separate tables ────────────
   const fmt = (v) => v == null ? '—' : (+v).toFixed(3) + '%';
+  const bullRows = rows.filter(r => r.breakout === 'bullish');
+  const bearRows = rows.filter(r => r.breakout === 'bearish');
+
+  const renderOneTable = (label, dirRows, accentClass) => {
+    if (dirRows.length === 0) return '';
+    return `
+      <div class="excursion-subtable">
+        <div class="excursion-subtable-title ${accentClass}">${label}</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Hour ET</th>
+              <th class="num">N</th>
+              <th class="num">Avg MAE</th>
+              <th class="num">P90 MAE</th>
+              <th class="num">Avg MFE</th>
+              <th class="num">P90 MFE</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${dirRows.map(r => `
+              <tr>
+                <td>${r.hour_of_day_et}</td>
+                <td class="num">${fmtN(+r.n)}</td>
+                <td class="num mae">${fmt(r.avg_mae_pct)}</td>
+                <td class="num mae">${fmt(r.p90_mae_pct)}</td>
+                <td class="num mfe">${fmt(r.avg_mfe_pct)}</td>
+                <td class="num mfe">${fmt(r.p90_mfe_pct)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  };
+
   tableEl.innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th>Hour ET</th>
-          <th>Dir</th>
-          <th class="num">N</th>
-          <th class="num">Avg MAE</th>
-          <th class="num">P90 MAE</th>
-          <th class="num">Avg MFE</th>
-          <th class="num">P90 MFE</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows.map(r => `
-          <tr>
-            <td>${r.hour_of_day_et}</td>
-            <td>${dirLabel(r.breakout)}</td>
-            <td class="num">${fmtN(+r.n)}</td>
-            <td class="num mae">${fmt(r.avg_mae_pct)}</td>
-            <td class="num mae">${fmt(r.p90_mae_pct)}</td>
-            <td class="num mfe">${fmt(r.avg_mfe_pct)}</td>
-            <td class="num mfe">${fmt(r.p90_mfe_pct)}</td>
-          </tr>`).join('')}
-      </tbody>
-    </table>`;
+    ${renderOneTable('↑ Bullish Breakouts', bullRows, 'bull-title')}
+    ${renderOneTable('↓ Bearish Breakouts', bearRows, 'bear-title')}`;
 
   // ── Render chart as inline SVG (grouped bars per hour) ──────────────────
   // X-axis: hours. Per hour: 4 stacked bar pairs (Bull MFE/MAE + Bear MFE/MAE).
