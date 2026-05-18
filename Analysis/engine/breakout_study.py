@@ -56,8 +56,14 @@ def attach_followthrough(classified: pd.DataFrame, minutes: pd.DataFrame) -> pd.
       (NaN if no takeout)
     - immediate_reversal: True if H2 strictly takes out H1's *opposite* extreme
       (only meaningful for breakout rows)
+    - h2_mae_pct: max adverse excursion during H2 as % of H2 open
+    - h2_mfe_pct: max favorable excursion during H2 as % of H2 open
 
-    Non-breakout rows ('neither', 'no_prev') get NaN for all three.
+    Direction convention for MAE/MFE: bullish breakout → simulated long entry
+    at H2 open; bearish breakout → simulated short entry at H2 open. Both
+    values are always >= 0 (expressed as positive distance from entry).
+
+    Non-breakout rows ('neither', 'no_prev') get NaN for all five.
     """
     df = classified.copy().sort_values('hour_start_et').reset_index(drop=True)
 
@@ -72,6 +78,8 @@ def attach_followthrough(classified: pd.DataFrame, minutes: pd.DataFrame) -> pd.
     followthrough = []
     takeout_q = []
     reversal = []
+    mae_pct = []
+    mfe_pct = []
 
     for i, row in df.iterrows():
         b = row['breakout']
@@ -79,12 +87,16 @@ def attach_followthrough(classified: pd.DataFrame, minutes: pd.DataFrame) -> pd.
             followthrough.append(np.nan)
             takeout_q.append(np.nan)
             reversal.append(np.nan)
+            mae_pct.append(np.nan)
+            mfe_pct.append(np.nan)
             continue
         h2_start = next_hour.iloc[i]
         if pd.isna(h2_start) or h2_start not in grouped:
             followthrough.append(np.nan)
             takeout_q.append(np.nan)
             reversal.append(np.nan)
+            mae_pct.append(np.nan)
+            mfe_pct.append(np.nan)
             continue
         h2 = grouped[h2_start].sort_values('minute_of_hour')
         h1_high = row['high']
@@ -110,11 +122,37 @@ def attach_followthrough(classified: pd.DataFrame, minutes: pd.DataFrame) -> pd.
                 takeout_q.append(np.nan)
             reversal.append(bool((h2['high'] > h1_high).any()))
 
+        # ── H2 MAE / MFE as % of H2 open ────────────────────────────────────
+        # Both values clamped to >= 0. On strongly trending hours, the entire
+        # H2 range can sit on one side of the open — e.g., bullish continuation
+        # where every 1-min low is above H2 open. The trade never went adverse,
+        # so MAE should be 0, not negative. Same logic for MFE.
+        # NaN when H2 open is missing or zero.
+        h2_open = float(h2['open'].iloc[0])
+        if h2_open > 0:
+            h2_low = float(h2['low'].min())
+            h2_high = float(h2['high'].max())
+            if b == 'bullish':
+                # Long: MAE = open - lowest low; MFE = highest high - open
+                mae_pts = max(0.0, h2_open - h2_low)
+                mfe_pts = max(0.0, h2_high - h2_open)
+            else:
+                # Short: MAE = highest high - open; MFE = open - lowest low
+                mae_pts = max(0.0, h2_high - h2_open)
+                mfe_pts = max(0.0, h2_open - h2_low)
+            mae_pct.append((mae_pts / h2_open) * 100)
+            mfe_pct.append((mfe_pts / h2_open) * 100)
+        else:
+            mae_pct.append(np.nan)
+            mfe_pct.append(np.nan)
+
     # Use nullable boolean / Int dtypes so NaN is represented as pd.NA
     # and parquet round-trips with proper typing for the dashboard.
     df['followthrough'] = pd.array(followthrough, dtype='boolean')
     df['takeout_quarter_of_h2'] = pd.array(takeout_q, dtype='Int64')
     df['immediate_reversal'] = pd.array(reversal, dtype='boolean')
+    df['h2_mae_pct'] = pd.array(mae_pct, dtype='Float64')
+    df['h2_mfe_pct'] = pd.array(mfe_pct, dtype='Float64')
     return df
 
 
