@@ -1,7 +1,7 @@
 import { activeModel, activeTF, activeSmt, activeF3, activeF4, activeP42, activePd, activeProfile, activeMode, activeCisd, FILTER_STORAGE_KEY, SVG_FONT, isDark, setActiveSmt, setActiveF3, setActiveF4, setActiveP42, setActivePd } from './state.js';
 import { C, lineChart, drawSetupViz, _drawMAEProbCurve, _drawMFEProbCurve, _drawExcursionHeatmap } from './charts.js';
 import { pct, evFmt, pfFmt, evCls, fmtDateRange, _tradingDaysFromRange, showTip, hideTip, csvEscape, triggerCSVDownload } from './utils.js';
-import { getProfileData, getActiveTFData, getFilteredD } from './data.js';
+import { getProfileData, getActiveTFData, getFilteredD, getActiveTrades } from './data.js';
 
 
 let _tradesPage = 0;
@@ -750,8 +750,10 @@ function buildWalkForwardPairs(rangeResults) {
 function applyCustomRanges(){
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
   const baseD = getProfileData(fullKey, activeProfile);
-  if(!baseD || !baseD.recent_trades) return;
-  const allTrades = getSmtFilteredTrades(baseD.recent_trades);
+  if (!baseD) return;
+  const sourceTrades = getActiveTrades(baseD);
+  if (!sourceTrades || !sourceTrades.length) return;
+  const allTrades = getSmtFilteredTrades(sourceTrades);
 
   // Raw-measure: no WIN/LOSS → use MAE:MFE regime analysis instead of performance stats.
   if (activeProfile === 'raw_measure') {

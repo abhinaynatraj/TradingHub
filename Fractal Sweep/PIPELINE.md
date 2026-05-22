@@ -1,6 +1,6 @@
 # Fractal Sweep Pipeline — Complete Architecture
 
-**Last updated:** 2026-04-24
+**Last updated:** 2026-05-15 (slim-JSON migration)
 
 ---
 
@@ -8,7 +8,7 @@
 
 Statistical backtesting engine for NQ and ES micro futures. Detects fractal sweep + CISD setups across 15 years of 1-minute data, validates with walk-forward regime analysis, Monte Carlo simulation, and cross-instrument SMT divergence — then displays results in an interactive probability dashboard.
 
-**Stack:** Python 3.14 · DuckDB 1.4.4 · pandas · numpy · standalone HTML (zero CDN deps)
+**Stack:** Python 3.14 · DuckDB 1.4.4 · pandas · numpy · pyarrow · standalone HTML (zero CDN deps) · local Python HTTP server (`server.py`)
 
 ---
 
@@ -25,24 +25,39 @@ candle_science.duckdb
     ↓
 model_stats.py
   ├── load_1m()       → RTH + full-day DataFrames
-  ├── resample()      → sweep TF candles (1H/30M)
-  ├── resample()      → CISD TF candles (5M/3M)
+  ├── resample()      → sweep TF candles (1H/30M/15M)
+  ├── resample()      → CISD TF candles (5M/3M/1M)
   ├── df_to_arrays()  → numpy arrays (one pass, reused)
   ├── detect_setups_base() → sweep + CISD + SMT detection
-  ├── apply_profile_and_resolve() → exit simulation
+  ├── apply_profile_and_resolve() → exit simulation per RR_PROFILE
   └── build_model_stats() → aggregation by hour/DOW/year/session
     ↓
-model_stats.json (all models × all profiles)
+    ├── model_stats.json    (aggregate stats only — 29 keys per profile, ~56 MB)
+    └── model_stats.parquet (raw trade rows — 49 cols × ~1.4M rows, ~78 MB)
+        ↓
+server.py
+  ├── /data?engine=fractal_sweep&model=X&profile=Y
+  │     → slice JSON, return aggregate stats for one profile
+  ├── /trades?engine=fractal_sweep&model=X&profile=Y&period=2y|1y|6m|3m|1m|all
+  │     → filter parquet by (model_key, sweep_mode, cisd_mode, profile_key)
+  │       + exclude EXPIRED + period anchored to MAX(date) → return trade rows
+  ├── /trades?...&from=YYYY-MM-DD&to=YYYY-MM-DD
+  │     → arbitrary date window (XOR with period=)
+  └── /recalc?engine=fractal_sweep   (POST)
+        → re-runs the engine subprocess
     ↓
 model_dashboard.html (client-side rendering)
+  ├── js/data.js: loadTrades + getActiveTrades cache, keyed by (model, profile, period)
   ├── Overview      → hero tiles, heatmaps, combos, filter waterfall
   ├── MAE Study     → optimal SL, percentiles, KDE
   ├── MFE Study     → PTQ level, p50, structural panel
   ├── Risk          → equity curve, drawdown, Sharpe
-  ├── Trades        → filterable trade table (SMT toggle)
+  ├── Trades        → filterable trade table (period-scoped)
   └── Custom Ranges → walk-forward, Monte Carlo, feature attribution,
                       distribution shift, regime analysis, stress testing
 ```
+
+**Slim-JSON migration (2026-05-15).** Engine previously wrote ~270 MB of `recent_trades` arrays into `model_stats.json`. Migration stripped those out — JSON shrunk to ~56 MB, parquet became the canonical trade-row source. Frontend `loadTrades(fullKey, profile, period)` cache replaces all `D.recent_trades` reads. See `docs/superpowers/specs/2026-05-15-fractal-sweep-slim-json-design.md` and PR #15.
 
 ---
 
@@ -59,12 +74,13 @@ Timestamps stored as `TIMESTAMP WITH TIME ZONE` (America/Toronto). Always conver
 
 ---
 
-## The 2 Sweep Models
+## The 3 Sweep Models
 
 | Key | Sweep TF | CISD TF |
 |-----|----------|---------|
 | `1H_5M` | 1 Hour | 5 Min |
 | `30M_3M` | 30 Min | 3 Min |
+| `15M_1M` | 15 Min | 1 Min |
 
 **Constants:** `MIN_RISK_PTS = 3.0` · `MAX_RISK_PTS = 112.5` (= MNQ $225 / $2/pt) · `OUTCOME_MAX_BARS = 1440` (24h)
 
@@ -89,12 +105,19 @@ Backward scan from the return bar finds the consecutive opposing delivery run. C
 
 ## Risk Profiles (`RR_PROFILES` in `engine/model_stats.py`)
 
-| Key | profile_type | Stop / Target |
-|---|---|---|
-| `simple_1r` | `mult` | SL = sweep extreme (1× base_risk); TP = 1R (100% exit) |
-| `raw_measure` | `raw` | No SL/TP — records full-session MAE/MFE only, `outcome='MEASURED'` |
+25 profiles total: 24 trade-resolving profiles (3 R-targets × 4 entry modes × 2 target refs) + 1 measurement-only profile.
 
-`simple_1r` drives the win/loss dashboard. `raw_measure` is measurement-only for MAE/MFE distribution studies.
+| profile_type | Example keys | Stop / Target |
+|---|---|---|
+| `mult` | `simple_1r`, `simple_1r5`, `simple_2r` | Market entry, TP from entry, 1R/1.5R/2R |
+| `mult` | `ob_1r`, `ob_1r5`, `ob_2r` | Market entry, TP from CISD OB open, 1R/1.5R/2R |
+| `mult` | `l33_1r`, `l50_1r`, `l66_1r` (and `_1r5`/`_2r` variants) | L33/L50/L66 limit entries (cascade between OB and SL) |
+| `mult` | `l33_ob_1r`, `l50_ob_1r`, `l66_ob_1r` (and variants) | L33/L50/L66 limit entries with OB-based target |
+| `raw` | `raw_measure` | No SL/TP — full-session MAE/MFE only, `outcome='MEASURED'` |
+
+`simple_1r` drives the default Overview hero cards. `raw_measure` is measurement-only for MAE/MFE distribution studies.
+
+All 25 are written to both `model_stats.json` (per-profile aggregates) and `model_stats.parquet` (per-profile trade rows, partitioned by `profile_key` column).
 
 ---
 
@@ -112,7 +135,7 @@ The dashboard's filter bar renders three chips. Each chip shows a live `±N` bad
 
 **SMT backtest.** Loads `es_1m` alongside `nq_1m`, builds ES sweep-TF candles, checks the ES window at NQ sweep detection time. Pine indicator implements the same logic via `request.security` on the ES symbol.
 
-**Toggle scope.** Filters work on every Period selection (All Time + 2y/1y/6m/3m/1m). `_compute_by_tf` builds `recent_trades` for each sub-slice from `wl_full`, so toggling restores rejected trades within that period.
+**Toggle scope.** Filters work on every Period selection (All Time + 2y/1y/6m/3m/1m). `_compute_by_tf` builds aggregate stats per sub-slice from `wl_full`. Filter-chip recomputation re-aggregates trade rows client-side from the `loadTrades` cache (populated from `/trades?period=...`) — toggling restores rejected trades within that period without server roundtrip.
 
 ### Best practical combo (over 12y NQ, baseline ~50% WR)
 
@@ -260,7 +283,7 @@ Applied to: `by_hour`, `by_session`, `by_dow`, `by_year`, `dir_summary`, `tspot_
 ## Execution
 
 ```bash
-# Run backtest (all models) — writes model_stats.json to this folder
+# Run backtest (all models) — writes model_stats.json + model_stats.parquet to this folder
 python3 engine/model_stats.py
 
 # Run specific models
@@ -269,12 +292,15 @@ python3 engine/model_stats.py --models 1H_5M
 # Run for ES
 python3 engine/model_stats.py --table es_1m
 
-# Run the test suite (188 pass, 7 pre-existing failures, 20 skipped)
+# Run the test suite (346 pass, 20 skipped as of 2026-05-15)
 python3 -m pytest tests/ -q
 
-# Serve dashboard (from repo root, not this folder)
+# Regenerate the drift-gate snapshot (after engine changes that shift trade counts)
+python3 tests/gen_no_drift_snapshot.py
+
+# Serve dashboard — use server.py (NOT python3 -m http.server) so /data, /trades, /recalc work
 cd ..
-python3 -m http.server 8001
+python3 server.py
 # → http://localhost:8001/Fractal Sweep/model_dashboard.html
 ```
 
@@ -284,9 +310,11 @@ python3 -m http.server 8001
 
 ```
 Statistic.ally/
+├── server.py                                [local server: static files + /data, /trades, /recalc]
 ├── Fractal Sweep/                           [sweep+CISD engine, F1 removed]
 │   ├── candle_science.duckdb                [gitignored, ~550 MB]
-│   ├── model_stats.json                     [build artifact, gitignored]
+│   ├── model_stats.json                     [aggregate stats, gitignored, ~56 MB]
+│   ├── model_stats.parquet                  [trade rows, gitignored, ~78 MB — served via /trades]
 │   ├── model_dashboard.html                 [dashboard, ~6700 lines]
 │   ├── engine/                              [Python backtest code]
 │   │   ├── model_stats.py                   [backtest engine, ~2700 lines]
@@ -295,15 +323,22 @@ Statistic.ally/
 │   │   ├── master_backtester.py             [supporting tool]
 │   │   ├── sltp_analyzer.py                 [supporting tool]
 │   │   └── recalc.py                        [supporting tool]
+│   ├── js/                                  [frontend modules]
+│   │   ├── data.js                          [loadTrades cache + getActiveTrades + getFilteredD]
+│   │   ├── app.js                           [render orchestration + recalc flow]
+│   │   ├── verdict.js                       [profile comparison + verdict panel]
+│   │   ├── walkforward.js                   [custom-range walk-forward analysis]
+│   │   ├── charts.js                        [equity, heatmap, R-distribution charts]
+│   │   └── tabs/                            [overview, trades, edge, excursion, filters]
 │   ├── pine/                                [TradingView scripts]
-│   │   ├── fractal_sweep.pine               [Pine indicator]
-│   │   ├── fractal_sweep_strategy.pine      [Pine strategy]
-│   │   ├── ttfm+fadi.pine                   [TTFM+Fadi indicator]
-│   │   └── snapshots/                       [dated indicator backups]
 │   ├── data/                                [gitignored Databento .dbn dumps]
 │   ├── docs/                                [standalone analysis write-ups]
 │   ├── assets/                              [images]
 │   ├── tests/                               [pytest suite]
+│   │   ├── test_no_drift.py                 [drift gate — parquet aggregates vs snapshot]
+│   │   ├── test_trades_endpoint.py          [/trades XOR validation + period anchoring + mtime cache]
+│   │   ├── gen_no_drift_snapshot.py         [regenerate snapshot from current parquet]
+│   │   └── fixtures/no_drift_snapshot.json  [committed baseline for drift gate]
 │   ├── CLAUDE.md                            [project context]
 │   ├── PIPELINE.md                          [this file]
 │   ├── LEGACY_NOTE.md                       [earlier-era history from the Legacy snapshot]

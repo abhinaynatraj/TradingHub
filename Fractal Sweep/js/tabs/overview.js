@@ -1,7 +1,7 @@
 import { activeModel, activeMode, activeCisd, activeProfile, activeTF, activeSmt, activeF3, activeF4, MODEL_KEYS, MODEL_LABELS, RR_PROFILES, PROFILE_LABELS, PCT_PROFILES, SVG_FONT, isDark, activePageTab, setActiveModel, setActiveProfile, setActiveTF } from '../state.js';
 import { pct, evFmt, pfFmt, evCls, wrHeatClr, wrHeatTxt, fmtDateRange, _tradingDaysFromRange } from '../utils.js';
 import { C, lineChart, rDistChart, filterWaterfall, dirCards, drawSetupViz, _buildEquityPts, renderEquityCurveFS, renderOverviewEquityCurve } from '../charts.js';
-import { getProfileData, getActiveTFData, getFilteredD, getSmtD, getAvailableProfiles, loadProfile } from '../data.js';
+import { getProfileData, getActiveTFData, getFilteredD, getSmtD, getAvailableProfiles, loadProfile, loadTrades } from '../data.js';
 import { renderEdgeStudy } from './edge.js';
 import { renderFilterVariants, renderProfileComparison, renderVerdict } from '../verdict.js';
 import { renderMAEStudy, renderMFEStudy } from './excursion.js';
@@ -14,8 +14,20 @@ function renderModelDropdown(){
   if (!sel) return;
   sel.innerHTML = MODEL_KEYS.map(k => `<option value="${k}" ${k===activeModel?'selected':''}>${MODEL_LABELS[k]||k}</option>`).join('');
 }
-function switchModel(k){
+async function switchModel(k){
   setActiveModel(k);
+  // Lazy-load the new model's profile data and trade rows before render.
+  // Without this, DATA[newFullKey] is still the empty {profiles:{}} placeholder
+  // from loadModelList, so renderModel(null) shows "No data".
+  const fullKey = `${k}_${activeMode}_${activeCisd}`;
+  try {
+    await loadProfile(fullKey, activeProfile);
+    if (activeTF !== 'custom') {
+      await loadTrades(fullKey, activeProfile, activeTF || 'all');
+    }
+  } catch (e) {
+    console.warn('[sweep] switchModel load failed:', e);
+  }
   window.render();
 }
 
@@ -25,8 +37,12 @@ function renderProfileDropdown(){
 }
 async function switchProfile(pk){
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
-  // Ensure profile data is loaded from API
+  // Ensure profile data is loaded from API and trades cache is primed
+  // for the active period so getFilteredD finds them.
   await loadProfile(fullKey, pk);
+  if (activeTF !== 'custom') {
+    await loadTrades(fullKey, pk, activeTF || 'all');
+  }
   setActiveProfile(pk);
   updateProfileSelectorsFromKey(pk);
   window.render();
@@ -83,13 +99,21 @@ function updateProfileFromSelectors() {
   if (pk && pk !== activeProfile) switchProfile(pk);
 }
 
-function switchTF(tf){
+async function switchTF(tf){
   setActiveTF(tf);
   const builder = document.getElementById('custom-range-builder');
   if (builder) builder.style.display = tf === 'custom' ? '' : 'none';
   if (tf === 'custom') {
     if (customRanges.length === 0) addCustomRange();
     renderRangeSlots();
+  } else {
+    // Prime the trades cache for the new period so getFilteredD finds them.
+    const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
+    try {
+      await loadTrades(fullKey, activeProfile, tf);
+    } catch (e) {
+      console.warn('[sweep] loadTrades failed for', tf, e);
+    }
   }
   localStorage.setItem('fractal-active-tf', tf);
   window.renderActive();
@@ -181,4 +205,4 @@ function renderModel(D){
   renderVerdict(document.getElementById('overview-verdict-panel'));
 }
 
-export { renderModel, renderModelDropdown, renderProfileDropdown, switchProfile, switchTF, renderControls, switchModel, renderClassificationBreakdown, updateProfileFromSelectors };
+export { renderModel, renderModelDropdown, renderProfileDropdown, switchProfile, switchTF, renderControls, switchModel, updateProfileFromSelectors };

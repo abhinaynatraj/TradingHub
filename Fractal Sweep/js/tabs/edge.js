@@ -1,4 +1,5 @@
 import { SVG_FONT, isDark, activeModel, activeSmt, activeF3, activeF4 } from '../state.js';
+import { getActiveTrades } from '../data.js';
 import { C, lineChart } from '../charts.js';
 
 function _wilsonCI(wins, n, z=1.96) {
@@ -328,7 +329,7 @@ function renderSubHourEl(D) {
   if (segLabel) segLabel.textContent = `Sub-Hour Detail \u00b7 ${segmentMin}-Minute Segments`;
   if (titleLabel) titleLabel.textContent = `Performance by ${segmentMin}-Minute Segment`;
 
-  let trades = D?.recent_trades;
+  let trades = getActiveTrades(D);
   if (!trades || !trades.length) {
     el.innerHTML = '<div style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);padding:8px">No trade data available.</div>';
     return;
