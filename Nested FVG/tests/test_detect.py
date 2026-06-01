@@ -40,3 +40,20 @@ def test_min_bp_filter_rejects_small_gap():
 def test_no_gap_returns_empty():
     bars = _bars(highs=[105, 106, 107], lows=[100, 101, 104])  # 104 < 105, no bull gap
     assert find_fvgs(bars, min_bp=0.0) == []
+
+from engine.detect import is_mitigated
+
+def test_bull_gap_mitigated_on_close_below_bottom():
+    gap = dict(dir=1, top=108.0, bot=105.0)
+    assert is_mitigated(gap, close=104.9) is True    # closed below bottom
+    assert is_mitigated(gap, close=105.1) is False   # still inside/above
+
+def test_bear_gap_mitigated_on_close_above_top():
+    gap = dict(dir=-1, top=100.0, bot=95.0)
+    assert is_mitigated(gap, close=100.1) is True    # closed above top
+    assert is_mitigated(gap, close=99.9) is False
+
+def test_wick_through_does_not_mitigate():
+    # mitigation is by CLOSE, not wick; caller passes close only
+    gap = dict(dir=1, top=108.0, bot=105.0)
+    assert is_mitigated(gap, close=105.0) is False   # exactly at bottom = not below

@@ -40,3 +40,13 @@ def find_fvgs(bars, min_bp):
             if gap >= top * (min_bp / 10000.0):
                 out.append(dict(idx=i, ts_ns=int(ts[i]), dir=-1, top=top, bot=bot, gap_pts=gap))
     return out
+
+
+def is_mitigated(gap, close):
+    """A gap is mitigated once a bar CLOSES through its far edge.
+
+    Bull gap dies when close < bot. Bear gap dies when close > top.
+    """
+    if gap['dir'] == 1:
+        return close < gap['bot']
+    return close > gap['top']
