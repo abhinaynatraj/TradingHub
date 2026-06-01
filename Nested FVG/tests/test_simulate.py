@@ -79,3 +79,62 @@ def test_pnl_to_usd_uses_point_value():
     assert pnl_to_usd(30.0, point_value_usd=2.0) == 60.0
     assert pnl_to_usd(-15.0, point_value_usd=2.0) == -30.0
     assert pnl_to_usd(0.0, point_value_usd=2.0) == 0.0
+
+
+def test_long_partial_on_earlier_bar_then_target_win():
+    # partial (+15 => 115) hit on bar 1, target (+45 => 145) on bar 2 (separate bars)
+    m1 = _path([(101, 99), (116, 100), (146, 120)])
+    r = simulate_trade(m1, entry_idx=0, entry_price=100.0, direction=1,
+                       session_end_idx=99,
+                       stop_pts=15, partial_pts=15, target_pts=45, ext_pts=60)
+    assert r['outcome'] == 'win'
+    assert r['pnl_pts'] == 30.0
+    assert r['partial_hit'] is True
+    assert r['bars_held'] == 2
+
+def test_long_partial_then_expiry_is_seven_point_five():
+    # partial hit on bar 1, never targets/stops, session ends at idx 2 -> expired, +7.5
+    m1 = _path([(101, 99), (116, 101), (114, 102)])
+    r = simulate_trade(m1, entry_idx=0, entry_price=100.0, direction=1,
+                       session_end_idx=2,
+                       stop_pts=15, partial_pts=15, target_pts=45, ext_pts=60)
+    assert r['outcome'] == 'expired'
+    assert r['pnl_pts'] == 7.5
+    assert r['partial_hit'] is True
+
+def test_short_partial_then_stop_is_scratch():
+    # SHORT entry 100: partial=85 hit on bar1, stop=115 hit on bar2 -> scratch, 0 pts
+    m1 = _path([(101, 99), (100, 84), (116, 110)])
+    r = simulate_trade(m1, entry_idx=0, entry_price=100.0, direction=-1,
+                       session_end_idx=99,
+                       stop_pts=15, partial_pts=15, target_pts=45, ext_pts=60)
+    assert r['outcome'] == 'scratch'
+    assert r['pnl_pts'] == 0.0
+    assert r['partial_hit'] is True
+
+def test_short_pure_stop_loss():
+    # SHORT entry 100, stop=115 hit before partial=85 -> loss, -15
+    m1 = _path([(101, 99), (120, 100)])
+    r = simulate_trade(m1, entry_idx=0, entry_price=100.0, direction=-1,
+                       session_end_idx=99,
+                       stop_pts=15, partial_pts=15, target_pts=45, ext_pts=60)
+    assert r['outcome'] == 'loss'
+    assert r['pnl_pts'] == -15.0
+
+def test_reached_ext_flag_on_win():
+    # long win whose runner pushes past ext (+60 => 160) before/at target
+    m1 = _path([(101, 99), (116, 100), (165, 140)])
+    r = simulate_trade(m1, entry_idx=0, entry_price=100.0, direction=1,
+                       session_end_idx=99,
+                       stop_pts=15, partial_pts=15, target_pts=45, ext_pts=60)
+    assert r['outcome'] == 'win'
+    assert r['reached_ext'] is True
+
+def test_mae_mfe_recorded():
+    # long that dips to 96 (mae=4) and peaks at 120 (mfe=20) then expires at idx 2
+    m1 = _path([(101, 96), (120, 99), (118, 100)])
+    r = simulate_trade(m1, entry_idx=0, entry_price=100.0, direction=1,
+                       session_end_idx=2,
+                       stop_pts=15, partial_pts=15, target_pts=45, ext_pts=60)
+    assert r['mae_pts'] == 4.0
+    assert r['mfe_pts'] == 20.0

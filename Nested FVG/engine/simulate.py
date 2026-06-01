@@ -16,6 +16,8 @@ def simulate_trade(m1, entry_idx, entry_price, direction, session_end_idx,
         entry_price: fill price (next-bar open, set by caller).
         direction: 1 long, -1 short.
         session_end_idx: last bar index still in-session; expiry forces close here.
+            Precondition: the caller must ensure session_end_idx is a valid bound;
+            values >= len(bars) are safely clamped to the last bar.
         stop_pts/partial_pts/target_pts/ext_pts: fixed point distances.
 
     Returns:
@@ -48,6 +50,9 @@ def simulate_trade(m1, entry_idx, entry_price, direction, session_end_idx,
         hi = high[i]
         lo = low[i]
 
+        # Excursions span the full range of each bar, including the exit bar
+        # (a favorable/adverse wick on the stop/target bar is counted — standard
+        # closed-bar backtest convention).
         # update excursions
         if direction == 1:
             mfe = max(mfe, hi - entry_price)
