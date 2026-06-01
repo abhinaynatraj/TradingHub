@@ -25,6 +25,7 @@ def find_fvgs(bars, min_bp):
     ts = bars['ts_ns']
     out = []
     for i in range(2, len(high)):
+        # NOTE: bp threshold reference differs by direction (near edge), matching the Pine source.
         # Bullish
         if low[i] > high[i - 2]:
             bot = float(high[i - 2])
@@ -32,7 +33,7 @@ def find_fvgs(bars, min_bp):
             gap = top - bot
             if gap >= bot * (min_bp / 10000.0):
                 out.append(dict(idx=i, ts_ns=int(ts[i]), dir=1, top=top, bot=bot, gap_pts=gap))
-        # Bearish
+        # Bearish (elif: a single bar cannot satisfy both gap conditions)
         elif high[i] < low[i - 2]:
             bot = float(high[i])
             top = float(low[i - 2])
@@ -45,11 +46,11 @@ def find_fvgs(bars, min_bp):
 def is_mitigated(gap, close):
     """A gap is mitigated once a bar CLOSES through its far edge.
 
-    Bull gap dies when close < bot. Bear gap dies when close > top.
+    Bull gap dies when close < bot (strictly; touching the edge is not mitigation). Bear gap dies when close > top.
     """
     if gap['dir'] == 1:
-        return close < gap['bot']
-    return close > gap['top']
+        return bool(close < gap['bot'])
+    return bool(close > gap['top'])
 
 
 def is_nested(ltf, htf, proximity_bp):
@@ -60,4 +61,4 @@ def is_nested(ltf, htf, proximity_bp):
     if ltf['dir'] != htf['dir']:
         return False
     prox = htf['bot'] * (proximity_bp / 10000.0)
-    return ltf['bot'] >= (htf['bot'] - prox) and ltf['top'] <= (htf['top'] + prox)
+    return bool(ltf['bot'] >= (htf['bot'] - prox) and ltf['top'] <= (htf['top'] + prox))

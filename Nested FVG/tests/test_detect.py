@@ -80,3 +80,21 @@ def test_opposite_direction_never_nested():
     htf = dict(dir=1, top=110.0, bot=100.0)
     ltf = dict(dir=-1, top=108.0, bot=102.0)
     assert is_nested(ltf, htf, proximity_bp=0.0) is False
+
+def test_min_bp_boundary_exactly_at_threshold_passes():
+    # gap exactly equal to threshold should be accepted (code uses >=).
+    # Use exactly-representable float64 values: 100.125 - 100.0 = 0.125 exactly,
+    # and threshold = 100.0 * (12.5/10000) = 0.125 exactly.
+    bars = _bars(highs=[100.0, 100.0, 110.0], lows=[90, 90, 100.125])
+    fvgs = find_fvgs(bars, min_bp=12.5)
+    assert len(fvgs) == 1
+    assert fvgs[0]['dir'] == 1
+
+def test_bear_wick_through_does_not_mitigate():
+    gap = dict(dir=-1, top=100.0, bot=95.0)
+    assert is_mitigated(gap, close=100.0) is False   # exactly at top = not above
+
+def test_ltf_below_htf_bottom_not_nested():
+    htf = dict(dir=1, top=110.0, bot=100.0)
+    ltf = dict(dir=1, top=108.0, bot=98.0)   # bot pokes below htf bot
+    assert is_nested(ltf, htf, proximity_bp=0.0) is False
