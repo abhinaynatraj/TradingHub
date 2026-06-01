@@ -57,3 +57,26 @@ def test_wick_through_does_not_mitigate():
     # mitigation is by CLOSE, not wick; caller passes close only
     gap = dict(dir=1, top=108.0, bot=105.0)
     assert is_mitigated(gap, close=105.0) is False   # exactly at bottom = not below
+
+from engine.detect import is_nested
+
+def test_ltf_fully_inside_htf_is_nested():
+    htf = dict(dir=1, top=110.0, bot=100.0)
+    ltf = dict(dir=1, top=108.0, bot=102.0)
+    assert is_nested(ltf, htf, proximity_bp=0.0) is True
+
+def test_ltf_outside_htf_not_nested():
+    htf = dict(dir=1, top=110.0, bot=100.0)
+    ltf = dict(dir=1, top=112.0, bot=102.0)   # top pokes above htf top
+    assert is_nested(ltf, htf, proximity_bp=0.0) is False
+
+def test_proximity_tolerance_allows_slight_overshoot():
+    htf = dict(dir=1, top=110.0, bot=100.0)
+    ltf = dict(dir=1, top=110.05, bot=99.95)  # ~4.5bp over on each edge
+    assert is_nested(ltf, htf, proximity_bp=0.0) is False
+    assert is_nested(ltf, htf, proximity_bp=10.0) is True
+
+def test_opposite_direction_never_nested():
+    htf = dict(dir=1, top=110.0, bot=100.0)
+    ltf = dict(dir=-1, top=108.0, bot=102.0)
+    assert is_nested(ltf, htf, proximity_bp=0.0) is False

@@ -50,3 +50,14 @@ def is_mitigated(gap, close):
     if gap['dir'] == 1:
         return close < gap['bot']
     return close > gap['top']
+
+
+def is_nested(ltf, htf, proximity_bp):
+    """True if the LTF gap fits within the HTF gap (same direction) +/- proximity.
+
+    prox is computed off the HTF bottom (a stable reference near the zone).
+    """
+    if ltf['dir'] != htf['dir']:
+        return False
+    prox = htf['bot'] * (proximity_bp / 10000.0)
+    return ltf['bot'] >= (htf['bot'] - prox) and ltf['top'] <= (htf['top'] + prox)
