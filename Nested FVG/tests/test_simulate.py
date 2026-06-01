@@ -72,3 +72,10 @@ def test_short_pure_target_win():
     assert r['outcome'] == 'win'
     assert r['pnl_pts'] == 30.0
     assert r['r'] == 2.0
+
+from engine.simulate import pnl_to_usd
+
+def test_pnl_to_usd_uses_point_value():
+    assert pnl_to_usd(30.0, point_value_usd=2.0) == 60.0
+    assert pnl_to_usd(-15.0, point_value_usd=2.0) == -30.0
+    assert pnl_to_usd(0.0, point_value_usd=2.0) == 0.0

@@ -107,3 +107,8 @@ def _result(outcome, pnl_pts, stop_pts, partial_hit, reached_ext, mae, mfe, entr
         bars_held=int(exit_idx - entry_idx),
         exit_idx=int(exit_idx),
     )
+
+
+def pnl_to_usd(pnl_pts, point_value_usd):
+    """Convert blended points P&L to dollars (MNQ convention: $2/pt)."""
+    return float(pnl_pts) * float(point_value_usd)
