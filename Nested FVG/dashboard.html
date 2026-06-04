@@ -164,14 +164,6 @@
     </div>
 
     <div class="sb-section">
-      <label class="sb-label">Instrument</label>
-      <select id="instrument-select" class="sel-drop">
-        <option value="NQ">NQ</option>
-        <option value="ES">ES</option>
-      </select>
-    </div>
-
-    <div class="sb-section">
       <label class="sb-label">Direction</label>
       <select id="direction-select" class="sel-drop">
         <option value="all">All</option>
@@ -802,7 +794,6 @@ async function renderActive() {
 function bindUI() {
   const reset = () => { STATE.tradesPage = 0; renderActive(); };
   document.getElementById('pairing-select').addEventListener('change', e => { STATE.pairing = e.target.value; reset(); });
-  document.getElementById('instrument-select').addEventListener('change', e => { STATE.instrument = e.target.value; reset(); });
   document.getElementById('direction-select').addEventListener('change', e => { STATE.direction = e.target.value; reset(); });
   document.getElementById('session-select').addEventListener('change', e => { STATE.session = e.target.value; reset(); });
   document.getElementById('smt-select').addEventListener('change', e => { STATE.smt = e.target.value; reset(); });

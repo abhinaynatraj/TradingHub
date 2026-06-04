@@ -48,6 +48,9 @@ cross-product — a full pairing is ~2 min instead of hours over 4M+ bars.
 - HTF mitigation: gap dies on close-through far edge (matches Pine).
 - SMT is a crude NQ-ES 2-bar divergence proxy (flagged in `_smt_at`); sharpen later
   without schema change.
+- **NQ only is traded.** ES is loaded solely as the SMT divergence reference (the
+  Pine's fixed 15/45pt is NQ-calibrated; ES has a different point scale). All trade
+  rows are `instrument='NQ'`. The dashboard has no instrument selector.
 
 ## Outputs
 `data/trades_<pair>.parquet` (gitignored) + `data/manifest.json` (committed, slim
