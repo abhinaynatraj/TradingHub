@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nested FVG · Backtest Dashboard</title>
+  <link rel="stylesheet" href="../Analysis/dashboard/shared.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script defer src="../Analysis/dashboard/shared.js"></script>
+  <style>
+    body { background: var(--bg); color: var(--text-primary); font-family: var(--font-body); margin: 0; }
+
+    /* ── Header ───────────────────────────────────────────────────────────── */
+    .hdr { display:flex; justify-content:space-between; align-items:center; padding:14px 24px; border-bottom:1px solid var(--border); background:var(--bg-elev-1); flex-wrap:wrap; gap:12px; }
+    .hdr-left { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+    .hub-back { color:var(--text-secondary); text-decoration:none; display:flex; align-items:center; gap:6px; font-family:var(--font-display); font-weight:600; }
+    .hub-back:hover { color:var(--text-primary); }
+    .hub-wordmark em { font-style:normal; color:var(--accent); }
+    .hdr-divider { width:1px; height:22px; background:var(--border); }
+    .hdr-wordmark { font-family:var(--font-display); font-weight:800; font-size:18px; color:var(--text-primary); letter-spacing:-0.01em; }
+    .hdr-wordmark em { font-style:normal; color:var(--accent); }
+    .hdr-sub { font-family:var(--font-data); font-size:11px; color:var(--text-muted); letter-spacing:.05em; text-transform:uppercase; }
+    .hdr-right { display:flex; align-items:center; gap:10px; }
+
+    /* ── Two-column layout: sidebar + main ────────────────────────────────── */
+    .layout { display:grid; grid-template-columns: 260px 1fr; min-height: calc(100vh - 60px); }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); }
+    }
+    .sidebar {
+      background: var(--bg-elev-1); border-right: 1px solid var(--border);
+      padding: 18px 16px 24px; display: flex; flex-direction: column; gap: 14px;
+      position: sticky; top: 60px; align-self: flex-start;
+      height: calc(100vh - 60px); overflow-y: auto;
+    }
+    .sb-section { display: flex; flex-direction: column; gap: 6px; }
+    .sb-label { display:block; font-family:var(--font-data); font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px; }
+    .sel-drop { width:100%; padding:7px 10px; background:var(--bg-elev-2); color:var(--text-primary); border:1px solid var(--border-mid); border-radius:var(--radius-sm); font-family:var(--font-data); font-size:12px; cursor:pointer; }
+    .sb-nav { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+    .sb-nav-btn { text-align: left; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; color: var(--text-secondary); font-family: var(--font-data); font-size: 12px; cursor: pointer; transition: all .15s; }
+    .sb-nav-btn:hover { background: var(--bg-elev-2); color: var(--text-primary); }
+    .sb-nav-btn.active { background: var(--bg-elev-2); color: var(--accent); border-left: 2px solid var(--accent); padding-left: 10px; font-weight: 600; }
+
+    /* ── Main pane ───────────────────────────────────────────────────────── */
+    .main { padding: 22px 28px 60px; max-width: 1280px; }
+    .page-pane { display: none; }
+    .page-pane.active { display: block; }
+    .sec-label { font-family: var(--font-data); font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: .05em; margin: 22px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    .sec-label:first-child { margin-top: 0; }
+
+    /* ── Edge ribbon (hero tiles) ─────────────────────────────────────────── */
+    .edge-ribbon { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 16px; }
+    @media (max-width: 700px) { .edge-ribbon { grid-template-columns: repeat(2, 1fr); } }
+    .ribbon-cell { background: var(--bg-elev-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+    .ribbon-label { font-family: var(--font-data); font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
+    .ribbon-value { font-family: var(--font-data); font-size: 22px; font-weight: 700; color: var(--text-primary); }
+    .ribbon-value.positive { color: var(--green); }
+    .ribbon-value.negative { color: var(--red); }
+    .ribbon-sub { font-family: var(--font-data); font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+
+    /* ── Cards / panels ──────────────────────────────────────────────────── */
+    .card { background: var(--bg-elev-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin: 10px 0; }
+    .card-title { font-family: var(--font-data); font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: .05em; margin-bottom: 10px; font-weight: 600; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    @media (max-width: 900px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+    /* ── Tables ──────────────────────────────────────────────────────────── */
+    .tbl { width: 100%; border-collapse: collapse; font-family: var(--font-data); font-size: 12px; }
+    .tbl th { text-align: left; padding: 8px 10px; color: var(--text-muted); font-weight: 500; font-size: 10px; text-transform: uppercase; border-bottom: 1px solid var(--border); letter-spacing: .05em; }
+    .tbl th.num, .tbl td.num { text-align: right; }
+    .tbl td { padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--text-primary); }
+    .tbl tr:last-child td { border-bottom: none; }
+    .tbl tr:hover td { background: var(--bg-elev-2); }
+    .tbl tr.row-best td { background: var(--green-tint); }
+    .tbl tr.row-cur td { background: var(--bg-elev-2); }
+    .tbl .pos { color: var(--green); }
+    .tbl .neg { color: var(--red); }
+    .ev-heat { padding-left: 10px; padding-right: 10px; border-radius: var(--radius-sm); }
+    .oc-win { color: var(--green); }
+    .oc-loss { color: var(--red); }
+    .oc-scratch { color: var(--blue); }
+    .oc-expired { color: var(--text-muted); }
+
+    /* ── Outcome / reach bars ────────────────────────────────────────────── */
+    .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-family: var(--font-data); font-size: 11px; }
+    .bar-label { width: 150px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bar-track { flex: 1; background: var(--bar-track); height: 18px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+    .bar-fill { height: 100%; background: var(--accent); transition: width .2s; }
+    .bar-pct { width: 110px; text-align: right; color: var(--text-primary); }
+
+    /* ── SMT × direction grid ────────────────────────────────────────────── */
+    .smt-grid { display: grid; grid-template-columns: 90px 1fr 1fr; gap: 8px; align-items: stretch; }
+    .smt-cell { background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; }
+    .smt-cell.head { background: transparent; border: none; display: flex; align-items: center; font-family: var(--font-data); font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+    .smt-cell .smt-n { font-family: var(--font-data); font-size: 18px; font-weight: 700; }
+    .smt-cell .smt-ev { font-family: var(--font-data); font-size: 12px; margin-top: 2px; }
+
+    /* ── Equity / drawdown chart wrap ────────────────────────────────────── */
+    .chart-wrap { background: var(--bg-elev-2); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); }
+    .chart-wrap svg { display: block; width: 100%; height: auto; }
+
+    /* ── Heatmap ─────────────────────────────────────────────────────────── */
+    .heatmap-grid { display: grid; gap: 2px; font-family: var(--font-data); font-size: 10px; }
+    .heat-cell { padding: 6px 4px; text-align: center; border-radius: 3px; color: var(--text-primary); }
+    .heat-label { font-size: 9px; color: var(--text-muted); text-align: center; padding: 4px 2px; }
+    .heat-tooltip { font-size: 9px; color: var(--text-muted); margin-top: 6px; }
+
+    /* ── Pagination ──────────────────────────────────────────────────────── */
+    .pagination { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-family: var(--font-data); font-size: 12px; }
+    .page-btn { padding: 5px 10px; background: var(--bg-elev-2); color: var(--text-primary); border: 1px solid var(--border-mid); border-radius: var(--radius-sm); cursor: pointer; font-family: var(--font-data); font-size: 12px; }
+    .page-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .page-btn:disabled { opacity: .4; cursor: not-allowed; }
+    .page-info { color: var(--text-muted); }
+
+    .stat-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-family: var(--font-data); font-size: 11px; }
+    .stat-pill.pos { background: var(--green-tint); color: var(--green); border: 1px solid var(--green-border); }
+    .stat-pill.neg { background: var(--red-tint); color: var(--red); border: 1px solid var(--red-border); }
+    .stat-pill.neutral { background: var(--bg-elev-2); color: var(--text-secondary); border: 1px solid var(--border); }
+
+    .loading { color: var(--text-muted); font-family: var(--font-data); font-size: 12px; padding: 24px 0; text-align: center; }
+    .empty { color: var(--text-muted); font-family: var(--font-data); font-size: 12px; padding: 18px 0; text-align: center; }
+    .error { color: var(--red); font-family: var(--font-data); font-size: 12px; padding: 18px 0; }
+
+    .filter-summary-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; font-family: var(--font-data); font-size: 11px; }
+    .filter-summary-bar .chip-active { padding: 3px 9px; background: var(--green-tint); color: var(--green); border: 1px solid var(--green-border); border-radius: 999px; }
+  </style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-left">
+    <a class="hub-back" href="../index.html">
+      <span>←</span>
+      <span class="hub-wordmark">Statistic<em>.ally</em></span>
+    </a>
+    <div class="hdr-divider"></div>
+    <div class="hdr-wordmark">Nested<em>FVG</em></div>
+    <div class="hdr-divider"></div>
+    <div class="hdr-sub">1m FVG nested in HTF FVG · Globex · fixed-pt risk</div>
+  </div>
+  <div class="hdr-right">
+    <div class="theme-picker" role="radiogroup" aria-label="Theme">
+      <button class="theme-opt" data-theme="dark"   title="Dark"   aria-label="Dark theme">☀</button>
+      <button class="theme-opt" data-theme="light"  title="Light"  aria-label="Light theme">☾</button>
+      <button class="theme-opt" data-theme="gold"   title="Gold"   aria-label="Gold theme">✦</button>
+      <button class="theme-opt" data-theme="indigo" title="Indigo" aria-label="Indigo theme">◆</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="sidebar">
+
+    <div class="sb-section">
+      <label class="sb-label">Pairing (LTF · HTF)</label>
+      <select id="pairing-select" class="sel-drop">
+        <option value="1m_5m">1m · 5m</option>
+        <option value="3m_15m">3m · 15m</option>
+        <option value="5m_30m">5m · 30m</option>
+      </select>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">Instrument</label>
+      <select id="instrument-select" class="sel-drop">
+        <option value="NQ">NQ</option>
+        <option value="ES">ES</option>
+      </select>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">Direction</label>
+      <select id="direction-select" class="sel-drop">
+        <option value="all">All</option>
+        <option value="LONG">LONG</option>
+        <option value="SHORT">SHORT</option>
+      </select>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">Session</label>
+      <select id="session-select" class="sel-drop">
+        <option value="all">All</option>
+        <option value="ASIA">Asia</option>
+        <option value="LONDON">London</option>
+        <option value="NY">NY</option>
+        <option value="OTHER">Other</option>
+      </select>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">SMT (NQ-ES divergence)</label>
+      <select id="smt-select" class="sel-drop">
+        <option value="all">All</option>
+        <option value="on">SMT on</option>
+        <option value="off">SMT off</option>
+      </select>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">Period</label>
+      <select id="period-select" class="sel-drop">
+        <option value="all">All time</option>
+        <option value="2y">Last 2 years</option>
+        <option value="1y">Last 1 year</option>
+        <option value="6m">Last 6 months</option>
+        <option value="3m">Last 3 months</option>
+        <option value="1m">Last 1 month</option>
+      </select>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label">View</label>
+      <div class="sb-nav" id="nav-tabs">
+        <button class="sb-nav-btn active" data-tab="overview">Overview</button>
+        <button class="sb-nav-btn" data-tab="edge">Edge</button>
+        <button class="sb-nav-btn" data-tab="risk">Risk</button>
+        <button class="sb-nav-btn" data-tab="excursion">Excursion</button>
+        <button class="sb-nav-btn" data-tab="trades">Trades</button>
+      </div>
+    </div>
+
+  </aside>
+
+  <main class="main">
+
+    <div class="filter-summary-bar" id="filter-summary-bar"></div>
+
+    <!-- OVERVIEW -->
+    <div class="page-pane active" id="pane-overview">
+      <div class="sec-label">Model Overview · expired excluded from WR / EV / PF</div>
+      <div class="edge-ribbon" id="overview-ribbon"><div class="loading">Loading…</div></div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Outcome Split</div>
+          <div id="overview-outcomes"><div class="loading">Loading…</div></div>
+        </div>
+        <div class="card">
+          <div class="card-title">SMT × Direction · n + EV/trade (R)</div>
+          <div id="overview-smtgrid"><div class="loading">Loading…</div></div>
+        </div>
+      </div>
+
+      <div class="sec-label">All Pairings · Side by Side (manifest agg + live current)</div>
+      <div class="card"><div id="overview-compare"><div class="loading">Loading…</div></div></div>
+    </div>
+
+    <!-- EDGE -->
+    <div class="page-pane" id="pane-edge">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">By Hour (ET)</div>
+          <div id="edge-hour"><div class="loading">Loading…</div></div>
+        </div>
+        <div class="card">
+          <div class="card-title">By Day of Week</div>
+          <div id="edge-dow"><div class="loading">Loading…</div></div>
+        </div>
+      </div>
+
+      <div class="sec-label">By Session</div>
+      <div class="card"><div id="edge-session"><div class="loading">Loading…</div></div></div>
+
+      <div class="sec-label">EV Heatmap · Hour (rows) × Day of Week (cols)</div>
+      <div class="card"><div id="edge-heatmap"><div class="loading">Loading…</div></div></div>
+    </div>
+
+    <!-- RISK -->
+    <div class="page-pane" id="pane-risk">
+      <div class="sec-label">Risk Summary · cumulative R excludes expired</div>
+      <div class="edge-ribbon" id="risk-ribbon" style="grid-template-columns:repeat(4,1fr)"><div class="loading">Loading…</div></div>
+
+      <div class="sec-label">Equity Curve · cumulative R over entry order</div>
+      <div class="card"><div id="risk-equity"><div class="loading">Loading…</div></div></div>
+
+      <div class="sec-label">Drawdown · running peak − equity</div>
+      <div class="card"><div id="risk-dd"><div class="loading">Loading…</div></div></div>
+    </div>
+
+    <!-- EXCURSION -->
+    <div class="page-pane" id="pane-excursion">
+      <div class="sec-label">Reach Rates · % of trades reaching each level</div>
+      <div class="card"><div id="excursion-reach"><div class="loading">Loading…</div></div></div>
+
+      <div class="sec-label">MAE / MFE Summary (points)</div>
+      <div class="card"><div id="excursion-table"><div class="loading">Loading…</div></div></div>
+    </div>
+
+    <!-- TRADES -->
+    <div class="page-pane" id="pane-trades">
+      <div class="sec-label">Most Recent Trades</div>
+      <div class="card">
+        <div id="trades-table"><div class="loading">Loading…</div></div>
+        <div class="pagination" id="trades-pagination"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+const PAIRINGS = ['1m_5m', '3m_15m', '5m_30m'];
+const DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const PERIOD_DAYS = { '2y': 730, '1y': 365, '6m': 182, '3m': 91, '1m': 30 };
+
+// ── State ────────────────────────────────────────────────────────────────
+const STATE = {
+  pairing: '1m_5m',
+  instrument: 'NQ',
+  direction: 'all',
+  session: 'all',
+  smt: 'all',
+  period: 'all',
+  tab: 'overview',
+  tradesPage: 0,
+};
+const TRADES_PER_PAGE = 25;
+
+let MANIFEST = null;
+const LOADED = new Set();   // pairings whose parquet view is registered
+
+// ── Loading ──────────────────────────────────────────────────────────────
+function viewAlias(pairing) { return `t_${pairing}`; }
+function currentView() { return viewAlias(STATE.pairing); }
+
+async function ensureLoaded(pairing) {
+  if (LOADED.has(pairing)) return true;
+  const meta = MANIFEST && MANIFEST.pairings && MANIFEST.pairings[pairing];
+  if (!meta) return false;
+  await window.loadParquet(`data/${meta.file}`, viewAlias(pairing));
+  LOADED.add(pairing);
+  return true;
+}
+
+// ── WHERE builder ────────────────────────────────────────────────────────
+function whereClause(opts = {}) {
+  const view = opts.view || currentView();
+  const conds = [`instrument = '${STATE.instrument}'`];
+  if (!opts.allDirection && STATE.direction !== 'all') conds.push(`direction = '${STATE.direction}'`);
+  if (!opts.allSession && STATE.session !== 'all') conds.push(`session = '${STATE.session}'`);
+  if (!opts.allSmt && STATE.smt !== 'all') conds.push(`smt = ${STATE.smt === 'on' ? 'TRUE' : 'FALSE'}`);
+  if (STATE.period !== 'all') {
+    const n = PERIOD_DAYS[STATE.period];
+    conds.push(`date >= (SELECT strftime(MAX(date)::DATE - INTERVAL '${n} days','%Y-%m-%d') FROM ${view})`);
+  }
+  return 'WHERE ' + conds.join(' AND ');
+}
+
+// Aggregate expression block (expired excluded from WR/EV/PF).
+const AGG_SELECT = `
+  COUNT(*) AS n,
+  SUM(CASE WHEN outcome='win' THEN 1 ELSE 0 END) AS wins,
+  SUM(CASE WHEN outcome='loss' THEN 1 ELSE 0 END) AS losses,
+  SUM(CASE WHEN outcome='scratch' THEN 1 ELSE 0 END) AS scratches,
+  SUM(CASE WHEN outcome='expired' THEN 1 ELSE 0 END) AS expired,
+  100.0 * SUM(CASE WHEN outcome='win' THEN 1 ELSE 0 END)
+        / NULLIF(SUM(CASE WHEN outcome IN ('win','loss','scratch') THEN 1 ELSE 0 END),0) AS wr,
+  AVG(CASE WHEN outcome!='expired' THEN r END) AS ev,
+  SUM(CASE WHEN outcome!='expired' AND r>0 THEN r ELSE 0 END) AS pos,
+  -SUM(CASE WHEN outcome!='expired' AND r<0 THEN r ELSE 0 END) AS neg,
+  AVG(pnl_usd) AS avg_usd
+`;
+
+function deriveAgg(r) {
+  const pos = +r.pos || 0, neg = +r.neg || 0;
+  return {
+    n: +r.n || 0,
+    wins: +r.wins || 0, losses: +r.losses || 0, scratches: +r.scratches || 0, expired: +r.expired || 0,
+    wr: r.wr == null ? 0 : +r.wr,
+    ev: r.ev == null ? 0 : +r.ev,
+    pf: neg > 0 ? pos / neg : (pos > 0 ? Infinity : 0),
+    avg_usd: r.avg_usd == null ? 0 : +r.avg_usd,
+  };
+}
+
+// ── Formatters ───────────────────────────────────────────────────────────
+const fmtN  = n => Number(n).toLocaleString();
+const fmtPct = n => (n == null || isNaN(n)) ? '—' : (+n).toFixed(2) + '%';
+const fmtR  = n => (n == null || isNaN(n)) ? '—' : ((n >= 0 ? '+' : '') + (+n).toFixed(4) + 'R');
+const fmtPF = n => (n == null || isNaN(n)) ? '—' : (!isFinite(n) ? '∞' : (+n).toFixed(3));
+const fmtUsd = n => (n == null || isNaN(n)) ? '—' : ((n >= 0 ? '+$' : '-$') + Math.abs(+n).toFixed(2));
+const evCls = n => n > 0.005 ? 'positive' : n < -0.005 ? 'negative' : '';
+const evClsT = n => n > 0.005 ? 'pos' : n < -0.005 ? 'neg' : '';
+
+function evHeat(ev) {
+  const t = Math.max(-1, Math.min(1, (ev || 0) / 0.25));
+  if (t >= 0) return `rgba(34,197,94,${(t * 0.4).toFixed(2)})`;
+  return `rgba(239,68,68,${(-t * 0.4).toFixed(2)})`;
+}
+
+// ── Generic agg query (current filters) ──────────────────────────────────
+async function aggStats() {
+  const sql = `SELECT ${AGG_SELECT} FROM ${currentView()} ${whereClause()}`;
+  return deriveAgg((await window.query(sql))[0]);
+}
+
+// ── Overview ─────────────────────────────────────────────────────────────
+function renderRibbon(s) {
+  return `
+    <div class="ribbon-cell">
+      <div class="ribbon-label">Trades</div>
+      <div class="ribbon-value">${fmtN(s.n)}</div>
+      <div class="ribbon-sub">${fmtN(s.expired)} expired</div>
+    </div>
+    <div class="ribbon-cell">
+      <div class="ribbon-label">Win Rate</div>
+      <div class="ribbon-value">${fmtPct(s.wr)}</div>
+      <div class="ribbon-sub">win / (win+loss+scratch)</div>
+    </div>
+    <div class="ribbon-cell">
+      <div class="ribbon-label">EV / trade</div>
+      <div class="ribbon-value ${evCls(s.ev)}">${fmtR(s.ev)}</div>
+    </div>
+    <div class="ribbon-cell">
+      <div class="ribbon-label">Profit Factor</div>
+      <div class="ribbon-value ${s.pf >= 1 ? 'positive' : 'negative'}">${fmtPF(s.pf)}</div>
+    </div>
+    <div class="ribbon-cell">
+      <div class="ribbon-label">Avg $/trade</div>
+      <div class="ribbon-value ${s.avg_usd >= 0 ? 'positive' : 'negative'}">${fmtUsd(s.avg_usd)}</div>
+      <div class="ribbon-sub">MNQ $2/pt</div>
+    </div>
+  `;
+}
+
+function renderOutcomeBars(s) {
+  const rows = [
+    { label: 'Win',     n: s.wins,      color: 'var(--green)' },
+    { label: 'Loss',    n: s.losses,    color: 'var(--red)' },
+    { label: 'Scratch', n: s.scratches, color: 'var(--blue)' },
+    { label: 'Expired', n: s.expired,   color: 'var(--text-muted)' },
+  ];
+  const total = s.n || 1;
+  const max = Math.max(1, ...rows.map(r => r.n));
+  return rows.map(r => {
+    const pct = (100 * r.n / total);
+    const w = (100 * r.n / max);
+    return `<div class="bar-row">
+      <span class="bar-label">${r.label}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${w.toFixed(1)}%;background:${r.color}"></div></div>
+      <span class="bar-pct">${fmtN(r.n)} (${pct.toFixed(1)}%)</span>
+    </div>`;
+  }).join('');
+}
+
+async function renderSmtGrid(target) {
+  // 2x2: rows = SMT off/on, cols = LONG/SHORT. Respect period + instrument only.
+  const view = currentView();
+  const baseConds = [`instrument = '${STATE.instrument}'`];
+  if (STATE.period !== 'all') {
+    const n = PERIOD_DAYS[STATE.period];
+    baseConds.push(`date >= (SELECT strftime(MAX(date)::DATE - INTERVAL '${n} days','%Y-%m-%d') FROM ${view})`);
+  }
+  const sql = `
+    SELECT smt, direction,
+      COUNT(*) AS n,
+      AVG(CASE WHEN outcome!='expired' THEN r END) AS ev
+    FROM ${view}
+    WHERE ${baseConds.join(' AND ')}
+    GROUP BY smt, direction`;
+  const rows = await window.query(sql);
+  const map = {};
+  rows.forEach(r => { map[`${r.smt ? 'on' : 'off'}_${r.direction}`] = { n: +r.n, ev: r.ev == null ? null : +r.ev }; });
+  function cell(smt, dir) {
+    const c = map[`${smt}_${dir}`] || { n: 0, ev: null };
+    return `<div class="smt-cell" style="background:${evHeat(c.ev)}">
+      <div class="smt-n">${fmtN(c.n)}</div>
+      <div class="smt-ev ${evClsT(c.ev)}">${fmtR(c.ev)}</div>
+    </div>`;
+  }
+  target.innerHTML = `<div class="smt-grid">
+    <div class="smt-cell head"></div>
+    <div class="smt-cell head" style="justify-content:center">LONG</div>
+    <div class="smt-cell head" style="justify-content:center">SHORT</div>
+    <div class="smt-cell head">SMT off</div>${cell('off','LONG')}${cell('off','SHORT')}
+    <div class="smt-cell head">SMT on</div>${cell('on','LONG')}${cell('on','SHORT')}
+  </div>`;
+}
+
+async function renderCompareAll(target) {
+  const rows = [];
+  for (const p of PAIRINGS) {
+    const meta = MANIFEST.pairings[p];
+    if (p === STATE.pairing) {
+      // live SQL for current pairing under current filters
+      const s = await aggStats();
+      rows.push({ pairing: p, live: true, n: s.n, wr: s.wr, ev: s.ev, pf: s.pf, avg_usd: s.avg_usd, missing: false });
+    } else if (meta && meta.agg) {
+      const a = meta.agg;
+      rows.push({ pairing: p, live: false, n: a.n, wr: a.wr, ev: a.ev_r, pf: a.pf, avg_usd: a.avg_pnl_usd, missing: false });
+    } else {
+      rows.push({ pairing: p, missing: true });
+    }
+  }
+  const body = rows.map(r => {
+    if (r.missing) {
+      return `<tr><td>${r.pairing}</td><td colspan="5" class="oc-expired">pending build</td></tr>`;
+    }
+    return `<tr class="${r.live ? 'row-cur' : ''}">
+      <td>${r.pairing}${r.live ? ' <span class="stat-pill neutral">live</span>' : ' <span class="stat-pill neutral">manifest</span>'}</td>
+      <td class="num">${fmtN(r.n)}</td>
+      <td class="num">${fmtPct(r.wr)}</td>
+      <td class="num ev-heat" style="background:${evHeat(r.ev)}">${fmtR(r.ev)}</td>
+      <td class="num ${r.pf >= 1 ? 'pos' : 'neg'}">${fmtPF(r.pf)}</td>
+      <td class="num ${r.avg_usd >= 0 ? 'pos' : 'neg'}">${fmtUsd(r.avg_usd)}</td>
+    </tr>`;
+  }).join('');
+  target.innerHTML = `<table class="tbl">
+    <thead><tr><th>Pairing</th><th class="num">N</th><th class="num">WR</th><th class="num">EV/R</th><th class="num">PF</th><th class="num">Avg $</th></tr></thead>
+    <tbody>${body}</tbody>
+  </table>
+  <div class="heat-tooltip">Current pairing (<strong>${STATE.pairing}</strong>) is computed live under the active filters; the other two are the unfiltered manifest aggregate (NQ, all sessions/directions).</div>`;
+}
+
+// ── Edge ─────────────────────────────────────────────────────────────────
+async function bucketStats(bucketExpr, orderBy) {
+  const sql = `
+    SELECT ${bucketExpr} AS bucket, ${AGG_SELECT}
+    FROM ${currentView()} ${whereClause()}
+    GROUP BY bucket ORDER BY ${orderBy || 'bucket'}`;
+  const rows = await window.query(sql);
+  return rows.map(r => ({ bucket: r.bucket, ...deriveAgg(r) }));
+}
+
+function renderBucketTable(rows, bucketLabel, fmtBucket) {
+  if (!rows.length) return `<div class="empty">No trades match the current filters.</div>`;
+  const body = rows.map(r => `
+    <tr>
+      <td>${fmtBucket ? fmtBucket(r.bucket) : r.bucket}</td>
+      <td class="num">${fmtN(r.n)}</td>
+      <td class="num">${fmtPct(r.wr)}</td>
+      <td class="num ev-heat" style="background:${evHeat(r.ev)}">${fmtR(r.ev)}</td>
+    </tr>`).join('');
+  return `<table class="tbl">
+    <thead><tr><th>${bucketLabel}</th><th class="num">N</th><th class="num">WR</th><th class="num">EV/R</th></tr></thead>
+    <tbody>${body}</tbody>
+  </table>`;
+}
+
+async function renderEvHeatmap(target) {
+  const sql = `
+    SELECT hour, dow, COUNT(*) AS n, AVG(CASE WHEN outcome!='expired' THEN r END) AS ev
+    FROM ${currentView()} ${whereClause()}
+    GROUP BY hour, dow`;
+  const rows = await window.query(sql);
+  if (!rows.length) { target.innerHTML = `<div class="empty">No trades.</div>`; return; }
+  const map = {};
+  rows.forEach(r => { map[`${r.hour}_${r.dow}`] = { n: +r.n, ev: r.ev == null ? null : +r.ev }; });
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const dows = [0, 1, 2, 3, 4, 5, 6];
+
+  let html = `<div class="heatmap-grid" style="grid-template-columns: 40px repeat(${dows.length}, 1fr)">`;
+  html += `<div class="heat-label"></div>`;
+  dows.forEach(d => { html += `<div class="heat-label">${DOW_NAMES[d]}</div>`; });
+  hours.forEach(h => {
+    html += `<div class="heat-label" style="text-align:right;padding-right:6px">${String(h).padStart(2, '0')}</div>`;
+    dows.forEach(d => {
+      const c = map[`${h}_${d}`];
+      if (!c || c.n === 0) { html += `<div class="heat-cell" style="background:var(--bg-elev-2)"></div>`; }
+      else {
+        const label = c.n < 5 ? '·' : (c.ev == null ? '·' : c.ev.toFixed(2));
+        html += `<div class="heat-cell" style="background:${evHeat(c.ev)}" title="${DOW_NAMES[d]} ${String(h).padStart(2,'0')}:00 ET · n=${c.n} · EV=${fmtR(c.ev)}">${label}</div>`;
+      }
+    });
+  });
+  html += `</div>`;
+  html += `<div class="heat-tooltip">Rows = hour (ET, 0–23) · cols = day of week. Green = positive EV/R, red = negative. "·" = fewer than 5 trades. Hover for details.</div>`;
+  target.innerHTML = html;
+}
+
+// ── Risk ─────────────────────────────────────────────────────────────────
+async function riskSeries() {
+  // Ordered R stream, expired excluded.
+  const sql = `SELECT r FROM ${currentView()} ${whereClause()} AND outcome!='expired' ORDER BY entry_ts_ns`;
+  return (await window.query(sql)).map(x => +x.r);
+}
+
+function streaks(rs) {
+  let wStreak = 0, lStreak = 0, curW = 0, curL = 0;
+  for (const v of rs) {
+    if (v > 0) { curW++; curL = 0; if (curW > wStreak) wStreak = curW; }
+    else if (v < 0) { curL++; curW = 0; if (curL > lStreak) lStreak = curL; }
+    else { curW = 0; curL = 0; }
+  }
+  return { wStreak, lStreak };
+}
+
+function renderRiskRibbon(s, maxDd, st) {
+  return `
+    <div class="ribbon-cell"><div class="ribbon-label">Profit Factor</div><div class="ribbon-value ${s.pf >= 1 ? 'positive' : 'negative'}">${fmtPF(s.pf)}</div></div>
+    <div class="ribbon-cell"><div class="ribbon-label">Max Drawdown</div><div class="ribbon-value negative">-${maxDd.toFixed(2)}R</div></div>
+    <div class="ribbon-cell"><div class="ribbon-label">Longest Win Streak</div><div class="ribbon-value positive">${st.wStreak}</div></div>
+    <div class="ribbon-cell"><div class="ribbon-label">Longest Loss Streak</div><div class="ribbon-value negative">${st.lStreak}</div></div>
+  `;
+}
+
+function renderEquitySvg(rs) {
+  if (!rs.length) return `<div class="empty">No trades.</div>`;
+  const cum = []; let acc = 0;
+  rs.forEach(v => { acc += v; cum.push(acc); });
+  const W = 900, H = 220, PAD_L = 56, PAD_R = 20, PAD_Y = 16;
+  const innerW = W - PAD_L - PAD_R, innerH = H - 2 * PAD_Y;
+  const minY = Math.min(0, ...cum), maxY = Math.max(0, ...cum);
+  const yRange = (maxY - minY) || 1;
+  const xStep = cum.length > 1 ? innerW / (cum.length - 1) : 0;
+  const yToPx = y => PAD_Y + innerH - ((y - minY) / yRange) * innerH;
+  const points = cum.map((y, i) => `${(PAD_L + i * xStep).toFixed(1)},${yToPx(y).toFixed(1)}`).join(' ');
+  const zeroPx = yToPx(0);
+  const finalR = cum[cum.length - 1];
+  const yLabels = [maxY, (maxY + minY) / 2, minY].map(v => ({ v, y: yToPx(v) }));
+  return `<div class="chart-wrap"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:${H}px">
+    ${yLabels.map(yl => `<text x="6" y="${(yl.y + 3).toFixed(1)}" font-family="JetBrains Mono,monospace" font-size="10" fill="var(--text-muted)">${yl.v >= 0 ? '+' : ''}${yl.v.toFixed(1)}R</text>`).join('')}
+    <line x1="${PAD_L}" y1="${zeroPx.toFixed(1)}" x2="${W - PAD_R}" y2="${zeroPx.toFixed(1)}" stroke="var(--text-muted)" stroke-dasharray="3,3" stroke-width="1"/>
+    <polyline points="${points}" stroke="var(--accent)" stroke-width="1.5" fill="none"/>
+    <text x="${W - PAD_R - 4}" y="16" text-anchor="end" font-family="JetBrains Mono,monospace" font-size="12" fill="var(--text-secondary)">${finalR >= 0 ? '+' : ''}${finalR.toFixed(1)}R total · ${fmtN(cum.length)} trades</text>
+  </svg></div>`;
+}
+
+function renderDrawdownSvg(rs) {
+  if (!rs.length) return { html: `<div class="empty">No trades.</div>`, maxDd: 0 };
+  let eq = 0, peak = 0, maxDd = 0;
+  const dd = [];
+  rs.forEach(v => { eq += v; if (eq > peak) peak = eq; const d = peak - eq; if (d > maxDd) maxDd = d; dd.push(-d); });
+  const W = 900, H = 150, PAD_L = 56, PAD_R = 20, PAD_Y = 10;
+  const innerW = W - PAD_L - PAD_R, innerH = H - 2 * PAD_Y;
+  const minY = Math.min(-0.0001, ...dd);
+  const yRange = Math.abs(minY) || 1;
+  const xStep = dd.length > 1 ? innerW / (dd.length - 1) : 0;
+  const yToPx = y => PAD_Y + (-y / yRange) * innerH;
+  const points = dd.map((y, i) => `${(PAD_L + i * xStep).toFixed(1)},${yToPx(y).toFixed(1)}`).join(' ');
+  const html = `<div class="chart-wrap"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:${H}px">
+    <text x="6" y="14" font-family="JetBrains Mono,monospace" font-size="10" fill="var(--text-muted)">0</text>
+    <text x="6" y="${(H - 4).toFixed(0)}" font-family="JetBrains Mono,monospace" font-size="10" fill="var(--red)">-${maxDd.toFixed(1)}R</text>
+    <polyline points="${points}" stroke="var(--red)" stroke-width="1.2" fill="var(--red)" fill-opacity="0.18"/>
+    <text x="${W - PAD_R - 4}" y="16" text-anchor="end" font-family="JetBrains Mono,monospace" font-size="12" fill="var(--text-secondary)">Max DD: -${maxDd.toFixed(2)}R</text>
+  </svg></div>`;
+  return { html, maxDd };
+}
+
+// ── Excursion ────────────────────────────────────────────────────────────
+async function renderReach(target) {
+  const sql = `
+    SELECT
+      100.0 * AVG(CASE WHEN mfe_pts >= 15 THEN 1 ELSE 0 END) AS r15,
+      100.0 * AVG(CASE WHEN mfe_pts >= 45 THEN 1 ELSE 0 END) AS r45,
+      100.0 * AVG(CASE WHEN reached_ext THEN 1 ELSE 0 END) AS rext
+    FROM ${currentView()} ${whereClause()}`;
+  const r = (await window.query(sql))[0];
+  if (!r || r.r15 == null) { target.innerHTML = `<div class="empty">No trades.</div>`; return; }
+  const rows = [
+    { label: 'MFE ≥ 15 pt (partial)', pct: +r.r15 || 0 },
+    { label: 'MFE ≥ 45 pt (target)',  pct: +r.r45 || 0 },
+    { label: 'Reached extension',      pct: +r.rext || 0 },
+  ];
+  target.innerHTML = rows.map(x => `<div class="bar-row">
+    <span class="bar-label">${x.label}</span>
+    <div class="bar-track"><div class="bar-fill" style="width:${x.pct.toFixed(1)}%"></div></div>
+    <span class="bar-pct">${x.pct.toFixed(2)}%</span>
+  </div>`).join('');
+}
+
+async function renderExcursionTable(target) {
+  const w = whereClause();
+  const sql = `
+    SELECT
+      AVG(mae_pts) AS avg_mae, MAX(mae_pts) AS max_mae,
+      AVG(mfe_pts) AS avg_mfe, MAX(mfe_pts) AS max_mfe,
+      AVG(CASE WHEN outcome='win' THEN mae_pts END) AS avg_mae_win
+    FROM ${currentView()} ${w}`;
+  const r = (await window.query(sql))[0];
+  if (!r || r.avg_mae == null) { target.innerHTML = `<div class="empty">No trades.</div>`; return; }
+  const fmt = v => (v == null || isNaN(v)) ? '—' : (+v).toFixed(2);
+  target.innerHTML = `<table class="tbl">
+    <thead><tr><th>Metric</th><th class="num">Points</th></tr></thead>
+    <tbody>
+      <tr><td>Avg MAE</td><td class="num">${fmt(r.avg_mae)}</td></tr>
+      <tr><td>Max MAE</td><td class="num">${fmt(r.max_mae)}</td></tr>
+      <tr><td>Avg MFE</td><td class="num">${fmt(r.avg_mfe)}</td></tr>
+      <tr><td>Max MFE</td><td class="num">${fmt(r.max_mfe)}</td></tr>
+      <tr><td>Avg MAE on wins <span class="oc-expired">(heat before win)</span></td><td class="num">${fmt(r.avg_mae_win)}</td></tr>
+    </tbody>
+  </table>`;
+}
+
+// ── Trades ───────────────────────────────────────────────────────────────
+async function renderTradesTable() {
+  const w = whereClause();
+  const view = currentView();
+  const offset = STATE.tradesPage * TRADES_PER_PAGE;
+  const total = +(await window.query(`SELECT COUNT(*) AS n FROM ${view} ${w}`))[0].n;
+  const sql = `
+    SELECT date, hour, minute, instrument, direction, entry_price, stop_price, target_price, outcome, r, pnl_usd
+    FROM ${view} ${w}
+    ORDER BY entry_ts_ns DESC
+    LIMIT ${TRADES_PER_PAGE} OFFSET ${offset}`;
+  const rows = await window.query(sql);
+  const ocClass = { win: 'oc-win', loss: 'oc-loss', scratch: 'oc-scratch', expired: 'oc-expired' };
+  const body = rows.map(r => {
+    const time = `${String(r.hour).padStart(2, '0')}:${String(r.minute).padStart(2, '0')}`;
+    const rv = +r.r;
+    return `<tr>
+      <td>${r.date}</td>
+      <td>${time}</td>
+      <td>${r.instrument}</td>
+      <td>${r.direction}</td>
+      <td class="num">${r.entry_price == null ? '—' : (+r.entry_price).toFixed(2)}</td>
+      <td class="num">${r.stop_price == null ? '—' : (+r.stop_price).toFixed(2)}</td>
+      <td class="num">${r.target_price == null ? '—' : (+r.target_price).toFixed(2)}</td>
+      <td class="${ocClass[r.outcome] || ''}">${r.outcome}</td>
+      <td class="num ${rv > 0 ? 'pos' : rv < 0 ? 'neg' : ''}">${fmtR(rv)}</td>
+      <td class="num ${(+r.pnl_usd) >= 0 ? 'pos' : 'neg'}">${fmtUsd(+r.pnl_usd)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('trades-table').innerHTML = rows.length ? `<table class="tbl">
+    <thead><tr>
+      <th>Date</th><th>Time</th><th>Inst</th><th>Dir</th>
+      <th class="num">Entry</th><th class="num">Stop</th><th class="num">Target</th>
+      <th>Outcome</th><th class="num">R</th><th class="num">$ USD</th>
+    </tr></thead>
+    <tbody>${body}</tbody>
+  </table>` : `<div class="empty">No trades match the current filters.</div>`;
+
+  const totalPages = Math.ceil(total / TRADES_PER_PAGE);
+  document.getElementById('trades-pagination').innerHTML = `
+    <button class="page-btn" id="prev-page" ${STATE.tradesPage === 0 ? 'disabled' : ''}>← Prev</button>
+    <span class="page-info">Page ${STATE.tradesPage + 1} of ${Math.max(1, totalPages)} · ${fmtN(total)} trades total</span>
+    <button class="page-btn" id="next-page" ${STATE.tradesPage >= totalPages - 1 ? 'disabled' : ''}>Next →</button>`;
+  document.getElementById('prev-page')?.addEventListener('click', () => { if (STATE.tradesPage > 0) { STATE.tradesPage--; renderTradesTable(); } });
+  document.getElementById('next-page')?.addEventListener('click', () => { STATE.tradesPage++; renderTradesTable(); });
+}
+
+// ── Filter summary chips ─────────────────────────────────────────────────
+function renderFilterSummary() {
+  const chips = [];
+  chips.push(`<span class="chip-active">Pairing: ${STATE.pairing}</span>`);
+  chips.push(`<span class="chip-active">${STATE.instrument}</span>`);
+  if (STATE.direction !== 'all') chips.push(`<span class="chip-active">${STATE.direction}</span>`);
+  if (STATE.session !== 'all') chips.push(`<span class="chip-active">Session: ${STATE.session}</span>`);
+  if (STATE.smt !== 'all') chips.push(`<span class="chip-active">SMT ${STATE.smt}</span>`);
+  if (STATE.period !== 'all') chips.push(`<span class="chip-active">Period: ${STATE.period}</span>`);
+  document.getElementById('filter-summary-bar').innerHTML = chips.join('');
+}
+
+// ── Orchestration ────────────────────────────────────────────────────────
+async function renderActive() {
+  renderFilterSummary();
+  document.querySelectorAll('.page-pane .error').forEach(el => el.remove());
+
+  const ok = await ensureLoaded(STATE.pairing);
+  if (!ok) {
+    const pane = document.querySelector('.page-pane.active');
+    if (pane) pane.insertAdjacentHTML('afterbegin', `<div class="error">Pairing <strong>${STATE.pairing}</strong> has not been built yet (no parquet in manifest). Pick another pairing.</div>`);
+    return;
+  }
+
+  try {
+    const tab = STATE.tab;
+    if (tab === 'overview') {
+      const s = await aggStats();
+      document.getElementById('overview-ribbon').innerHTML = renderRibbon(s);
+      document.getElementById('overview-outcomes').innerHTML = renderOutcomeBars(s);
+      await renderSmtGrid(document.getElementById('overview-smtgrid'));
+      await renderCompareAll(document.getElementById('overview-compare'));
+    }
+    else if (tab === 'edge') {
+      const hourRows = await bucketStats('hour', 'bucket');
+      document.getElementById('edge-hour').innerHTML = renderBucketTable(hourRows, 'Hour (ET)', b => String(b).padStart(2, '0') + ':00');
+      const dowRows = await bucketStats('dow', 'bucket');
+      document.getElementById('edge-dow').innerHTML = renderBucketTable(dowRows, 'Day', b => DOW_NAMES[b] || b);
+      const sessRows = await bucketStats('session', 'n DESC');
+      document.getElementById('edge-session').innerHTML = renderBucketTable(sessRows, 'Session');
+      await renderEvHeatmap(document.getElementById('edge-heatmap'));
+    }
+    else if (tab === 'risk') {
+      const rs = await riskSeries();
+      const s = await aggStats();
+      const st = streaks(rs);
+      const dd = renderDrawdownSvg(rs);
+      document.getElementById('risk-ribbon').innerHTML = renderRiskRibbon(s, dd.maxDd, st);
+      document.getElementById('risk-equity').innerHTML = renderEquitySvg(rs);
+      document.getElementById('risk-dd').innerHTML = dd.html;
+    }
+    else if (tab === 'excursion') {
+      await renderReach(document.getElementById('excursion-reach'));
+      await renderExcursionTable(document.getElementById('excursion-table'));
+    }
+    else if (tab === 'trades') {
+      await renderTradesTable();
+    }
+  } catch (e) {
+    console.error(e);
+    const pane = document.querySelector('.page-pane.active');
+    if (pane) pane.insertAdjacentHTML('afterbegin', `<div class="error">Render error: ${e.message}</div>`);
+  }
+}
+
+// ── Wire-up ──────────────────────────────────────────────────────────────
+function bindUI() {
+  const reset = () => { STATE.tradesPage = 0; renderActive(); };
+  document.getElementById('pairing-select').addEventListener('change', e => { STATE.pairing = e.target.value; reset(); });
+  document.getElementById('instrument-select').addEventListener('change', e => { STATE.instrument = e.target.value; reset(); });
+  document.getElementById('direction-select').addEventListener('change', e => { STATE.direction = e.target.value; reset(); });
+  document.getElementById('session-select').addEventListener('change', e => { STATE.session = e.target.value; reset(); });
+  document.getElementById('smt-select').addEventListener('change', e => { STATE.smt = e.target.value; reset(); });
+  document.getElementById('period-select').addEventListener('change', e => { STATE.period = e.target.value; reset(); });
+
+  document.querySelectorAll('#nav-tabs .sb-nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#nav-tabs .sb-nav-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      STATE.tab = btn.dataset.tab;
+      document.querySelectorAll('.page-pane').forEach(p => p.classList.remove('active'));
+      document.getElementById(`pane-${STATE.tab}`).classList.add('active');
+      renderActive();
+    });
+  });
+}
+
+async function init() {
+  try {
+    if (typeof window.loadParquet !== 'function' || typeof window.query !== 'function') {
+      throw new Error('shared.js helpers (loadParquet/query) not loaded — check ../Analysis/dashboard/shared.js is reachable.');
+    }
+    const resp = await fetch('data/manifest.json');
+    if (!resp.ok) throw new Error(`manifest.json fetch failed: ${resp.status}`);
+    MANIFEST = await resp.json();
+    bindUI();
+    renderActive();
+  } catch (e) {
+    document.querySelector('.main').innerHTML = `<div class="error">Failed to initialize: ${e.message}<br><br>Serve from the Statistic.ally root (python3 server.py or python3 -m http.server) and open Nested&nbsp;FVG/dashboard.html.</div>`;
+    console.error(e);
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+
+</body>
+</html>
