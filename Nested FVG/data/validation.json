@@ -1,0 +1,1149 @@
+{
+  "schema_version": 1,
+  "pairings": {
+    "1m_5m": {
+      "n_settled": 107303,
+      "aggregate": {
+        "ev_r": -0.1045,
+        "pf": 0.811,
+        "wr": 22.47
+      },
+      "walk_forward": {
+        "windows": [
+          {
+            "year": 2014,
+            "n": 2359,
+            "ev_r": -0.3675,
+            "pf": 0.46,
+            "wr": 15.64
+          },
+          {
+            "year": 2015,
+            "n": 8428,
+            "ev_r": -0.2438,
+            "pf": 0.617,
+            "wr": 19.61
+          },
+          {
+            "year": 2016,
+            "n": 7860,
+            "ev_r": -0.316,
+            "pf": 0.521,
+            "wr": 17.18
+          },
+          {
+            "year": 2017,
+            "n": 8168,
+            "ev_r": -0.3586,
+            "pf": 0.474,
+            "wr": 16.16
+          },
+          {
+            "year": 2018,
+            "n": 9615,
+            "ev_r": -0.0648,
+            "pf": 0.88,
+            "wr": 23.72
+          },
+          {
+            "year": 2019,
+            "n": 9866,
+            "ev_r": -0.1059,
+            "pf": 0.808,
+            "wr": 22.23
+          },
+          {
+            "year": 2020,
+            "n": 8077,
+            "ev_r": -0.027,
+            "pf": 0.947,
+            "wr": 24.35
+          },
+          {
+            "year": 2021,
+            "n": 10344,
+            "ev_r": -0.043,
+            "pf": 0.916,
+            "wr": 23.57
+          },
+          {
+            "year": 2022,
+            "n": 8288,
+            "ev_r": -0.0226,
+            "pf": 0.956,
+            "wr": 24.3
+          },
+          {
+            "year": 2023,
+            "n": 10455,
+            "ev_r": -0.0114,
+            "pf": 0.978,
+            "wr": 25.01
+          },
+          {
+            "year": 2024,
+            "n": 10050,
+            "ev_r": -0.0067,
+            "pf": 0.987,
+            "wr": 24.91
+          },
+          {
+            "year": 2025,
+            "n": 9811,
+            "ev_r": -0.018,
+            "pf": 0.964,
+            "wr": 24.36
+          },
+          {
+            "year": 2026,
+            "n": 3982,
+            "ev_r": 0.0015,
+            "pf": 1.003,
+            "wr": 25.44
+          }
+        ],
+        "n_windows": 13,
+        "n_positive": 1,
+        "pct_positive": 7.7
+      },
+      "bootstrap": {
+        "ev_r": -0.1045,
+        "lo": -0.1148,
+        "hi": -0.0944,
+        "n_days": 3650,
+        "n_boot": 2000,
+        "ci_excludes_zero": true,
+        "sign": "negative"
+      },
+      "outlier": {
+        "base_ev_r": -0.1045,
+        "best_day": "2015-07-07",
+        "best_day_sum_r": 28.0,
+        "ev_without_best": -0.1048,
+        "worst_day": "2017-03-07",
+        "worst_day_sum_r": -34.0,
+        "ev_without_worst": -0.1042,
+        "n_days": 3650
+      },
+      "exit_sweep": {
+        "grid": [
+          {
+            "stop": 10.0,
+            "target": 30.0,
+            "n_settled": 107303,
+            "ev_r": -0.494
+          },
+          {
+            "stop": 10.0,
+            "target": 45.0,
+            "n_settled": 107303,
+            "ev_r": -0.3675
+          },
+          {
+            "stop": 10.0,
+            "target": 60.0,
+            "n_settled": 107303,
+            "ev_r": -0.8139
+          },
+          {
+            "stop": 15.0,
+            "target": 30.0,
+            "n_settled": 107303,
+            "ev_r": -0.4384
+          },
+          {
+            "stop": 15.0,
+            "target": 45.0,
+            "n_settled": 107303,
+            "ev_r": -0.326
+          },
+          {
+            "stop": 15.0,
+            "target": 60.0,
+            "n_settled": 107303,
+            "ev_r": -0.7574
+          },
+          {
+            "stop": 20.0,
+            "target": 30.0,
+            "n_settled": 48315,
+            "ev_r": 0.5399
+          },
+          {
+            "stop": 20.0,
+            "target": 45.0,
+            "n_settled": 48315,
+            "ev_r": 0.5814
+          },
+          {
+            "stop": 20.0,
+            "target": 60.0,
+            "n_settled": 48315,
+            "ev_r": -0.1975
+          },
+          {
+            "stop": 25.0,
+            "target": 30.0,
+            "n_settled": 37782,
+            "ev_r": 0.8094
+          },
+          {
+            "stop": 25.0,
+            "target": 45.0,
+            "n_settled": 37782,
+            "ev_r": 0.8054
+          },
+          {
+            "stop": 25.0,
+            "target": 60.0,
+            "n_settled": 37782,
+            "ev_r": -0.0531
+          }
+        ],
+        "note": "Approximation from stored MAE/MFE; ignores intrabar order (conservative: a bar touching both stop and target counts as stop)."
+      },
+      "gap_sensitivity": [
+        {
+          "min_gap_pctile": 0,
+          "n": 107303,
+          "ev_r": -0.1045
+        },
+        {
+          "min_gap_pctile": 25,
+          "n": 107303,
+          "ev_r": -0.1045
+        },
+        {
+          "min_gap_pctile": 50,
+          "n": 59866,
+          "ev_r": -0.0564
+        },
+        {
+          "min_gap_pctile": 75,
+          "n": 30530,
+          "ev_r": -0.0349
+        },
+        {
+          "min_gap_pctile": 90,
+          "n": 11610,
+          "ev_r": -0.0218
+        }
+      ],
+      "slice_scan": {
+        "n_cells": 12,
+        "bonferroni_alpha": 0.00417,
+        "bonferroni_note": "Bonferroni applied per-pairing; the true family across all 3 pairings is ~3x larger, so a single survivor is a HYPOTHESIS to forward-test, not a validated edge.",
+        "any_survives": true,
+        "cells": [
+          {
+            "session": "ASIA",
+            "direction": "LONG",
+            "smt": false,
+            "n": 12887,
+            "ev_r": 0.0521,
+            "ci_lo": 0.0204,
+            "ci_hi": 0.0797,
+            "survives_bonferroni": true,
+            "yearly": [
+              {
+                "year": 2014,
+                "n": 226,
+                "ev_r": -0.2743
+              },
+              {
+                "year": 2015,
+                "n": 864,
+                "ev_r": -0.0799
+              },
+              {
+                "year": 2016,
+                "n": 845,
+                "ev_r": -0.213
+              },
+              {
+                "year": 2017,
+                "n": 768,
+                "ev_r": -0.2578
+              },
+              {
+                "year": 2018,
+                "n": 1104,
+                "ev_r": 0.0299
+              },
+              {
+                "year": 2019,
+                "n": 1150,
+                "ev_r": 0.12
+              },
+              {
+                "year": 2020,
+                "n": 1033,
+                "ev_r": 0.2072
+              },
+              {
+                "year": 2021,
+                "n": 1309,
+                "ev_r": 0.1169
+              },
+              {
+                "year": 2022,
+                "n": 1143,
+                "ev_r": 0.0717
+              },
+              {
+                "year": 2023,
+                "n": 1335,
+                "ev_r": 0.1034
+              },
+              {
+                "year": 2024,
+                "n": 1288,
+                "ev_r": 0.1436
+              },
+              {
+                "year": 2025,
+                "n": 1264,
+                "ev_r": 0.1052
+              },
+              {
+                "year": 2026,
+                "n": 558,
+                "ev_r": 0.1882
+              }
+            ],
+            "n_positive_years": 9,
+            "n_years": 13
+          },
+          {
+            "session": "LONDON",
+            "direction": "LONG",
+            "smt": false,
+            "n": 9096,
+            "ev_r": -0.0167,
+            "ci_lo": -0.0527,
+            "ci_hi": 0.0195,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "NY",
+            "direction": "SHORT",
+            "smt": false,
+            "n": 8026,
+            "ev_r": -0.0345,
+            "ci_lo": -0.0718,
+            "ci_hi": 0.0077,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "NY",
+            "direction": "LONG",
+            "smt": false,
+            "n": 6873,
+            "ev_r": -0.048,
+            "ci_lo": -0.0889,
+            "ci_hi": -0.0036,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "LONDON",
+            "direction": "SHORT",
+            "smt": false,
+            "n": 11785,
+            "ev_r": -0.0842,
+            "ci_lo": -0.1146,
+            "ci_hi": -0.0544,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "ASIA",
+            "direction": "SHORT",
+            "smt": false,
+            "n": 18417,
+            "ev_r": -0.0862,
+            "ci_lo": -0.1156,
+            "ci_hi": -0.0585,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "ASIA",
+            "direction": "LONG",
+            "smt": true,
+            "n": 12493,
+            "ev_r": -0.1217,
+            "ci_lo": -0.1525,
+            "ci_hi": -0.0904,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "LONDON",
+            "direction": "LONG",
+            "smt": true,
+            "n": 7727,
+            "ev_r": -0.1853,
+            "ci_lo": -0.2282,
+            "ci_hi": -0.1518,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "ASIA",
+            "direction": "SHORT",
+            "smt": true,
+            "n": 6247,
+            "ev_r": -0.1858,
+            "ci_lo": -0.2273,
+            "ci_hi": -0.144,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "LONDON",
+            "direction": "SHORT",
+            "smt": true,
+            "n": 4630,
+            "ev_r": -0.2041,
+            "ci_lo": -0.2536,
+            "ci_hi": -0.1513,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "NY",
+            "direction": "SHORT",
+            "smt": true,
+            "n": 3927,
+            "ev_r": -0.3484,
+            "ci_lo": -0.4004,
+            "ci_hi": -0.2998,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "NY",
+            "direction": "LONG",
+            "smt": true,
+            "n": 5195,
+            "ev_r": -0.4077,
+            "ci_lo": -0.4444,
+            "ci_hi": -0.3684,
+            "survives_bonferroni": false
+          }
+        ]
+      }
+    },
+    "3m_15m": {
+      "n_settled": 41243,
+      "aggregate": {
+        "ev_r": -0.1121,
+        "pf": 0.798,
+        "wr": 22.18
+      },
+      "walk_forward": {
+        "windows": [
+          {
+            "year": 2014,
+            "n": 1020,
+            "ev_r": -0.4412,
+            "pf": 0.372,
+            "wr": 13.04
+          },
+          {
+            "year": 2015,
+            "n": 3543,
+            "ev_r": -0.2481,
+            "pf": 0.611,
+            "wr": 19.45
+          },
+          {
+            "year": 2016,
+            "n": 3125,
+            "ev_r": -0.3024,
+            "pf": 0.54,
+            "wr": 17.73
+          },
+          {
+            "year": 2017,
+            "n": 3628,
+            "ev_r": -0.3908,
+            "pf": 0.435,
+            "wr": 15.05
+          },
+          {
+            "year": 2018,
+            "n": 3561,
+            "ev_r": -0.0955,
+            "pf": 0.827,
+            "wr": 22.89
+          },
+          {
+            "year": 2019,
+            "n": 3755,
+            "ev_r": -0.1212,
+            "pf": 0.778,
+            "wr": 21.25
+          },
+          {
+            "year": 2020,
+            "n": 2846,
+            "ev_r": 0.0105,
+            "pf": 1.021,
+            "wr": 25.61
+          },
+          {
+            "year": 2021,
+            "n": 3829,
+            "ev_r": -0.0191,
+            "pf": 0.962,
+            "wr": 24.29
+          },
+          {
+            "year": 2022,
+            "n": 3043,
+            "ev_r": -0.0128,
+            "pf": 0.975,
+            "wr": 24.52
+          },
+          {
+            "year": 2023,
+            "n": 3920,
+            "ev_r": 0.0028,
+            "pf": 1.006,
+            "wr": 25.15
+          },
+          {
+            "year": 2024,
+            "n": 3807,
+            "ev_r": -0.0058,
+            "pf": 0.989,
+            "wr": 24.88
+          },
+          {
+            "year": 2025,
+            "n": 3749,
+            "ev_r": -0.0131,
+            "pf": 0.974,
+            "wr": 24.33
+          },
+          {
+            "year": 2026,
+            "n": 1417,
+            "ev_r": 0.0042,
+            "pf": 1.008,
+            "wr": 25.55
+          }
+        ],
+        "n_windows": 13,
+        "n_positive": 3,
+        "pct_positive": 23.1
+      },
+      "bootstrap": {
+        "ev_r": -0.1121,
+        "lo": -0.1277,
+        "hi": -0.097,
+        "n_days": 3612,
+        "n_boot": 2000,
+        "ci_excludes_zero": true,
+        "sign": "negative"
+      },
+      "outlier": {
+        "base_ev_r": -0.1121,
+        "best_day": "2021-11-22",
+        "best_day_sum_r": 22.0,
+        "ev_without_best": -0.1127,
+        "worst_day": "2017-09-18",
+        "worst_day_sum_r": -19.0,
+        "ev_without_worst": -0.1117,
+        "n_days": 3612
+      },
+      "exit_sweep": {
+        "grid": [
+          {
+            "stop": 10.0,
+            "target": 30.0,
+            "n_settled": 41243,
+            "ev_r": -0.5041
+          },
+          {
+            "stop": 10.0,
+            "target": 45.0,
+            "n_settled": 41243,
+            "ev_r": -0.3801
+          },
+          {
+            "stop": 10.0,
+            "target": 60.0,
+            "n_settled": 41243,
+            "ev_r": -0.817
+          },
+          {
+            "stop": 15.0,
+            "target": 30.0,
+            "n_settled": 41243,
+            "ev_r": -0.4455
+          },
+          {
+            "stop": 15.0,
+            "target": 45.0,
+            "n_settled": 41243,
+            "ev_r": -0.3347
+          },
+          {
+            "stop": 15.0,
+            "target": 60.0,
+            "n_settled": 41243,
+            "ev_r": -0.7599
+          },
+          {
+            "stop": 20.0,
+            "target": 30.0,
+            "n_settled": 18271,
+            "ev_r": 0.5629
+          },
+          {
+            "stop": 20.0,
+            "target": 45.0,
+            "n_settled": 18271,
+            "ev_r": 0.5983
+          },
+          {
+            "stop": 20.0,
+            "target": 60.0,
+            "n_settled": 18271,
+            "ev_r": -0.1826
+          },
+          {
+            "stop": 25.0,
+            "target": 30.0,
+            "n_settled": 14347,
+            "ev_r": 0.8195
+          },
+          {
+            "stop": 25.0,
+            "target": 45.0,
+            "n_settled": 14347,
+            "ev_r": 0.8095
+          },
+          {
+            "stop": 25.0,
+            "target": 60.0,
+            "n_settled": 14347,
+            "ev_r": -0.0478
+          }
+        ],
+        "note": "Approximation from stored MAE/MFE; ignores intrabar order (conservative: a bar touching both stop and target counts as stop)."
+      },
+      "gap_sensitivity": [
+        {
+          "min_gap_pctile": 0,
+          "n": 41243,
+          "ev_r": -0.1121
+        },
+        {
+          "min_gap_pctile": 25,
+          "n": 33276,
+          "ev_r": -0.0857
+        },
+        {
+          "min_gap_pctile": 50,
+          "n": 22329,
+          "ev_r": -0.0528
+        },
+        {
+          "min_gap_pctile": 75,
+          "n": 11027,
+          "ev_r": -0.0323
+        },
+        {
+          "min_gap_pctile": 90,
+          "n": 4343,
+          "ev_r": -0.0175
+        }
+      ],
+      "slice_scan": {
+        "n_cells": 12,
+        "bonferroni_alpha": 0.00417,
+        "bonferroni_note": "Bonferroni applied per-pairing; the true family across all 3 pairings is ~3x larger, so a single survivor is a HYPOTHESIS to forward-test, not a validated edge.",
+        "any_survives": false,
+        "cells": [
+          {
+            "session": "ASIA",
+            "direction": "LONG",
+            "smt": false,
+            "n": 3930,
+            "ev_r": 0.0351,
+            "ci_lo": -0.0238,
+            "ci_hi": 0.0918,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "NY",
+            "direction": "SHORT",
+            "smt": false,
+            "n": 2564,
+            "ev_r": -0.0086,
+            "ci_lo": -0.0771,
+            "ci_hi": 0.0677,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "NY",
+            "direction": "LONG",
+            "smt": false,
+            "n": 1954,
+            "ev_r": -0.022,
+            "ci_lo": -0.0924,
+            "ci_hi": 0.0588,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "LONDON",
+            "direction": "LONG",
+            "smt": false,
+            "n": 2715,
+            "ev_r": -0.0354,
+            "ci_lo": -0.098,
+            "ci_hi": 0.0307,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "LONDON",
+            "direction": "SHORT",
+            "smt": false,
+            "n": 3802,
+            "ev_r": -0.0471,
+            "ci_lo": -0.1047,
+            "ci_hi": 0.0098,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "ASIA",
+            "direction": "LONG",
+            "smt": true,
+            "n": 6228,
+            "ev_r": -0.1039,
+            "ci_lo": -0.1507,
+            "ci_hi": -0.0631,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "ASIA",
+            "direction": "SHORT",
+            "smt": false,
+            "n": 6414,
+            "ev_r": -0.1112,
+            "ci_lo": -0.1548,
+            "ci_hi": -0.0688,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "LONDON",
+            "direction": "SHORT",
+            "smt": true,
+            "n": 2421,
+            "ev_r": -0.1772,
+            "ci_lo": -0.249,
+            "ci_hi": -0.1141,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "LONDON",
+            "direction": "LONG",
+            "smt": true,
+            "n": 3544,
+            "ev_r": -0.1797,
+            "ci_lo": -0.2332,
+            "ci_hi": -0.1213,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "ASIA",
+            "direction": "SHORT",
+            "smt": true,
+            "n": 3531,
+            "ev_r": -0.1855,
+            "ci_lo": -0.2348,
+            "ci_hi": -0.1325,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "NY",
+            "direction": "SHORT",
+            "smt": true,
+            "n": 1884,
+            "ev_r": -0.2654,
+            "ci_lo": -0.3342,
+            "ci_hi": -0.1949,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "NY",
+            "direction": "LONG",
+            "smt": true,
+            "n": 2256,
+            "ev_r": -0.3723,
+            "ci_lo": -0.4419,
+            "ci_hi": -0.3094,
+            "survives_bonferroni": false
+          }
+        ]
+      }
+    },
+    "5m_30m": {
+      "n_settled": 23182,
+      "aggregate": {
+        "ev_r": -0.099,
+        "pf": 0.821,
+        "wr": 22.71
+      },
+      "walk_forward": {
+        "windows": [
+          {
+            "year": 2014,
+            "n": 527,
+            "ev_r": -0.4364,
+            "pf": 0.361,
+            "wr": 12.33
+          },
+          {
+            "year": 2015,
+            "n": 2019,
+            "ev_r": -0.3066,
+            "pf": 0.539,
+            "wr": 17.93
+          },
+          {
+            "year": 2016,
+            "n": 1662,
+            "ev_r": -0.2623,
+            "pf": 0.589,
+            "wr": 18.83
+          },
+          {
+            "year": 2017,
+            "n": 1916,
+            "ev_r": -0.3403,
+            "pf": 0.501,
+            "wr": 17.07
+          },
+          {
+            "year": 2018,
+            "n": 2048,
+            "ev_r": -0.0532,
+            "pf": 0.9,
+            "wr": 23.93
+          },
+          {
+            "year": 2019,
+            "n": 2160,
+            "ev_r": -0.1093,
+            "pf": 0.802,
+            "wr": 22.13
+          },
+          {
+            "year": 2020,
+            "n": 1602,
+            "ev_r": -0.04,
+            "pf": 0.922,
+            "wr": 23.72
+          },
+          {
+            "year": 2021,
+            "n": 2051,
+            "ev_r": 0.0093,
+            "pf": 1.018,
+            "wr": 25.84
+          },
+          {
+            "year": 2022,
+            "n": 1878,
+            "ev_r": 0.041,
+            "pf": 1.083,
+            "wr": 26.68
+          },
+          {
+            "year": 2023,
+            "n": 2155,
+            "ev_r": -0.0176,
+            "pf": 0.966,
+            "wr": 24.87
+          },
+          {
+            "year": 2024,
+            "n": 2168,
+            "ev_r": -0.0291,
+            "pf": 0.943,
+            "wr": 24.03
+          },
+          {
+            "year": 2025,
+            "n": 2177,
+            "ev_r": 0.0106,
+            "pf": 1.022,
+            "wr": 24.94
+          },
+          {
+            "year": 2026,
+            "n": 819,
+            "ev_r": 0.0415,
+            "pf": 1.084,
+            "wr": 26.74
+          }
+        ],
+        "n_windows": 13,
+        "n_positive": 4,
+        "pct_positive": 30.8
+      },
+      "bootstrap": {
+        "ev_r": -0.099,
+        "lo": -0.1196,
+        "hi": -0.0794,
+        "n_days": 3495,
+        "n_boot": 2000,
+        "ci_excludes_zero": true,
+        "sign": "negative"
+      },
+      "outlier": {
+        "base_ev_r": -0.099,
+        "best_day": "2016-11-14",
+        "best_day_sum_r": 26.0,
+        "ev_without_best": -0.1002,
+        "worst_day": "2016-11-03",
+        "worst_day_sum_r": -15.0,
+        "ev_without_worst": -0.0984,
+        "n_days": 3495
+      },
+      "exit_sweep": {
+        "grid": [
+          {
+            "stop": 10.0,
+            "target": 30.0,
+            "n_settled": 23182,
+            "ev_r": -0.4884
+          },
+          {
+            "stop": 10.0,
+            "target": 45.0,
+            "n_settled": 23182,
+            "ev_r": -0.3605
+          },
+          {
+            "stop": 10.0,
+            "target": 60.0,
+            "n_settled": 23182,
+            "ev_r": -0.8099
+          },
+          {
+            "stop": 15.0,
+            "target": 30.0,
+            "n_settled": 23182,
+            "ev_r": -0.4322
+          },
+          {
+            "stop": 15.0,
+            "target": 45.0,
+            "n_settled": 23182,
+            "ev_r": -0.3187
+          },
+          {
+            "stop": 15.0,
+            "target": 60.0,
+            "n_settled": 23182,
+            "ev_r": -0.7548
+          },
+          {
+            "stop": 20.0,
+            "target": 30.0,
+            "n_settled": 10406,
+            "ev_r": 0.5595
+          },
+          {
+            "stop": 20.0,
+            "target": 45.0,
+            "n_settled": 10406,
+            "ev_r": 0.6013
+          },
+          {
+            "stop": 20.0,
+            "target": 60.0,
+            "n_settled": 10406,
+            "ev_r": -0.1888
+          },
+          {
+            "stop": 25.0,
+            "target": 30.0,
+            "n_settled": 8184,
+            "ev_r": 0.8157
+          },
+          {
+            "stop": 25.0,
+            "target": 45.0,
+            "n_settled": 8184,
+            "ev_r": 0.8157
+          },
+          {
+            "stop": 25.0,
+            "target": 60.0,
+            "n_settled": 8184,
+            "ev_r": -0.0507
+          }
+        ],
+        "note": "Approximation from stored MAE/MFE; ignores intrabar order (conservative: a bar touching both stop and target counts as stop)."
+      },
+      "gap_sensitivity": [
+        {
+          "min_gap_pctile": 0,
+          "n": 23182,
+          "ev_r": -0.099
+        },
+        {
+          "min_gap_pctile": 25,
+          "n": 19473,
+          "ev_r": -0.0788
+        },
+        {
+          "min_gap_pctile": 50,
+          "n": 12480,
+          "ev_r": -0.0526
+        },
+        {
+          "min_gap_pctile": 75,
+          "n": 6246,
+          "ev_r": -0.0184
+        },
+        {
+          "min_gap_pctile": 90,
+          "n": 2346,
+          "ev_r": 0.006
+        }
+      ],
+      "slice_scan": {
+        "n_cells": 12,
+        "bonferroni_alpha": 0.00417,
+        "bonferroni_note": "Bonferroni applied per-pairing; the true family across all 3 pairings is ~3x larger, so a single survivor is a HYPOTHESIS to forward-test, not a validated edge.",
+        "any_survives": false,
+        "cells": [
+          {
+            "session": "NY",
+            "direction": "SHORT",
+            "smt": false,
+            "n": 1571,
+            "ev_r": 0.0649,
+            "ci_lo": -0.0164,
+            "ci_hi": 0.1566,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "ASIA",
+            "direction": "LONG",
+            "smt": false,
+            "n": 1929,
+            "ev_r": 0.0249,
+            "ci_lo": -0.0595,
+            "ci_hi": 0.123,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "NY",
+            "direction": "LONG",
+            "smt": false,
+            "n": 1104,
+            "ev_r": -0.0018,
+            "ci_lo": -0.1024,
+            "ci_hi": 0.0984,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "LONDON",
+            "direction": "LONG",
+            "smt": false,
+            "n": 1453,
+            "ev_r": -0.0179,
+            "ci_lo": -0.1208,
+            "ci_hi": 0.0652,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "LONDON",
+            "direction": "SHORT",
+            "smt": false,
+            "n": 2186,
+            "ev_r": -0.0311,
+            "ci_lo": -0.1034,
+            "ci_hi": 0.0457,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "ASIA",
+            "direction": "SHORT",
+            "smt": false,
+            "n": 3528,
+            "ev_r": -0.053,
+            "ci_lo": -0.1071,
+            "ci_hi": 0.005,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "ASIA",
+            "direction": "LONG",
+            "smt": true,
+            "n": 3283,
+            "ev_r": -0.0926,
+            "ci_lo": -0.1497,
+            "ci_hi": -0.0327,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "LONDON",
+            "direction": "LONG",
+            "smt": true,
+            "n": 1973,
+            "ev_r": -0.1738,
+            "ci_lo": -0.2405,
+            "ci_hi": -0.1049,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "ASIA",
+            "direction": "SHORT",
+            "smt": true,
+            "n": 2102,
+            "ev_r": -0.177,
+            "ci_lo": -0.2472,
+            "ci_hi": -0.1073,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "LONDON",
+            "direction": "SHORT",
+            "smt": true,
+            "n": 1451,
+            "ev_r": -0.2247,
+            "ci_lo": -0.31,
+            "ci_hi": -0.1427,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "NY",
+            "direction": "SHORT",
+            "smt": true,
+            "n": 1241,
+            "ev_r": -0.282,
+            "ci_lo": -0.375,
+            "ci_hi": -0.1894,
+            "survives_bonferroni": false
+          },
+          {
+            "session": "NY",
+            "direction": "LONG",
+            "smt": true,
+            "n": 1361,
+            "ev_r": -0.3424,
+            "ci_lo": -0.4311,
+            "ci_hi": -0.2596,
+            "survives_bonferroni": false
+          }
+        ]
+      }
+    }
+  },
+  "method": {
+    "note": "All EV/PF exclude expired trades. R = signed per-trade return (win=+2, loss=-1, scratch=0). Bootstrap is day-blocked (2000 draws) to respect intraday autocorrelation. Slice scan uses Bonferroni correction.",
+    "seed": 12345
+  }
+}
