@@ -1,9 +1,17 @@
 # Nested FVG Backtest — Design
 
 **Date:** 2026-06-01
-**Status:** Approved (design phase complete)
+**Status:** ✅ Implemented & validated — see verdict below.
 **Source indicator:** `Kelli/nested-fvg.pine`
 **Branch:** `feat/nested-fvg-backtest`
+
+> **⚠️ OUTCOME (2026-06-05): the model has NO tradeable edge.** A look-ahead bias was
+> found and fixed during validation (resampled FVGs were timestamped at bar-open, not
+> bar-close, so entries used future data). De-biased, all three pairings are confidently
+> negative (EV ≈ −0.10R, PF ≈ 0.80, 95% bootstrap CIs entirely below zero). One slice
+> (ASIA+LONG, 1m_5m) is a forward-test hypothesis, not a validated edge. Full analysis:
+> [`2026-06-05-nested-fvg-validation-verdict.md`](2026-06-05-nested-fvg-validation-verdict.md).
+> This design doc describes the model **as originally specified**; read the verdict for what's true.
 
 ## Goal
 

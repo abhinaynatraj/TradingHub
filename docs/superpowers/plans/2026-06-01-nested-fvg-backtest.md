@@ -1,5 +1,12 @@
 # Nested FVG Backtest Implementation Plan
 
+> **STATUS: ✅ Executed. Two post-plan additions followed during validation:** (1) a
+> sweep-line nesting algorithm replaced the O(N×M) brute force (perf), and (2) a
+> **look-ahead bias fix** (resampled FVGs now stamped at bar-close, not bar-open) — which
+> removed the model's apparent edge. A `validation/` engine + dashboard Validation tab were
+> added beyond this plan. Outcome: no tradeable edge. See
+> [`../specs/2026-06-05-nested-fvg-validation-verdict.md`](../specs/2026-06-05-nested-fvg-validation-verdict.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a parquet-native backtest engine + DuckDB-WASM dashboard for the `Kelli/nested-fvg.pine` indicator, measuring how the "1-min FVG nested inside HTF FVG" setup performs across 3 timeframe pairs on NQ + ES.
