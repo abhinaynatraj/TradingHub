@@ -11,8 +11,8 @@ from engine.build_stats import _find_nested_hosts, _compute_mit_ts
 
 
 def _brute_force_hosts(ltf_fvgs, htf_fvgs, proximity_bp):
-    """Original O(N*M): first live, same-direction, containing HTF gap in
-    formation order."""
+    """Original O(N*M): first live, same-direction, containing HTF gap that
+    CONFIRMED strictly before the signal (ts_ns are bar-close/confirmation times)."""
     out = []
     for lf in ltf_fvgs:
         sig = lf['ts_ns']
@@ -20,7 +20,7 @@ def _brute_force_hosts(ltf_fvgs, htf_fvgs, proximity_bp):
         for hg in htf_fvgs:
             if hg['dir'] != lf['dir']:
                 continue
-            if hg['ts_ns'] > sig:
+            if hg['ts_ns'] >= sig:   # must confirm strictly before the signal
                 continue
             if hg['mit_ts'] is not None and hg['mit_ts'] <= sig:
                 continue

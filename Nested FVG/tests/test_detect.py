@@ -98,3 +98,35 @@ def test_ltf_below_htf_bottom_not_nested():
     htf = dict(dir=1, top=110.0, bot=100.0)
     ltf = dict(dir=1, top=108.0, bot=98.0)   # bot pokes below htf bot
     assert is_nested(ltf, htf, proximity_bp=0.0) is False
+
+
+def test_resampled_fvg_stamped_at_close_not_start():
+    """Look-ahead guard: when bars carry ts_close_ns (resampled series), an FVG
+    must be timestamped at the bar's CLOSE (when it becomes known), not its start."""
+    # 3 bars forming a bullish gap at index 2; ts_ns = bar start, ts_close_ns = next start.
+    bars = dict(
+        ts_ns=np.array([100, 200, 300], dtype='int64'),
+        ts_close_ns=np.array([200, 300, 400], dtype='int64'),
+        open=np.array([100.0, 101.0, 108.0]),
+        high=np.array([105.0, 106.0, 110.0]),
+        low=np.array([100.0, 101.0, 108.0]),
+        close=np.array([104.0, 105.0, 109.0]),
+    )
+    fvgs = find_fvgs(bars, min_bp=0.0)
+    assert len(fvgs) == 1
+    # confirmation ts must be the CLOSE of bar 2 (400), NOT its start (300)
+    assert fvgs[0]['ts_ns'] == 400
+
+
+def test_native_fvg_without_close_ts_uses_bar_ts():
+    """Backward compat: bars without ts_close_ns stamp at ts_ns (native 1m path)."""
+    bars = dict(
+        ts_ns=np.array([100, 200, 300], dtype='int64'),
+        open=np.array([100.0, 101.0, 108.0]),
+        high=np.array([105.0, 106.0, 110.0]),
+        low=np.array([100.0, 101.0, 108.0]),
+        close=np.array([104.0, 105.0, 109.0]),
+    )
+    fvgs = find_fvgs(bars, min_bp=0.0)
+    assert len(fvgs) == 1
+    assert fvgs[0]['ts_ns'] == 300

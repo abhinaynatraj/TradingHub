@@ -13,16 +13,24 @@ def find_fvgs(bars, min_bp):
     Bearish (SIBI): high[i] < low[i-2] -> gap [high[i], low[i-2]], formed at i.
 
     Args:
-        bars: dict with ts_ns/open/high/low/close numpy arrays.
+        bars: dict with ts_ns/open/high/low/close numpy arrays. If the bars are a
+            RESAMPLED (higher-timeframe) series, also pass a `ts_close_ns` array
+            (the timestamp at which each bar CLOSES, i.e. when the bar becomes
+            known). The FVG is then stamped with `ts_close_ns[i]` — the moment the
+            gap is actually confirmed — NOT the bar's start. This prevents
+            look-ahead bias: a 5m FVG must not be "known" until the 5m bar closes.
+            For a native 1m series (no `ts_close_ns`), `ts_ns[i]` is used as-is.
         min_bp: minimum gap size in basis points of the reference price.
 
     Returns:
         list of dicts: {idx, ts_ns, dir (1|-1), top, bot, gap_pts}. idx is the
-        bar index at which the gap is confirmed (the 3rd candle).
+        bar index at which the gap is confirmed (the 3rd candle). ts_ns is the
+        CONFIRMATION timestamp (bar close for resampled series).
     """
     high = bars['high']
     low = bars['low']
-    ts = bars['ts_ns']
+    # Confirmation timestamp: bar-close for resampled series, else the bar ts.
+    ts = bars.get('ts_close_ns', bars['ts_ns'])
     out = []
     for i in range(2, len(high)):
         # NOTE: bp threshold reference differs by direction (near edge), matching the Pine source.

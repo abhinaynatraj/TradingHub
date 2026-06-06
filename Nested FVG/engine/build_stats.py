@@ -67,17 +67,32 @@ def _session_of(hour):
     return 'OTHER'
 
 
-def _session_end_idx(m1_hours, entry_idx):
+_SESSION_MAX_NS = np.int64(22 * 60 * 60 * 1_000_000_000)  # 22h: 18:00 -> 16:00 next day
+
+
+def _session_end_idx(m1_hours, entry_idx, m1_ts=None):
     """First 1m bar index at/after entry whose NY hour is in [16,18) (force-close).
 
-    Uses a precomputed per-bar NY hour array. Returns the last index if no such
-    bar exists before the data ends.
+    Gap-safe: only considers bars within 22 wall-clock hours of entry (one Globex
+    session is 18:00->16:00 = 22h). This prevents latching onto a LATER day's 16:00
+    when the entry day's close is missing from the data, or jumping a multi-day gap.
+    Returns the last in-window bar if no 16:00 bar exists within the horizon.
     """
     n = len(m1_hours)
-    # vectorized: first index >= entry_idx where 16 <= hour < 18
-    rel = np.nonzero((m1_hours[entry_idx:] >= 16) & (m1_hours[entry_idx:] < 18))[0]
+    if m1_ts is not None:
+        horizon = m1_ts[entry_idx] + _SESSION_MAX_NS
+        # last index whose ts is within the 22h horizon
+        hi = int(np.searchsorted(m1_ts, horizon, side='right'))
+        hi = min(hi, n)
+    else:
+        hi = n
+    seg = m1_hours[entry_idx:hi]
+    rel = np.nonzero((seg >= 16) & (seg < 18))[0]
     if len(rel):
         return entry_idx + int(rel[0])
+    # no in-window close found: expire at the last bar within the horizon
+    if hi - 1 > entry_idx:
+        return hi - 1
     return n - 1
 
 
@@ -136,8 +151,10 @@ def _find_nested_hosts(ltf_fvgs, htf_fvgs, proximity_bp=PROXIMITY_BP):
         sig = lf['ts_ns']
         d = lf['dir']
         gaps = by_dir[d]
-        # admit HTF gaps formed at/before this signal
-        while ptr[d] < len(gaps) and gaps[ptr[d]]['ts_ns'] <= sig:
+        # admit HTF gaps CONFIRMED strictly before this signal confirms.
+        # Both ts_ns are now bar-CLOSE (confirmation) times; strict `<` forbids an
+        # HTF host that confirms on the same bar/instant as the LTF signal.
+        while ptr[d] < len(gaps) and gaps[ptr[d]]['ts_ns'] < sig:
             live[d].append(gaps[ptr[d]])
             ptr[d] += 1
         # drop gaps mitigated at/before this signal (preserve formation order)
@@ -151,17 +168,33 @@ def _find_nested_hosts(ltf_fvgs, htf_fvgs, proximity_bp=PROXIMITY_BP):
     return hosts
 
 
+def _with_close_ts(m1):
+    """Give a native 1m dict a `ts_close_ns` = each bar's close instant (the next
+    bar's start), so find_fvgs stamps 1m FVGs at confirmation-close, consistent
+    with resampled series. The last bar's close is estimated as +1 minute."""
+    ts = m1['ts_ns']
+    NS_MIN = np.int64(60_000_000_000)
+    close = np.empty_like(ts)
+    close[:-1] = ts[1:]
+    close[-1] = ts[-1] + NS_MIN
+    out = dict(m1)
+    out['ts_close_ns'] = close
+    return out
+
+
 def build_pairing(key, ltf_min, htf_min, m1, m1_es):
     """Detect nested FVGs for one TF pair and simulate. Returns (rows, n_suppressed)."""
-    ltf = m1 if ltf_min == 1 else resample(m1, ltf_min)
+    ltf = _with_close_ts(m1) if ltf_min == 1 else resample(m1, ltf_min)
     htf = resample(m1, htf_min)
 
     ltf_fvgs = find_fvgs(ltf, MIN_FVG_BP)
     htf_fvgs = find_fvgs(htf, MIN_FVG_BP)
 
     htf_close = htf['close']
-    htf_ts = htf['ts_ns']
-    _compute_mit_ts(htf_fvgs, htf_close, htf_ts)
+    # Mitigation must be timestamped at the mitigating bar's CLOSE (when it becomes
+    # known), not its start — same look-ahead concern as FVG confirmation.
+    htf_close_ts = htf['ts_close_ns']
+    _compute_mit_ts(htf_fvgs, htf_close, htf_close_ts)
 
     # Precompute NY hour for every 1m bar once (used for session gating + expiry).
     m1_ts = m1['ts_ns']
@@ -177,28 +210,31 @@ def build_pairing(key, ltf_min, htf_min, m1, m1_es):
     for lf, host in zip(ltf_fvgs, hosts):
         if host is None:
             continue
+        # sig_ts is the FVG's CONFIRMATION-CLOSE time. The entry bar is the first
+        # 1m bar at/after that close — its open is the first tradeable price once
+        # the gap is known. (No +1: searchsorted already lands on the post-close bar.)
         sig_ts = lf['ts_ns']
-        sig_1m_idx = int(np.searchsorted(m1_ts, sig_ts, side='left'))
-        # session gate using the precomputed hour at the signal bar
-        if sig_1m_idx >= len(m1_hours) or int(m1_hours[sig_1m_idx]) not in SESSION_HOURS:
-            continue
-        if sig_1m_idx - last_bar_for_dir[lf['dir']] < COOLDOWN_BARS:
-            n_suppressed += 1
-            continue
-        last_bar_for_dir[lf['dir']] = sig_1m_idx
-
-        entry_idx = sig_1m_idx + 1
+        entry_idx = int(np.searchsorted(m1_ts, sig_ts, side='left'))
         if entry_idx >= len(m1_ts):
             continue
-        # Entry is the NEXT bar's open. If that bar lands at/after the 16:00 ET
-        # session close (out of SESSION_HOURS), skip — a trade entering at the
-        # expiry boundary has no session time to resolve.
+        # Gap guard: if the first post-close 1m bar is far from the FVG's confirmation
+        # time (a data gap straddles it — weekend/holiday/dropout), the signal is
+        # stale and not tradeable. Require the entry bar within the HTF bucket width.
+        if int(m1_ts[entry_idx]) - int(sig_ts) > htf_min * 60 * 1_000_000_000:
+            continue
+        # Skip if the entry bar is out of session (e.g. at/after the 16:00 ET close)
+        # — a trade entering at the expiry boundary has no session time to resolve.
+        # Done BEFORE cooldown so out-of-session signals don't consume a cooldown slot.
         if int(m1_hours[entry_idx]) not in SESSION_HOURS:
             continue
+        if entry_idx - last_bar_for_dir[lf['dir']] < COOLDOWN_BARS:
+            n_suppressed += 1
+            continue
+        last_bar_for_dir[lf['dir']] = entry_idx
         entry_price = float(m1['open'][entry_idx])
         direction = lf['dir']
 
-        sess_end = _session_end_idx(m1_hours, entry_idx)
+        sess_end = _session_end_idx(m1_hours, entry_idx, m1_ts)
         sim = simulate_trade(m1, entry_idx, entry_price, direction, sess_end,
                              STOP_PTS, PARTIAL_PTS, TARGET_PTS, EXT_PTS)
 
