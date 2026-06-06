@@ -57,9 +57,23 @@ cross-product — a full pairing is ~2 min instead of hours over 4M+ bars.
 aggregates only). Spec: `../docs/superpowers/specs/2026-06-01-nested-fvg-backtest-design.md`.
 Plan: `../docs/superpowers/plans/2026-06-01-nested-fvg-backtest.md`.
 
-## Baseline result (unfiltered, NQ)
-The raw model (no session/SMT/direction filter) is a **losing edge** on 1m_5m
-(WR ~23%, EV ~-0.065R) — consistent with FVGs testing non-additive in Fractal Sweep
-and Amas. The dashboard exists to find whether any slice (pairing/session/SMT/
-direction) is positive. Treat unfiltered aggregate as a baseline, not a verdict.
+## ⚠️ Look-ahead bias was found and fixed (2026-06-05)
+An early version stamped resampled FVGs at the bar's START (via `resample()` bucket
+start), so 5m/15m/30m gaps were "known" at the open of their 3rd candle and entry
+fired up to 29 min early on future data. FIXED: `find_fvgs` now stamps at
+confirmation-CLOSE (`ts_close_ns`); see the "Performance note"/divergences above and
+the regression tests `test_resampled_fvg_stamped_at_close_not_start`. Any number
+predating this fix (and the old manifest) is invalid.
+
+## Validated result (de-biased, NQ)
+The model has **no aggregate edge**. All 3 pairings: EV ≈ −0.10R, PF ≈ 0.80, with
+95% day-blocked-bootstrap CIs ENTIRELY below zero. The earlier "edge gradient"
+(5m_30m +0.087R) was pure leakage. Consistent with FVGs non-additive in Fractal
+Sweep / dropped in Amas.
+
+**One slice to forward-test (NOT a validated edge):** ASIA + LONG + no-SMT on 1m_5m
+= +0.052R, positive 9 consecutive years 2018–2026 — a regime-shift hypothesis, found
+by scanning ~36 cells (garden-of-forking-paths). Lock the rule and forward-test on
+unseen data before trusting it. See `validation/run_validation.py`, the dashboard's
+Validation tab, and `../docs/superpowers/specs/2026-06-05-nested-fvg-validation-verdict.md`.
 ```
