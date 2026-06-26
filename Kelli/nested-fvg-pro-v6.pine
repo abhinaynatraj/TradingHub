@@ -880,7 +880,8 @@ if tbl_show and barstate.islast
             else if kr == "⏳ Partial" or kr == "⏳ Win"
                 f_pnl    += kp
 
-        int   f_wins    = f_full + f_partials
+        // HONEST: full-target wins only (partials/BE are NOT wins; kept as their own bucket).
+        int   f_wins    = f_full
 
         // Best Day calculation
         var map<string, float> day_pnl_map = map.new<string, float>()
@@ -914,7 +915,8 @@ if tbl_show and barstate.islast
         int   best_day_wins = map.contains(day_win_map, best_day_date) ? map.get(day_win_map, best_day_date) : 0
         int   best_day_tot  = map.contains(day_tot_map, best_day_date) ? map.get(day_tot_map, best_day_date) : 0
         string best_day_str = best_day_date + " +" + str.tostring(math.round(best_day_pnl,1)) + "pts (" + str.tostring(best_day_wins) + "/" + str.tostring(best_day_tot) + "W)"
-        int   f_settled = f_wins + f_losses
+        // Win% denominator includes partials/BE so the rate reflects true target hits / all settled.
+        int   f_settled = f_wins + f_partials + f_losses
         float f_wr      = f_settled > 0 ? (f_wins / f_settled) * 100 : 0.0
         string streak_str = f_streak > 0 ? "🔥 " + str.tostring(f_streak) + "W" : f_streak < 0 ? "🧊 " + str.tostring(math.abs(f_streak)) + "L" : "-"
 
@@ -943,8 +945,9 @@ if tbl_show and barstate.islast
                 s_streak  := s_streak > 0 ? -1 : s_streak - 1
             else if kr == "⏳ Partial" or kr == "⏳ Win"
                 s_pnl    += kp
-        int   s_wins    = s_full + s_partials
-        int   s_settled = s_wins + s_losses
+        // HONEST: full-target wins only; partials kept in denominator, not as wins.
+        int   s_wins    = s_full
+        int   s_settled = s_wins + s_partials + s_losses
         float s_wr      = s_settled > 0 ? (s_wins / s_settled) * 100 : 0.0
         string s_streak_str = s_streak > 0 ? "🔥 " + str.tostring(s_streak) + "W" : s_streak < 0 ? "🧊 " + str.tostring(math.abs(s_streak)) + "L" : "-"
 
@@ -1060,37 +1063,41 @@ if tbl_hourly and barstate.islast
 
     int ah = array.size(active_hours)
     if ah > 0
-        table ht = table.new(tbl_hourly_pos_conv, 7, ah + 2,
+        table ht = table.new(tbl_hourly_pos_conv, 8, ah + 2,
              border_color=isDark ? color.new(color.gray, 50) : color.new(#9fa8da, 20),
              border_width=1,
              frame_color=isDark ? color.new(color.gray, 30) : color.new(#3949ab, 20),
              frame_width=1)
 
         color hhbg = th_hbg
+        // HONEST STATS: "Win %" counts only trades that reached the FULL TARGET.
+        // Partials / break-even scratches are shown in their own column, not as wins.
         table.cell(ht, 0, 0, "Hour (CT)",  text_color=th_text, bgcolor=hhbg, text_size=tbl_sz_conv, text_halign=text.align_center)
         table.cell(ht, 1, 0, "Signals",    text_color=th_text, bgcolor=hhbg, text_size=tbl_sz_conv, text_halign=text.align_center)
         table.cell(ht, 2, 0, "Wins",       text_color=th_text, bgcolor=hhbg, text_size=tbl_sz_conv, text_halign=text.align_center)
-        table.cell(ht, 3, 0, "Losses",     text_color=th_text, bgcolor=hhbg, text_size=tbl_sz_conv, text_halign=text.align_center)
-        table.cell(ht, 4, 0, "Win %",      text_color=th_text, bgcolor=hhbg, text_size=tbl_sz_conv, text_halign=text.align_center)
-        table.cell(ht, 5, 0, "P&L pts",    text_color=th_text, bgcolor=hhbg, text_size=tbl_sz_conv, text_halign=text.align_center)
-        table.cell(ht, 6, 0, "Rating",     text_color=th_text, bgcolor=hhbg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(ht, 3, 0, "Part/BE",    text_color=th_text, bgcolor=hhbg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(ht, 4, 0, "Losses",     text_color=th_text, bgcolor=hhbg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(ht, 5, 0, "Win %",      text_color=th_text, bgcolor=hhbg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(ht, 6, 0, "P&L pts",    text_color=th_text, bgcolor=hhbg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(ht, 7, 0, "Rating",     text_color=th_text, bgcolor=hhbg, text_size=tbl_sz_conv, text_halign=text.align_center)
 
         for i = 0 to ah - 1
             int   h    = array.get(active_hours, i)
             int   row  = i + 1
             int   ht_  = array.get(hr_count,   h)
-            int   hw   = array.get(hr_wins,    h) + array.get(hr_partial, h)
+            int   hw   = array.get(hr_wins,    h)               // HONEST: full-target wins only
+            int   hp   = array.get(hr_partial, h)               // partials + break-even scratches
             int   hl   = array.get(hr_losses,  h)
             float hpnl = array.get(hr_pnl,    h)
-            int   settled = hw + hl
-            float wr   = settled > 0 ? (hw / settled) * 100 : 0.0
-            bool is_power     = (h >= 8  and h <= 9)
-            bool is_afternoon = (h >= 13 and h <= 14)
-            bool is_evening   = (h >= 21 and h <= 22)
-            bool is_recommended = (is_power or is_afternoon or is_evening) and hpnl > 0
-            bool is_strong    = hpnl >= 300 and wr >= 30
-            bool is_weak      = wr < 15 or (hpnl > 0 and hpnl < 150 and ht_ >= 10)
-            string rating = is_strong and is_recommended ? "** USE **" : is_recommended ? "* Use *" : is_strong ? "* Use *" : is_weak ? "X Cut X" : "! Caution"
+            int   settled = hw + hp + hl
+            float wr   = settled > 0 ? (hw / settled) * 100 : 0.0   // target-hit rate, not inflated
+            // Rating is driven by REALIZED P&L (the honest metric), not win-rate, so an
+            // hour full of break-even scratches is no longer flattered into "** USE **".
+            float avg_pnl = ht_ > 0 ? hpnl / ht_ : 0.0
+            bool is_strong    = hpnl >= 300 and avg_pnl > 0
+            bool is_marginal  = hpnl > 0 and avg_pnl > 0
+            bool is_weak      = hpnl < 0
+            string rating = is_strong ? "** USE **" : is_marginal ? "* Use *" : is_weak ? "X Cut X" : "! Caution"
             color  rbg = rating == "** USE **" ? color.new(#1b5e20, 0) : rating == "* Use *" ? color.new(#1b5e20, 30) : rating == "X Cut X" ? color.new(#b71c1c, 20) : color.new(color.orange, 30)
             color  pbg = hpnl > 0 ? color.new(color.green, 60) : color.new(color.red, 60)
             int    h12  = h == 0 ? 12 : h > 12 ? h - 12 : h
@@ -1100,10 +1107,11 @@ if tbl_hourly and barstate.islast
             table.cell(ht, 0, row, hlbl,                                                               text_color=th_text,  bgcolor=hbg2, text_size=tbl_sz_conv, text_halign=text.align_center)
             table.cell(ht, 1, row, str.tostring(ht_),                                                 text_color=th_text,  bgcolor=hbg2, text_size=tbl_sz_conv, text_halign=text.align_center)
             table.cell(ht, 2, row, str.tostring(hw),                                                  text_color=color.green,  bgcolor=hbg2, text_size=tbl_sz_conv, text_halign=text.align_center)
-            table.cell(ht, 3, row, str.tostring(hl),                                                  text_color=color.red,    bgcolor=hbg2, text_size=tbl_sz_conv, text_halign=text.align_center)
-            table.cell(ht, 4, row, str.tostring(math.round(wr, 1)) + "%",                             text_color=wr >= 50 ? color.green : color.red, bgcolor=hbg2, text_size=tbl_sz_conv, text_halign=text.align_center)
-            table.cell(ht, 5, row, (hpnl >= 0 ? "+" : "") + str.tostring(math.round(hpnl, 1)),       text_color=hpnl >= 0 ? color.green : color.red, bgcolor=pbg, text_size=tbl_sz_conv, text_halign=text.align_right)
-            table.cell(ht, 6, row, rating,                                                             text_color=th_text,  bgcolor=rbg,  text_size=tbl_sz_conv, text_halign=text.align_center)
+            table.cell(ht, 3, row, str.tostring(hp),                                                  text_color=color.new(color.blue, 0), bgcolor=hbg2, text_size=tbl_sz_conv, text_halign=text.align_center)
+            table.cell(ht, 4, row, str.tostring(hl),                                                  text_color=color.red,    bgcolor=hbg2, text_size=tbl_sz_conv, text_halign=text.align_center)
+            table.cell(ht, 5, row, str.tostring(math.round(wr, 1)) + "%",                             text_color=hpnl > 0 ? color.green : color.red, bgcolor=hbg2, text_size=tbl_sz_conv, text_halign=text.align_center)
+            table.cell(ht, 6, row, (hpnl >= 0 ? "+" : "") + str.tostring(math.round(hpnl, 1)),       text_color=hpnl >= 0 ? color.green : color.red, bgcolor=pbg, text_size=tbl_sz_conv, text_halign=text.align_right)
+            table.cell(ht, 7, row, rating,                                                             text_color=th_text,  bgcolor=rbg,  text_size=tbl_sz_conv, text_halign=text.align_center)
 
 // ─────────────────────────────────────────────────────────
 //  RENDER WEEKLY SUMMARY TABLE — per-day breakdown

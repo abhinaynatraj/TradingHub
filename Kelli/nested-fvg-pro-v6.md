@@ -52,13 +52,15 @@ The v6 **points/dollar P&L is materially more trustworthy than v5.** The old
 leg (partial, target, runner, stop) closes a specific contract count and books only
 that contract's P&L. The dollar figures on the weekly/trade tables are real.
 
-**Caveats that remain (read before trusting win-rate or "Rating"):**
+**Caveats:**
 
-1. **Win-% still counts partials and BE-scratches as wins.** In the hourly table,
-   `hw = hr_wins + hr_partial`, and a runner stopped at break-even after a partial is
-   logged as `🔵 Partial` → counted toward "wins." So a 70–100% "Win %" mostly means
-   "price moved ~20 pts in favor at some point," not "trade reached full target."
-   The **points P&L is the honest column; the Win % is optimistic.**
+1. ~~Win-% counts partials and BE-scratches as wins.~~ **FIXED (2026-06-26).** This
+   file now reports honest stats: **"Win %" counts only full-target wins**; partials
+   and break-even scratches are shown in their own `Part/BE` column (hourly table) and
+   `P` bucket (trade/weekly tables), never as wins. The hourly **"Rating"** is now
+   driven by realized P&L, not the (formerly inflated) win-rate, so an hour full of
+   break-even scratches is no longer flattered into "** USE **". See the backtest study
+   below: the old definition showed ~50% WR; the honest target-hit rate is ~17%.
 2. **The hourly "Rating" (⭐ USE / X Cut) is in-sample curve-fitting.** It rates each
    hour on that chart's own realized P&L, so it will always flatter whatever the recent
    sample did. Not a forward-looking edge.
@@ -71,12 +73,26 @@ that contract's P&L. The dollar figures on the weekly/trade tables are real.
    bar resolve favorably in the order the code checks (stop-before-target on the
    un-partialed leg, which is conservative).
 
-## Relationship to the backtest study
+## Backtest study (v6 IS the model)
 
-The repo's `Nested FVG/` backtest validated the **v5** model (1m-in-5m, fixed 15/45,
-50% scale-out) and found **no aggregate edge** (all pairings ≈ −0.10R, 95% bootstrap
-CIs below zero); one slice (ASIA + LONG) was a forward-test hypothesis only. v6 changes
-the **management** (BE at partial, multi-contract, windows, 20/45) but **not the entry
-signal**, so the entry's lack of edge is unchanged. Whether v6's *management* turns the
-same entries profitable is an open question — that's what the next backtest pass should
-measure. See `docs/superpowers/specs/2026-06-05-nested-fvg-validation-verdict.md`.
+`Nested FVG/v6_model/v6_model.py` is a faithful port of THIS indicator at its default
+settings (Immediate entry, 3-contract scale-out 1/1/1, BE-at-partial, 20/45/20/60,
+trading windows, block-while-open, DLL/per-trade limits). Run on ~12y of NQ 1m bars:
+
+| Metric | Value |
+|---|---|
+| Trades | 16,888 |
+| **Win % as v6 tables showed it** (partials + BE as wins) | **50.1%** |
+| **Win % honest** (full target reached only) | **16.8%** |
+| Real expectancy per trade (MNQ $2/pt) | **−$2.44** |
+| Total | **−$41,241** |
+| Buckets | 2,765 target-win · 385 partial · 5,082 BE-scratch · 8,188 loss · 468 expired |
+| Every trading window | negative (−$0.32 to −$5.10 / trade) |
+
+**Conclusion:** the v6 *management* (BE-at-partial, scale-out, windows) does NOT rescue
+the entry. The "50% win rate" was real arithmetic that counted ~5,500 break-even
+scratches as wins; only **1 in 6** trades reaches the actual target, and long-run
+expectancy is **negative in every window**. Live green weeks are variance on a
+negative-EV system, not edge. The honest-stats modification above makes the live tables
+report the 17% figure instead of the 50% one. Full result: `v6_model/v6_result.json`;
+prior v5 study: `docs/superpowers/specs/2026-06-05-nested-fvg-validation-verdict.md`.
