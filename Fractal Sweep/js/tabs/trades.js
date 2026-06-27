@@ -102,16 +102,26 @@ async function renderRecentTrades(page) {
     if(i>0 && arr[i]-arr[i-1]>1) pageNums.push('…');
     pageNums.push(p);
   });
+  // NOTE: inline onclick handlers do NOT work here — this module is loaded as
+  // <script type="module">, so renderRecentTrades lives in module scope, not on
+  // window. Use data-page attributes + a delegated listener attached below instead.
   const paginationHTML = [
-    `<button style="${btnStyle(_tradesPage===0)}" onclick="if(${_tradesPage}>0)renderRecentTrades(${_tradesPage-1})" ${_tradesPage===0?'disabled':''}>‹ Prev</button>`,
+    `<button data-page="${_tradesPage-1}" style="${btnStyle(_tradesPage===0)}" ${_tradesPage===0?'disabled':''}>‹ Prev</button>`,
     ...pageNums.map(p => p==='…'
       ? `<span style="color:var(--text-muted);padding:0 2px">…</span>`
-      : `<button style="${btnStyle(false)};${p===_tradesPage?'background:var(--accent);color:#fff;border-color:var(--accent)':''}" onclick="renderRecentTrades(${p})">${p+1}</button>`),
-    `<button style="${btnStyle(_tradesPage===totalPages-1)}" onclick="if(${_tradesPage}<${totalPages-1})renderRecentTrades(${_tradesPage+1})" ${_tradesPage===totalPages-1?'disabled':''}>Next ›</button>`,
+      : `<button data-page="${p}" style="${btnStyle(false)};${p===_tradesPage?'background:var(--accent);color:#fff;border-color:var(--accent)':''}">${p+1}</button>`),
+    `<button data-page="${_tradesPage+1}" style="${btnStyle(_tradesPage===totalPages-1)}" ${_tradesPage===totalPages-1?'disabled':''}>Next ›</button>`,
     `<span style="color:var(--text-muted);margin-left:4px">Page ${_tradesPage+1} of ${totalPages}</span>`,
   ].join('');
   pgEl.style.display = 'flex';
   pgEl.innerHTML = paginationHTML;
+  // Delegated click handler — re-bound each render (innerHTML replaced the old nodes).
+  pgEl.onclick = (ev) => {
+    const btn = ev.target.closest('button[data-page]');
+    if (!btn || btn.disabled) return;
+    const p = Number(btn.dataset.page);
+    if (Number.isInteger(p) && p >= 0 && p < totalPages && p !== _tradesPage) renderRecentTrades(p);
+  };
   } catch(e) {
     console.error('[trades]', e);
     el.innerHTML = `<p style="color:var(--red);font-size:13px;padding:8px 0;">Failed to load trades: ${e.message}. Ensure server.py is running.</p>`;
