@@ -34,7 +34,11 @@ async function renderRecentTrades(page) {
       if (pgEl) pgEl.style.display = 'none';
       return;
     }
-    const trades = getSmtFilteredTrades(rawTrades);
+    const trades = getSmtFilteredTrades(rawTrades).slice().sort((a, b) => {
+      // newest first: compare by date, then intraday hour:minute
+      if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+      return (b.hr - a.hr) || (b.mn - a.mn);
+    });
     const totalCount = trades.length;
     const totalPages = Math.ceil(totalCount / TRADES_PER_PAGE);
     if (page !== undefined) _tradesPage = page;
