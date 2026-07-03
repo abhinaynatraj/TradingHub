@@ -35,7 +35,9 @@ string trade_mode = "Block new trades until open trade closes"
 invalidate_partial = input.bool(true, "Invalidate If Partial Hit Before Entry", group=grp3, tooltip="For pullback entries (Near/Middle/Far Edge): if price reaches the partial target before the entry fills, cancel the pending setup as invalid. Does not apply to Immediate entries.")
 
 grp6 = "Dynamic R/R Tool (Basis Points)"
-rr_show        = input.bool(true,  "Show R/R Levels",                       group=grp6)
+rr_show        = input.bool(true,  "Show R/R Levels",                       group=grp6, tooltip="Master toggle for the R/R lines + risk/reward boxes on each signal.")
+rr_show_pills  = input.bool(false, "Show R/R Pills (price tags)",           group=grp6, tooltip="Price-tagged labels (T2/Target/Anchor/Stop/Entry) at the right of each setup. Off by default to reduce clutter — the boxes + lines already show the levels; hover them for values.")
+rr_show_size   = input.bool(true,  "Show Position Size badge",              group=grp6, tooltip="One compact '# Enter N MNQ' pill per signal at the entry.")
 rr_label_size  = input.string("tiny", "R/R Label Size",                     group=grp6, options=["tiny","small","normal","large","huge"])
 
 // 0.1% = 10 basis points (e.g., 30 points on a 30,000 NQ)
@@ -66,11 +68,11 @@ tbl_tz_opt     = input.string("Auto (Chart/Exchange)", "Tracker Time Zone",  gro
 tbl_today_only = input.bool(true,  "Today Only",                            group=grp7)
 tbl_show_usd   = input.bool(true,  "Show $ P&L Column",                     group=grp7)
 tbl_usd_per_pt = input.float(2.0,  "$ per Point",                           group=grp7, minval=0.0, step=0.5)
-tbl_show_shown = input.bool(true,  "Show Shown Trades Summary Row",         group=grp7)
-tbl_hourly     = input.bool(true,  "Show Hourly Performance Table",         group=grp7)
+tbl_show_shown = input.bool(false, "Show Shown Trades Summary Row",         group=grp7, tooltip="Off by default — duplicates the TODAY row when few trades are shown.")
+tbl_hourly     = input.bool(false, "Show Hourly Performance Table",         group=grp7, tooltip="Off by default to reduce chart clutter. The per-hour Win%/PnL/Rating breakdown.")
 tbl_hourly_pos = input.string("Bottom Left", "Hourly Table Position",       group=grp7, options=["Top Right","Top Left","Bottom Right","Bottom Left","Middle Right","Middle Left"])
 tbl_theme      = input.string("Dark", "Table Theme",                           group=grp7, options=["Dark","Light"])
-tbl_weekly     = input.bool(true,  "Show Weekly Summary Table",            group=grp7)
+tbl_weekly     = input.bool(false, "Show Weekly Summary Table",            group=grp7, tooltip="Off by default to reduce chart clutter. The Mon–Fri per-day P&L rollup.")
 tbl_weekly_pos = input.string("Top Left", "Weekly Table Position",         group=grp7, options=["Top Right","Top Left","Bottom Right","Bottom Left","Middle Right","Middle Left"])
 
 grp5 = "Proximity Filter"
@@ -844,11 +846,15 @@ if barstate.isconfirmed and tradingAllowed
                 box.new(rs, _be, re, _bs, border_color=pal_short_mid(), bgcolor=pal_short_soft(), border_width=1)
                 box.new(rs, _bt, re, _be, border_color=pal_info_mid(),  bgcolor=pal_info_soft(),  border_width=1)
                 box.new(rs, _bx, re, _bt, border_color=pal_warn_mid(),  bgcolor=pal_warn_soft(),  border_width=1)
-                label.new(re, _bx, "T2 +" + str.tostring(math.round(ext_distance, 2))    + "pts (" + str.tostring(_bq_run) + " MNQ) @ " + str.tostring(math.round(_bx,2)), color=pal_warn_strong(),   textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
-                label.new(re, _bt, "T  +" + str.tostring(math.round(target_distance, 2)) + "pts (" + str.tostring(_bqt) + " MNQ) @ " + str.tostring(math.round(_bt,2)), color=pal_info_strong(),   textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
-                label.new(re, _bp, "Anchor/BE +" + str.tostring(math.round(partial_distance, 2)) + "pts (" + str.tostring(_bqp) + " MNQ) @ " + str.tostring(math.round(_bp,2)), color=pal_info_strong(),   textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
-                label.new(re, _bs, "S  -" + str.tostring(math.round(stop_distance, 2))   + "pts (" + str.tostring(dynamic_qty) + " MNQ) @ " + str.tostring(math.round(_bs,2)), color=pal_short_strong(),  textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
-                label.new(re, _be, "#" + str.tostring(sig_count) + " Enter " + str.tostring(dynamic_qty) + " MNQ @ " + str.tostring(math.round(_be,2)), color=pal_struct_strong(), textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
+                // Price-tag pills — off by default (boxes/lines already show the levels).
+                if rr_show_pills
+                    label.new(re, _bx, "T2 +" + str.tostring(math.round(ext_distance, 2))    + "pts (" + str.tostring(_bq_run) + " MNQ) @ " + str.tostring(math.round(_bx,2)), color=pal_warn_strong(),   textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
+                    label.new(re, _bt, "T  +" + str.tostring(math.round(target_distance, 2)) + "pts (" + str.tostring(_bqt) + " MNQ) @ " + str.tostring(math.round(_bt,2)), color=pal_info_strong(),   textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
+                    label.new(re, _bp, "Anchor/BE +" + str.tostring(math.round(partial_distance, 2)) + "pts (" + str.tostring(_bqp) + " MNQ) @ " + str.tostring(math.round(_bp,2)), color=pal_info_strong(),   textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
+                    label.new(re, _bs, "S  -" + str.tostring(math.round(stop_distance, 2))   + "pts (" + str.tostring(dynamic_qty) + " MNQ) @ " + str.tostring(math.round(_bs,2)), color=pal_short_strong(),  textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
+                // Compact size badge at entry — the one always-useful tag.
+                if rr_show_size
+                    label.new(re, _be, "#" + str.tostring(sig_count) + " Enter " + str.tostring(dynamic_qty) + " MNQ @ " + str.tostring(math.round(_be,2)), color=pal_struct_strong(), textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
 
     // ── Bearish ──────────────────────────────────────────
     float gap1_bear = low[2] - high
@@ -934,11 +940,15 @@ if barstate.isconfirmed and tradingAllowed
                 box.new(rs, _ts, re, _te, border_color=pal_short_mid(), bgcolor=pal_short_soft(), border_width=1)
                 box.new(rs, _te, re, _tt, border_color=pal_info_mid(),  bgcolor=pal_info_soft(),  border_width=1)
                 box.new(rs, _tt, re, _tx, border_color=pal_warn_mid(),  bgcolor=pal_warn_soft(),  border_width=1)
-                label.new(re, _tx, "T2 -" + str.tostring(math.round(ext_distance, 2))    + "pts (" + str.tostring(_tq_run) + " MNQ) @ " + str.tostring(math.round(_tx,2)), color=pal_warn_strong(),   textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
-                label.new(re, _tt, "T  -" + str.tostring(math.round(target_distance, 2)) + "pts (" + str.tostring(_tqt) + " MNQ) @ " + str.tostring(math.round(_tt,2)), color=pal_info_strong(),   textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
-                label.new(re, _tp, "Anchor/BE -" + str.tostring(math.round(partial_distance, 2)) + "pts (" + str.tostring(_tqp) + " MNQ) @ " + str.tostring(math.round(_tp,2)), color=pal_info_strong(),   textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
-                label.new(re, _ts, "S  +" + str.tostring(math.round(stop_distance, 2))   + "pts (" + str.tostring(dynamic_qty) + " MNQ) @ " + str.tostring(math.round(_ts,2)), color=pal_short_strong(),  textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
-                label.new(re, _te, "#" + str.tostring(sig_count) + " Enter " + str.tostring(dynamic_qty) + " MNQ @ " + str.tostring(math.round(_te,2)), color=pal_struct_strong(), textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
+                // Price-tag pills — off by default (boxes/lines already show the levels).
+                if rr_show_pills
+                    label.new(re, _tx, "T2 -" + str.tostring(math.round(ext_distance, 2))    + "pts (" + str.tostring(_tq_run) + " MNQ) @ " + str.tostring(math.round(_tx,2)), color=pal_warn_strong(),   textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
+                    label.new(re, _tt, "T  -" + str.tostring(math.round(target_distance, 2)) + "pts (" + str.tostring(_tqt) + " MNQ) @ " + str.tostring(math.round(_tt,2)), color=pal_info_strong(),   textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
+                    label.new(re, _tp, "Anchor/BE -" + str.tostring(math.round(partial_distance, 2)) + "pts (" + str.tostring(_tqp) + " MNQ) @ " + str.tostring(math.round(_tp,2)), color=pal_info_strong(),   textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
+                    label.new(re, _ts, "S  +" + str.tostring(math.round(stop_distance, 2))   + "pts (" + str.tostring(dynamic_qty) + " MNQ) @ " + str.tostring(math.round(_ts,2)), color=pal_short_strong(),  textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
+                // Compact size badge at entry — the one always-useful tag.
+                if rr_show_size
+                    label.new(re, _te, "#" + str.tostring(sig_count) + " Enter " + str.tostring(dynamic_qty) + " MNQ @ " + str.tostring(math.round(_te,2)), color=pal_struct_strong(), textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
 
 // ─────────────────────────────────────────────────────────
 //  RENDER TRADE TRACKER TABLE
