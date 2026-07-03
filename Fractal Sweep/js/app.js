@@ -7,7 +7,7 @@ import { activePageTab, RAW_TABS, RAW_TAB_LABELS,
          setActiveTF, setIsDemo, setActivePageTab, setCurrentTheme } from './state.js';
 import { applyTheme, _savedTheme } from './theme.js';
 import { fmtDateRange, triggerCSVDownload, csvEscape, showTip, hideTip } from './utils.js';
-import { getProfileData, getActiveTFData, getSmtD, applyLoadedData, DEMO, DATA, setData } from './data.js';
+import { getProfileData, getActiveTFData, getSmtD, applyLoadedData, DEMO, DATA, setData, fetchProfileFromDB } from './data.js';
 import { drawSetupViz, renderOverviewEquityCurve, lineChart, rDistChart, renderEquityCurveFS } from './charts.js';
 import { renderModel, renderModelDropdown, renderProfileDropdown, switchProfile, switchTF, renderControls, switchModel } from './tabs/overview.js';
 import { renderEdgeStudy } from './tabs/edge.js';
@@ -74,7 +74,7 @@ function switchPageTab(tab){
 }
 
 // ── MAIN RENDER ────────────────────────────────────────────────────────────
-function renderActive(){
+async function renderActive(){
   const customView = document.getElementById('custom-view');
   const pageNav = document.querySelector('.page-nav');
   if(activeTF === 'custom'){
@@ -93,6 +93,14 @@ function renderActive(){
     });
   }
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
+  if (!isDemo && typeof window.query === 'function') {
+    const duckData = await fetchProfileFromDB(fullKey, activeProfile);
+    if (duckData) {
+      if (!DATA[fullKey]) DATA[fullKey] = { profiles: {} };
+      if (!DATA[fullKey].profiles) DATA[fullKey].profiles = {};
+      DATA[fullKey].profiles[activeProfile] = duckData;
+    }
+  }
   const baseD = getProfileData(fullKey, activeProfile);
   if(!baseD){
     document.getElementById('meta-row').innerHTML=`<div style="grid-column:1/-1;font-family:var(--font-data);font-size:11px;color:var(--text-muted);padding:8px">No data for ${fullKey} / ${activeProfile}. Run model_stats.py to generate.</div>`;
@@ -104,13 +112,22 @@ function renderActive(){
 }
 
 // ── RENDER ─────────────────────────────────────────────────────────────────
-function render(){
-  const D = getProfileData(`${activeModel}_${activeMode}_${activeCisd}`, activeProfile);
+async function render(){
+  const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
+  if (!isDemo && typeof window.query === 'function') {
+    const duckData = await fetchProfileFromDB(fullKey, activeProfile);
+    if (duckData) {
+      if (!DATA[fullKey]) DATA[fullKey] = { profiles: {} };
+      if (!DATA[fullKey].profiles) DATA[fullKey].profiles = {};
+      DATA[fullKey].profiles[activeProfile] = duckData;
+    }
+  }
+  const D = getProfileData(fullKey, activeProfile);
   document.getElementById('hdr-sub').textContent=`Multi-TF Probability Engine · ${D?.meta?.instrument||'NQ'} · ${fmtDateRange(D?.meta?.date_range)}`;
   renderModelDropdown();
-  renderProfileDropdown();
+  await renderProfileDropdown();
   renderControls();
-  renderActive();
+  await renderActive();
 }
 
 // Parse a key like "1H_5M_PREV_CISD" — last segment = cisd, second-to-last = sweep, rest = model
@@ -125,14 +142,15 @@ function parseKey(k){
 // ── Download trades ────────────────────────────────────────────────────────
 function downloadFSTrades() {
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
-  const baseD = getProfileData(fullKey, activeProfile);
-  const D = getActiveTFData(baseD);
-  const trades = D?.recent_trades;
-  if (!trades || !trades.length) return;
-  const headers = ['date','direction','session','hr','mn','dow_name','entry_price','sweep_extreme','target_price','risk_pts','r','outcome'];
-  const tf = activeTF || 'all';
-  const filename = `fractal_sweep_${activeModel}_${activeProfile}_${tf}_${new Date().toISOString().slice(0,10)}.csv`;
-  triggerCSVDownload(trades, headers, filename);
+  getProfileData(fullKey, activeProfile).then(baseD => {
+    const D = getActiveTFData(baseD);
+    const trades = D?.recent_trades;
+    if (!trades || !trades.length) return;
+    const headers = ['date','direction','session','hr','mn','dow_name','entry_price','sweep_extreme','target_price','risk_pts','r','outcome'];
+    const tf = activeTF || 'all';
+    const filename = `fractal_sweep_${activeModel}_${activeProfile}_${tf}_${new Date().toISOString().slice(0,10)}.csv`;
+    triggerCSVDownload(trades, headers, filename);
+  });
 }
 
 // ── Recalc button (calls local server.py) ───────────────────────────────────
@@ -235,38 +253,40 @@ _loadingEl.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(-
 _loadingEl.innerHTML = '<div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted)">Sweep Model</div><div>Loading <code style="font-family:var(--font-data);color:var(--text-primary)">model_stats.json</code>…</div>';
 document.body.appendChild(_loadingEl);
 
-fetch('./model_stats.json')
-  .then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
-  .then(j => {
-    console.log('[sweep] model_stats.json loaded. Keys:', Object.keys(j));
-    setIsDemo(false);
-    const badge = document.getElementById('demo-badge');
-    if(badge){ badge.style.display = 'none'; }
-    applyLoadedData(j);
-    render();
-    updateTabVisibility();
-    drawSetupViz();
-  })
-  .catch(e => {
-    console.warn('[sweep] fetch failed:', e, '— falling back to demo data');
-    // Fall back to demo data only on fetch failure (file missing / 404 / parse error).
-    setData({
-      '1H_5M_PREV_CISD': DEMO['1H_5M_PREV_CISD'],
-      '30M_3M_PREV_CISD': DEMO['30M_3M_PREV_CISD'],
-      '15M_1M_PREV_CISD': DEMO['15M_1M_PREV_CISD'],
+if (typeof window.loadParquet !== 'function') {
+  console.warn('shared.js not loaded, cannot use duckdb');
+} else {
+  window.loadParquet('./model_stats.parquet', 'trades')
+    .then(async () => {
+      console.log('[sweep] model_stats.parquet loaded into DuckDB.');
+      setIsDemo(false);
+      const badge = document.getElementById('demo-badge');
+      if(badge){ badge.style.display = 'none'; }
+      // Initialize activeModel/Profile from the parquet directly if not set
+      // (Simplified: we let it fallback to defaults)
+      await render();
+      updateTabVisibility();
+      drawSetupViz();
+    })
+    .catch(e => {
+      console.warn('[sweep] DuckDB load failed:', e, '— falling back to demo data');
+      setData({
+        '1H_5M_PREV_CISD': DEMO['1H_5M_PREV_CISD'],
+        '30M_3M_PREV_CISD': DEMO['30M_3M_PREV_CISD'],
+        '15M_1M_PREV_CISD': DEMO['15M_1M_PREV_CISD'],
+      });
+      setIsDemo(true);
+      const badge = document.getElementById('demo-badge');
+      if(badge){ badge.style.display = ''; }
+      render();
+      updateTabVisibility();
+      drawSetupViz();
+    })
+    .finally(() => {
+      const overlay = document.getElementById('initial-loading');
+      if(overlay) overlay.remove();
     });
-    setIsDemo(true);
-    const badge = document.getElementById('demo-badge');
-    if(badge){ badge.style.display = ''; }
-    render();
-    updateTabVisibility();
-    drawSetupViz();
-  })
-  .finally(() => {
-    // Hide the loading overlay either way once a render has happened.
-    const overlay = document.getElementById('initial-loading');
-    if(overlay) overlay.remove();
-  });
+}
 
 // JSON file upload handler
 document.getElementById('json-loader')?.addEventListener('change', e => {

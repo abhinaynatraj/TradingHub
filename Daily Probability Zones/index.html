@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Daily Probability Zones · Probability Engine</title>
+  <link rel="stylesheet" href="../Analysis/dashboard/shared.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script defer src="../Analysis/dashboard/shared.js"></script>
+  <style>
+    body { background: var(--bg); color: var(--text-primary); font-family: var(--font-body); margin: 0; }
+    .hdr { display:flex; justify-content:space-between; align-items:center; padding:14px 24px; border-bottom:1px solid var(--border); background:var(--bg-elev-1); flex-wrap:wrap; gap:12px; }
+    .hdr-left { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+    .hub-back { color:var(--text-secondary); text-decoration:none; display:flex; align-items:center; gap:6px; font-family:var(--font-display); font-weight:600; }
+    .hub-back:hover { color:var(--text-primary); }
+    .hub-wordmark em { font-style:normal; color:var(--accent); }
+    .hdr-divider { width:1px; height:22px; background:var(--border); }
+    .hdr-wordmark { font-family:var(--font-display); font-weight:800; font-size:18px; color:var(--text-primary); letter-spacing:-0.01em; }
+    .hdr-wordmark em { font-style:normal; color:var(--accent); }
+    .hdr-sub { font-family:var(--font-data); font-size:11px; color:var(--text-muted); letter-spacing:.05em; text-transform:uppercase; }
+    .hdr-right { display:flex; align-items:center; gap:10px; }
+    .main { padding: 22px 28px 60px; max-width: 1280px; margin: 0 auto; }
+    .sec-label { font-family: var(--font-data); font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: .05em; margin: 22px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    .sec-label:first-child { margin-top: 0; }
+    .card { background: var(--bg-elev-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin: 10px 0; }
+    .tbl { width: 100%; border-collapse: collapse; font-family: var(--font-data); font-size: 12px; }
+    .tbl th { text-align: left; padding: 8px 10px; color: var(--text-muted); font-weight: 500; font-size: 10px; text-transform: uppercase; border-bottom: 1px solid var(--border); letter-spacing: .05em; }
+    .tbl th.num, .tbl td.num { text-align: right; }
+    .tbl td { padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--text-primary); }
+    .tbl tr:last-child td { border-bottom: none; }
+    .tbl tr:hover td { background: var(--bg-elev-2); }
+    .tbl .pos { color: var(--green); }
+    .tbl .neg { color: var(--red); }
+    .ev-heat { padding-left: 10px; padding-right: 10px; border-radius: var(--radius-sm); }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+    .card-title { font-family: var(--font-data); font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: .05em; margin-bottom: 10px; font-weight: 600; }
+    .loading { color: var(--text-muted); font-family: var(--font-data); font-size: 12px; padding: 24px 0; text-align: center; }
+  </style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-left">
+    <a class="hub-back" href="../index.html">
+      <span>←</span>
+      <span class="hub-wordmark">Statistic<em>.ally</em></span>
+    </a>
+    <div class="hdr-divider"></div>
+    <div class="hdr-wordmark">DPZ<em>Analysis</em></div>
+    <div class="hdr-divider"></div>
+    <div class="hdr-sub">Daily Range & Pivot Probability</div>
+  </div>
+  <div class="hdr-right">
+    <div class="theme-picker" role="radiogroup" aria-label="Theme">
+      <button class="theme-opt" data-theme="dark"   title="Dark"   aria-label="Dark theme">☀</button>
+      <button class="theme-opt" data-theme="light"  title="Light"  aria-label="Light theme">☾</button>
+      <button class="theme-opt" data-theme="gold"   title="Gold"   aria-label="Gold theme">✦</button>
+      <button class="theme-opt" data-theme="indigo" title="Indigo" aria-label="Indigo theme">◆</button>
+    </div>
+  </div>
+</header>
+
+<main class="main">
+  <div class="sec-label" id="date-range-label">Date Range: Loading...</div>
+  
+  <div class="sec-label">Baseline Overview (1H_5M_PREV_CISD)</div>
+  <div class="card" id="baseline-stats">
+    <div class="loading">Loading stats...</div>
+  </div>
+
+  <div class="sec-label">Breakdowns</div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">By Entry Segment</div>
+      <div id="table-entry-segment" style="overflow-x:auto;"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">By DSP Zone</div>
+      <div id="table-dsp-zone" style="overflow-x:auto;"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">By Top Segment Proximity</div>
+      <div id="table-top-seg" style="overflow-x:auto;"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">By SMT and DSP</div>
+      <div id="table-smt-dsp" style="overflow-x:auto;"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+  const fmtN = n => Number(n).toLocaleString();
+  const fmtPct = n => (n * 100).toFixed(1) + '%';
+  const fmtR = n => (n >= 0 ? '+' : '') + (+n).toFixed(3) + 'R';
+  const fmtPF = n => (+n).toFixed(2);
+
+  function evHeat(ev) {
+    const t = Math.max(-1, Math.min(1, (ev || 0) / 0.5));
+    if (t >= 0) return `rgba(34,197,94,${(t * 0.35).toFixed(2)})`;
+    return `rgba(239,68,68,${(-t * 0.35).toFixed(2)})`;
+  }
+
+  function renderTable(dataObj, labelsMap) {
+    if (!dataObj) return '<div style="color:var(--text-muted);font-size:11px;">No data</div>';
+    
+    let rows = Object.entries(dataObj).map(([k, v]) => {
+      let label = labelsMap ? (labelsMap[k] || k) : k;
+      // if v has sub-objects like with_smt, without_smt
+      if (v.n !== undefined) {
+        return `
+          <tr>
+            <td>${label}</td>
+            <td class="num">${fmtN(v.n)}</td>
+            <td class="num">${fmtPct(v.wr)}</td>
+            <td class="num ev-heat" style="background:${evHeat(v.ev)}">${fmtR(v.ev)}</td>
+            <td class="num">${fmtPF(v.pf)}</td>
+          </tr>
+        `;
+      }
+      return '';
+    }).join('');
+
+    // Special case for SMT and DSP which is nested
+    if (!rows && Object.values(dataObj)[0]?.all) {
+       rows = Object.entries(dataObj).map(([groupKey, groupVals]) => {
+         return Object.entries(groupVals).map(([k, v]) => `
+           <tr>
+             <td>${groupKey.replace(/_/g, ' ')} - ${k.replace(/_/g, ' ')}</td>
+             <td class="num">${fmtN(v.n)}</td>
+             <td class="num">${fmtPct(v.wr)}</td>
+             <td class="num ev-heat" style="background:${evHeat(v.ev)}">${fmtR(v.ev)}</td>
+             <td class="num">${fmtPF(v.pf)}</td>
+           </tr>
+         `).join('');
+       }).join('');
+    }
+
+    return `
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th class="num">N</th>
+            <th class="num">WR</th>
+            <th class="num">EV</th>
+            <th class="num">PF</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  async function loadData() {
+    try {
+      const res = await fetch('model_stats.json');
+      const d = await res.json();
+
+      if (d.meta?.date_range) {
+        document.getElementById('date-range-label').textContent = 'Date Range: ' + d.meta.date_range.join(' to ');
+      }
+
+      const model = d.models?.['1H_5M_PREV_CISD'];
+      if (!model) {
+        document.getElementById('baseline-stats').innerHTML = '<div>Model data not found.</div>';
+        return;
+      }
+
+      const s = model.baseline;
+      if (s) {
+        document.getElementById('baseline-stats').innerHTML = `
+          <div style="display:flex; gap:24px; align-items:center;">
+            <div>
+              <div style="font-family:var(--font-data); font-size:10px; color:var(--text-muted); text-transform:uppercase;">Trades</div>
+              <div style="font-family:var(--font-data); font-size:20px; font-weight:700;">${fmtN(s.n)}</div>
+            </div>
+            <div>
+              <div style="font-family:var(--font-data); font-size:10px; color:var(--text-muted); text-transform:uppercase;">Win Rate</div>
+              <div style="font-family:var(--font-data); font-size:20px; font-weight:700;">${fmtPct(s.wr)}</div>
+            </div>
+            <div>
+              <div style="font-family:var(--font-data); font-size:10px; color:var(--text-muted); text-transform:uppercase;">EV / Trade</div>
+              <div style="font-family:var(--font-data); font-size:20px; font-weight:700; color:${s.ev >= 0 ? 'var(--green)' : 'var(--red)'};">${fmtR(s.ev)}</div>
+            </div>
+            <div>
+              <div style="font-family:var(--font-data); font-size:10px; color:var(--text-muted); text-transform:uppercase;">Profit Factor</div>
+              <div style="font-family:var(--font-data); font-size:20px; font-weight:700;">${fmtPF(s.pf)}</div>
+            </div>
+          </div>
+        `;
+      }
+
+      document.getElementById('table-entry-segment').innerHTML = renderTable(model.by_entry_segment, d.meta.segment_labels);
+      document.getElementById('table-dsp-zone').innerHTML = renderTable(model.by_dsp_zone, null);
+      document.getElementById('table-top-seg').innerHTML = renderTable(model.by_top_seg_proximity, null);
+      document.getElementById('table-smt-dsp').innerHTML = renderTable(model.by_smt_and_dsp, null);
+
+    } catch (err) {
+      document.getElementById('baseline-stats').innerHTML = `<div style="color:var(--red)">Failed to load data: ${err.message}</div>`;
+    }
+  }
+
+  loadData();
+</script>
+
+</body>
+</html>

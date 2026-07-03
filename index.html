@@ -693,6 +693,42 @@ const PROJECTS = [
     stats:    null,
   },
   {
+    id:       'ttfm',
+    title:    'TTrades Fractal Model',
+    subtitle: 'Anatomy of the TTFM° Indicator',
+    desc:     'A multi-timeframe price-action indicator that detects high-timeframe candle sweeps, draws T-Spot zones at log-weighted midpoints, and confirms entries through CISD delivery sequences and pivot sweep mechanics.',
+    json:     'TTrades Fractal Model Analysis/ttfm_results.json',
+    link:     'TTrades Fractal Model Analysis/index.html',
+    color:    '#06b6d4',
+    icon:     '📐',
+    type:     'ttfm',
+    stats:    null,
+  },
+  {
+    id:       'amas',
+    title:    'Amas Models',
+    subtitle: 'H1 Continuation & Macro filters',
+    desc:     'Amas specific quantitative models incorporating macroeconomic timing (Macro 010 filter), HTF structure filtering, and distribution candle logic to filter low-probability sweep continuations.',
+    json:     'Amas Models/model_stats.json',
+    link:     'Amas Models/index.html',
+    color:    '#ef4444',
+    icon:     '📊',
+    type:     'amas',
+    stats:    null,
+  },
+  {
+    id:       'dpz',
+    title:    'Daily Probability Zones',
+    subtitle: 'Daily Range & Pivot analysis',
+    desc:     'Quantitative analysis of daily range extensions, mapping historical probability zones for intraday reversions and breakout follow-throughs.',
+    json:     'Daily Probability Zones/model_stats.json',
+    link:     'Daily Probability Zones/index.html',
+    color:    '#3b82f6',
+    icon:     '📈',
+    type:     'dpz',
+    stats:    null,
+  },
+  {
     id:       'hourly',
     title:    'NQ Hourly Analysis',
     subtitle: 'Breakout follow-through · Quarter-of-the-hour study',
@@ -780,6 +816,50 @@ async function loadStats(project) {
       };
     }
 
+    if (project.type === 'ttfm') {
+      const o = d.overall;
+      if (!o) return null;
+      return {
+        label1: 'Trades', val1: num(o.n), cls1: 'neutral',
+        label2: 'Win Rate', val2: pct(o.wr), cls2: wrColor(o.wr),
+        label3: 'EV', val3: sgn(o.ev), cls3: o.ev >= 0 ? 'pos' : 'neg',
+        dateRange: '—',
+      };
+    }
+
+    if (project.type === 'amas' || project.type === 'dpz') {
+      // Find the best variant across models
+      let best = null;
+      let totalN = 0;
+      if (d.models) {
+        for (const [modelKey, modelData] of Object.entries(d.models)) {
+          if (modelData.filter_variants) {
+            for (const v of modelData.filter_variants) {
+              const s = v.stats;
+              if (!s) continue;
+              if (s.n) totalN += s.n;
+              if (!best || (s.ev > best.ev)) {
+                best = s;
+              }
+            }
+          }
+        }
+      }
+      if (!best) return null;
+      
+      let dateRangeStr = '—';
+      if (d.meta?.data_range) {
+        dateRangeStr = d.meta.data_range;
+      }
+      
+      return {
+        label1: 'Best WR', val1: pct(best.wr), cls1: 'pos',
+        label2: 'Best EV', val2: sgn(best.ev), cls2: best.ev >= 0 ? 'pos' : 'neg',
+        label3: 'Trades', val3: num(totalN), cls3: 'neutral',
+        dateRange: dateRangeStr,
+      };
+    }
+
   } catch(e) {
     return null;
   }
@@ -827,13 +907,13 @@ function buildCard(p) {
     </div>
     <div class="card-footer">
       <div class="card-date-range">${s?.dateRange || '—'}</div>
-      <a class="open-btn" href="${p.link}"
+      ${p.link !== '#' ? `<a class="open-btn" href="${p.link}"
          style="background:${p.color};color:#fff;">
         Open Dashboard
         <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M2 6h8M6 2l4 4-4 4"/>
         </svg>
-      </a>
+      </a>` : `<span class="open-btn" style="background:var(--bg-hover);color:var(--text-muted);cursor:not-allowed;">No Dashboard</span>`}
     </div>
   </div>`;
 }

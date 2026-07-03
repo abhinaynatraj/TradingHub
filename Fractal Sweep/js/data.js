@@ -96,15 +96,76 @@ const DEMO = {
 let DATA = DEMO;
 export function setData(v) { DATA = v; }
 
-// Helper — resolve active profile data (handles both flat DEMO and {profiles:{}} real JSON)
+// Helper — fetch active profile data from DuckDB WASM
+export async function fetchProfileFromDB(fullKey, profile) {
+  const {model, sweep, cisd} = window.parseKey(fullKey);
+  const sql = `
+    SELECT * FROM trades 
+    WHERE model_key='${model}' 
+      AND sweep_mode='${sweep}' 
+      AND cisd_mode='${cisd}' 
+      AND profile_key='${profile}'
+    ORDER BY date, hr, mn
+  `;
+  try {
+    const rows = await window.query(sql);
+    if (!rows || rows.length === 0) return null;
+    
+    const date_range = rows.length > 0 ? `${rows[0].date} to ${rows[rows.length-1].date}` : '';
+    
+    // Normalize boolean fields that DuckDB might return as 1/0 or non-strict booleans
+    rows.forEach(r => {
+      r.smt = r.smt == true || r.smt === 1;
+      r.passes_f3 = r.passes_f3 == true || r.passes_f3 === 1;
+      r.passes_f4 = r.passes_f4 == true || r.passes_f4 === 1;
+      r.passes_p42 = r.passes_p42 == true || r.passes_p42 === 1;
+      r.passes_pd_cisd = r.passes_pd_cisd == true || r.passes_pd_cisd === 1;
+      r.passes_fvg_cisd_strict = r.passes_fvg_cisd_strict == true || r.passes_fvg_cisd_strict === 1;
+      r.passes_fvg_cisd_loose = r.passes_fvg_cisd_loose == true || r.passes_fvg_cisd_loose === 1;
+      r.passes_fvg_1m_strict = r.passes_fvg_1m_strict == true || r.passes_fvg_1m_strict === 1;
+      r.passes_fvg_1m_loose = r.passes_fvg_1m_loose == true || r.passes_fvg_1m_loose === 1;
+    });
+    
+    return {
+      meta: {
+        model_key: model,
+        full_key: fullKey,
+        sweep_mode: sweep,
+        cisd_mode: cisd,
+        instrument: 'NQ',
+        date_range: date_range,
+      },
+      recent_trades: rows
+    };
+  } catch (e) {
+    console.error("[sweep] DuckDB query failed", e);
+    return null;
+  }
+}
+
+export async function fetchAvailableProfilesFromDB(fullKey) {
+  const {model, sweep, cisd} = window.parseKey(fullKey);
+  const sql = `
+    SELECT DISTINCT profile_key FROM trades 
+    WHERE model_key='${model}' 
+      AND sweep_mode='${sweep}' 
+      AND cisd_mode='${cisd}'
+  `;
+  try {
+    const rows = await window.query(sql);
+    const available = new Set(rows.map(r => r.profile_key));
+    return RR_PROFILES.filter(pk => available.has(pk));
+  } catch(e) {
+    return RR_PROFILES;
+  }
+}
+
 function getProfileData(fullKey, profile) {
   const base = DATA[fullKey];
   if (!base) return null;
   if (base.profiles) {
-    // New structure: {profiles: {profile_key: stats_obj}}
     return base.profiles[profile] || base.profiles[Object.keys(base.profiles)[0]] || null;
   }
-  // Old flat structure: the value IS the stats object (demo data has .meta directly)
   if (base.meta) return base;
   return null;
 }
@@ -116,7 +177,7 @@ function getAvailableProfiles(fullKey) {
     const fromJson = new Set(Object.keys(base.profiles));
     return RR_PROFILES.filter(pk => fromJson.has(pk));
   }
-  return RR_PROFILES; // demo data — all profiles point to same data
+  return RR_PROFILES;
 }
 function getActiveTFData(fullProfileData){
   if (!fullProfileData) return null;
@@ -141,15 +202,15 @@ function getActiveTFData(fullProfileData){
 // F3 defaults CHECKED (active) — it's the baseline quality filter.
 function getFilteredD(D) {
   const anyActive = activeSmt || activeF3 || activeF4 || activeP42 || activePd;
-  if (!anyActive) return D;
+  if (!anyActive && D?.by_year) return D;
   const rawTrades = D?.recent_trades;
   if (!rawTrades || !rawTrades.length) return D;
   let trades = rawTrades;
-  if (activeSmt) trades = trades.filter(t => t.smt === true);
-  if (activeF3)  trades = trades.filter(t => t.passes_f3 === true);
-  if (activeF4)  trades = trades.filter(t => t.passes_f4 === true);
-  if (activeP42) trades = trades.filter(t => t.passes_p42 === true);
-  if (activePd)  trades = trades.filter(t => t.passes_pd_cisd === true);
+  if (activeSmt) trades = trades.filter(t => t.smt == true || t.smt === 1);
+  if (activeF3)  trades = trades.filter(t => t.passes_f3 == true || t.passes_f3 === 1);
+  if (activeF4)  trades = trades.filter(t => t.passes_f4 == true || t.passes_f4 === 1);
+  if (activeP42) trades = trades.filter(t => t.passes_p42 == true || t.passes_p42 === 1);
+  if (activePd)  trades = trades.filter(t => t.passes_pd_cisd == true || t.passes_pd_cisd === 1);
   if (!trades.length) return D;
 
   const wins = trades.filter(t => t.outcome === 'WIN');
@@ -243,8 +304,8 @@ function getFilteredD(D) {
   });
   const by_session = aggGroup(sessMap);
 
-  // by_dow — DuckDB dow: 0=Sun, but trades have dow_name too
-  const DOW_NAMES_MAP = {0:'Sun',1:'Mon',2:'Tue',3:'Wed',4:'Thu',5:'Fri',6:'Sat'};
+  // by_dow — DuckDB dow: 1=Mon .. 5=Fri
+  const DOW_NAMES_MAP = {1:'Mon',2:'Tue',3:'Wed',4:'Thu',5:'Fri',6:'Sat',7:'Sun'};
   const dowMap = {};
   trades.forEach(t => {
     const dow = t.dow, dir = t.direction;
@@ -255,6 +316,36 @@ function getFilteredD(D) {
     addTrade(dowMap[key], t);
   });
   const by_dow = aggGroup(dowMap);
+  
+  // heatmap (hour x dow)
+  const hmMap = {};
+  trades.forEach(t => {
+    const dow = t.dow, hr = t.hr;
+    if (dow == null || hr == null) return;
+    const key = `${hr}_${dow}`;
+    if (!hmMap[key]) hmMap[key] = emptyBucket({ hr, dow, dow_name: DOW_NAMES_MAP[dow] || String(dow) });
+    addTrade(hmMap[key], t);
+  });
+  const heatmap = Object.values(hmMap).map(g => {
+    const wr = g.n > 0 ? g.wins / g.n : 0;
+    const ev = g.n > 0 ? (g.sumW - g.sumL) / g.n : 0;
+    return { ...g, wr: +wr.toFixed(3), ev: +ev.toFixed(3) };
+  });
+
+  // r_hist (Outcome Distribution)
+  const rBuckets = {'-1.0R (full SL)':0, '-1.0 .. -0.5R':0, '-0.5 .. 0R':0, '0R (BE)':0, '0 .. 0.5R':0, '0.5 .. 1.0R':0, '>1.0R':0};
+  trades.forEach(t => {
+    if (t.r <= -1.0) rBuckets['-1.0R (full SL)']++;
+    else if (t.r < -0.5) rBuckets['-1.0 .. -0.5R']++;
+    else if (t.r < 0) rBuckets['-0.5 .. 0R']++;
+    else if (t.r === 0) rBuckets['0R (BE)']++;
+    else if (t.r <= 0.5) rBuckets['0 .. 0.5R']++;
+    else if (t.r <= 1.0) rBuckets['0.5 .. 1.0R']++;
+    else rBuckets['>1.0R']++;
+  });
+  const r_hist = Object.entries(rBuckets).map(([bucket, n]) => ({
+    bucket, n, fill: bucket.includes('-') ? 'loss' : bucket.includes('0R') ? 'mid' : 'win'
+  }));
 
   // dir_summary
   const dirMap = {};
@@ -305,7 +396,7 @@ function getFilteredD(D) {
     pf: 1,
   }));
 
-  return { ...D, meta: newMeta, risk_stats: newRS, by_hour, by_session, by_dow, dir_summary, by_year, recent_trades: trades };
+  return { ...D, meta: newMeta, risk_stats: newRS, by_hour, by_session, by_dow, heatmap, r_hist, dir_summary, by_year, recent_trades: trades };
 }
 
 // Back-compat alias — legacy call sites use getSmtD

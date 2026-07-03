@@ -9,3 +9,5 @@ databento
 streamlit
 plotly
 python-dotenv
+ijson
+pyarrow

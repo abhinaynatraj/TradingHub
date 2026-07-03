@@ -1,7 +1,7 @@
-import { activeModel, activeMode, activeCisd, activeProfile, activeTF, activeSmt, activeF3, activeF4, MODEL_KEYS, MODEL_LABELS, RR_PROFILES, PROFILE_LABELS, PCT_PROFILES, SVG_FONT, isDark, activePageTab, setActiveModel, setActiveProfile, setActiveTF } from '../state.js';
+import { activeModel, activeMode, activeCisd, activeProfile, activeTF, activeSmt, activeF3, activeF4, MODEL_KEYS, MODEL_LABELS, RR_PROFILES, PROFILE_LABELS, PCT_PROFILES, SVG_FONT, isDark, isDemo, activePageTab, setActiveModel, setActiveProfile, setActiveTF } from '../state.js';
 import { pct, evFmt, pfFmt, evCls, wrHeatClr, wrHeatTxt, fmtDateRange, _tradingDaysFromRange } from '../utils.js';
 import { C, lineChart, rDistChart, filterWaterfall, dirCards, drawSetupViz, _buildEquityPts, renderEquityCurveFS, renderOverviewEquityCurve } from '../charts.js';
-import { getProfileData, getActiveTFData, getFilteredD, getSmtD, getAvailableProfiles } from '../data.js';
+import { getProfileData, getActiveTFData, getFilteredD, getSmtD, getAvailableProfiles, fetchAvailableProfilesFromDB } from '../data.js';
 import { renderEdgeStudy } from './edge.js';
 import { renderFilterVariants, renderProfileComparison, renderVerdict } from '../verdict.js';
 import { renderMAEStudy, renderMFEStudy } from './excursion.js';
@@ -18,11 +18,16 @@ function switchModel(k){
   window.render();
 }
 
-function renderProfileDropdown(){
+async function renderProfileDropdown(){
   const sel = document.getElementById('profile-select');
   if (!sel) return;
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
-  const profiles = getAvailableProfiles(fullKey);
+  
+  let profiles = getAvailableProfiles(fullKey);
+  if (!isDemo && typeof window.query === 'function') {
+    profiles = await fetchAvailableProfilesFromDB(fullKey);
+  }
+  
   sel.innerHTML = profiles.map(pk => `<option value="${pk}" ${pk===activeProfile?'selected':''}>${PROFILE_LABELS[pk]||pk}${PCT_PROFILES.has(pk)?' %':''}</option>`).join('');
 }
 function switchProfile(pk){
