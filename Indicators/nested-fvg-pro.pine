@@ -702,24 +702,15 @@ f_add5(float ztop, float zbot, int zdir, string lbl, color bcol) =>
     array.push(fvg5_bot, zbot)
     array.push(fvg5_dir, zdir)
     float mid = (ztop + zbot) / 2
-    if fvg5_show
-        b = box.new(bar_index - 15, ztop, bar_index, zbot,
-             border_color=color.new(bcol, 0),
-             bgcolor=bcol,
-             extend=extend.none, border_width=2,
-             border_style=line.style_solid)
-        array.push(fvg5_box, b)
-        // BISI/SIBI text labels dropped — the colored box conveys the zone.
-        // Keep empty placeholder labels so the parallel-array index alignment
-        // (mitigation/purge remove by index across box/label arrays) stays intact.
-        // x MUST be near the current bar (bar_index), not 0 — an absolute index of
-        // 0 is thousands of bars back on a live chart and trips RE10026.
-        array.push(fvg5_llabel, label.new(bar_index, mid, "", style=label.style_none))
-        array.push(fvg5_rlabel, label.new(bar_index, mid, "", style=label.style_none))
-    else
-        array.push(fvg5_box,    box.new(bar_index, ztop, bar_index, zbot))
-        array.push(fvg5_llabel, label.new(bar_index, mid, "", style=label.style_none))
-        array.push(fvg5_rlabel, label.new(bar_index, mid, "", style=label.style_none))
+    // MINIMAL UI: 5-min FVG zones are NOT drawn at detection — that produced a wall
+    // of wide, ever-stretching bands. We only store the zone data here (top/bot/dir);
+    // the box is drawn later, ONLY for the specific zone a 1-min FVG nests into (see
+    // the nested-check blocks). These placeholder box/labels exist solely to keep the
+    // parallel-array index alignment used by mitigation/purge. They are invisible
+    // (na colors, zero width at the current bar) and never stretched.
+    array.push(fvg5_box,    box.new(bar_index, ztop, bar_index, zbot, border_color=color.new(color.gray, 100), bgcolor=color.new(color.gray, 100)))
+    array.push(fvg5_llabel, label.new(bar_index, mid, "", style=label.style_none))
+    array.push(fvg5_rlabel, label.new(bar_index, mid, "", style=label.style_none))
 
 // ─────────────────────────────────────────────────────────
 //  DETECT 5-MIN FVGS
@@ -735,10 +726,7 @@ if is_new_5m and inSession and not na(h5_c2)
     if h5_c0 < l5_c2 and gap5_bear >= min5_bear
         f_add5(l5_c2, h5_c0, -1, "SIBI", fvg5_bear_col)
 
-// Stretch boxes to the current bar (labels dropped, so no label.set_x needed)
-if inSession and fvg5_show and array.size(fvg5_box) > 0
-    for i = 0 to array.size(fvg5_box) - 1
-        box.set_right(array.get(fvg5_box, i), bar_index)
+// (5-min FVG boxes are no longer stretched — they draw only when nested into.)
 
 // ─────────────────────────────────────────────────────────
 //  MITIGATION
@@ -772,12 +760,16 @@ if barstate.isconfirmed and tradingAllowed
         float top1 = low
         float bot1 = high[2]
         bool nested = false
+        float host_top = na
+        float host_bot = na
         if array.size(fvg5_top) > 0
             for i = 0 to array.size(fvg5_top) - 1
                 if array.get(fvg5_dir, i) == 1
                     float prox = array.get(fvg5_bot, i) * (proximity_bp / 10000.0)
                     if bot1 >= (array.get(fvg5_bot, i) - prox) and top1 <= (array.get(fvg5_top, i) + prox)
                         nested := true
+                        host_top := array.get(fvg5_top, i)
+                        host_bot := array.get(fvg5_bot, i)
                         break
         bool bull_blocked = trade_mode == "Block new trades until open trade closes" and (array.size(openTrades) + array.size(pendingTrades) > 0)
         if nested and bull_cooldown_ok and not bull_blocked
@@ -833,6 +825,11 @@ if barstate.isconfirmed and tradingAllowed
                 array.set(hr_count, _bhr, array.get(hr_count, _bhr) + 1)
             else
                 array.push(pendingTrades, Trade.new(dir=1, entry=_be, stop=_bs, target=_bt, part=_bp, ext=_bx, idx=-1, partial_hit=false, target_hit=false, qty=dynamic_qty, qty_part=_bqp, qty_tgt=_bqt, qty_run=dynamic_qty-_bqp-_bqt, hr=0, num=sig_count))
+            // Draw the HOST 5-min zone — only now, because it actually got nested into.
+            if fvg5_show and not na(host_top)
+                array.push(fvg1_boxes, box.new(bar_index - 8, host_top, bar_index + 15, host_bot,
+                     border_color=pal_long_mid(), bgcolor=fvg5_bull_col,
+                     extend=extend.none, border_width=1, border_style=line.style_solid))
             if fvg1_show
                 b1 = box.new(bar_index - 2, top1, bar_index + 15, bot1,
                      border_color=pal_long_mid(), bgcolor=fvg1_bull_col,
@@ -866,12 +863,16 @@ if barstate.isconfirmed and tradingAllowed
         float top1 = low[2]
         float bot1 = high
         bool nested = false
+        float host_top = na
+        float host_bot = na
         if array.size(fvg5_top) > 0
             for i = 0 to array.size(fvg5_top) - 1
                 if array.get(fvg5_dir, i) == -1
                     float prox = array.get(fvg5_bot, i) * (proximity_bp / 10000.0)
                     if bot1 >= (array.get(fvg5_bot, i) - prox) and top1 <= (array.get(fvg5_top, i) + prox)
                         nested := true
+                        host_top := array.get(fvg5_top, i)
+                        host_bot := array.get(fvg5_bot, i)
                         break
         bool bear_blocked = trade_mode == "Block new trades until open trade closes" and (array.size(openTrades) + array.size(pendingTrades) > 0)
         if nested and bear_cooldown_ok and not bear_blocked
@@ -927,6 +928,11 @@ if barstate.isconfirmed and tradingAllowed
                 array.set(hr_count, _thr, array.get(hr_count, _thr) + 1)
             else
                 array.push(pendingTrades, Trade.new(dir=-1, entry=_te, stop=_ts, target=_tt, part=_tp, ext=_tx, idx=-1, partial_hit=false, target_hit=false, qty=dynamic_qty, qty_part=_tqp, qty_tgt=_tqt, qty_run=dynamic_qty-_tqp-_tqt, hr=0, num=sig_count))
+            // Draw the HOST 5-min zone — only now, because it actually got nested into.
+            if fvg5_show and not na(host_top)
+                array.push(fvg1_boxes, box.new(bar_index - 8, host_top, bar_index + 15, host_bot,
+                     border_color=pal_short_mid(), bgcolor=fvg5_bear_col,
+                     extend=extend.none, border_width=1, border_style=line.style_solid))
             if fvg1_show
                 b1 = box.new(bar_index - 2, top1, bar_index + 15, bot1,
                      border_color=pal_short_mid(), bgcolor=fvg1_bear_col,
