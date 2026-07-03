@@ -185,6 +185,17 @@ pal_table_short() => #fca5a5
 pal_table_warn()  => #fcd34d
 pal_table_info()  => #93c5fd
 
+// ── On-chart label helpers ───────────────────────────────────────────────────
+// Chart labels/pills sit over the chart (white in Light mode). Text is ALWAYS
+// dark ink so it reads on the faint pill / white bg; pill backgrounds are the
+// WHISPER tier (95% transp) — a subtle colored tint, never a loud chip.
+pal_label_text()      => #0f172a                 // always-dark label text
+pal_pill_long()       => tier_whisper(P_LONG_BASE)
+pal_pill_short()      => tier_whisper(P_SHORT_BASE)
+pal_pill_warn()       => tier_whisper(P_WARN_BASE)
+pal_pill_info()       => tier_whisper(P_INFO_BASE)
+pal_pill_struct()     => tier_whisper(P_STRUCT_BASE)
+
 // ── Legacy theme aliases → house palette (keeps downstream table code intact) ──
 bool  isDark    = not IS_LIGHT_MODE
 color th_hbg    = pal_table_header_bg()
@@ -698,20 +709,11 @@ f_add5(float ztop, float zbot, int zdir, string lbl, color bcol) =>
              extend=extend.none, border_width=2,
              border_style=line.style_solid)
         array.push(fvg5_box, b)
-        ll = label.new(bar_index - 15, mid, lbl,
-             color=color.new(pal_surface(), 100),
-             textcolor=pal_on_surface(),
-             style=label.style_none,
-             size=size.small,
-             textalign=text.align_left)
-        array.push(fvg5_llabel, ll)
-        rl = label.new(bar_index, mid, lbl,
-             color=color.new(pal_surface(), 100),
-             textcolor=pal_on_surface(),
-             style=label.style_none,
-             size=size.small,
-             textalign=text.align_right)
-        array.push(fvg5_rlabel, rl)
+        // BISI/SIBI text labels dropped — the colored box conveys the zone.
+        // Keep empty placeholder labels so the parallel-array index alignment
+        // (mitigation/purge remove by index across box/label arrays) stays intact.
+        array.push(fvg5_llabel, label.new(0, 0, ""))
+        array.push(fvg5_rlabel, label.new(0, 0, ""))
     else
         array.push(fvg5_box,    box.new(0, 0, 1, 0))
         array.push(fvg5_llabel, label.new(0, 0, ""))
@@ -731,11 +733,10 @@ if is_new_5m and inSession and not na(h5_c2)
     if h5_c0 < l5_c2 and gap5_bear >= min5_bear
         f_add5(l5_c2, h5_c0, -1, "SIBI", fvg5_bear_col)
 
-// Stretch boxes + update right labels
+// Stretch boxes to the current bar (labels dropped, so no label.set_x needed)
 if inSession and fvg5_show and array.size(fvg5_box) > 0
     for i = 0 to array.size(fvg5_box) - 1
         box.set_right(array.get(fvg5_box, i), bar_index)
-        label.set_x(array.get(fvg5_rlabel, i), bar_index)
 
 // ─────────────────────────────────────────────────────────
 //  MITIGATION
@@ -848,13 +849,13 @@ if barstate.isconfirmed and tradingAllowed
                 box.new(rs, _bx, re, _bt, border_color=pal_warn_mid(),  bgcolor=pal_warn_soft(),  border_width=1)
                 // Price-tag pills — off by default (boxes/lines already show the levels).
                 if rr_show_pills
-                    label.new(re, _bx, "T2 +" + str.tostring(math.round(ext_distance, 2))    + "pts (" + str.tostring(_bq_run) + " MNQ) @ " + str.tostring(math.round(_bx,2)), color=pal_warn_strong(),   textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
-                    label.new(re, _bt, "T  +" + str.tostring(math.round(target_distance, 2)) + "pts (" + str.tostring(_bqt) + " MNQ) @ " + str.tostring(math.round(_bt,2)), color=pal_info_strong(),   textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
-                    label.new(re, _bp, "Anchor/BE +" + str.tostring(math.round(partial_distance, 2)) + "pts (" + str.tostring(_bqp) + " MNQ) @ " + str.tostring(math.round(_bp,2)), color=pal_info_strong(),   textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
-                    label.new(re, _bs, "S  -" + str.tostring(math.round(stop_distance, 2))   + "pts (" + str.tostring(dynamic_qty) + " MNQ) @ " + str.tostring(math.round(_bs,2)), color=pal_short_strong(),  textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
+                    label.new(re, _bx, "T2 +" + str.tostring(math.round(ext_distance, 2))    + "pts (" + str.tostring(_bq_run) + " MNQ) @ " + str.tostring(math.round(_bx,2)), color=pal_pill_warn(),   textcolor=pal_label_text(), style=label.style_label_left, size=rr_sz)
+                    label.new(re, _bt, "T  +" + str.tostring(math.round(target_distance, 2)) + "pts (" + str.tostring(_bqt) + " MNQ) @ " + str.tostring(math.round(_bt,2)), color=pal_pill_info(),   textcolor=pal_label_text(), style=label.style_label_left, size=rr_sz)
+                    label.new(re, _bp, "Anchor/BE +" + str.tostring(math.round(partial_distance, 2)) + "pts (" + str.tostring(_bqp) + " MNQ) @ " + str.tostring(math.round(_bp,2)), color=pal_pill_info(),   textcolor=pal_label_text(), style=label.style_label_left, size=rr_sz)
+                    label.new(re, _bs, "S  -" + str.tostring(math.round(stop_distance, 2))   + "pts (" + str.tostring(dynamic_qty) + " MNQ) @ " + str.tostring(math.round(_bs,2)), color=pal_pill_short(),  textcolor=pal_label_text(), style=label.style_label_left, size=rr_sz)
                 // Compact size badge at entry — the one always-useful tag.
                 if rr_show_size
-                    label.new(re, _be, "#" + str.tostring(sig_count) + " Enter " + str.tostring(dynamic_qty) + " MNQ @ " + str.tostring(math.round(_be,2)), color=pal_struct_strong(), textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
+                    label.new(re, _be, "#" + str.tostring(sig_count) + " Enter " + str.tostring(dynamic_qty) + " MNQ @ " + str.tostring(math.round(_be,2)), color=pal_pill_struct(), textcolor=pal_label_text(), style=label.style_label_left, size=rr_sz)
 
     // ── Bearish ──────────────────────────────────────────
     float gap1_bear = low[2] - high
@@ -942,13 +943,13 @@ if barstate.isconfirmed and tradingAllowed
                 box.new(rs, _tt, re, _tx, border_color=pal_warn_mid(),  bgcolor=pal_warn_soft(),  border_width=1)
                 // Price-tag pills — off by default (boxes/lines already show the levels).
                 if rr_show_pills
-                    label.new(re, _tx, "T2 -" + str.tostring(math.round(ext_distance, 2))    + "pts (" + str.tostring(_tq_run) + " MNQ) @ " + str.tostring(math.round(_tx,2)), color=pal_warn_strong(),   textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
-                    label.new(re, _tt, "T  -" + str.tostring(math.round(target_distance, 2)) + "pts (" + str.tostring(_tqt) + " MNQ) @ " + str.tostring(math.round(_tt,2)), color=pal_info_strong(),   textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
-                    label.new(re, _tp, "Anchor/BE -" + str.tostring(math.round(partial_distance, 2)) + "pts (" + str.tostring(_tqp) + " MNQ) @ " + str.tostring(math.round(_tp,2)), color=pal_info_strong(),   textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
-                    label.new(re, _ts, "S  +" + str.tostring(math.round(stop_distance, 2))   + "pts (" + str.tostring(dynamic_qty) + " MNQ) @ " + str.tostring(math.round(_ts,2)), color=pal_short_strong(),  textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
+                    label.new(re, _tx, "T2 -" + str.tostring(math.round(ext_distance, 2))    + "pts (" + str.tostring(_tq_run) + " MNQ) @ " + str.tostring(math.round(_tx,2)), color=pal_pill_warn(),   textcolor=pal_label_text(), style=label.style_label_left, size=rr_sz)
+                    label.new(re, _tt, "T  -" + str.tostring(math.round(target_distance, 2)) + "pts (" + str.tostring(_tqt) + " MNQ) @ " + str.tostring(math.round(_tt,2)), color=pal_pill_info(),   textcolor=pal_label_text(), style=label.style_label_left, size=rr_sz)
+                    label.new(re, _tp, "Anchor/BE -" + str.tostring(math.round(partial_distance, 2)) + "pts (" + str.tostring(_tqp) + " MNQ) @ " + str.tostring(math.round(_tp,2)), color=pal_pill_info(),   textcolor=pal_label_text(), style=label.style_label_left, size=rr_sz)
+                    label.new(re, _ts, "S  +" + str.tostring(math.round(stop_distance, 2))   + "pts (" + str.tostring(dynamic_qty) + " MNQ) @ " + str.tostring(math.round(_ts,2)), color=pal_pill_short(),  textcolor=pal_label_text(), style=label.style_label_left, size=rr_sz)
                 // Compact size badge at entry — the one always-useful tag.
                 if rr_show_size
-                    label.new(re, _te, "#" + str.tostring(sig_count) + " Enter " + str.tostring(dynamic_qty) + " MNQ @ " + str.tostring(math.round(_te,2)), color=pal_struct_strong(), textcolor=pal_ink(), style=label.style_label_left, size=rr_sz)
+                    label.new(re, _te, "#" + str.tostring(sig_count) + " Enter " + str.tostring(dynamic_qty) + " MNQ @ " + str.tostring(math.round(_te,2)), color=pal_pill_struct(), textcolor=pal_label_text(), style=label.style_label_left, size=rr_sz)
 
 // ─────────────────────────────────────────────────────────
 //  RENDER TRADE TRACKER TABLE
