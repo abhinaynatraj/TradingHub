@@ -9,15 +9,15 @@ indicator("Nested FVG Pro — ICT Multi-Contract | Auto R/R | Trade Analytics", 
 // ─────────────────────────────────────────────────────────
 grp1 = "5-Minute FVG Settings"
 fvg5_show      = input.bool(true,  "Show 5-min FVGs",                      group=grp1)
-fvg5_bull_col  = input.color(color.new(#34d399, 80), "5-min Bullish Color", group=grp1)
-fvg5_bear_col  = input.color(color.new(#f87171, 80), "5-min Bearish Color", group=grp1)
+fvg5_bull_col  = input.color(color.new(#34d399, 88), "5-min Bullish Color", group=grp1, tooltip="HTF context zone — kept faint so the nested 1-min FVG reads as the signal.")
+fvg5_bear_col  = input.color(color.new(#f87171, 88), "5-min Bearish Color", group=grp1)
 fvg5_mitigated = input.bool(true,  "Remove 5-min FVG When Mitigated",       group=grp1)
 fvg5_min_bp    = input.float(0.15, "5-min FVG Min Size (basis points)",     group=grp1, minval=0, maxval=100, step=0.05)
 
 grp2 = "1-Minute FVG Settings"
 fvg1_show      = input.bool(true,  "Show 1-min Nested FVGs",               group=grp2)
-fvg1_bull_col  = input.color(color.new(#34d399, 80), "1-min Bullish Color", group=grp2)
-fvg1_bear_col  = input.color(color.new(#f87171, 80), "1-min Bearish Color", group=grp2)
+fvg1_bull_col  = input.color(color.new(#34d399, 72), "1-min Bullish Color", group=grp2, tooltip="The nested signal zone — more present than the faint 5-min HTF box.")
+fvg1_bear_col  = input.color(color.new(#f87171, 72), "1-min Bearish Color", group=grp2)
 fvg1_min_bp    = input.float(0.15, "1-min FVG Min Size (basis points)",     group=grp2)
 fvg1_entry     = input.string("Immediate", "1-min FVG Entry Spot",         group=grp2, options=["Immediate","Near Edge","Middle","Far Edge"], tooltip="Where the entry sits within the 1-min FVG. Immediate = enter at market close the moment the FVG forms; Near Edge = shallowest pullback fill; Middle = 50% level; Far Edge = deepest fill (original behavior). Stop and all targets shift with the entry.")
 
