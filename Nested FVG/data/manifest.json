@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "run_timestamp_utc": "2026-06-06T03:03:47.915455+00:00",
+  "date_range_start": "2014-08-31",
+  "date_range_end": "2026-06-05",
+  "instrument_pricing": "NQ price action, MNQ sized ($2/pt)",
+  "constants": {
+    "STOP_PTS": 15.0,
+    "PARTIAL_PTS": 15.0,
+    "TARGET_PTS": 45.0,
+    "EXT_PTS": 60.0,
+    "MIN_FVG_BP": 0.15,
+    "PROXIMITY_BP": 5.0,
+    "COOLDOWN_BARS": 30,
+    "SESSION": "18:00->16:00 ET",
+    "POINT_VALUE_USD": 2.0
+  },
+  "pairings": {
+    "1m_5m": {
+      "file": "trades_1m_5m.parquet",
+      "n_trades": 124604,
+      "n_suppressed_cooldown": 289164,
+      "agg": {
+        "n": 124604,
+        "wr": 22.47,
+        "ev_r": -0.1045,
+        "pf": 0.811,
+        "avg_pnl_usd": -3.13,
+        "wins": 24106,
+        "losses": 59422,
+        "scratches": 23775,
+        "expired": 17301
+      }
+    },
+    "3m_15m": {
+      "file": "trades_3m_15m.parquet",
+      "n_trades": 48100,
+      "n_suppressed_cooldown": 31120,
+      "agg": {
+        "n": 48100,
+        "wr": 22.18,
+        "ev_r": -0.1121,
+        "pf": 0.798,
+        "avg_pnl_usd": -3.36,
+        "wins": 9147,
+        "losses": 22917,
+        "scratches": 9179,
+        "expired": 6857
+      }
+    },
+    "5m_30m": {
+      "file": "trades_5m_30m.parquet",
+      "n_trades": 26900,
+      "n_suppressed_cooldown": 10531,
+      "agg": {
+        "n": 26900,
+        "wr": 22.71,
+        "ev_r": -0.099,
+        "pf": 0.821,
+        "avg_pnl_usd": -2.97,
+        "wins": 5265,
+        "losses": 12824,
+        "scratches": 5093,
+        "expired": 3718
+      }
+    }
+  }
+}

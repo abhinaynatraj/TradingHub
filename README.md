@@ -10,10 +10,13 @@ A personal trading research hub for NQ and ES futures. Multiple statistical back
 
 | Folder | What it does |
 |---|---|
-| `Fractal Sweep/` | **Sweep + CISD model** — sweep-of-prior-high/low setup with CISD confirmation, 3 runtime-toggleable filters (F3, F4, SMT), risk profiles, equity tracking. Engine and Pine indicator are aligned (same setup logic). |
+| `Fractal Sweep/` | **Sweep + CISD model** — sweep-of-prior-high/low setup with CISD confirmation, 3 runtime-toggleable filters (F3, F4, SMT), 25 risk profiles, equity tracking. Engine and Pine indicator are aligned (same setup logic). |
+| `Amas Models/` | **Amas continuation models** — H1 continuation backtests (`h1_continuation`, `h1_continuation_m5`) |
+| `NPG Sweep/` | **NPG (Novel Price Generation) sweep** — multi-pairing sweep model (`1H_5M`, `4H_15M`, `D_1H`) with per-pairing parquet outputs |
+| `Analysis/` | **Hourly Analysis** — quarter theory + breakout studies; dashboard reads parquets directly via DuckDB-WASM |
 | `TTrades Fractal Model Analysis/` | **TTrades Fractal Model** — T-Spot zone entry backtest based on sweep + zone-touch mechanic |
 
-The root `index.html` is a **hub page** that links to the Fractal Sweep dashboard.
+The root `index.html` is a **hub page** that links to all dashboards.
 
 ---
 
@@ -95,23 +98,25 @@ Replace `C:\Users\YourName\Desktop\TradingHub` with wherever you saved the folde
 
 The dashboards need to be served over a local web address (they use `fetch()` to load data files, which doesn't work when you just double-click the HTML file).
 
-This command starts a tiny built-in web server — it's completely local, nothing goes to the internet.
+`server.py` is a small local-only Python server. It serves the static dashboards AND exposes the `/data`, `/trades`, and `/recalc` endpoints the Fractal Sweep dashboard uses to slice JSON aggregates and stream parquet trade rows on demand. Nothing leaves your machine.
 
 ### Mac
 
 ```
 cd path/to/TradingHub
-python3 -m http.server 8001
+python3 server.py
 ```
 
 ### Windows
 
 ```
 cd C:\path\to\TradingHub
-python -m http.server 8001
+python server.py
 ```
 
 Leave this terminal window open while you're using the dashboards.
+
+> The plain `python3 -m http.server 8001` works for static-only dashboards (Hourly Analysis, NPG Sweep) but is **not enough for Fractal Sweep** — that dashboard relies on `server.py`'s slicing endpoints. Just use `server.py` for everything.
 
 ---
 
@@ -131,7 +136,17 @@ You'll see the **TradingHub** hub page, which links the Fractal Sweep dashboard.
 
 ## About the Data
 
-The TTrades dashboard loads from a pre-computed `ttfm_results.json` that's committed to the repo. Fractal Sweep's `model_stats.json` is large (~140 MB) and **gitignored** — run `python3 Fractal\ Sweep/model_stats.py` once locally to generate it. The dashboard shows a "Run the engine" fallback if it's missing.
+Most data files are **gitignored** and need to be generated locally before the dashboards have anything to show. The good news: each engine is one Python command.
+
+| Dashboard | Data files | Generate with |
+|---|---|---|
+| **Fractal Sweep** | `model_stats.json` (~56 MB) + `model_stats.parquet` (~78 MB) | `python3 "Fractal Sweep/engine/model_stats.py"` |
+| **Amas Models** | `Amas Models/model_stats.json` (~2.6 MB) | `python3 "Amas Models/engine/model_stats.py"` |
+| **NPG Sweep** | `NPG Sweep/npg_stats.json` + `NPG Sweep/data/trades_*.parquet` | `python3 "NPG Sweep/engine/npg_stats.py"` |
+| **Hourly Analysis** | `Analysis/data/**/*.parquet` + `Analysis/data/manifest.json` | `python3 "Analysis/engine/run_all.py"` |
+| **TTrades** | `ttfm_results.json` (committed to the repo, ~3 MB) | — |
+
+Fractal Sweep's JSON contains aggregate stats only; trade rows live in the parquet sidecar and are fetched on demand by the dashboard via `server.py`'s `/trades` endpoint. NPG Sweep and Hourly Analysis use the same parquet-first pattern — their dashboards load parquets directly into DuckDB-WASM in the browser.
 
 Re-run any backtest with newer data — see the README inside each project folder.
 
@@ -142,9 +157,11 @@ Re-run any backtest with newer data — see the README inside each project folde
 ```
 TradingHub/
 ├── index.html                                ← Hub page (open this in browser)
+├── server.py                                 ← Local server: serves dashboards + /data, /trades, /recalc
 ├── Fractal Sweep/                            [Sweep + CISD]
 │   ├── model_dashboard.html                  ← Dashboard with 3 runtime filter chips (F3, F4, SMT)
-│   ├── model_stats.json                      ← Engine output (gitignored, ~140 MB)
+│   ├── model_stats.json                      ← Aggregate stats (gitignored, ~56 MB)
+│   ├── model_stats.parquet                   ← Trade rows (gitignored, ~78 MB) — served via /trades
 │   ├── candle_science.duckdb                 ← Shared DB (gitignored, ~550 MB)
 │   ├── engine/                               ← Python backtest code
 │   │   ├── model_stats.py                    ← Backtest engine (engine ↔ indicator aligned)
@@ -153,8 +170,21 @@ TradingHub/
 │   ├── pine/                                 ← TradingView scripts + snapshots
 │   ├── data/                                 ← Raw Databento .dbn dumps (gitignored)
 │   ├── docs/                                 ← Indicator description, analysis write-ups
-│   ├── tests/                                ← pytest suite
+│   ├── tests/                                ← pytest suite (drift gate, trades-endpoint tests, etc.)
 │   └── LEGACY_NOTE.md                        ← Earlier-era history
+├── Amas Models/
+│   ├── model_dashboard.html                  ← Amas dashboard
+│   ├── model_stats.json                      ← Engine output (gitignored, ~2.6 MB)
+│   └── engine/model_stats.py                 ← Continuation backtest
+├── NPG Sweep/
+│   ├── npg_dashboard.html                    ← NPG dashboard (DuckDB-WASM, reads parquets directly)
+│   ├── npg_stats.json                        ← Manifest + summary (gitignored)
+│   ├── data/trades_*.parquet                 ← Per-pairing trade rows
+│   └── engine/npg_stats.py                   ← NPG backtest
+├── Analysis/                                 [Hourly Analysis]
+│   ├── dashboard/index.html                  ← DuckDB-WASM dashboard
+│   ├── data/{breakout,quarters,strategy}/    ← Per-study parquet outputs
+│   └── engine/run_all.py                     ← Quarter + breakout study runner
 └── TTrades Fractal Model Analysis/
     ├── index.html                            ← TTrades dashboard
     ├── ttfm_backtest.py                      ← Backtest engine
@@ -169,10 +199,13 @@ TradingHub/
 → Python wasn't added to PATH during installation. Reinstall Python and check "Add Python to PATH".
 
 **Dashboard shows no data / blank page**
-→ Make sure the web server is running (`python3 -m http.server 8001`) and you're going to `http://localhost:8001` (not opening the HTML file directly).
+→ Make sure `server.py` is running (`python3 server.py`) and you're going to `http://localhost:8001` (not opening the HTML file directly). The plain `http.server` won't serve Fractal Sweep's `/data` and `/trades` endpoints.
 
 **"pip3 is not recognized"** (Windows)
 → Use `pip` instead of `pip3`, or try `python -m pip install -r requirements.txt`.
 
 **Port already in use**
-→ Change the port number: `python3 -m http.server 8002`, then go to `http://localhost:8002`.
+→ `server.py` hardcodes port 8001. Either stop the other process or edit the `port = 8001` line at the bottom of `server.py`.
+
+**Recalculate button returns stale data**
+→ Fixed in the slim-JSON migration — `server.py` now invalidates its in-memory parquet cache when `model_stats.parquet`'s mtime changes. If you somehow still see stale data, restart `server.py`.

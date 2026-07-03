@@ -433,11 +433,13 @@ var array<int> rejReverse = array.new<int>(4, 0)
 // Stat #3 is disabled on 15m. These stubs are kept (rather than removed)
 // so the driver loop's call sequence stays uniform across stats. The
 // reference section's renderer skips the band-rejection rows entirely.
+// Returns `false` (typed) so Pine v6 doesn't require an `na`-with-types
+// annotation per CE10096.
 applyRunningStat3(HourAgg h_curr, int m, float h_, float l_) =>
-    na
+    false
 
 recordStat3(HourAgg h_curr, float c_) =>
-    na
+    false
 
 
 // ╔══════════════════════════════════════════════════════════════════════════╗

@@ -67,7 +67,27 @@
 
     <div class="sb-section">
       <label class="sb-label">Risk Profile</label>
-      <select id="profile-select" class="sel-drop" onchange="switchProfile(this.value)"></select>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <select id="profile-r" class="sel-drop" onchange="updateProfileFromSelectors()" style="font-size:10.5px;padding:5px 24px 5px 8px">
+          <option value="1">1R Target</option>
+          <option value="1.5">1.5R Target</option>
+          <option value="2">2R Target</option>
+        </select>
+        <select id="profile-ref" class="sel-drop" onchange="updateProfileFromSelectors()" style="font-size:10.5px;padding:5px 24px 5px 8px">
+          <option value="entry">TP from Entry</option>
+          <option value="ob">TP from OB</option>
+        </select>
+        <select id="profile-entry" class="sel-drop" onchange="updateProfileFromSelectors()" style="font-size:10.5px;padding:5px 24px 5px 8px">
+          <option value="open">Market Entry</option>
+          <option value="l33">L33 Entry</option>
+          <option value="l50">L50 Entry</option>
+          <option value="l66">L66 Entry</option>
+        </select>
+        <select id="profile-special" class="sel-drop" onchange="updateProfileFromSelectors()" style="font-size:10.5px;padding:5px 24px 5px 8px;color:var(--amber)">
+          <option value="">— Standard —</option>
+          <option value="raw_measure">Raw Measure</option>
+        </select>
+      </div>
     </div>
 
     <div class="sb-section">
