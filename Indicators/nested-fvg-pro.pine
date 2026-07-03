@@ -2,7 +2,7 @@
 // ► Run on a 1-MINUTE chart
 
 //@version=6
-indicator("Nested FVG Pro — ICT Multi-Contract | Auto R/R | Trade Analytics", overlay=true, max_boxes_count=500, max_labels_count=500, max_lines_count=500)
+indicator("Nested FVG Pro", overlay=true, max_boxes_count=500, max_labels_count=500, max_lines_count=500)
 
 // ─────────────────────────────────────────────────────────
 //  INPUTS
@@ -826,10 +826,12 @@ if barstate.isconfirmed and tradingAllowed
             else
                 array.push(pendingTrades, Trade.new(dir=1, entry=_be, stop=_bs, target=_bt, part=_bp, ext=_bx, idx=-1, partial_hit=false, target_hit=false, qty=dynamic_qty, qty_part=_bqp, qty_tgt=_bqt, qty_run=dynamic_qty-_bqp-_bqt, hr=0, num=sig_count))
             // Draw the HOST 5-min zone — only now, because it actually got nested into.
+            // Clearly visible (soft fill + solid ink border) so you can see which HTF
+            // zone the trade nested into.
             if fvg5_show and not na(host_top)
                 array.push(fvg1_boxes, box.new(bar_index - 8, host_top, bar_index + 15, host_bot,
-                     border_color=pal_long_mid(), bgcolor=fvg5_bull_col,
-                     extend=extend.none, border_width=1, border_style=line.style_solid))
+                     border_color=pal_long_ink(), bgcolor=pal_long_soft(),
+                     extend=extend.none, border_width=2, border_style=line.style_solid))
             if fvg1_show
                 b1 = box.new(bar_index - 2, top1, bar_index + 15, bot1,
                      border_color=pal_long_mid(), bgcolor=fvg1_bull_col,
@@ -929,10 +931,12 @@ if barstate.isconfirmed and tradingAllowed
             else
                 array.push(pendingTrades, Trade.new(dir=-1, entry=_te, stop=_ts, target=_tt, part=_tp, ext=_tx, idx=-1, partial_hit=false, target_hit=false, qty=dynamic_qty, qty_part=_tqp, qty_tgt=_tqt, qty_run=dynamic_qty-_tqp-_tqt, hr=0, num=sig_count))
             // Draw the HOST 5-min zone — only now, because it actually got nested into.
+            // Clearly visible (soft fill + solid ink border) so you can see which HTF
+            // zone the trade nested into.
             if fvg5_show and not na(host_top)
                 array.push(fvg1_boxes, box.new(bar_index - 8, host_top, bar_index + 15, host_bot,
-                     border_color=pal_short_mid(), bgcolor=fvg5_bear_col,
-                     extend=extend.none, border_width=1, border_style=line.style_solid))
+                     border_color=pal_short_ink(), bgcolor=pal_short_soft(),
+                     extend=extend.none, border_width=2, border_style=line.style_solid))
             if fvg1_show
                 b1 = box.new(bar_index - 2, top1, bar_index + 15, bot1,
                      border_color=pal_short_mid(), bgcolor=fvg1_bear_col,
