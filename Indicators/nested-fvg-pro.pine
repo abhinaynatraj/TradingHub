@@ -9,20 +9,20 @@ indicator("Nested FVG Pro", overlay=true, max_boxes_count=500, max_labels_count=
 // ─────────────────────────────────────────────────────────
 grp1 = "5-Minute FVG Settings"
 fvg5_show      = input.bool(true,  "Show 5-min FVGs",                      group=grp1)
-fvg5_bull_col  = input.color(color.new(#34d399, 88), "5-min Bullish Color", group=grp1, tooltip="HTF context zone — kept faint so the nested 1-min FVG reads as the signal.")
+fvg5_bull_col  = input.color(color.new(#06b6d4, 88), "5-min Bullish Color", group=grp1, tooltip="HTF context zone — kept faint so the nested 1-min FVG reads as the signal.")
 fvg5_bear_col  = input.color(color.new(#f87171, 88), "5-min Bearish Color", group=grp1)
 fvg5_mitigated = input.bool(true,  "Remove 5-min FVG When Mitigated",       group=grp1)
 fvg5_min_bp    = input.float(0.15, "5-min FVG Min Size (basis points)",     group=grp1, minval=0, maxval=100, step=0.05)
 
 grp2 = "1-Minute FVG Settings"
 fvg1_show      = input.bool(true,  "Show 1-min Nested FVGs",               group=grp2)
-fvg1_bull_col  = input.color(color.new(#34d399, 72), "1-min Bullish Color", group=grp2, tooltip="The nested signal zone — more present than the faint 5-min HTF box.")
+fvg1_bull_col  = input.color(color.new(#06b6d4, 72), "1-min Bullish Color", group=grp2, tooltip="The nested signal zone — more present than the faint 5-min HTF box.")
 fvg1_bear_col  = input.color(color.new(#f87171, 72), "1-min Bearish Color", group=grp2)
 fvg1_min_bp    = input.float(0.15, "1-min FVG Min Size (basis points)",     group=grp2)
 fvg1_entry     = input.string("Immediate", "1-min FVG Entry Spot",         group=grp2, options=["Immediate","Near Edge","Middle","Far Edge"], tooltip="Where the entry sits within the 1-min FVG. Immediate = enter at market close the moment the FVG forms; Near Edge = shallowest pullback fill; Middle = 50% level; Far Edge = deepest fill (original behavior). Stop and all targets shift with the entry.")
 
 grp3 = "Signal Settings"
-sig_bull_col   = input.color(color.new(#34d399, 0), "Bullish Label Color",  group=grp3)
+sig_bull_col   = input.color(color.new(#06b6d4, 0), "Bullish Label Color",  group=grp3)
 sig_bear_col   = input.color(color.new(#f87171, 0), "Bearish Label Color",  group=grp3)
 alert_on_nest  = input.bool(true, "Alert on Nested FVG",                    group=grp3)
 alert_partial  = input.bool(true, "Alert on Partial/BE Hit",                group=grp3)
@@ -51,7 +51,7 @@ val_per_point  = input.float(2.0,  "Dollar Value Per Full Point",          group
 
 rr_stop_col    = input.color(color.new(#f87171, 0), "Stop Color",           group=grp6)
 rr_entry_col   = input.color(color.new(#fbbf24, 0), "Entry Color",          group=grp6)
-rr_target_col  = input.color(color.new(#34d399, 0), "Target Color",         group=grp6)
+rr_target_col  = input.color(color.new(#06b6d4, 0), "Target Color",         group=grp6)
 rr_partial_col = input.color(color.new(#38bdf8, 0), "Partial Color",        group=grp6)
 rr_ext_col     = input.color(color.new(#fbbf24, 0), "Extended Target Color", group=grp6)
 
@@ -123,7 +123,7 @@ tbl_sz_conv = switch tbl_size
 // Mode resolution. Palette state is `var` with literal defaults, assigned ONCE
 // on barstate.isfirst (reading chart.bg_color every bar would grow max_bars_back).
 var bool IS_LIGHT_MODE = false
-var color P_LONG_BASE   = #34d399  // emerald  (win / positive / bull)
+var color P_LONG_BASE   = #06b6d4  // cyan/teal (win / positive / bull) — Fractal Sweep reward color, not emerald
 var color P_SHORT_BASE  = #f87171  // red      (loss / negative / bear)
 var color P_WARN_BASE   = #fbbf24  // amber    (extended / caution)
 var color P_INFO_BASE   = #38bdf8  // sky      (partial / reward zone)
@@ -136,7 +136,7 @@ var color P_ON_SURFACE  = #f1f5f9  // text on P_SURFACE — always slate-100
 if barstate.isfirst
     // Follow the existing Dark/Light dropdown (no Auto option in this indicator).
     IS_LIGHT_MODE := tbl_theme == "Light"
-    P_LONG_BASE   := IS_LIGHT_MODE ? #047857 : #34d399
+    P_LONG_BASE   := IS_LIGHT_MODE ? #0891b2 : #06b6d4
     P_SHORT_BASE  := IS_LIGHT_MODE ? #b91c1c : #f87171
     P_WARN_BASE   := IS_LIGHT_MODE ? #b45309 : #fbbf24
     P_INFO_BASE   := IS_LIGHT_MODE ? #0369a1 : #38bdf8
@@ -180,7 +180,7 @@ pal_table_header_bg() => #0f172a
 pal_table_text()      => P_ON_SURFACE
 pal_table_muted()     => color.new(P_ON_SURFACE, 50)
 // Brighter 300-tier for numbers on the always-dark table surface (700-tier reads dark-on-dark)
-pal_table_long()  => #6ee7b7
+pal_table_long()  => #67e8f9
 pal_table_short() => #fca5a5
 pal_table_warn()  => #fcd34d
 pal_table_info()  => #93c5fd
@@ -196,14 +196,19 @@ pal_pill_warn()       => tier_whisper(P_WARN_BASE)
 pal_pill_info()       => tier_whisper(P_INFO_BASE)
 pal_pill_struct()     => tier_whisper(P_STRUCT_BASE)
 
-// ── Legacy theme aliases → house palette (keeps downstream table code intact) ──
-bool  isDark    = not IS_LIGHT_MODE
-color th_hbg    = pal_table_header_bg()
-color th_row_bg = pal_surface_strong()
-color th_sum_bg = pal_surface()
-color th_text   = pal_table_text()
-color th_muted  = pal_table_muted()
-color th_hourly = pal_surface()
+// ── Table style → Fractal Sweep "Today's Scorecard" look ─────────────────────
+// Uniform surface for the WHOLE table (one bg color, no per-cell backgrounds).
+// Color lives in the TEXT only: labels muted, values white, positive = cyan /
+// negative = red. All the legacy bg aliases below resolve to the same surface so
+// no cell carries its own background.
+bool  isDark      = not IS_LIGHT_MODE
+color TBL_SURFACE = IS_LIGHT_MODE ? color.new(#e2e8f0, 0) : color.new(#0f172a, 0)  // scorecard bg
+color th_hbg    = TBL_SURFACE
+color th_row_bg = TBL_SURFACE
+color th_sum_bg = TBL_SURFACE
+color th_hourly = TBL_SURFACE
+color th_text   = IS_LIGHT_MODE ? color.new(#0f172a, 0) : color.white              // values
+color th_muted  = IS_LIGHT_MODE ? color.new(#475569, 0) : color.new(#94a3b8, 0)    // row labels
 
 // Resolve tracker timezone
 string tbl_tz = tbl_tz_opt == "Auto (Chart/Exchange)" ? syminfo.timezone : tbl_tz_opt
@@ -234,6 +239,19 @@ var box[]   fvg5_box    = array.new_box(0)
 var label[] fvg5_llabel = array.new_label(0)
 var label[] fvg5_rlabel = array.new_label(0)
 var box[]   fvg1_boxes  = array.new_box(0)
+
+// ── CURRENT NESTED PAIR — the single "1 unmitigated 5m FVG with a 1m FVG nested
+//    inside it" illustration. Decoupled from the trade-signal gates: it tracks
+//    the most recent nesting geometry, regardless of cooldown/window/block.
+var box   np_htf_box = na          // the 5-min host zone box
+var box   np_ltf_box = na          // the 1-min nested FVG box
+var int   np_left    = na          // left bar_index of the pair (formation)
+var float np_htf_top = na          // host edges (for mitigation tracking)
+var float np_htf_bot = na
+var int   np_dir     = 0           // 1 bull / -1 bear (0 = none active)
+var float np_ltf_top = na          // captured 1-min edges (set at detection)
+var float np_ltf_bot = na
+var bool  np_pending = false       // a fresh nesting detected this bar
 
 // ─────────────────────────────────────────────────────────
 //  TRADE LOG ARRAYS
@@ -326,6 +344,13 @@ if sessionJustOpened
     array.clear(fvg5_rlabel)
     array.clear(fvg1_boxes)
     array.clear(openTrades)
+    // Clear the current-nested-pair drawing on session open.
+    box.delete(np_htf_box)
+    box.delete(np_ltf_box)
+    np_htf_box := na
+    np_ltf_box := na
+    np_dir     := 0
+    np_pending := false
     last_bull_bar   := -999
     last_bear_bar   := -999
     last_signal_bar := -999
@@ -771,6 +796,15 @@ if barstate.isconfirmed and tradingAllowed
                         host_top := array.get(fvg5_top, i)
                         host_bot := array.get(fvg5_bot, i)
                         break
+        // Capture the nesting geometry for the standalone "current nested pair"
+        // drawing — independent of the trade gates below.
+        if nested
+            np_pending := true
+            np_dir     := 1
+            np_htf_top := host_top
+            np_htf_bot := host_bot
+            np_ltf_top := top1
+            np_ltf_bot := bot1
         bool bull_blocked = trade_mode == "Block new trades until open trade closes" and (array.size(openTrades) + array.size(pendingTrades) > 0)
         if nested and bull_cooldown_ok and not bull_blocked
             if trade_mode == "Force close trade on new signal" and array.size(openTrades) > 0
@@ -825,18 +859,8 @@ if barstate.isconfirmed and tradingAllowed
                 array.set(hr_count, _bhr, array.get(hr_count, _bhr) + 1)
             else
                 array.push(pendingTrades, Trade.new(dir=1, entry=_be, stop=_bs, target=_bt, part=_bp, ext=_bx, idx=-1, partial_hit=false, target_hit=false, qty=dynamic_qty, qty_part=_bqp, qty_tgt=_bqt, qty_run=dynamic_qty-_bqp-_bqt, hr=0, num=sig_count))
-            // Draw the HOST 5-min zone — only now, because it actually got nested into.
-            // Clearly visible (soft fill + solid ink border) so you can see which HTF
-            // zone the trade nested into.
-            if fvg5_show and not na(host_top)
-                array.push(fvg1_boxes, box.new(bar_index - 8, host_top, bar_index + 15, host_bot,
-                     border_color=pal_long_ink(), bgcolor=pal_long_soft(),
-                     extend=extend.none, border_width=2, border_style=line.style_solid))
-            if fvg1_show
-                b1 = box.new(bar_index - 2, top1, bar_index + 15, bot1,
-                     border_color=pal_long_mid(), bgcolor=fvg1_bull_col,
-                     extend=extend.none, border_width=3, border_style=line.style_dashed)
-                array.push(fvg1_boxes, b1)
+            // (Nested-pair drawing is handled separately below, decoupled from the
+            // trade gates — see "CURRENT NESTED PAIR". Nothing drawn here on fire.)
             if rr_show
                 int rs = bar_index + 1
                 int re = bar_index + 16
@@ -876,6 +900,14 @@ if barstate.isconfirmed and tradingAllowed
                         host_top := array.get(fvg5_top, i)
                         host_bot := array.get(fvg5_bot, i)
                         break
+        // Capture the nesting geometry for the standalone "current nested pair" drawing.
+        if nested
+            np_pending := true
+            np_dir     := -1
+            np_htf_top := host_top
+            np_htf_bot := host_bot
+            np_ltf_top := top1
+            np_ltf_bot := bot1
         bool bear_blocked = trade_mode == "Block new trades until open trade closes" and (array.size(openTrades) + array.size(pendingTrades) > 0)
         if nested and bear_cooldown_ok and not bear_blocked
             if trade_mode == "Force close trade on new signal" and array.size(openTrades) > 0
@@ -930,18 +962,8 @@ if barstate.isconfirmed and tradingAllowed
                 array.set(hr_count, _thr, array.get(hr_count, _thr) + 1)
             else
                 array.push(pendingTrades, Trade.new(dir=-1, entry=_te, stop=_ts, target=_tt, part=_tp, ext=_tx, idx=-1, partial_hit=false, target_hit=false, qty=dynamic_qty, qty_part=_tqp, qty_tgt=_tqt, qty_run=dynamic_qty-_tqp-_tqt, hr=0, num=sig_count))
-            // Draw the HOST 5-min zone — only now, because it actually got nested into.
-            // Clearly visible (soft fill + solid ink border) so you can see which HTF
-            // zone the trade nested into.
-            if fvg5_show and not na(host_top)
-                array.push(fvg1_boxes, box.new(bar_index - 8, host_top, bar_index + 15, host_bot,
-                     border_color=pal_short_ink(), bgcolor=pal_short_soft(),
-                     extend=extend.none, border_width=2, border_style=line.style_solid))
-            if fvg1_show
-                b1 = box.new(bar_index - 2, top1, bar_index + 15, bot1,
-                     border_color=pal_short_mid(), bgcolor=fvg1_bear_col,
-                     extend=extend.none, border_width=3, border_style=line.style_dashed)
-                array.push(fvg1_boxes, b1)
+            // (Nested-pair drawing is handled separately below, decoupled from the
+            // trade gates — see "CURRENT NESTED PAIR". Nothing drawn here on fire.)
             if rr_show
                 int rs = bar_index + 1
                 int re = bar_index + 16
@@ -962,6 +984,41 @@ if barstate.isconfirmed and tradingAllowed
                 // Compact size badge at entry — the one always-useful tag.
                 if rr_show_size
                     label.new(re, _te, "#" + str.tostring(sig_count) + " Enter " + str.tostring(dynamic_qty) + " MNQ @ " + str.tostring(math.round(_te,2)), color=pal_pill_struct(), textcolor=pal_label_text(), style=label.style_label_left, size=rr_sz)
+
+// ─────────────────────────────────────────────────────────
+//  CURRENT NESTED PAIR — draw ONE 5-min unmitigated FVG with the 1-min FVG
+//  nested inside it. Decoupled from the trade gates: shows the latest valid
+//  nesting geometry, replacing the previous one, and clears when the host 5-min
+//  zone mitigates. Colors follow the theme (pal_*), so it works in light/dark.
+// ─────────────────────────────────────────────────────────
+if fvg5_show and np_pending
+    // Replace any previous pair.
+    box.delete(np_htf_box)
+    box.delete(np_ltf_box)
+    color _np_fill_htf = np_dir == 1 ? pal_long_soft()  : pal_short_soft()
+    color _np_line_htf = np_dir == 1 ? pal_long_ink()   : pal_short_ink()
+    color _np_fill_ltf = np_dir == 1 ? pal_long_mid()   : pal_short_mid()
+    np_left    := bar_index - 8
+    np_htf_box := box.new(np_left, np_htf_top, bar_index, np_htf_bot,
+         border_color=_np_line_htf, bgcolor=_np_fill_htf,
+         extend=extend.none, border_width=2, border_style=line.style_solid)
+    np_ltf_box := box.new(np_left, np_ltf_top, bar_index, np_ltf_bot,
+         border_color=_np_line_htf, bgcolor=_np_fill_ltf,
+         extend=extend.none, border_width=1, border_style=line.style_dashed)
+    np_pending := false
+
+// Keep the active pair anchored to the current bar; drop it once mitigated.
+if np_dir != 0 and not na(np_htf_box)
+    bool np_mitigated = (np_dir == 1 and close < np_htf_bot) or (np_dir == -1 and close > np_htf_top)
+    if np_mitigated or not fvg5_show
+        box.delete(np_htf_box)
+        box.delete(np_ltf_box)
+        np_htf_box := na
+        np_ltf_box := na
+        np_dir     := 0
+    else
+        box.set_right(np_htf_box, bar_index)
+        box.set_right(np_ltf_box, bar_index)
 
 // ─────────────────────────────────────────────────────────
 //  RENDER TRADE TRACKER TABLE
@@ -1103,43 +1160,44 @@ if tbl_show and barstate.islast
             string res = array.get(tlog_result, idx)
             float  pnl = array.get(tlog_pnl,    idx)
             string dir = array.get(tlog_dir,     idx)
-            color  rc  = res == "✅ Win"     ? color.new(pal_table_long(), 20) : res == "❌ Loss" ? color.new(pal_table_short(), 20) : res == "🔵 Partial" ? color.new(pal_table_info(), 20) : res == "⏳ Win" ? color.new(pal_table_long(), 55) : res == "⏳ Partial" ? color.new(pal_table_info(), 55) : color.new(P_STRUCT_BASE, 60)
-            color  pc  = pnl > 0 ? color.new(pal_table_long(), 60) : pnl < 0 ? color.new(pal_table_short(), 60) : color.new(P_STRUCT_BASE, 60)
-            color  dc  = str.contains(dir, "Bull") ? color.new(pal_table_long(), 20) : color.new(pal_table_short(), 20)
+            // Scorecard style: no per-cell backgrounds. Color lives in the TEXT.
+            color  res_txt = str.contains(res, "Win") ? pal_table_long() : str.contains(res, "Loss") ? pal_table_short() : str.contains(res, "Partial") ? pal_table_info() : th_muted
+            color  dir_txt = str.contains(dir, "Bull") ? pal_table_long() : pal_table_short()
             table.cell(t, 0, row, array.get(tlog_date, idx),                                text_color=th_muted,  bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
             table.cell(t, 1, row, array.get(tlog_time, idx),                                text_color=th_text,   bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
-            table.cell(t, 2, row, dir,                                                       text_color=pal_on_surface(),  bgcolor=dc,     text_size=tbl_sz_conv, text_halign=text.align_center)
-            table.cell(t, 3, row, str.tostring(math.round(array.get(tlog_entry,  idx),2)),  text_color=pal_table_warn(), bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_right)
-            table.cell(t, 4, row, str.tostring(math.round(array.get(tlog_stop,   idx),2)),  text_color=pal_table_short(),    bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_right)
-            table.cell(t, 5, row, str.tostring(math.round(array.get(tlog_target, idx),2)),  text_color=pal_table_long(),  bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_right)
-            table.cell(t, 6, row, res,                                                       text_color=pal_on_surface(),  bgcolor=rc,     text_size=tbl_sz_conv, text_halign=text.align_center)
-            table.cell(t, 7, row, (pnl >= 0 ? "+" : "") + str.tostring(math.round(pnl,1)), text_color=pnl >= 0 ? pal_table_long() : pal_table_short(), bgcolor=pc, text_size=tbl_sz_conv, text_halign=text.align_right)
+            table.cell(t, 2, row, dir,                                                       text_color=dir_txt,   bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+            table.cell(t, 3, row, str.tostring(math.round(array.get(tlog_entry,  idx),2)),  text_color=th_text,   bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_right)
+            table.cell(t, 4, row, str.tostring(math.round(array.get(tlog_stop,   idx),2)),  text_color=th_muted,  bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_right)
+            table.cell(t, 5, row, str.tostring(math.round(array.get(tlog_target, idx),2)),  text_color=th_muted,  bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_right)
+            table.cell(t, 6, row, res,                                                       text_color=res_txt,   bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+            table.cell(t, 7, row, (pnl >= 0 ? "+" : "") + str.tostring(math.round(pnl,1)), text_color=pnl >= 0 ? pal_table_long() : pal_table_short(), bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_right)
             if tbl_show_usd
                 float usd = pnl * tbl_usd_per_pt
-                table.cell(t, c_usd, row, (usd >= 0 ? "+$" : "-$") + str.tostring(math.round(math.abs(usd))), text_color=usd >= 0 ? pal_table_long() : pal_table_short(), bgcolor=pc, text_size=tbl_sz_conv, text_halign=text.align_right)
-            table.cell(t, c_num, row, str.tostring(array.get(tlog_num, idx)),               text_color=P_STRUCT_BASE,   bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+                table.cell(t, c_usd, row, (usd >= 0 ? "+$" : "-$") + str.tostring(math.round(math.abs(usd))), text_color=usd >= 0 ? pal_table_long() : pal_table_short(), bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_right)
+            table.cell(t, c_num, row, str.tostring(array.get(tlog_num, idx)),               text_color=th_muted,   bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
 
         int   srow   = disp + 1
-        color pnl_bg = f_pnl >= 0 ? color.new(P_LONG_BASE, 0) : color.new(P_SHORT_BASE, 0)
-        color day_bg = stat_daily_pnl >= 0 ? color.new(P_LONG_BASE, 30) : color.new(P_SHORT_BASE, 30)
+        // Summary row: uniform surface, pos/neg carried in TEXT color (cyan/red).
+        color day_txt = stat_daily_pnl > 0 ? pal_table_long() : stat_daily_pnl < 0 ? pal_table_short() : th_muted
+        color fpnl_txt = f_pnl > 0 ? pal_table_long() : f_pnl < 0 ? pal_table_short() : th_muted
         string mode_lbl = tbl_today_only ? "TODAY" : "ALL"
-        table.cell(t, 0, srow, mode_lbl,                                                                                   text_color=th_text, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 0, srow, mode_lbl,                                                                                   text_color=th_muted, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
         table.cell(t, 1, srow, str.tostring(frows) + " trades",                                                            text_color=th_text, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
         table.cell(t, 2, srow, str.tostring(f_full) + "W " + str.tostring(f_losses) + "L " + str.tostring(f_partials) + "P", text_color=th_text, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
         table.cell(t, 3, srow, "WR: " + str.tostring(math.round(f_wr,1)) + "%",                                           text_color=th_text, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
         table.cell(t, 4, srow, "Streak: " + streak_str,                                                                    text_color=th_text, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
-        table.cell(t, 5, srow, "Day: " + (stat_daily_pnl >= 0 ? "+" : "") + str.tostring(math.round(stat_daily_pnl,1)) + "pts", text_color=pal_on_surface(), bgcolor=day_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 5, srow, "Day: " + (stat_daily_pnl >= 0 ? "+" : "") + str.tostring(math.round(stat_daily_pnl,1)) + "pts", text_color=day_txt, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
         table.cell(t, 6, srow, "All: " + (stat_total_pnl >= 0 ? "+" : "") + str.tostring(math.round(stat_total_pnl,1)) + "pts", text_color=th_text, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
-        table.cell(t, 7, srow, (f_pnl >= 0 ? "+" : "") + str.tostring(math.round(f_pnl,1)) + "pts",                      text_color=pal_on_surface(), bgcolor=pnl_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 7, srow, (f_pnl >= 0 ? "+" : "") + str.tostring(math.round(f_pnl,1)) + "pts",                      text_color=fpnl_txt, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
         if tbl_show_usd
             float f_usd = f_pnl * tbl_usd_per_pt
-            table.cell(t, c_usd, srow, (f_usd >= 0 ? "+$" : "-$") + str.tostring(math.round(math.abs(f_usd))), text_color=pal_on_surface(), bgcolor=pnl_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+            table.cell(t, c_usd, srow, (f_usd >= 0 ? "+$" : "-$") + str.tostring(math.round(math.abs(f_usd))), text_color=fpnl_txt, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
         table.cell(t, c_num, srow, str.tostring(stat_total) + " total",                                                    text_color=th_muted, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
 
         if tbl_show_shown
             int   srow2    = disp + 2
-            color s_pnl_bg = s_pnl >= 0 ? color.new(P_LONG_BASE, 0) : color.new(P_SHORT_BASE, 0)
-            color shown_bg = pal_surface()
+            color s_pnl_txt = s_pnl > 0 ? pal_table_long() : s_pnl < 0 ? pal_table_short() : th_muted
+            color shown_bg = sum_bg
             table.cell(t, 0, srow2, "SHOWN",                                                                               text_color=th_text, bgcolor=shown_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
             table.cell(t, 1, srow2, str.tostring(disp) + " trades",                                                        text_color=th_text, bgcolor=shown_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
             table.cell(t, 2, srow2, str.tostring(s_full) + "W " + str.tostring(s_losses) + "L " + str.tostring(s_partials) + "P", text_color=th_text, bgcolor=shown_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
@@ -1147,26 +1205,26 @@ if tbl_show and barstate.islast
             table.cell(t, 4, srow2, "Streak: " + s_streak_str,                                                             text_color=th_text, bgcolor=shown_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
             table.cell(t, 5, srow2, "",                                                                                     text_color=th_text, bgcolor=shown_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
             table.cell(t, 6, srow2, "",                                                                                     text_color=th_text, bgcolor=shown_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
-            table.cell(t, 7, srow2, (s_pnl >= 0 ? "+" : "") + str.tostring(math.round(s_pnl,1)) + "pts",                  text_color=pal_on_surface(), bgcolor=s_pnl_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+            table.cell(t, 7, srow2, (s_pnl >= 0 ? "+" : "") + str.tostring(math.round(s_pnl,1)) + "pts",                  text_color=s_pnl_txt, bgcolor=shown_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
             if tbl_show_usd
                 float s_usd = s_pnl * tbl_usd_per_pt
-                table.cell(t, c_usd, srow2, (s_usd >= 0 ? "+$" : "-$") + str.tostring(math.round(math.abs(s_usd))), text_color=pal_on_surface(), bgcolor=s_pnl_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+                table.cell(t, c_usd, srow2, (s_usd >= 0 ? "+$" : "-$") + str.tostring(math.round(math.abs(s_usd))), text_color=s_pnl_txt, bgcolor=shown_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
             table.cell(t, c_num, srow2, str.tostring(disp) + " shown",                                                     text_color=th_muted, bgcolor=shown_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
 
         // Best Day row
         int   brow   = tbl_show_shown ? disp + 3 : disp + 2
-        color best_bg = color.new(P_LONG_BASE, 0)  // always green regardless of theme
-        table.cell(t, 0, brow, "BEST DAY",   text_color=pal_on_surface(), bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
-        table.cell(t, 1, brow, best_day_str, text_color=pal_on_surface(), bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_left)
-        table.cell(t, 2, brow, "",           text_color=pal_on_surface(), bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
-        table.cell(t, 3, brow, "",           text_color=pal_on_surface(), bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
-        table.cell(t, 4, brow, "",           text_color=pal_on_surface(), bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
-        table.cell(t, 5, brow, "",           text_color=pal_on_surface(), bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
-        table.cell(t, 6, brow, "",           text_color=pal_on_surface(), bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        color best_bg = sum_bg
+        table.cell(t, 0, brow, "BEST DAY",   text_color=pal_table_long(), bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 1, brow, best_day_str, text_color=pal_table_long(), bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_left)
+        table.cell(t, 2, brow, "",           text_color=th_text, bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 3, brow, "",           text_color=th_text, bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 4, brow, "",           text_color=th_text, bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 5, brow, "",           text_color=th_text, bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 6, brow, "",           text_color=th_text, bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
         if tbl_show_usd
             float best_usd = best_day_pnl * tbl_usd_per_pt
-            table.cell(t, c_usd, brow, "+$" + str.tostring(math.round(best_usd)), text_color=pal_on_surface(), bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_right)
-        table.cell(t, c_num, brow, "", text_color=pal_on_surface(), bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+            table.cell(t, c_usd, brow, "+$" + str.tostring(math.round(best_usd)), text_color=pal_table_long(), bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_right)
+        table.cell(t, c_num, brow, "", text_color=th_muted, bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
 
 // ─────────────────────────────────────────────────────────
 //  RENDER HOURLY PERFORMANCE TABLE
