@@ -197,19 +197,20 @@ pal_pill_info()       => tier_whisper(P_INFO_BASE)
 pal_pill_struct()     => tier_whisper(P_STRUCT_BASE)
 
 // ── Table style → Fractal Sweep "Today's Scorecard" look ─────────────────────
-// Exact scorecard tones: two alternating slate surfaces (deep + lighter) so the
-// table reads as soft structured rows, NOT a flat black slab. No per-cell accent
-// backgrounds — color lives in the TEXT only (labels muted, values white,
-// positive = cyan / negative = red). Text is size.small for readability.
+// The scorecard is an ALWAYS-DARK slate card in BOTH light & dark chart themes
+// (like a tooltip), with ALWAYS-LIGHT text — this guarantees the text is always
+// readable on the card regardless of theme. We copy that exactly: two alternating
+// dark slate tones + white/bright text. No per-cell accent backgrounds — color
+// lives in the TEXT only (labels muted, values white, positive = cyan / neg = red).
 bool  isDark    = not IS_LIGHT_MODE
-color SB_DEEP   = IS_LIGHT_MODE ? color.new(#e2e8f0, 0) : color.new(#0f172a, 0)  // _sb_bg  — deep row
-color SB_ALT    = IS_LIGHT_MODE ? color.new(#cbd5e1, 0) : color.new(#334155, 0)  // _sb_alt — lighter row
-color th_hbg    = SB_ALT                                                          // header band
-color th_row_bg = SB_DEEP                                                         // data rows
-color th_sum_bg = SB_ALT                                                          // summary rows
+color SB_DEEP   = color.new(#0f172a, 0)   // _sb_bg  — deep row  (both themes)
+color SB_ALT    = color.new(#334155, 0)   // _sb_alt — lighter row (both themes)
+color th_hbg    = SB_ALT                   // header band
+color th_row_bg = SB_DEEP                  // data rows
+color th_sum_bg = SB_ALT                   // summary rows
 color th_hourly = SB_DEEP
-color th_text   = IS_LIGHT_MODE ? color.new(#0f172a, 0) : color.white            // values
-color th_muted  = IS_LIGHT_MODE ? color.new(#475569, 0) : color.new(#e2e8f0, 0)  // row labels (brighter, readable)
+color th_text   = color.white              // values — always light on the dark card
+color th_muted  = color.new(#cbd5e1, 0)    // row labels — light slate, readable
 
 // Resolve tracker timezone
 string tbl_tz = tbl_tz_opt == "Auto (Chart/Exchange)" ? syminfo.timezone : tbl_tz_opt
