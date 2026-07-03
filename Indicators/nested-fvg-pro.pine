@@ -269,7 +269,8 @@ var float[]  tlog_part   = array.new_float(0)
 var float[]  tlog_target = array.new_float(0)
 var float[]  tlog_ext    = array.new_float(0)
 var string[] tlog_result = array.new_string(0)
-var float[]  tlog_pnl    = array.new_float(0)
+var float[]  tlog_pnl    = array.new_float(0)   // TOTAL contract-points (per-contract move × qty)
+var int[]    tlog_qty    = array.new_int(0)     // contracts on the trade — divide tlog_pnl by this for per-contract pts
 
 // Hourly arrays
 var int[] active_hours = array.new_int(0)
@@ -461,6 +462,7 @@ if barstate.isconfirmed
             array.push(tlog_ext,    pt.ext)
             array.push(tlog_result, "⏳ Open")
             array.push(tlog_pnl,    0.0)
+            array.push(tlog_qty,    pt.qty)
             pt.idx := array.size(tlog_time) - 1
             stat_total += 1
             outcome_entry := true
@@ -855,6 +857,7 @@ if barstate.isconfirmed and tradingAllowed
             array.push(tlog_ext,    _bx)
             array.push(tlog_result, "⏳ Open")
             array.push(tlog_pnl,    0.0)
+            array.push(tlog_qty,    dynamic_qty)
 
             if fvg1_entry == "Immediate"
                 array.push(openTrades, Trade.new(dir=1, entry=_be, stop=_bs, target=_bt, part=_bp, ext=_bx, idx=array.size(tlog_time)-1, partial_hit=false, target_hit=false, qty=dynamic_qty, qty_part=_bqp, qty_tgt=_bqt, qty_run=dynamic_qty-_bqp-_bqt, hr=_bhr, num=sig_count))
@@ -958,6 +961,7 @@ if barstate.isconfirmed and tradingAllowed
             array.push(tlog_ext,    _tx)
             array.push(tlog_result, "⏳ Open")
             array.push(tlog_pnl,    0.0)
+            array.push(tlog_qty,    dynamic_qty)
 
             if fvg1_entry == "Immediate"
                 array.push(openTrades, Trade.new(dir=-1, entry=_te, stop=_ts, target=_tt, part=_tp, ext=_tx, idx=array.size(tlog_time)-1, partial_hit=false, target_hit=false, qty=dynamic_qty, qty_part=_tqp, qty_tgt=_tqt, qty_run=dynamic_qty-_tqp-_tqt, hr=_thr, num=sig_count))
@@ -1134,9 +1138,12 @@ if tbl_show and barstate.islast
         float s_wr      = s_settled > 0 ? (s_wins / s_settled) * 100 : 0.0
         string s_streak_str = s_streak > 0 ? "🔥 " + str.tostring(s_streak) + "W" : s_streak < 0 ? "🧊 " + str.tostring(math.abs(s_streak)) + "L" : "-"
 
+        // Columns: … P&L pts(7) [P&L $(8)] Ct # . P&L pts/$ are PER-CONTRACT;
+        // Ct shows the contract count (total $ = per-contract $ × Ct).
         int c_usd = 8
-        int c_num = tbl_show_usd ? 9 : 8
-        int ncols = tbl_show_usd ? 10 : 9
+        int c_ct  = tbl_show_usd ? 9  : 8
+        int c_num = tbl_show_usd ? 10 : 9
+        int ncols = tbl_show_usd ? 11 : 10
 
         table t = table.new(tbl_pos_conv, ncols, tbl_max_rows + 5,
              border_color=color.new(P_STRUCT_BASE, 50),
@@ -1154,13 +1161,16 @@ if tbl_show and barstate.islast
         table.cell(t, 7, 0, "P&L pts", text_color=th_text, bgcolor=hbg, text_size=tbl_sz_conv, text_halign=text.align_center)
         if tbl_show_usd
             table.cell(t, c_usd, 0, "P&L $", text_color=th_text, bgcolor=hbg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, c_ct,  0, "Ct",  text_color=th_text, bgcolor=hbg, text_size=tbl_sz_conv, text_halign=text.align_center)
         table.cell(t, c_num, 0, "#",   text_color=th_text, bgcolor=hbg, text_size=tbl_sz_conv, text_halign=text.align_center)
 
         for i = 0 to disp - 1
             int    idx = array.get(filtered, start + i)
             int    row = i + 1
             string res = array.get(tlog_result, idx)
-            float  pnl = array.get(tlog_pnl,    idx)
+            int    qty = array.get(tlog_qty,    idx)
+            // Per-contract price move — the stored tlog_pnl is TOTAL contract-points.
+            float  pnl = qty > 0 ? array.get(tlog_pnl, idx) / qty : array.get(tlog_pnl, idx)
             string dir = array.get(tlog_dir,     idx)
             // Alternate the two scorecard tones by row so it reads as soft rows,
             // not a flat black slab.
@@ -1179,6 +1189,7 @@ if tbl_show and barstate.islast
             if tbl_show_usd
                 float usd = pnl * tbl_usd_per_pt
                 table.cell(t, c_usd, row, (usd >= 0 ? "+$" : "-$") + str.tostring(math.round(math.abs(usd))), text_color=usd >= 0 ? pal_table_long() : pal_table_short(), bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_right)
+            table.cell(t, c_ct,  row, str.tostring(qty),                                   text_color=th_text,    bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
             table.cell(t, c_num, row, str.tostring(array.get(tlog_num, idx)),               text_color=th_muted,   bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
 
         int   srow   = disp + 1
@@ -1197,6 +1208,7 @@ if tbl_show and barstate.islast
         if tbl_show_usd
             float f_usd = f_pnl * tbl_usd_per_pt
             table.cell(t, c_usd, srow, (f_usd >= 0 ? "+$" : "-$") + str.tostring(math.round(math.abs(f_usd))), text_color=fpnl_txt, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, c_ct,  srow, "",                                                                                     text_color=th_muted, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
         table.cell(t, c_num, srow, str.tostring(stat_total) + " total",                                                    text_color=th_muted, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
 
         if tbl_show_shown
@@ -1214,6 +1226,7 @@ if tbl_show and barstate.islast
             if tbl_show_usd
                 float s_usd = s_pnl * tbl_usd_per_pt
                 table.cell(t, c_usd, srow2, (s_usd >= 0 ? "+$" : "-$") + str.tostring(math.round(math.abs(s_usd))), text_color=s_pnl_txt, bgcolor=shown_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+            table.cell(t, c_ct,  srow2, "",                                                                                text_color=th_muted, bgcolor=shown_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
             table.cell(t, c_num, srow2, str.tostring(disp) + " shown",                                                     text_color=th_muted, bgcolor=shown_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
 
         // Best Day row
@@ -1229,6 +1242,7 @@ if tbl_show and barstate.islast
         if tbl_show_usd
             float best_usd = best_day_pnl * tbl_usd_per_pt
             table.cell(t, c_usd, brow, "+$" + str.tostring(math.round(best_usd)), text_color=pal_table_long(), bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_right)
+        table.cell(t, c_ct,  brow, "", text_color=th_muted, bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
         table.cell(t, c_num, brow, "", text_color=th_muted, bgcolor=best_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
 
 // ─────────────────────────────────────────────────────────
