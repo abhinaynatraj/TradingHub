@@ -62,7 +62,7 @@ pos_be_at_partial  = input.bool(true, "Move Stop to Break-Even at Anchor/Partial
 grp7 = "Trade Tracker"
 tbl_show       = input.bool(true,  "Show Trade Tracker Table",              group=grp7)
 tbl_pos        = input.string("Bottom Right", "Table Position",             group=grp7, options=["Top Right","Top Left","Bottom Right","Bottom Left","Middle Right","Middle Left"])
-tbl_size       = input.string("small", "Table Text Size",                   group=grp7, options=["tiny","small","normal"])
+tbl_size       = input.string("normal", "Table Text Size",                  group=grp7, options=["tiny","small","normal"])
 tbl_max_rows   = input.int(10, "Max Rows to Display",                       group=grp7, minval=3, maxval=20)
 tbl_tz_opt     = input.string("Auto (Chart/Exchange)", "Tracker Time Zone",  group=grp7, options=["Auto (Chart/Exchange)","America/New_York","America/Chicago","America/Denver","America/Los_Angeles","America/Sao_Paulo","Europe/London","Europe/Berlin","Asia/Tokyo","Asia/Shanghai","Asia/Kolkata","Australia/Sydney","UTC"], tooltip="Time zone for Date/Time columns and Today Only filter. Auto uses the symbol exchange timezone.")
 tbl_today_only = input.bool(true,  "Today Only",                            group=grp7)
@@ -197,18 +197,19 @@ pal_pill_info()       => tier_whisper(P_INFO_BASE)
 pal_pill_struct()     => tier_whisper(P_STRUCT_BASE)
 
 // ── Table style → Fractal Sweep "Today's Scorecard" look ─────────────────────
-// Uniform surface for the WHOLE table (one bg color, no per-cell backgrounds).
-// Color lives in the TEXT only: labels muted, values white, positive = cyan /
-// negative = red. All the legacy bg aliases below resolve to the same surface so
-// no cell carries its own background.
-bool  isDark      = not IS_LIGHT_MODE
-color TBL_SURFACE = IS_LIGHT_MODE ? color.new(#e2e8f0, 0) : color.new(#0f172a, 0)  // scorecard bg
-color th_hbg    = TBL_SURFACE
-color th_row_bg = TBL_SURFACE
-color th_sum_bg = TBL_SURFACE
-color th_hourly = TBL_SURFACE
-color th_text   = IS_LIGHT_MODE ? color.new(#0f172a, 0) : color.white              // values
-color th_muted  = IS_LIGHT_MODE ? color.new(#475569, 0) : color.new(#94a3b8, 0)    // row labels
+// Exact scorecard tones: two alternating slate surfaces (deep + lighter) so the
+// table reads as soft structured rows, NOT a flat black slab. No per-cell accent
+// backgrounds — color lives in the TEXT only (labels muted, values white,
+// positive = cyan / negative = red). Text is size.small for readability.
+bool  isDark    = not IS_LIGHT_MODE
+color SB_DEEP   = IS_LIGHT_MODE ? color.new(#e2e8f0, 0) : color.new(#0f172a, 0)  // _sb_bg  — deep row
+color SB_ALT    = IS_LIGHT_MODE ? color.new(#cbd5e1, 0) : color.new(#334155, 0)  // _sb_alt — lighter row
+color th_hbg    = SB_ALT                                                          // header band
+color th_row_bg = SB_DEEP                                                         // data rows
+color th_sum_bg = SB_ALT                                                          // summary rows
+color th_hourly = SB_DEEP
+color th_text   = IS_LIGHT_MODE ? color.new(#0f172a, 0) : color.white            // values
+color th_muted  = IS_LIGHT_MODE ? color.new(#475569, 0) : color.new(#e2e8f0, 0)  // row labels (brighter, readable)
 
 // Resolve tracker timezone
 string tbl_tz = tbl_tz_opt == "Auto (Chart/Exchange)" ? syminfo.timezone : tbl_tz_opt
@@ -1160,6 +1161,9 @@ if tbl_show and barstate.islast
             string res = array.get(tlog_result, idx)
             float  pnl = array.get(tlog_pnl,    idx)
             string dir = array.get(tlog_dir,     idx)
+            // Alternate the two scorecard tones by row so it reads as soft rows,
+            // not a flat black slab.
+            color  row_bg = (i % 2 == 0) ? SB_DEEP : SB_ALT
             // Scorecard style: no per-cell backgrounds. Color lives in the TEXT.
             color  res_txt = str.contains(res, "Win") ? pal_table_long() : str.contains(res, "Loss") ? pal_table_short() : str.contains(res, "Partial") ? pal_table_info() : th_muted
             color  dir_txt = str.contains(dir, "Bull") ? pal_table_long() : pal_table_short()
