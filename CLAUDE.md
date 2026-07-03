@@ -13,7 +13,6 @@ Statistic.ally/
 ├── NPG Sweep/                         NPG sweep model (multi-pairing)
 ├── Analysis/                          Hourly Analysis (quarter + breakout studies)
 ├── TTrades Fractal Model Analysis/    T-Spot touch strategy
-├── Nested FVG/                        Nested-FVG backtest (parquet-native; validated: no edge)
 ├── docs/superpowers/specs/            Design docs (reference only)
 └── .claude/rules/                     Per-folder guidance
 ```
@@ -86,5 +85,4 @@ See each folder's `CLAUDE.md` for engine-specific details:
 - `NPG Sweep/CLAUDE.md` — NPG sweep model
 - `TTrades Fractal Model Analysis/README.md` — T-Spot touch engine
 - `Analysis/hourly-analysis.md` — Hourly Analysis (quarter theory + breakout studies)
-- `Nested FVG/CLAUDE.md` — nested-FVG backtest (parquet-native + DuckDB-WASM dashboard; validated no-edge after a look-ahead fix)
 - Rules files under `.claude/rules/` scope automatically by path
