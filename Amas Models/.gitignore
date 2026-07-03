@@ -1,0 +1,13 @@
+# engine output
+model_stats.json
+
+# cached intermediates
+data/
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# os
+.DS_Store

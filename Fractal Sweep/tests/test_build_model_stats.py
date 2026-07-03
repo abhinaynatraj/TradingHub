@@ -158,18 +158,17 @@ class TestBuildModelStats:
             assert field in rs, f"missing field: {field}"
         assert rs['trades'] == rs['wins'] + rs['losses']
 
-    def test_recent_trades(self):
-        """recent_trades list is included."""
+    def test_recent_trades_NOT_in_result(self):
+        """recent_trades is intentionally NOT in build_model_stats output —
+        it lives in model_stats.parquet now (see slim-JSON design 2026-05-15).
+        Trade rows are fetched via the /trades HTTP endpoint."""
         df = _make_resolved_df(100)
         cfg = dict(label='Test', sweep_tf_min=60, cisd_tf_min=5,
                    min_range=12, session_hrs=(7.0, 16.0))
         result = ms.build_model_stats(df, 200, '1H_5M', cfg,
                                        stop_mult=1.0, target_mult=1.0,
                                        profile_key='test', profile_type='mult')
-        assert 'recent_trades' in result
-        assert len(result['recent_trades']) > 0
-        # Check smt field in trades
-        assert 'smt' in result['recent_trades'][0]
+        assert 'recent_trades' not in result
 
     def test_heatmap(self):
         """Heatmap is populated."""

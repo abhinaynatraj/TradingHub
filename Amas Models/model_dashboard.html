@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Amas Models · Probability Engine</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+
+<!-- Dashboard styles (extracted from the legacy single-file HTML). Self-contained;
+     does NOT import Analysis/dashboard/shared.css because Amas defines its own
+     theme variables under the same `--bg-card / --bg-raised / --bg-hover` naming
+     convention that Fractal Sweep also uses. -->
+<link rel="stylesheet" href="css/dashboard.css"/>
+
+<script>
+  // Early-paint theme: read the shared hub-theme key BEFORE any pixels render.
+  // Prevents a flash of the wrong theme on load. Runs before shared.js so the
+  // <html data-theme> attribute is set on the very first paint.
+  (function () {
+    var theme = localStorage.getItem('hub-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
+
+<!-- Shared theme handler — auto-wires .theme-opt buttons and persists
+     localStorage['hub-theme'] so theme syncs across hub + all dashboards.
+     Mirrors Fractal Sweep / NPG / Analysis. -->
+<script defer src="../Analysis/dashboard/shared.js"></script>
+</head>
+
+<body>
+
+<!-- ══ HEADER ═══════════════════════════════════════════════════════════════ -->
+<header class="hdr" role="banner">
+  <div class="hdr-left">
+    <a class="hub-back" href="../index.html" title="Back to hub">
+      <span class="hub-back-glyph">⌂</span>
+    </a>
+    <h1 class="hdr-wordmark">Amas<em> Models</em></h1>
+    <div class="hdr-divider"></div>
+    <span class="hdr-sub">Probability Engine · NQ &amp; ES Futures</span>
+  </div>
+
+  <div class="hdr-right">
+    <button class="recalc-btn" id="recalc-btn" type="button" onclick="triggerRecalc()" title="Re-run engine/model_stats.py via server.py">⟳ Recalculate</button>
+    <div class="theme-picker" role="radiogroup" aria-label="Theme">
+      <button class="theme-opt" data-theme="dark"   title="Dark"   aria-label="Dark theme">☀</button>
+      <button class="theme-opt" data-theme="light"  title="Light"  aria-label="Light theme">☾</button>
+      <button class="theme-opt" data-theme="gold"   title="Gold"   aria-label="Gold theme">✦</button>
+      <button class="theme-opt" data-theme="indigo" title="Indigo" aria-label="Indigo theme">◆</button>
+    </div>
+  </div>
+</header>
+
+<!-- ══ LAYOUT: SIDEBAR + CONTENT ════════════════════════════════════════════ -->
+<!-- Sidebar nav mirrors Fractal Sweep's pattern: filter/selector controls at
+     the top, nav buttons at the bottom. Replaces the legacy top-tab-bar. -->
+<div class="layout">
+
+  <aside class="sidebar" aria-label="Filters and navigation">
+    <div class="sb-section">
+      <label class="sb-label" for="instrument-select">Instrument</label>
+      <select id="instrument-select" class="sel-drop" aria-label="Instrument">
+        <option value="NQ">NQ</option>
+        <option value="ES">ES</option>
+      </select>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label" for="model-select">Model</label>
+      <select id="model-select" class="sel-drop" aria-label="Model" disabled>
+        <option disabled selected>Loading…</option>
+      </select>
+    </div>
+
+    <div class="sb-section">
+      <label class="sb-label" for="period-select">Period</label>
+      <select id="period-select" class="sel-drop" aria-label="Period">
+        <option value="all" selected>All Time</option>
+        <option value="2y">Last 2 Years</option>
+        <option value="1y">Last 1 Year</option>
+        <option value="6m">Last 6 Months</option>
+        <option value="3m">Last 3 Months</option>
+        <option value="1m">Last 1 Month</option>
+      </select>
+    </div>
+
+    <nav class="sb-nav" role="tablist" aria-label="Sections">
+      <button class="sb-nav-btn active" role="tab" data-tab="overview">Overview</button>
+      <button class="sb-nav-btn" role="tab" data-tab="model">Model</button>
+      <button class="sb-nav-btn" role="tab" data-tab="breakdowns">Breakdowns</button>
+      <button class="sb-nav-btn" role="tab" data-tab="filters">Filters</button>
+      <button class="sb-nav-btn" role="tab" data-tab="trades">Trades</button>
+      <button class="sb-nav-btn" role="tab" data-tab="walkforward">Walk-Forward</button>
+      <button class="sb-nav-btn" role="tab" data-tab="spec">Spec</button>
+    </nav>
+  </aside>
+
+  <main class="content" id="main">
+
+    <div id="placeholder" class="placeholder">
+      <div class="placeholder-icon">📐</div>
+      <div class="placeholder-title">No model selected.</div>
+      <p class="placeholder-body">
+        Register a model in <code>engine/models/__init__.py</code> and re-run the engine.
+      </p>
+    </div>
+
+    <div id="model-content">
+      <div id="panel-overview"    class="tab-panel active"></div>
+      <div id="panel-model"       class="tab-panel"></div>
+      <div id="panel-breakdowns"  class="tab-panel"></div>
+      <div id="panel-filters"     class="tab-panel"></div>
+      <div id="panel-trades"      class="tab-panel"></div>
+      <div id="panel-walkforward" class="tab-panel"></div>
+      <div id="panel-spec"        class="tab-panel"></div>
+    </div>
+
+  </main>
+</div><!-- /.layout -->
+
+<footer>
+  Amas Models · NQ &amp; ES Futures · Phase 3 · h1_continuation
+</footer>
+
+<script src="js/app.js"></script>
+</body>
+</html>
+</content>
+</invoke>

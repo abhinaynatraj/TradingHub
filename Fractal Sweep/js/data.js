@@ -1,4 +1,5 @@
 import { isDemo, activeModel, activeMode, activeCisd, activeProfile, activeTF, MODEL_KEYS, MODEL_LABELS, RR_PROFILES, PROFILE_LABELS, PCT_PROFILES, DASHBOARD_SCHEMA_VERSION, activeSmt, activeF3, activeF4, activeP42, activePd, setIsDemo, setActiveModel, setActiveMode, setActiveCisd, setActiveProfile } from './state.js';
+import { customRanges } from './walkforward.js';
 function makeDemoModel(key, label, mode, cisd, wrBase, evBase, pfBase, riskMed, spd){
   const fi=[
     {label:'Baseline (unfiltered)',n:Math.round(6200*(riskMed/18)),wr:wrBase-0.07,ev:evBase-0.22,pf:pfBase-0.58,removed:0},
@@ -96,6 +97,119 @@ const DEMO = {
 let DATA = DEMO;
 export function setData(v) { DATA = v; }
 
+async function fetchData(params = {}) {
+  const qs = new URLSearchParams({ engine: 'fractal_sweep', ...params }).toString();
+  const r = await fetch('/data?' + qs);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+async function loadModelList() {
+  const data = await fetchData();
+  if (data.models) {
+    const newData = { _meta: data._meta };
+    for (const m of data.models) {
+      if (!DATA[m] || !DATA[m].profiles) newData[m] = { profiles: {} };
+      else newData[m] = DATA[m];
+    }
+    Object.assign(DATA, newData);
+    return data.models;
+  }
+  return Object.keys(DATA).filter(k => k !== '_meta');
+}
+
+async function loadProfile(fullKey, profileKey) {
+  if (!DATA[fullKey] || !DATA[fullKey].profiles) DATA[fullKey] = { profiles: {} };
+  if (DATA[fullKey].profiles[profileKey]) return DATA[fullKey].profiles[profileKey];
+
+  const data = await fetchData({ model: fullKey, profile: profileKey });
+  const modelData = data[fullKey];
+  if (modelData?.profiles) {
+    Object.assign(DATA[fullKey].profiles, modelData.profiles);
+    return modelData.profiles[profileKey];
+  }
+  return null;
+}
+
+// ── Trade row fetcher ────────────────────────────────────────────────────────
+// Trades live in model_stats.parquet, served by /trades. Cached per
+// (fullKey, profile, periodOrRangeKey). Parquet column names are canonical —
+// consumers must read stop_price (not sl_price) and derive dow_name from dow.
+async function loadTrades(fullKey, profileKey, periodOrRange) {
+  const cacheKey = typeof periodOrRange === 'string'
+    ? periodOrRange
+    : `${periodOrRange.from}:${periodOrRange.to}`;
+
+  if (!DATA[fullKey]) DATA[fullKey] = { profiles: {} };
+  if (!DATA[fullKey].trades) DATA[fullKey].trades = {};
+  const cache = DATA[fullKey].trades;
+  const profCache = cache[profileKey] || (cache[profileKey] = {});
+  if (profCache[cacheKey]) return profCache[cacheKey];
+
+  const qs = new URLSearchParams({
+    engine: 'fractal_sweep',
+    model: fullKey,
+    profile: profileKey,
+  });
+  if (typeof periodOrRange === 'string') {
+    qs.set('period', periodOrRange);
+  } else {
+    qs.set('from', periodOrRange.from);
+    qs.set('to', periodOrRange.to);
+  }
+  const r = await fetch('/trades?' + qs.toString());
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const data = await r.json();
+  profCache[cacheKey] = data.trades || [];
+  return profCache[cacheKey];
+}
+
+function invalidateTradesCache(fullKey) {
+  if (DATA[fullKey] && DATA[fullKey].trades) DATA[fullKey].trades = {};
+}
+
+async function initProfileData() {
+  const models = await loadModelList();
+  const preferredKey = '1H_5M_PREV_CISD';
+  const target = models.includes(preferredKey) ? preferredKey : (models.find(k => k !== '_meta') || preferredKey);
+  await loadProfile(target, 'simple_1r');
+  // Prime the trade cache for the initial period selection so getFilteredD
+  // and other consumers find trades immediately after initial render.
+  const initialTF = activeTF || 'all';
+  if (initialTF !== 'custom') {
+    try {
+      await loadTrades(target, 'simple_1r', initialTF);
+    } catch (e) {
+      console.warn('[sweep] initial loadTrades failed:', e);
+    }
+  }
+  return true;
+}
+
+// Reconstruct the JSON-style full model key from current state. Used by
+// trade-cache lookups in getFilteredD/getActiveTrades. State vars live in
+// state.js; this is a convenience to avoid recomputing the string in 6 places.
+function activeFullKey() {
+  return `${activeModel}_${activeMode}_${activeCisd}`;
+}
+
+// Resolves the trade row array for the current dashboard view from the
+// loadTrades cache. JSON no longer carries recent_trades — parquet is the
+// only source. Returns [] if the cache has not been primed yet for this
+// (model, profile, period) tuple.
+// eslint-disable-next-line no-unused-vars -- D kept for API stability with 5 call sites
+function getActiveTrades(D) {
+  const fullKey = activeFullKey();
+  let periodKey;
+  if (activeTF === 'custom') {
+    const range = customRanges && customRanges[0];
+    periodKey = (range && range.start && range.end) ? `${range.start}:${range.end}` : 'all';
+  } else {
+    periodKey = activeTF || 'all';
+  }
+  return DATA[fullKey]?.trades?.[activeProfile]?.[periodKey] || [];
+}
+
 // Helper — resolve active profile data (handles both flat DEMO and {profiles:{}} real JSON)
 function getProfileData(fullKey, profile) {
   const base = DATA[fullKey];
@@ -142,7 +256,17 @@ function getActiveTFData(fullProfileData){
 function getFilteredD(D) {
   const anyActive = activeSmt || activeF3 || activeF4 || activeP42 || activePd;
   if (!anyActive) return D;
-  const rawTrades = D?.recent_trades;
+  // Trades come from the loadTrades cache (populated by switchTF /
+  // switchProfile / initProfileData). JSON no longer carries recent_trades.
+  const _fullKey = activeFullKey();
+  let _periodKey;
+  if (activeTF === 'custom') {
+    const _range = customRanges && customRanges[0];
+    _periodKey = (_range && _range.start && _range.end) ? `${_range.start}:${_range.end}` : 'all';
+  } else {
+    _periodKey = activeTF || 'all';
+  }
+  const rawTrades = DATA[_fullKey]?.trades?.[activeProfile]?.[_periodKey] || [];
   if (!rawTrades || !rawTrades.length) return D;
   let trades = rawTrades;
   if (activeSmt) trades = trades.filter(t => t.smt === true);
@@ -249,7 +373,9 @@ function getFilteredD(D) {
   trades.forEach(t => {
     const dow = t.dow, dir = t.direction;
     if (dow == null) return;
-    const dn = t.dow_name || DOW_NAMES_MAP[dow] || String(dow);
+    // Parquet rows have `dow` (int) but no `dow_name`. JSON rows have both.
+    // Prefer deriving from `dow` so the same code works for both sources.
+    const dn = DOW_NAMES_MAP[dow] ?? t.dow_name ?? String(dow);
     const key = `${dow}_${dir}`;
     if (!dowMap[key]) dowMap[key] = emptyBucket({ dow, dow_name: dn, direction: dir });
     addTrade(dowMap[key], t);
@@ -305,7 +431,35 @@ function getFilteredD(D) {
     pf: 1,
   }));
 
-  return { ...D, meta: newMeta, risk_stats: newRS, by_hour, by_session, by_dow, dir_summary, by_year, recent_trades: trades };
+  // Recompute top_combos / worst_combos from filtered trades
+  const DOW_NAMES = {0:'Sun',1:'Mon',2:'Tue',3:'Wed',4:'Thu',5:'Fri',6:'Sat'};
+  const comboMap = {};
+  trades.forEach(t => {
+    if (t.hr == null || t.dow == null) return;
+    const key = `${t.hr}_${t.dow}_${t.direction}`;
+    if (!comboMap[key]) {
+      const dn = DOW_NAMES[t.dow] ?? t.dow_name ?? String(t.dow);
+      comboMap[key] = { hr: t.hr, dow: t.dow, dow_name: dn, direction: t.direction,
+        label: `${dn} ${String(t.hr).padStart(2,'0')}:00 ${t.direction}`,
+        n: 0, wins: 0, sumR: 0, sumAbsR: 0, sumMae: 0, sumMfe: 0, sumMaeHr: 0, sumMfeHr: 0 };
+    }
+    const b = comboMap[key];
+    b.n++; b.sumR += t.r; b.sumAbsR += Math.abs(t.r);
+    if (t.outcome === 'WIN') b.wins++;
+    b.sumMae += t.mae_pct || 0; b.sumMfe += t.mfe_pct || 0;
+    b.sumMaeHr += t.mae_pct_hr || 0; b.sumMfeHr += t.mfe_pct_hr || 0;
+  });
+  const combos = Object.values(comboMap).filter(c => c.n >= 6).map(c => ({
+    ...c, wr: +(c.wins / c.n).toFixed(4),
+    ev: +(c.sumR / c.n).toFixed(4),
+    pf: +(c.sumAbsR / Math.max(c.sumR - c.wins * (c.sumR > 0 ? 1 : -1), 0.001)).toFixed(3),
+    avg_risk_pts: 0,
+  }));
+  combos.sort((a, b) => b.ev - a.ev);
+  const top_combos = combos.slice(0, 15);
+  const worst_combos = [...combos].sort((a, b) => a.ev - b.ev).slice(0, 5);
+
+  return { ...D, meta: newMeta, risk_stats: newRS, by_hour, by_session, by_dow, dir_summary, by_year, recent_trades: trades, top_combos, worst_combos };
 }
 
 // Back-compat alias — legacy call sites use getSmtD
@@ -351,3 +505,5 @@ export { getActiveTFData };
 export { getFilteredD };
 export { getSmtD };
 export { applyLoadedData };
+export { initProfileData, loadProfile };
+export { loadTrades, invalidateTradesCache, getActiveTrades };

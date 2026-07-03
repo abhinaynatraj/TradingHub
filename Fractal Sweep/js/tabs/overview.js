@@ -1,11 +1,12 @@
 import { activeModel, activeMode, activeCisd, activeProfile, activeTF, activeSmt, activeF3, activeF4, MODEL_KEYS, MODEL_LABELS, RR_PROFILES, PROFILE_LABELS, PCT_PROFILES, SVG_FONT, isDark, activePageTab, setActiveModel, setActiveProfile, setActiveTF } from '../state.js';
 import { pct, evFmt, pfFmt, evCls, wrHeatClr, wrHeatTxt, fmtDateRange, _tradingDaysFromRange } from '../utils.js';
 import { C, lineChart, rDistChart, filterWaterfall, dirCards, drawSetupViz, _buildEquityPts, renderEquityCurveFS, renderOverviewEquityCurve } from '../charts.js';
-import { getProfileData, getActiveTFData, getFilteredD, getSmtD, getAvailableProfiles } from '../data.js';
+import { getProfileData, getActiveTFData, getFilteredD, getSmtD, getAvailableProfiles, loadProfile, loadTrades } from '../data.js';
 import { renderEdgeStudy } from './edge.js';
 import { renderFilterVariants, renderProfileComparison, renderVerdict } from '../verdict.js';
 import { renderMAEStudy, renderMFEStudy } from './excursion.js';
 import { updateFilterChipDeltas } from './filters.js';
+import { renderRecentTrades } from './trades.js';
 import { switchSMT, switchF3, switchF4, customRanges, applyCustomRanges } from '../walkforward.js';
 
 function renderModelDropdown(){
@@ -13,30 +14,106 @@ function renderModelDropdown(){
   if (!sel) return;
   sel.innerHTML = MODEL_KEYS.map(k => `<option value="${k}" ${k===activeModel?'selected':''}>${MODEL_LABELS[k]||k}</option>`).join('');
 }
-function switchModel(k){
+async function switchModel(k){
   setActiveModel(k);
+  // Lazy-load the new model's profile data and trade rows before render.
+  // Without this, DATA[newFullKey] is still the empty {profiles:{}} placeholder
+  // from loadModelList, so renderModel(null) shows "No data".
+  const fullKey = `${k}_${activeMode}_${activeCisd}`;
+  try {
+    await loadProfile(fullKey, activeProfile);
+    if (activeTF !== 'custom') {
+      await loadTrades(fullKey, activeProfile, activeTF || 'all');
+    }
+  } catch (e) {
+    console.warn('[sweep] switchModel load failed:', e);
+  }
   window.render();
 }
 
 function renderProfileDropdown(){
-  const sel = document.getElementById('profile-select');
-  if (!sel) return;
-  const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
-  const profiles = getAvailableProfiles(fullKey);
-  sel.innerHTML = profiles.map(pk => `<option value="${pk}" ${pk===activeProfile?'selected':''}>${PROFILE_LABELS[pk]||pk}${PCT_PROFILES.has(pk)?' %':''}</option>`).join('');
+  // Set selector values from activeProfile
+  updateProfileSelectorsFromKey(activeProfile);
 }
-function switchProfile(pk){
+async function switchProfile(pk){
+  const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
+  // Ensure profile data is loaded from API and trades cache is primed
+  // for the active period so getFilteredD finds them.
+  await loadProfile(fullKey, pk);
+  if (activeTF !== 'custom') {
+    await loadTrades(fullKey, pk, activeTF || 'all');
+  }
   setActiveProfile(pk);
+  updateProfileSelectorsFromKey(pk);
   window.render();
 }
 
-function switchTF(tf){
+function profileKeyFromSelectors() {
+  const special = document.getElementById('profile-special')?.value;
+  if (special === 'raw_measure') return 'raw_measure';
+  const r = document.getElementById('profile-r')?.value || '1';
+  const ref = document.getElementById('profile-ref')?.value || 'entry';
+  const entry = document.getElementById('profile-entry')?.value || 'open';
+  return buildProfileKey(r, ref, entry);
+}
+
+function buildProfileKey(r, ref, entry) {
+  const rSuffix = r === '1' ? '1r' : r === '1.5' ? '1r5' : '2r';
+  if (entry === 'open' && ref === 'entry') return `simple_${rSuffix}`;
+  if (entry === 'open' && ref === 'ob')    return `ob_${rSuffix}`;
+  if (ref === 'entry') return `${entry}_${rSuffix}`;
+  return `${entry}_ob_${rSuffix}`;
+}
+
+function parseProfileKey(pk) {
+  if (pk === 'raw_measure') return { r: '1', ref: 'entry', entry: 'open' };
+  if (pk.startsWith('simple_')) return { r: pk.includes('1r5') ? '1.5' : pk.includes('2r') ? '2' : '1', ref: 'entry', entry: 'open' };
+  if (pk.startsWith('ob_'))    return { r: pk.includes('1r5') ? '1.5' : pk.includes('2r') ? '2' : '1', ref: 'ob',    entry: 'open' };
+  const m = pk.match(/^(l\d+)_(ob_)?(\w+)$/);
+  if (m) return { entry: m[1], ref: m[2] ? 'ob' : 'entry', r: m[3].includes('1r5') ? '1.5' : m[3].includes('2r') ? '2' : '1' };
+  return { r: '1', ref: 'entry', entry: 'open' };
+}
+
+let _updatingSelectors = 0;
+
+function updateProfileSelectorsFromKey(pk) {
+  _updatingSelectors = Date.now();
+  const special = document.getElementById('profile-special');
+  const rEl = document.getElementById('profile-r');
+  const refEl = document.getElementById('profile-ref');
+  const entryEl = document.getElementById('profile-entry');
+  if (pk === 'raw_measure') {
+    if (special) special.value = 'raw_measure';
+    return;
+  }
+  if (special) special.value = '';
+  const p = parseProfileKey(pk);
+  if (rEl) rEl.value = p.r;
+  if (refEl) refEl.value = p.ref;
+  if (entryEl) entryEl.value = p.entry;
+}
+
+function updateProfileFromSelectors() {
+  if (Date.now() - _updatingSelectors < 100) return;
+  const pk = profileKeyFromSelectors();
+  if (pk && pk !== activeProfile) switchProfile(pk);
+}
+
+async function switchTF(tf){
   setActiveTF(tf);
   const builder = document.getElementById('custom-range-builder');
   if (builder) builder.style.display = tf === 'custom' ? '' : 'none';
   if (tf === 'custom') {
     if (customRanges.length === 0) addCustomRange();
     renderRangeSlots();
+  } else {
+    // Prime the trades cache for the new period so getFilteredD finds them.
+    const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
+    try {
+      await loadTrades(fullKey, activeProfile, tf);
+    } catch (e) {
+      console.warn('[sweep] loadTrades failed for', tf, e);
+    }
   }
   localStorage.setItem('fractal-active-tf', tf);
   window.renderActive();
@@ -121,10 +198,11 @@ function renderModel(D){
 
   if (activePageTab === 'excursion') { renderMAEStudy(D); renderMFEStudy(D); }
   if (activePageTab === 'risk') renderEquityCurveFS(D);
+  if (activePageTab === 'trades') renderRecentTrades(0);
 
   renderOverviewEquityCurve(D);
   renderProfileComparison();
   renderVerdict(document.getElementById('overview-verdict-panel'));
 }
 
-export { renderModel, renderModelDropdown, renderProfileDropdown, switchProfile, switchTF, renderControls, switchModel };
+export { renderModel, renderModelDropdown, renderProfileDropdown, switchProfile, switchTF, renderControls, switchModel, updateProfileFromSelectors };

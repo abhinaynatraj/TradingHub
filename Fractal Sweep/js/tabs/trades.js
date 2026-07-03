@@ -1,33 +1,49 @@
 import { activeModel, activeMode, activeCisd, activeProfile, activeTF } from '../state.js';
 import { C, dirCards } from '../charts.js';
 import { csvEscape, triggerCSVDownload, evFmt, evCls, pfFmt, pct } from '../utils.js';
-import { getProfileData, getActiveTFData } from '../data.js';
-import { getSmtFilteredTrades } from '../walkforward.js';
+import { getSmtFilteredTrades, customRanges } from '../walkforward.js';
+import { loadTrades } from '../data.js';
 
 let _tradesPage = 0;
 const TRADES_PER_PAGE = 40;
 
-function renderRecentTrades(page) {
+async function fetchTrades() {
+  const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
+  // Respect the dashboard's active period selection. Custom ranges send
+  // {from, to}; canonical periods send the string directly.
+  if (activeTF === 'custom') {
+    // walkforward.js uses {start, end}; loadTrades / server use {from, to}.
+    const range = customRanges && customRanges[0];
+    if (!range || !range.start || !range.end) return [];
+    return await loadTrades(fullKey, activeProfile, { from: range.start, to: range.end });
+  }
+  return await loadTrades(fullKey, activeProfile, activeTF || 'all');
+}
+
+async function renderRecentTrades(page) {
   const el = document.getElementById('recent-trades-table');
   const pgEl = document.getElementById('recent-trades-pagination');
-  if (!el) return;
-  const baseD2 = getProfileData(`${activeModel}_${activeMode}_${activeCisd}`, activeProfile);
-  const D = getActiveTFData(baseD2);
-  const rawTrades = D?.recent_trades;
-  console.log('[trades] activeTF=', activeTF, 'trades.length=', rawTrades?.length, 'slice_has_trades=', !!baseD2?.by_tf?.[activeTF]?.recent_trades);
   const titleEl = document.getElementById('trades-panel-title');
-  if (!rawTrades || !rawTrades.length) {
-    el.innerHTML = '<p style="color:var(--text-muted);font-size:13px;padding:8px 0;">No trades data. Run <code>python3 model_stats.py</code> to generate.</p>';
-    if (titleEl) titleEl.textContent = 'Resolved Trades';
-    if (pgEl) pgEl.style.display = 'none';
-    return;
-  }
-  const trades = getSmtFilteredTrades(rawTrades);
-  const totalCount = trades.length;
-  const totalPages = Math.ceil(totalCount / TRADES_PER_PAGE);
-  if (page !== undefined) _tradesPage = page;
-  _tradesPage = Math.max(0, Math.min(_tradesPage, totalPages - 1));
-  const start = _tradesPage * TRADES_PER_PAGE;
+  if (!el) return;
+
+  try {
+    const rawTrades = await fetchTrades();
+    if (!rawTrades || !rawTrades.length) {
+      el.innerHTML = '<p style="color:var(--text-muted);font-size:13px;padding:8px 0;">No trades data. Run <code>python3 model_stats.py</code> to generate.</p>';
+      if (titleEl) titleEl.textContent = 'Resolved Trades';
+      if (pgEl) pgEl.style.display = 'none';
+      return;
+    }
+    const trades = getSmtFilteredTrades(rawTrades).slice().sort((a, b) => {
+      // newest first: compare by date, then intraday hour:minute
+      if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+      return (b.hr - a.hr) || (b.mn - a.mn);
+    });
+    const totalCount = trades.length;
+    const totalPages = Math.ceil(totalCount / TRADES_PER_PAGE);
+    if (page !== undefined) _tradesPage = page;
+    _tradesPage = Math.max(0, Math.min(_tradesPage, totalPages - 1));
+    const start = _tradesPage * TRADES_PER_PAGE;
   const displayTrades = trades.slice(start, start + TRADES_PER_PAGE);
   const end = start + displayTrades.length;
   if (titleEl) titleEl.textContent = totalPages > 1
@@ -90,16 +106,30 @@ function renderRecentTrades(page) {
     if(i>0 && arr[i]-arr[i-1]>1) pageNums.push('…');
     pageNums.push(p);
   });
+  // NOTE: inline onclick handlers do NOT work here — this module is loaded as
+  // <script type="module">, so renderRecentTrades lives in module scope, not on
+  // window. Use data-page attributes + a delegated listener attached below instead.
   const paginationHTML = [
-    `<button style="${btnStyle(_tradesPage===0)}" onclick="if(${_tradesPage}>0)renderRecentTrades(${_tradesPage-1})" ${_tradesPage===0?'disabled':''}>‹ Prev</button>`,
+    `<button data-page="${_tradesPage-1}" style="${btnStyle(_tradesPage===0)}" ${_tradesPage===0?'disabled':''}>‹ Prev</button>`,
     ...pageNums.map(p => p==='…'
       ? `<span style="color:var(--text-muted);padding:0 2px">…</span>`
-      : `<button style="${btnStyle(false)};${p===_tradesPage?'background:var(--accent);color:#fff;border-color:var(--accent)':''}" onclick="renderRecentTrades(${p})">${p+1}</button>`),
-    `<button style="${btnStyle(_tradesPage===totalPages-1)}" onclick="if(${_tradesPage}<${totalPages-1})renderRecentTrades(${_tradesPage+1})" ${_tradesPage===totalPages-1?'disabled':''}>Next ›</button>`,
+      : `<button data-page="${p}" style="${btnStyle(false)};${p===_tradesPage?'background:var(--accent);color:#fff;border-color:var(--accent)':''}">${p+1}</button>`),
+    `<button data-page="${_tradesPage+1}" style="${btnStyle(_tradesPage===totalPages-1)}" ${_tradesPage===totalPages-1?'disabled':''}>Next ›</button>`,
     `<span style="color:var(--text-muted);margin-left:4px">Page ${_tradesPage+1} of ${totalPages}</span>`,
   ].join('');
   pgEl.style.display = 'flex';
   pgEl.innerHTML = paginationHTML;
+  // Delegated click handler — re-bound each render (innerHTML replaced the old nodes).
+  pgEl.onclick = (ev) => {
+    const btn = ev.target.closest('button[data-page]');
+    if (!btn || btn.disabled) return;
+    const p = Number(btn.dataset.page);
+    if (Number.isInteger(p) && p >= 0 && p < totalPages && p !== _tradesPage) renderRecentTrades(p);
+  };
+  } catch(e) {
+    console.error('[trades]', e);
+    el.innerHTML = `<p style="color:var(--red);font-size:13px;padding:8px 0;">Failed to load trades: ${e.message}. Ensure server.py is running.</p>`;
+  }
 }
 
 export { renderRecentTrades, _tradesPage, TRADES_PER_PAGE };

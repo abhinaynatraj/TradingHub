@@ -1,7 +1,8 @@
 import { activeSmt, activeF3, activeF4 } from '../state.js';
+import { getActiveTrades } from '../data.js';
 
 function updateFilterChipDeltas(D) {
-  const rt = D?.recent_trades || [];
+  const rt = getActiveTrades(D);
   if (!rt.length) {
     _setChipDelta('smt-checkbox', null);
     _setChipDelta('f3-checkbox', null);

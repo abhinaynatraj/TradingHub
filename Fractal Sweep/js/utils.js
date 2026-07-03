@@ -28,7 +28,7 @@ const tip = document.getElementById('tooltip');
 function showTip(e,rows){tip.innerHTML=rows.map(r=>r==='---'?'<hr class="tt-divider"/>': `<div class="tt-row"><span class="tt-lbl">${r[0]}</span><span class="tt-val ${r[2]||''}">${r[1]}</span></div>`).join('');tip.style.display='block';moveTip(e);}
 function moveTip(e){tip.style.left=(e.clientX+16)+'px';tip.style.top=(e.clientY-8)+'px';}
 function hideTip(){tip.style.display='none';}
-document.addEventListener('mousemove',e=>{if(tip.style.display==='block')moveTip(e);});
+document.addEventListener('mousemove',e=>{try{if(tip&&tip.style.display==='block')moveTip(e);}catch{}});
 
 function fmtDate(s){ return s ? String(s).slice(0,10) : '\u2014'; }
 

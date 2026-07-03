@@ -26,10 +26,24 @@
 
     /* ── Two-column layout: sidebar + main ────────────────────────────────── */
     .layout { display:grid; grid-template-columns: 260px 1fr; min-height: calc(100vh - 60px); }
-    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); }
+    }
 
-    .sidebar { background: var(--bg-elev-1); border-right: 1px solid var(--border); padding: 18px 16px; }
-    .sb-section { margin-bottom: 18px; }
+    /* Unified sidebar — docked, sticky-top so nav stays visible, padding
+       18px 16px 24px / gap 14px to match Fractal Sweep / Amas / Hourly. */
+    .sidebar {
+      background: var(--bg-elev-1);
+      border-right: 1px solid var(--border);
+      padding: 18px 16px 24px;
+      display: flex; flex-direction: column; gap: 14px;
+      position: sticky; top: 60px;
+      align-self: flex-start;
+      height: calc(100vh - 60px); overflow-y: auto;
+    }
+    /* Spacing between sections is handled by .sidebar's gap (14px). */
+    .sb-section { display: flex; flex-direction: column; gap: 6px; }
     .sb-label { display:block; font-family:var(--font-data); font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px; }
     .sel-drop { width:100%; padding:7px 10px; background:var(--bg-elev-2); color:var(--text-primary); border:1px solid var(--border-mid); border-radius:var(--radius-sm); font-family:var(--font-data); font-size:12px; cursor:pointer; }
     .sb-chk-group { display: flex; flex-direction: column; gap: 5px; }

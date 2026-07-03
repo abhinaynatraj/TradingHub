@@ -4,6 +4,8 @@ This folder contains the **Fractal Sweep** backtesting engine — scans 15 years
 
 > Consolidated from the old `Fractal Sweep Legacy/` folder on 2026-04-19. See `LEGACY_NOTE.md` for the history.
 
+> **Data architecture (2026-05-15):** `model_stats.json` carries aggregate stats only (~56 MB). Trade rows live in `model_stats.parquet` (~78 MB) and are streamed to the dashboard on demand via `server.py`'s `/trades` endpoint. The full pre-migration JSON (~270 MB) is gone — engine no longer writes `recent_trades` to JSON.
+
 ---
 
 ## What This Model Does
@@ -22,9 +24,10 @@ It tests **2 timeframe combinations** (1-Hour sweep / 5-Minute CISD, and 30-Minu
 | Path | What it does |
 |---|---|
 | `model_dashboard.html` | The dashboard — open in your browser to see results |
-| `model_stats.json` | Engine output — **gitignored**. Run `python3 engine/model_stats.py` once to generate. |
+| `model_stats.json` | **Aggregate stats only** (~56 MB) — gitignored. Run `python3 engine/model_stats.py` once to generate. |
+| `model_stats.parquet` | **Raw trade rows** (~78 MB) — gitignored. Written alongside JSON by the engine. Served via `/trades`. |
 | `candle_science.duckdb` | Shared DB (gitignored, ~550 MB). Recreate locally from Databento. |
-| `engine/model_stats.py` | The backtest engine — runs the analysis, writes `model_stats.json` |
+| `engine/model_stats.py` | The backtest engine — runs the analysis, writes `model_stats.json` + `model_stats.parquet` |
 | `engine/daily_update.py` | Optional — fetches new bar data from Databento |
 | `engine/install_cron.sh` | One-time cron setup helper for `daily_update.py` |
 | `engine/master_backtester.py`, `engine/sltp_analyzer.py`, `engine/recalc.py` | Supporting tooling |
@@ -35,7 +38,7 @@ It tests **2 timeframe combinations** (1-Hour sweep / 5-Minute CISD, and 30-Minu
 | `data/` | Raw Databento `.dbn` dumps (gitignored) |
 | `docs/` | Indicator description and standalone analysis write-ups |
 | `assets/` | Images used by the dashboard and hub |
-| `tests/` | pytest suite |
+| `tests/` | pytest suite (includes drift gate for the slim-JSON migration) |
 
 ---
 
@@ -57,7 +60,7 @@ pip install duckdb pandas numpy
 
 ## Step 2 — Generate Results + View the Dashboard
 
-`model_stats.json` is a build artifact and isn't committed (it's ~140 MB of backtest output). Run the engine once before opening the dashboard.
+`model_stats.json` and `model_stats.parquet` are build artifacts and aren't committed. Run the engine once before opening the dashboard.
 
 1. Run the engine from this folder:
 
@@ -73,21 +76,23 @@ pip install duckdb pandas numpy
    python engine\model_stats.py
    ```
 
-   Takes roughly 20–40 seconds and writes `model_stats.json` next to the dashboard.
+   Takes roughly 60–90 seconds and writes both `model_stats.json` (aggregate stats, ~56 MB) and `model_stats.parquet` (trade rows, ~78 MB) next to the dashboard.
 
-2. Start the web server from the **repo root** (not this subfolder):
+2. Start `server.py` from the **repo root** (not this subfolder):
 
    **Mac:**
    ```
    cd path/to/Statistic.ally
-   python3 -m http.server 8001
+   python3 server.py
    ```
 
    **Windows:**
    ```
    cd C:\path\to\Statistic.ally
-   python -m http.server 8001
+   python server.py
    ```
+
+   > Don't use `python3 -m http.server 8001` — Fractal Sweep's dashboard needs `server.py`'s `/data`, `/trades`, and `/recalc` endpoints. The stdlib server only serves static files.
 
 3. Open your browser:
    ```
@@ -121,12 +126,13 @@ Schedule it via `bash engine/install_cron.sh`.
 
 ---
 
-## The 2 Timeframe Combinations
+## The 3 Timeframe Combinations
 
 | Key | Sweep TF | CISD TF |
 |---|---|---|
 | `1H_5M` | 1-Hour | 5-Minute |
 | `30M_3M` | 30-Minute | 3-Minute |
+| `15M_1M` | 15-Minute | 1-Minute |
 
 ---
 
@@ -161,10 +167,16 @@ SMT is the dominant edge — every meaningful combo includes it. HOUR_ALIGNED, P
 → `model_stats.json` is missing. Run the engine as shown in Step 2.
 
 **Dashboard shows no data / blank page**
-→ Web server isn't running, or you're opening the HTML file directly. Serve from the repo root and use `http://localhost:8001/...`.
+→ `server.py` isn't running, or you started it with `python3 -m http.server` (which doesn't serve `/data` and `/trades`). Run `python3 server.py` from the repo root.
+
+**Dashboard loads but hero stats are blank / "No data" message**
+→ Profile not in engine output. The dashboard offers 25 profile combinations but only the ones that ran in the most recent engine output have data. Default to "1R Target" (= `simple_1r`) or "Raw Measure" (= `raw_measure`) — both are always generated.
+
+**Recalculate button completes but data hasn't changed**
+→ Fixed in the slim-JSON migration. If you somehow still see this, restart `server.py`.
 
 **`python3 engine/model_stats.py` gives a database error**
 → `candle_science.duckdb` (~550 MB) isn't in the repo. You need the DB locally — fetch it via `python3 engine/daily_update.py` or restore from backup.
 
 **Port already in use**
-→ Change the port: `python3 -m http.server 8002`, then use `http://localhost:8002/Fractal Sweep/model_dashboard.html`.
+→ `server.py` hardcodes port 8001. Stop the other process or edit `port = 8001` near the bottom of `server.py`.
