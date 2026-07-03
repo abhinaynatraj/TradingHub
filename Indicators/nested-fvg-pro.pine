@@ -712,12 +712,14 @@ f_add5(float ztop, float zbot, int zdir, string lbl, color bcol) =>
         // BISI/SIBI text labels dropped — the colored box conveys the zone.
         // Keep empty placeholder labels so the parallel-array index alignment
         // (mitigation/purge remove by index across box/label arrays) stays intact.
-        array.push(fvg5_llabel, label.new(0, 0, ""))
-        array.push(fvg5_rlabel, label.new(0, 0, ""))
+        // x MUST be near the current bar (bar_index), not 0 — an absolute index of
+        // 0 is thousands of bars back on a live chart and trips RE10026.
+        array.push(fvg5_llabel, label.new(bar_index, mid, "", style=label.style_none))
+        array.push(fvg5_rlabel, label.new(bar_index, mid, "", style=label.style_none))
     else
-        array.push(fvg5_box,    box.new(0, 0, 1, 0))
-        array.push(fvg5_llabel, label.new(0, 0, ""))
-        array.push(fvg5_rlabel, label.new(0, 0, ""))
+        array.push(fvg5_box,    box.new(bar_index, ztop, bar_index, zbot))
+        array.push(fvg5_llabel, label.new(bar_index, mid, "", style=label.style_none))
+        array.push(fvg5_rlabel, label.new(bar_index, mid, "", style=label.style_none))
 
 // ─────────────────────────────────────────────────────────
 //  DETECT 5-MIN FVGS
