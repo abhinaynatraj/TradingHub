@@ -1,0 +1,26 @@
+{
+  "run_timestamp_utc": "2026-07-04T07:15:35.663888+00:00",
+  "n_combos": 20,
+  "stop_range": [
+    0.05,
+    0.075,
+    0.1,
+    0.125,
+    0.15
+  ],
+  "target_range": [
+    0.15,
+    0.2,
+    0.25,
+    0.3
+  ],
+  "settings": {
+    "qty": 3,
+    "qty_part": 1,
+    "qty_tgt": 1,
+    "be_at_part": true,
+    "dll_usd": 400.0,
+    "ptdll_usd": 150.0,
+    "usd_per_pt": 2.0
+  }
+}

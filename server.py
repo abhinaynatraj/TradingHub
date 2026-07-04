@@ -335,6 +335,52 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             self._json(200, result)
             return
+        if parsed.path == "/v7_candles":
+            import duckdb
+            ts_ns_str = (qs.get("ts_ns") or [""])[0]
+            instrument = (qs.get("instrument") or ["nq"])[0].lower()
+            window_min = int((qs.get("window") or ["90"])[0])
+            
+            if ts_ns_str and ts_ns_str != "0":
+                ts_ns = int(ts_ns_str)
+            else:
+                date_str = (qs.get("date") or [""])[0]
+                hour_str = (qs.get("hour") or [""])[0]
+                minute_str = (qs.get("minute") or [""])[0]
+                if not date_str or not hour_str or not minute_str:
+                    self._json(400, {"error": "ts_ns or (date, hour, minute) required"})
+                    return
+                import pandas as pd
+                ts = pd.Timestamp(f"{date_str} {int(hour_str):02d}:{int(minute_str):02d}:00", tz="America/New_York")
+                ts_ns = int(ts.timestamp() * 1e9)
+                
+            db_path = ROOT / "Fractal Sweep" / "candle_science.duckdb"
+            if not db_path.exists():
+                self._json(404, {"error": "DB not found"})
+                return
+                
+            table = f"{instrument}_1m"
+            # window in nanoseconds
+            delta_ns = window_min * 60 * 1_000_000_000
+            start_ts = ts_ns - delta_ns
+            end_ts = ts_ns + delta_ns
+            
+            try:
+                con = duckdb.connect(str(db_path), read_only=True)
+                df = con.execute(f"""
+                    SELECT 
+                        CAST(EXTRACT(EPOCH FROM timestamp) AS BIGINT) AS time,
+                        open, high, low, close
+                    FROM {table}
+                    WHERE CAST(EXTRACT(EPOCH FROM timestamp) * 1e9 AS BIGINT) BETWEEN {start_ts} AND {end_ts}
+                    ORDER BY timestamp
+                """).fetchdf()
+                con.close()
+                records = df.to_dict("records")
+                self._json(200, records)
+            except Exception as e:
+                self._json(500, {"error": str(e)})
+            return
 
         try:
             super().do_GET()
