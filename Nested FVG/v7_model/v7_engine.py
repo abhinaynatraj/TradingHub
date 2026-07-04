@@ -151,15 +151,15 @@ def simulate_trade_fast(
         pts = qty * (cl[-1] - ep)
         return float(pts), 'expired', nb, False, False, False, mae, mfe
 
-    if p1 == emerg1 and p1 < part:
+    if p1 == emerg1 and p1 <= part:
         pts = qty * (cl[p1] - ep)
         return float(pts), 'loss', p1 + 1, False, False, False, mae, mfe
 
-    if p1 < part:  # stop hit before partial (stop1 <= emerg1 < part)
+    if p1 <= part and p1 == stop1:  # stop wins ties (Pine checks stop FIRST)
         pts = qty * (stp - ep)
         return float(pts), 'loss', p1 + 1, False, False, False, mae, mfe
 
-    # ── Partial filled (p1 == part; same-bar stop is ignored per Pine) ────
+    # ── Partial filled ────────────────────────────────────────────────────
     pts   = qty_part * (pp - ep)
     q_rem = qty - qty_part
     cur_stp = ep if be_at_partial else stp  # BE stop (in flipped space)
@@ -182,8 +182,8 @@ def simulate_trade_fast(
         pts += q_rem * (cl2[-1] - ep)
         return float(pts), 'partial', nb, True, False, False, mae, mfe
 
-    if p2 < tgt:
-        # Stop or emergency hit after partial, before target
+    if p2 <= tgt and (p2 == stop2 or p2 == emerg2):
+        # Stop or emergency hit after partial, before or on same bar as target
         pts += q_rem * (cl2[p2] - ep if p2 == emerg2 else cur_stp - ep)
         bucket = 'be_scratch' if cur_stp == ep else 'partial'
         return float(pts), bucket, part + 1 + p2 + 1, True, False, False, mae, mfe
@@ -202,13 +202,13 @@ def simulate_trade_fast(
 
     ext3  = _first(hi3 >= xp)
     stop3 = _first(lo3 <= cur_stp)
-    p3    = min(ext3, stop3)
+    p3    = min(stop3, ext3)  # stop wins ties
 
     if p3 == nb3:
         pts += q_rem2 * (cl3[-1] - ep)
         return float(pts), 'target_win', nb, True, True, False, mae, mfe
 
-    if p3 == ext3:
+    if p3 == ext3 and p3 != stop3:  # ext wins only if stop didn't also hit
         pts += q_rem2 * (xp - ep)
         return float(pts), 'target_win', part + 1 + tgt + 1 + ext3 + 1, True, True, True, mae, mfe
 

@@ -340,6 +340,7 @@ class Handler(SimpleHTTPRequestHandler):
             ts_ns_str = (qs.get("ts_ns") or [""])[0]
             instrument = (qs.get("instrument") or ["nq"])[0].lower()
             window_min = int((qs.get("window") or ["90"])[0])
+            tz = (qs.get("tz") or ["America/Chicago"])[0]
             
             if ts_ns_str and ts_ns_str != "0":
                 ts_ns = int(ts_ns_str)
@@ -351,7 +352,7 @@ class Handler(SimpleHTTPRequestHandler):
                     self._json(400, {"error": "ts_ns or (date, hour, minute) required"})
                     return
                 import pandas as pd
-                ts = pd.Timestamp(f"{date_str} {int(hour_str):02d}:{int(minute_str):02d}:00", tz="America/New_York")
+                ts = pd.Timestamp(f"{date_str} {int(hour_str):02d}:{int(minute_str):02d}:00", tz=tz)
                 ts_ns = int(ts.timestamp() * 1e9)
                 
             db_path = ROOT / "Fractal Sweep" / "candle_science.duckdb"
@@ -359,6 +360,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self._json(404, {"error": "DB not found"})
                 return
                 
+            tf = (qs.get("tf") or ["1m"])[0].lower()
             table = f"{instrument}_1m"
             # window in nanoseconds
             delta_ns = window_min * 60 * 1_000_000_000
@@ -367,16 +369,49 @@ class Handler(SimpleHTTPRequestHandler):
             
             try:
                 con = duckdb.connect(str(db_path), read_only=True)
+                # Check if volume column exists
+                cols = [c[0] for c in con.execute(f"PRAGMA table_info('{table}')").fetchall()]
+                has_vol = 'volume' in cols
+                vol_col = ", volume" if has_vol else ""
                 df = con.execute(f"""
                     SELECT 
-                        CAST(EXTRACT(EPOCH FROM timestamp) AS BIGINT) AS time,
-                        open, high, low, close
+                        timestamp,
+                        open, high, low, close{vol_col}
                     FROM {table}
                     WHERE CAST(EXTRACT(EPOCH FROM timestamp) * 1e9 AS BIGINT) BETWEEN {start_ts} AND {end_ts}
                     ORDER BY timestamp
                 """).fetchdf()
                 con.close()
-                records = df.to_dict("records")
+                
+                if not df.empty:
+                    import pandas as pd
+                    df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+                    df.set_index('timestamp', inplace=True)
+                    if tf != '1m':
+                        rule = tf.replace('m', 'min').replace('h', 'h')
+                        agg_dict = {
+                            'open': 'first',
+                            'high': 'max',
+                            'low': 'min',
+                            'close': 'last',
+                        }
+                        if has_vol:
+                            agg_dict['volume'] = 'sum'
+                        df = df.resample(rule).agg(agg_dict).dropna()
+                    else:
+                        df = df.dropna()
+                    
+                    # Convert DatetimeIndex to seconds robustly using total_seconds()
+                    df['time'] = (df.index - pd.Timestamp("1970-01-01", tz="UTC")).total_seconds().astype('int64')
+                    df = df[['time', 'open', 'high', 'low', 'close']]
+                    
+                    # Ensure no inf/nan
+                    import numpy as np
+                    df = df.replace([np.inf, -np.inf], np.nan).dropna()
+                    records = df.to_dict('records')
+                else:
+                    records = []
+                    
                 self._json(200, records)
             except Exception as e:
                 self._json(500, {"error": str(e)})
