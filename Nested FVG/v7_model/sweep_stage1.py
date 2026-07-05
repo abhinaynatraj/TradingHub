@@ -28,6 +28,9 @@ STOP_PCTS = [0.05, 0.075, 0.10, 0.125, 0.15, 0.175, 0.20, 0.225, 0.25, 0.275, 0.
 # Strict 1.5R target multiplier
 R_MULTIPLIER = 1.5
 
+# Two entry models to compare
+ENTRY_MODELS = ['immediate', 'far_edge']
+
 
 def _ct_parts(ts_ns_array):
     idx = pd.DatetimeIndex(pd.to_datetime(ts_ns_array, utc=True)).tz_convert('America/Chicago')
@@ -35,7 +38,7 @@ def _ct_parts(ts_ns_array):
 
 
 def worker_task(combo):
-    sp, prepped, m1_arrays, settings, total_days = combo
+    sp, prepped, m1_arrays, settings, total_days, entry_mode = combo
     tp = round(sp * R_MULTIPLIER, 3)
     
     # All-in, all-out at target (we map it to partial to avoid 3-leg logic issues when pp==tp)
@@ -48,15 +51,20 @@ def worker_task(combo):
         be_at_partial=False,
         dll_usd=settings['dll_usd'],
         per_trade_dll_usd=settings['ptdll_usd'],
-        usd_per_pt=settings['usd_per_pt']
+        usd_per_pt=settings['usd_per_pt'],
+        cooldown=DEFAULT_COOLDOWN,
+        entry_mode=entry_mode,
     )
     
     for r in rows:
         if r['bucket'] == 'partial':
             r['bucket'] = 'target_win'
+        r['entry_model'] = entry_mode
             
     # Return both the raw trades and the chunked aggregations
     chunks = agg_chunked(rows, stop_pct=sp, target_pct=tp, total_days=total_days)
+    for c in chunks:
+        c['entry_model'] = entry_mode
     return chunks, rows
 
 
@@ -82,7 +90,7 @@ def run_sweep(stop_range, no_smt=False):
     
     prepped = preprocess_signals(
         raw_signals, m1, m1_hours_ny, ct_hour, ct_date,
-        use_windows=True, cooldown=DEFAULT_COOLDOWN
+        use_windows=True
     )
     
     settings = dict(
@@ -94,10 +102,11 @@ def run_sweep(stop_range, no_smt=False):
     )
     
     combos = []
-    for sp in stop_range:
-        combos.append((sp, prepped, m1_arrays, settings, total_days))
+    for entry_mode in ENTRY_MODELS:
+        for sp in stop_range:
+            combos.append((sp, prepped, m1_arrays, settings, total_days, entry_mode))
             
-    print(f"Sweeping {len(combos)} combinations for Stage 1...")
+    print(f"Sweeping {len(combos)} combinations for Stage 1 ({len(ENTRY_MODELS)} entry models × {len(stop_range)} stops)...")
     
     all_chunks = []
     all_trades = []
@@ -119,7 +128,6 @@ def run_sweep(stop_range, no_smt=False):
     df_chunks.to_parquet(out_file_chunks)
     print(f"Wrote {len(df_chunks)} chunk rows to {out_file_chunks}")
     
-    # Optional: save all raw trades if not too large (for 10 combos, ~250k rows = ~10MB)
     df_trades = pd.DataFrame(all_trades)
     out_file_trades = DATA_DIR / 'v7_stage1_trades.parquet'
     df_trades.to_parquet(out_file_trades)
@@ -129,6 +137,7 @@ def run_sweep(stop_range, no_smt=False):
         run_timestamp_utc=datetime.now(UTC).isoformat(),
         n_combos=len(combos),
         stop_range=stop_range,
+        entry_models=ENTRY_MODELS,
         r_multiplier=R_MULTIPLIER,
         settings=settings
     )

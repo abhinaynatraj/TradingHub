@@ -1293,6 +1293,10 @@
         <div class="v7-hero v7-animate">
           <div class="v7-hero-title">⚡ Stage 1 — <em>1.5R Edge Scan</em></div>
           <div class="v7-hero-sub">Strict all-in / all-out · Risk 0.05% → 0.30% (0.025% steps) · Target = 1.5× Stop</div>
+          <div style="margin-top:10px;display:flex;gap:8px;justify-content:center;">
+            <button class="sb-filter-btn entry-model-btn active" data-entry="immediate" onclick="setEntryModel('immediate')" style="font-size:12px;padding:4px 14px;">Close-Based (Python)</button>
+            <button class="sb-filter-btn entry-model-btn" data-entry="far_edge" onclick="setEntryModel('far_edge')" style="font-size:12px;padding:4px 14px;">FVG-Edge (Pine Match)</button>
+          </div>
         </div>
 
         <!-- Ribbon metrics -->
@@ -2074,24 +2078,55 @@
 
     // ── Wire-up ──────────────────────────────────────────────────────────────
     
-    const V7_STATE = { sweepRows: [], tradeRows: [], selectedConfig: null, tradeLogPage: 0, tradeLogSearch: '', loaded: false };
+    const V7_STATE = { sweepRows: [], tradeRows: [], selectedConfig: null, tradeLogPage: 0, tradeLogSearch: '', loaded: false, entryModel: 'immediate' };
 
     async function updateV7Filters() {
       if (!V7_STATE.loaded) return;
-      const conds = [];
-      if (STATE.direction !== 'all') conds.push(`direction = '${STATE.direction}'`);
-      if (STATE.session !== 'all') conds.push(`session = '${STATE.session}'`);
+      const sweepConds = [];
+      const tradeConds = [];
+      
+      // Entry model filter (always applied)
+      sweepConds.push(`entry_model = '${V7_STATE.entryModel}'`);
+      tradeConds.push(`entry_model = '${V7_STATE.entryModel}'`);
+      
+      if (STATE.direction !== 'all') tradeConds.push(`direction = '${STATE.direction}'`);
+      if (STATE.session !== 'all') tradeConds.push(`session = '${STATE.session}'`);
       if (STATE.period !== 'all') {
         const n = PERIOD_DAYS[STATE.period];
-        conds.push(`date >= (SELECT strftime(MAX(date)::DATE - INTERVAL '${n} days','%Y-%m-%d') FROM v7stage1_trades)`);
+        tradeConds.push(`date >= (SELECT strftime(MAX(date)::DATE - INTERVAL '${n} days','%Y-%m-%d') FROM v7stage1_trades)`);
       }
-      const w = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+      const sw = sweepConds.length ? 'WHERE ' + sweepConds.join(' AND ') : '';
+      const tw = tradeConds.length ? 'WHERE ' + tradeConds.join(' AND ') : '';
       try {
-        V7_STATE.tradeRows = await window.query(`SELECT * FROM v7stage1_trades ${w}`);
+        V7_STATE.sweepRows = await window.query(`
+          SELECT 
+            stop_pct, target_pct,
+            SUM(n) as n,
+            SUM(wins) as wins,
+            SUM(losses) as losses,
+            SUM(pos_r) as pos_r,
+            SUM(neg_r) as neg_r,
+            SUM(total_usd) as total_usd,
+            SUM(ev_r * n) / SUM(n) as ev_r,
+            SUM(ev_usd * n) / SUM(n) as ev_usd
+          FROM v7stage1_sweep 
+          ${sw}
+          GROUP BY stop_pct, target_pct 
+          ORDER BY stop_pct DESC
+        `);
+        V7_STATE.tradeRows = await window.query(`SELECT * FROM v7stage1_trades ${tw}`);
         renderV7Optimizer();
       } catch (e) {
         console.warn("V7 Filter Error:", e);
       }
+    }
+
+    function setEntryModel(model) {
+      V7_STATE.entryModel = model;
+      V7_STATE.selectedConfig = null;
+      document.querySelectorAll('.entry-model-btn').forEach(b => b.classList.remove('active'));
+      document.querySelector(`.entry-model-btn[data-entry="${model}"]`).classList.add('active');
+      updateV7Filters();
     }
 
     function _bkLabel(bucket) {
@@ -2402,22 +2437,8 @@
           await window.loadParquet('data/v7_stage1_sweep.parquet', 'v7stage1_sweep');
           await window.loadParquet('data/v7_stage1_trades.parquet', 'v7stage1_trades');
           V7_STATE.loaded = true;
-          V7_STATE.sweepRows = await window.query(`
-            SELECT 
-              stop_pct, target_pct,
-              SUM(n) as n,
-              SUM(wins) as wins,
-              SUM(losses) as losses,
-              SUM(pos_r) as pos_r,
-              SUM(neg_r) as neg_r,
-              SUM(total_usd) as total_usd,
-              SUM(ev_r * n) / SUM(n) as ev_r,
-              SUM(ev_usd * n) / SUM(n) as ev_usd
-            FROM v7stage1_sweep 
-            GROUP BY stop_pct, target_pct 
-            ORDER BY stop_pct DESC
-          `);
-          V7_STATE.tradeRows = await window.query('SELECT * FROM v7stage1_trades');
+          // Load initial data with default entry model filter
+          await updateV7Filters();
           renderV7Optimizer();
         } catch (e) {
           console.warn("Could not load V7 Stage 1 trades:", e);

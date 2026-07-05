@@ -238,10 +238,11 @@ def detect_signals(m1, m1_es=None,
     htf_fvgs = find_fvgs(htf, min_fvg_bp)
     print(f"  [detect] {len(ltf_fvgs):,} 1m FVGs / {len(htf_fvgs):,} 5m FVGs")
 
-    bs._compute_mit_ts(htf_fvgs, htf['close'], htf['ts_close_ns'])
-    hosts = bs._find_nested_hosts(ltf_fvgs, htf_fvgs, proximity_bp)
-
     m1_ts = m1['ts_ns']
+    bs._compute_mit_ts(htf_fvgs, m1['close'], ltf['ts_close_ns'])
+    m1_hours = bs._ny_hours(m1_ts)
+    hosts = bs._find_nested_hosts(ltf_fvgs, htf_fvgs, m1_ts, m1_hours, proximity_bp)
+
     raw = []
     for lf, host in zip(ltf_fvgs, hosts):
         if host is None:
@@ -268,8 +269,8 @@ def detect_signals(m1, m1_es=None,
 
 
 def preprocess_signals(raw_signals, m1, m1_hours, ct_hour, ct_date,
-                       use_windows=True, cooldown=DEFAULT_COOLDOWN):
-    """Gate raw signals once: session + window + per-direction cooldown.
+                       use_windows=True):
+    """Gate raw signals once: session + window.
     Pre-compute sess_end for each surviving signal.
 
     Returns a list of augmented signal dicts ready for run_combo_fast().
@@ -288,12 +289,6 @@ def preprocess_signals(raw_signals, m1, m1_hours, ct_hour, ct_date,
             continue
         if use_windows and not _in_window(cth):
             continue
-
-        # Per-direction cooldown (global, not reset per combo — ensures signal
-        # list is realistic; block-while-open in run_combo_fast handles per-trade)
-        if idx - last_dir[sig['direction']] < cooldown:
-            continue
-        last_dir[sig['direction']] = idx
 
         sess_end = bs._session_end_idx(m1_hours, idx, m1_ts)
 
@@ -325,12 +320,15 @@ def run_combo_fast(prepped, m1_arrays,
                    be_at_partial=DEFAULT_BE_AT_PART,
                    dll_usd=DEFAULT_DLL_USD,
                    per_trade_dll_usd=DEFAULT_PTDLL_USD,
-                   usd_per_pt=DEFAULT_USD_PER_PT):
+                   usd_per_pt=DEFAULT_USD_PER_PT,
+                   entry_mode='immediate',
+                   cooldown=DEFAULT_COOLDOWN):
     """Simulate one (stop%, partial%, target%, ext%) configuration.
 
     Args:
         prepped      : output of preprocess_signals()
         m1_arrays    : (high, low, close) numpy arrays extracted from m1 dict
+        entry_mode   : 'immediate', 'near_edge', 'middle', 'far_edge'
 
     Returns:
         list of trade-row dicts
@@ -339,9 +337,22 @@ def run_combo_fast(prepped, m1_arrays,
     rows        = []
     daily_usd   = {}    # cday → cumulative $ (DLL gate)
     blocked_until = -1  # block-while-open
+    
+    last_bull_idx = -10**9
+    last_bear_idx = -10**9
+    last_signal_idx = -10**9
 
     for sig in prepped:
         entry_idx = sig['entry_idx']
+        direction = sig['direction']
+        
+        # Shared and Directional Cooldown (Pine Script Match)
+        if entry_idx - last_signal_idx < cooldown:
+            continue
+        if direction == 1 and (entry_idx - last_bull_idx < cooldown):
+            continue
+        if direction == -1 and (entry_idx - last_bear_idx < cooldown):
+            continue
 
         if entry_idx <= blocked_until:
             continue
@@ -349,12 +360,22 @@ def run_combo_fast(prepped, m1_arrays,
         cday = sig['cday']
         if daily_usd.get(cday, 0.0) <= -abs(dll_usd):
             continue
-
-        direction   = sig['direction']
+            
+        # Update trackers only if the trade was actually taken
+        last_signal_idx = entry_idx
         if direction == 1:
-            entry_price = sig['ltf_bot']
+            last_bull_idx = entry_idx
         else:
-            entry_price = sig['ltf_top']
+            last_bear_idx = entry_idx
+        
+        if entry_mode == 'immediate':
+            entry_price = float(close[entry_idx])
+        elif entry_mode == 'near_edge':
+            entry_price = sig['ltf_top'] if direction == 1 else sig['ltf_bot']
+        elif entry_mode == 'middle':
+            entry_price = (sig['ltf_top'] + sig['ltf_bot']) / 2.0
+        else: # far_edge
+            entry_price = sig['ltf_bot'] if direction == 1 else sig['ltf_top']
             
         sess_end    = sig['sess_end']
 

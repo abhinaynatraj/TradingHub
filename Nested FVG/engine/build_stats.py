@@ -114,42 +114,47 @@ def _ny_hours(ts_ns):
     return idx.hour.to_numpy()
 
 
-def _compute_mit_ts(htf_fvgs, htf_close, htf_ts):
+def _compute_mit_ts(htf_fvgs, m1_close, m1_ts):
     """Vectorized mitigation: each HTF gap's first close-through ts after formation.
-
-    Replaces the per-gap Python forward-scan (O(gaps * bars)) — still per-gap but
-    each lookup is a numpy nonzero over the post-formation slice. Sets g['mit_ts'].
+    Updated to use 1m closes to match Pine Script perfectly.
     """
-    n = len(htf_close)
+    n = len(m1_close)
     for g in htf_fvgs:
-        i0 = g['idx'] + 1
+        idx = int(np.searchsorted(m1_ts, g['ts_ns'], side='left'))
         g['mit_ts'] = None
-        if i0 >= n:
+        if idx >= n:
             continue
         if g['dir'] == 1:
-            hits = np.nonzero(htf_close[i0:] < g['bot'])[0]
+            hits = np.nonzero(m1_close[idx:] < g['bot'])[0]
         else:
-            hits = np.nonzero(htf_close[i0:] > g['top'])[0]
+            hits = np.nonzero(m1_close[idx:] > g['top'])[0]
         if len(hits):
-            g['mit_ts'] = int(htf_ts[i0 + hits[0]])
+            g['mit_ts'] = int(m1_ts[idx + hits[0]])
 
 
-def _find_nested_hosts(ltf_fvgs, htf_fvgs, proximity_bp=PROXIMITY_BP):
+def _find_nested_hosts(ltf_fvgs, htf_fvgs, m1_ts, m1_hours, proximity_bp=PROXIMITY_BP):
     """Sweep-line nesting: for each LTF FVG, the first live, same-direction,
-    containing HTF gap (in HTF formation order). O(LTF * live-set) instead of
-    O(LTF * HTF). Verified identical to the brute-force reference (see test).
-
-    Both lists are already time-sorted by formation (find_fvgs scans bars in order).
-    Returns a list parallel to ltf_fvgs: the host gap dict, or None.
+    containing HTF gap (in HTF formation order).
     """
     by_dir = {1: [g for g in htf_fvgs if g['dir'] == 1],
               -1: [g for g in htf_fvgs if g['dir'] == -1]}
     ptr = {1: 0, -1: 0}
     live = {1: [], -1: []}
     hosts = []
+    
+    last_hr = -1
     for lf in ltf_fvgs:
         sig = lf['ts_ns']
         d = lf['dir']
+        
+        # 19:00 Session Purge: NY hour 20 == 19:00 Chicago.
+        idx = int(np.searchsorted(m1_ts, sig, side='left'))
+        if idx < len(m1_hours):
+            cur_hr = int(m1_hours[idx])
+            if last_hr != -1 and last_hr != 20 and cur_hr == 20:
+                live[1].clear()
+                live[-1].clear()
+            last_hr = cur_hr
         gaps = by_dir[d]
         # admit HTF gaps CONFIRMED strictly before this signal confirms.
         # Both ts_ns are now bar-CLOSE (confirmation) times; strict `<` forbids an
@@ -190,18 +195,15 @@ def build_pairing(key, ltf_min, htf_min, m1, m1_es):
     ltf_fvgs = find_fvgs(ltf, MIN_FVG_BP)
     htf_fvgs = find_fvgs(htf, MIN_FVG_BP)
 
-    htf_close = htf['close']
-    # Mitigation must be timestamped at the mitigating bar's CLOSE (when it becomes
-    # known), not its start — same look-ahead concern as FVG confirmation.
-    htf_close_ts = htf['ts_close_ns']
-    _compute_mit_ts(htf_fvgs, htf_close, htf_close_ts)
-
-    # Precompute NY hour for every 1m bar once (used for session gating + expiry).
     m1_ts = m1['ts_ns']
     m1_hours = _ny_hours(m1_ts)
 
+    m1_close = m1['close']
+    m1_close_ts = ltf['ts_close_ns']
+    _compute_mit_ts(htf_fvgs, m1_close, m1_close_ts)
+
     # Nesting hosts for all LTF FVGs via the sweep (parallel to ltf_fvgs).
-    hosts = _find_nested_hosts(ltf_fvgs, htf_fvgs)
+    hosts = _find_nested_hosts(ltf_fvgs, htf_fvgs, m1_ts, m1_hours)
 
     rows = []
     n_suppressed = 0
