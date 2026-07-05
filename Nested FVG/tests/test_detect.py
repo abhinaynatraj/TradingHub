@@ -1,0 +1,132 @@
+import numpy as np
+from engine.detect import find_fvgs
+
+def _bars(highs, lows):
+    n = len(highs)
+    return dict(
+        ts_ns=np.arange(n, dtype='int64'),
+        open=np.array(lows, dtype='float64'),
+        high=np.array(highs, dtype='float64'),
+        low=np.array(lows, dtype='float64'),
+        close=np.array(lows, dtype='float64'),
+    )
+
+def test_bullish_fvg_detected():
+    # bar2.low (108) > bar0.high (105) -> bullish gap [105, 108] at index 2
+    bars = _bars(highs=[105, 106, 110], lows=[100, 101, 108])
+    fvgs = find_fvgs(bars, min_bp=0.0)
+    assert len(fvgs) == 1
+    f = fvgs[0]
+    assert f['dir'] == 1
+    assert f['bot'] == 105.0
+    assert f['top'] == 108.0
+    assert f['idx'] == 2
+
+def test_bearish_fvg_detected():
+    # bar2.high (95) < bar0.low (100) -> bearish gap [95, 100] at index 2
+    bars = _bars(highs=[105, 104, 95], lows=[100, 99, 90])
+    fvgs = find_fvgs(bars, min_bp=0.0)
+    assert len(fvgs) == 1
+    f = fvgs[0]
+    assert f['dir'] == -1
+    assert f['bot'] == 95.0
+    assert f['top'] == 100.0
+
+def test_min_bp_filter_rejects_small_gap():
+    # gap of 0.01 on price ~108 = ~0.9bp; min_bp=2.0 should reject
+    bars = _bars(highs=[105.00, 106, 110], lows=[100, 101, 105.01])
+    assert find_fvgs(bars, min_bp=2.0) == []
+
+def test_no_gap_returns_empty():
+    bars = _bars(highs=[105, 106, 107], lows=[100, 101, 104])  # 104 < 105, no bull gap
+    assert find_fvgs(bars, min_bp=0.0) == []
+
+from engine.detect import is_mitigated
+
+def test_bull_gap_mitigated_on_close_below_bottom():
+    gap = dict(dir=1, top=108.0, bot=105.0)
+    assert is_mitigated(gap, close=104.9) is True    # closed below bottom
+    assert is_mitigated(gap, close=105.1) is False   # still inside/above
+
+def test_bear_gap_mitigated_on_close_above_top():
+    gap = dict(dir=-1, top=100.0, bot=95.0)
+    assert is_mitigated(gap, close=100.1) is True    # closed above top
+    assert is_mitigated(gap, close=99.9) is False
+
+def test_wick_through_does_not_mitigate():
+    # mitigation is by CLOSE, not wick; caller passes close only
+    gap = dict(dir=1, top=108.0, bot=105.0)
+    assert is_mitigated(gap, close=105.0) is False   # exactly at bottom = not below
+
+from engine.detect import is_nested
+
+def test_ltf_fully_inside_htf_is_nested():
+    htf = dict(dir=1, top=110.0, bot=100.0)
+    ltf = dict(dir=1, top=108.0, bot=102.0)
+    assert is_nested(ltf, htf, proximity_bp=0.0) is True
+
+def test_ltf_outside_htf_not_nested():
+    htf = dict(dir=1, top=110.0, bot=100.0)
+    ltf = dict(dir=1, top=112.0, bot=102.0)   # top pokes above htf top
+    assert is_nested(ltf, htf, proximity_bp=0.0) is False
+
+def test_proximity_tolerance_allows_slight_overshoot():
+    htf = dict(dir=1, top=110.0, bot=100.0)
+    ltf = dict(dir=1, top=110.05, bot=99.95)  # ~4.5bp over on each edge
+    assert is_nested(ltf, htf, proximity_bp=0.0) is False
+    assert is_nested(ltf, htf, proximity_bp=10.0) is True
+
+def test_opposite_direction_never_nested():
+    htf = dict(dir=1, top=110.0, bot=100.0)
+    ltf = dict(dir=-1, top=108.0, bot=102.0)
+    assert is_nested(ltf, htf, proximity_bp=0.0) is False
+
+def test_min_bp_boundary_exactly_at_threshold_passes():
+    # gap exactly equal to threshold should be accepted (code uses >=).
+    # Use exactly-representable float64 values: 100.125 - 100.0 = 0.125 exactly,
+    # and threshold = 100.0 * (12.5/10000) = 0.125 exactly.
+    bars = _bars(highs=[100.0, 100.0, 110.0], lows=[90, 90, 100.125])
+    fvgs = find_fvgs(bars, min_bp=12.5)
+    assert len(fvgs) == 1
+    assert fvgs[0]['dir'] == 1
+
+def test_bear_wick_through_does_not_mitigate():
+    gap = dict(dir=-1, top=100.0, bot=95.0)
+    assert is_mitigated(gap, close=100.0) is False   # exactly at top = not above
+
+def test_ltf_below_htf_bottom_not_nested():
+    htf = dict(dir=1, top=110.0, bot=100.0)
+    ltf = dict(dir=1, top=108.0, bot=98.0)   # bot pokes below htf bot
+    assert is_nested(ltf, htf, proximity_bp=0.0) is False
+
+
+def test_resampled_fvg_stamped_at_close_not_start():
+    """Look-ahead guard: when bars carry ts_close_ns (resampled series), an FVG
+    must be timestamped at the bar's CLOSE (when it becomes known), not its start."""
+    # 3 bars forming a bullish gap at index 2; ts_ns = bar start, ts_close_ns = next start.
+    bars = dict(
+        ts_ns=np.array([100, 200, 300], dtype='int64'),
+        ts_close_ns=np.array([200, 300, 400], dtype='int64'),
+        open=np.array([100.0, 101.0, 108.0]),
+        high=np.array([105.0, 106.0, 110.0]),
+        low=np.array([100.0, 101.0, 108.0]),
+        close=np.array([104.0, 105.0, 109.0]),
+    )
+    fvgs = find_fvgs(bars, min_bp=0.0)
+    assert len(fvgs) == 1
+    # confirmation ts must be the CLOSE of bar 2 (400), NOT its start (300)
+    assert fvgs[0]['ts_ns'] == 400
+
+
+def test_native_fvg_without_close_ts_uses_bar_ts():
+    """Backward compat: bars without ts_close_ns stamp at ts_ns (native 1m path)."""
+    bars = dict(
+        ts_ns=np.array([100, 200, 300], dtype='int64'),
+        open=np.array([100.0, 101.0, 108.0]),
+        high=np.array([105.0, 106.0, 110.0]),
+        low=np.array([100.0, 101.0, 108.0]),
+        close=np.array([104.0, 105.0, 109.0]),
+    )
+    fvgs = find_fvgs(bars, min_bp=0.0)
+    assert len(fvgs) == 1
+    assert fvgs[0]['ts_ns'] == 300

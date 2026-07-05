@@ -1,0 +1,34 @@
+{
+  "run_timestamp_utc": "2026-07-03T17:08:08.504027+00:00",
+  "config": {
+    "stop_pct": 0.1,
+    "partial_pct": 0.1,
+    "target_pct": 0.225,
+    "ext_pct": 0.3,
+    "qty": 3,
+    "qty_part": 1,
+    "qty_tgt": 1,
+    "dll_usd": 400.0,
+    "ptdll_usd": 150.0,
+    "usd_per_pt": 2.0
+  },
+  "summary": {
+    "n": 25720,
+    "n_settled": 25683,
+    "wins": 5800,
+    "losses": 12865,
+    "partials": 7018,
+    "expired": 37,
+    "wr_honest": 22.58,
+    "wr_v7": 49.91,
+    "ev_r": -0.0424,
+    "ev_usd": -1.49,
+    "pf": 0.973,
+    "total_usd": -38290.03,
+    "max_drawdown_usd": 45231.25,
+    "stop_pct": 0.1,
+    "partial_pct": 0.1,
+    "target_pct": 0.225,
+    "ext_pct": 0.3
+  }
+}

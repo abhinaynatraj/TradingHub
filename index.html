@@ -1,838 +1,1106 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
+
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Statistic.ally</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script defer src="Analysis/dashboard/shared.js"></script>
-<style>
-/* ── Reset & base ──────────────────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Statistic.ally</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <script defer src="Analysis/dashboard/shared.js"></script>
+  <style>
+    /* ── Reset & base ──────────────────────────────────────────────────────────── */
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-:root {
-  --ease: cubic-bezier(.4,0,.2,1);
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
-}
+    :root {
+      --ease: cubic-bezier(.4, 0, .2, 1);
+      --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    }
 
-[data-theme="dark"] {
-  --bg:           #080c14;
-  --bg-card:      #0f1623;
-  --bg-raised:    #161f2e;
-  --bg-hover:     #1a2540;
-  --border:       #1e2d45;
-  --border-mid:   #243350;
-  --text:         #e8edf5;
-  --text-sub:     #8fa3bf;
-  --text-muted:   #4a6080;
-  --green:        #10b981;
-  --green-tint:   rgba(16,185,129,.08);
-  --green-border: rgba(16,185,129,.25);
-  --red:          #ef4444;
-  --red-tint:     rgba(239,68,68,.08);
-  --red-border:   rgba(239,68,68,.25);
-  --blue:         #3b82f6;
-  --blue-tint:    rgba(59,130,246,.08);
-  --amber:        #f59e0b;
-  --purple:       #8b5cf6;
-  --cyan:         #06b6d4;
-  --shadow:       0 2px 12px rgba(0,0,0,.4);
-  --shadow-lg:    0 8px 32px rgba(0,0,0,.5);
-}
+    [data-theme="dark"] {
+      --bg: #080c14;
+      --bg-card: #0f1623;
+      --bg-raised: #161f2e;
+      --bg-hover: #1a2540;
+      --border: #1e2d45;
+      --border-mid: #243350;
+      --text: #e8edf5;
+      --text-sub: #8fa3bf;
+      --text-muted: #4a6080;
+      --green: #10b981;
+      --green-tint: rgba(16, 185, 129, .08);
+      --green-border: rgba(16, 185, 129, .25);
+      --red: #ef4444;
+      --red-tint: rgba(239, 68, 68, .08);
+      --red-border: rgba(239, 68, 68, .25);
+      --blue: #3b82f6;
+      --blue-tint: rgba(59, 130, 246, .08);
+      --amber: #f59e0b;
+      --purple: #8b5cf6;
+      --cyan: #06b6d4;
+      --shadow: 0 2px 12px rgba(0, 0, 0, .4);
+      --shadow-lg: 0 8px 32px rgba(0, 0, 0, .5);
+    }
 
-[data-theme="light"] {
-  --bg:           #f0f4fb;
-  --bg-card:      #ffffff;
-  --bg-raised:    #f7f9fd;
-  --bg-hover:     #eef2fa;
-  --border:       #d8e2f0;
-  --border-mid:   #c8d6e8;
-  --text:         #0f172a;
-  --text-sub:     #4a607a;
-  --text-muted:   #8fa3bf;
-  --green:        #059669;
-  --green-tint:   rgba(5,150,105,.06);
-  --green-border: rgba(5,150,105,.25);
-  --red:          #dc2626;
-  --red-tint:     rgba(220,38,38,.06);
-  --red-border:   rgba(220,38,38,.25);
-  --blue:         #2563eb;
-  --blue-tint:    rgba(37,99,235,.06);
-  --amber:        #d97706;
-  --purple:       #7c3aed;
-  --cyan:         #0891b2;
-  --shadow:       0 2px 8px rgba(0,0,0,.08);
-  --shadow-lg:    0 8px 24px rgba(0,0,0,.12);
-}
+    [data-theme="light"] {
+      --bg: #f0f4fb;
+      --bg-card: #ffffff;
+      --bg-raised: #f7f9fd;
+      --bg-hover: #eef2fa;
+      --border: #d8e2f0;
+      --border-mid: #c8d6e8;
+      --text: #0f172a;
+      --text-sub: #4a607a;
+      --text-muted: #8fa3bf;
+      --green: #059669;
+      --green-tint: rgba(5, 150, 105, .06);
+      --green-border: rgba(5, 150, 105, .25);
+      --red: #dc2626;
+      --red-tint: rgba(220, 38, 38, .06);
+      --red-border: rgba(220, 38, 38, .25);
+      --blue: #2563eb;
+      --blue-tint: rgba(37, 99, 235, .06);
+      --amber: #d97706;
+      --purple: #7c3aed;
+      --cyan: #0891b2;
+      --shadow: 0 2px 8px rgba(0, 0, 0, .08);
+      --shadow-lg: 0 8px 24px rgba(0, 0, 0, .12);
+    }
 
-[data-theme="gold"] {
-  --bg:           #1a1408;
-  --bg-card:      #241b0c;
-  --bg-raised:    #2e2310;
-  --bg-hover:     #3a2c15;
-  --border:       #4a371a;
-  --border-mid:   #5a4220;
-  --text:         #f5e6c8;
-  --text-sub:     #c9b386;
-  --text-muted:   #8c7855;
-  --green:        #d4af37;
-  --green-tint:   rgba(212,175,55,.10);
-  --green-border: rgba(212,175,55,.30);
-  --red:          #c84a3a;
-  --red-tint:     rgba(200,74,58,.10);
-  --red-border:   rgba(200,74,58,.30);
-  --blue:         #d4a942;
-  --blue-tint:    rgba(212,169,66,.10);
-  --amber:        #e6b94a;
-  --purple:       #b88c3a;
-  --cyan:         #d4af37;
-  --shadow:       0 2px 12px rgba(0,0,0,.5);
-  --shadow-lg:    0 8px 32px rgba(0,0,0,.6);
-}
+    [data-theme="gold"] {
+      --bg: #1a1408;
+      --bg-card: #241b0c;
+      --bg-raised: #2e2310;
+      --bg-hover: #3a2c15;
+      --border: #4a371a;
+      --border-mid: #5a4220;
+      --text: #f5e6c8;
+      --text-sub: #c9b386;
+      --text-muted: #8c7855;
+      --green: #d4af37;
+      --green-tint: rgba(212, 175, 55, .10);
+      --green-border: rgba(212, 175, 55, .30);
+      --red: #c84a3a;
+      --red-tint: rgba(200, 74, 58, .10);
+      --red-border: rgba(200, 74, 58, .30);
+      --blue: #d4a942;
+      --blue-tint: rgba(212, 169, 66, .10);
+      --amber: #e6b94a;
+      --purple: #b88c3a;
+      --cyan: #d4af37;
+      --shadow: 0 2px 12px rgba(0, 0, 0, .5);
+      --shadow-lg: 0 8px 32px rgba(0, 0, 0, .6);
+    }
 
-[data-theme="indigo"] {
-  --bg:           #0a0d1f;
-  --bg-card:      #131730;
-  --bg-raised:    #1c2240;
-  --bg-hover:     #2a3155;
-  --border:       #2a3055;
-  --border-mid:   #3a4275;
-  --text:         #e2e5f5;
-  --text-sub:     #9aa4d4;
-  --text-muted:   #5a6395;
-  --green:        #818cf8;
-  --green-tint:   rgba(129,140,248,.10);
-  --green-border: rgba(129,140,248,.30);
-  --red:          #ef4444;
-  --red-tint:     rgba(239,68,68,.08);
-  --red-border:   rgba(239,68,68,.25);
-  --blue:         #6366f1;
-  --blue-tint:    rgba(99,102,241,.10);
-  --amber:        #fbbf24;
-  --purple:       #a78bfa;
-  --cyan:         #818cf8;
-  --shadow:       0 2px 12px rgba(0,0,0,.4);
-  --shadow-lg:    0 8px 32px rgba(0,0,0,.5);
-}
+    [data-theme="indigo"] {
+      --bg: #0a0d1f;
+      --bg-card: #131730;
+      --bg-raised: #1c2240;
+      --bg-hover: #2a3155;
+      --border: #2a3055;
+      --border-mid: #3a4275;
+      --text: #e2e5f5;
+      --text-sub: #9aa4d4;
+      --text-muted: #5a6395;
+      --green: #818cf8;
+      --green-tint: rgba(129, 140, 248, .10);
+      --green-border: rgba(129, 140, 248, .30);
+      --red: #ef4444;
+      --red-tint: rgba(239, 68, 68, .08);
+      --red-border: rgba(239, 68, 68, .25);
+      --blue: #6366f1;
+      --blue-tint: rgba(99, 102, 241, .10);
+      --amber: #fbbf24;
+      --purple: #a78bfa;
+      --cyan: #818cf8;
+      --shadow: 0 2px 12px rgba(0, 0, 0, .4);
+      --shadow-lg: 0 8px 32px rgba(0, 0, 0, .5);
+    }
 
-body {
-  font-family: var(--font-sans);
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  line-height: 1.6;
-}
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
 
-/* ── Header ────────────────────────────────────────────────────────────────── */
-.hdr {
-  background: var(--bg-card);
-  border-bottom: 1px solid var(--border);
-  padding: 0 32px;
-  height: 64px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  box-shadow: var(--shadow);
-}
-.hdr-brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.hdr-logo {
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -.5px;
-  color: var(--text);
-}
-.hdr-logo em { color: var(--blue); font-style: normal; }
-.hdr-sub {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  border-left: 1px solid var(--border-mid);
-  padding-left: 12px;
-}
-/* 4-theme picker — wired by Analysis/dashboard/shared.js */
-.theme-picker {
-  display: inline-flex;
-  gap: 4px;
-  padding: 4px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border-mid);
-  border-radius: 8px;
-}
-.theme-opt {
-  background: transparent;
-  border: none;
-  border-radius: 5px;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 14px;
-  width: 28px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: all .15s var(--ease);
-}
-.theme-opt:hover { background: var(--bg-hover); color: var(--text); }
-.theme-opt.active { background: var(--bg-card); color: var(--text); box-shadow: inset 0 0 0 1px var(--border-mid); }
+    /* ── Header ────────────────────────────────────────────────────────────────── */
+    .hdr {
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      padding: 0 32px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: var(--shadow);
+    }
 
-/* ── Main layout ───────────────────────────────────────────────────────────── */
-main {
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: 40px 32px 80px;
-}
+    .hdr-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
 
-/* ── Hero ──────────────────────────────────────────────────────────────────── */
-.hero {
-  text-align: center;
-  margin-bottom: 44px;
-}
-.hero-eyebrow {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-  color: var(--blue);
-  margin-bottom: 10px;
-}
-.hero-title {
-  font-size: 34px;
-  font-weight: 800;
-  letter-spacing: -.8px;
-  line-height: 1.18;
-  color: var(--text);
-  margin-bottom: 14px;
-}
-.hero-title .accent { color: var(--blue); }
-.hero-desc {
-  font-size: 14.5px;
-  color: var(--text-sub);
-  max-width: 500px;
-  margin: 0 auto 24px;
-}
-.hero-meta {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 24px;
-  flex-wrap: wrap;
-}
-.hero-badge {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-muted);
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px 12px;
-}
-.hero-badge .dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--green);
-  animation: pulse 2s ease-in-out infinite;
-}
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    .hdr-logo {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -.5px;
+      color: var(--text);
+    }
 
-/* ── Section heading ────────────────────────────────────────────────────────── */
-.sec-head {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-bottom: 20px;
-}
-.sec-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-.sec-line { flex: 1; height: 1px; background: var(--border); }
+    .hdr-logo em {
+      color: var(--blue);
+      font-style: normal;
+    }
 
-/* ── Project grid ──────────────────────────────────────────────────────────── */
-.project-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin-bottom: 44px;
-}
+    .hdr-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      border-left: 1px solid var(--border-mid);
+      padding-left: 12px;
+    }
 
-.project-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: var(--shadow);
-  display: flex;
-  flex-direction: column;
-  transition: transform .2s var(--ease), box-shadow .2s var(--ease), border-color .2s;
-}
-.project-card:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--shadow-lg);
-  border-color: var(--border-mid);
-}
+    /* 4-theme picker — wired by Analysis/dashboard/shared.js */
+    .theme-picker {
+      display: inline-flex;
+      gap: 4px;
+      padding: 4px;
+      background: var(--bg-raised);
+      border: 1px solid var(--border-mid);
+      border-radius: 8px;
+    }
 
-.card-accent {
-  height: 4px;
-  width: 100%;
-}
+    .theme-opt {
+      background: transparent;
+      border: none;
+      border-radius: 5px;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 14px;
+      width: 28px;
+      height: 26px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all .15s var(--ease);
+    }
 
-.card-body {
-  padding: 24px 24px 20px;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
+    .theme-opt:hover {
+      background: var(--bg-hover);
+      color: var(--text);
+    }
 
-.card-tag-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.card-tag {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  padding: 3px 8px;
-  border-radius: 4px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-}
-.card-tag.active { background: var(--green-tint); border-color: var(--green-border); color: var(--green); }
+    .theme-opt.active {
+      background: var(--bg-card);
+      color: var(--text);
+      box-shadow: inset 0 0 0 1px var(--border-mid);
+    }
 
-.card-title {
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -.4px;
-  color: var(--text);
-  margin-bottom: 4px;
-}
-.card-subtitle {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  margin-bottom: 14px;
-}
+    /* ── Main layout ───────────────────────────────────────────────────────────── */
+    main {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 40px 32px 80px;
+    }
 
-.card-desc {
-  font-size: 13.5px;
-  color: var(--text-sub);
-  line-height: 1.65;
-  margin-bottom: 18px;
-}
+    /* ── Hero ──────────────────────────────────────────────────────────────────── */
+    .hero {
+      text-align: center;
+      margin-bottom: 44px;
+    }
 
-/* ── Stats row ─────────────────────────────────────────────────────────────── */
-.stats-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1px;
-  background: var(--border);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  overflow: hidden;
-  margin-bottom: 18px;
-}
-.stat-cell {
-  background: var(--bg-raised);
-  padding: 12px 10px;
-  text-align: center;
-}
-.stat-lbl {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-}
-.stat-val {
-  font-family: var(--font-mono);
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text);
-}
-.stat-val.pos { color: var(--green); }
-.stat-val.neg { color: var(--red); }
-.stat-val.neutral { color: var(--blue); }
+    .hero-eyebrow {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 10px;
+    }
 
-/* ── Card footer ────────────────────────────────────────────────────────────── */
-.card-footer {
-  padding: 16px 24px;
-  background: var(--bg-raised);
-  border-top: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.card-date-range {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-muted);
-}
-.open-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 18px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: .03em;
-  border: none;
-  cursor: pointer;
-  text-decoration: none;
-  transition: all .15s var(--ease);
-  white-space: nowrap;
-}
-.open-btn svg { width: 12px; height: 12px; }
+    .hero-title {
+      font-size: 34px;
+      font-weight: 800;
+      letter-spacing: -.8px;
+      line-height: 1.18;
+      color: var(--text);
+      margin-bottom: 14px;
+    }
 
-/* ── EV Leaderboard ─────────────────────────────────────────────────────────── */
-.ev-board {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: var(--shadow);
-  margin-bottom: 56px;
-}
-.ev-board-hd {
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-raised);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.ev-board-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-sub);
-  letter-spacing: .04em;
-}
-.ev-board-note {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-muted);
-}
-.ev-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-.ev-table th {
-  padding: 9px 12px;
-  text-align: left;
-  font-size: 9px;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border);
-  font-weight: 600;
-  white-space: nowrap;
-}
-.ev-table td {
-  padding: 9px 12px;
-  border-bottom: 1px solid var(--border);
-  white-space: nowrap;
-  vertical-align: middle;
-}
-.ev-table tr:last-child td { border-bottom: none; }
-.ev-table tbody tr:hover td { background: var(--bg-raised); cursor: default; }
-.ev-rank {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--text-muted);
-  width: 28px;
-  text-align: right;
-}
-.ev-rank.gold   { color: #f59e0b; }
-.ev-rank.silver { color: #94a3b8; }
-.ev-rank.bronze { color: #b45309; }
-.ev-model {
-  font-weight: 700;
-  color: var(--text);
-  font-size: 12.5px;
-}
-.ev-profile {
-  color: var(--text-sub);
-}
-.ev-type {
-  display: inline-block;
-  font-size: 8px;
-  font-weight: 600;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  padding: 2px 6px;
-  border-radius: 4px;
-  margin-left: 6px;
-  vertical-align: middle;
-}
-.ev-type.pct  { background: var(--blue-tint);  border: 1px solid rgba(59,130,246,.25); color: var(--blue); }
-.ev-type.mult { background: var(--bg-raised);   border: 1px solid var(--border-mid);   color: var(--text-muted); }
-.ev-pos { color: var(--green); font-weight: 700; }
-.ev-neg { color: var(--red);   font-weight: 700; }
-.ev-neu { color: var(--text-sub); }
-.ev-edge {
-  font-size: 11px;
-  padding: 2px 7px;
-  border-radius: 4px;
-  font-weight: 600;
-}
-.ev-edge.pos { background: var(--green-tint); color: var(--green); }
-.ev-edge.neg { background: var(--red-tint);   color: var(--red); }
+    .hero-title .accent {
+      color: var(--blue);
+    }
 
-/* ── Sweep model sub-table ───────────────────────────────────────────────────── */
-.sweep-sub-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-.sweep-sub-table th {
-  padding: 8px 10px;
-  text-align: left;
-  font-size: 9px;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border);
-  font-weight: 600;
-}
-.sweep-sub-table td {
-  padding: 9px 10px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-sub);
-}
-.sweep-sub-table tr:last-child td { border-bottom: none; }
-.sweep-sub-table tr:hover td { background: var(--bg-raised); }
+    .hero-desc {
+      font-size: 14.5px;
+      color: var(--text-sub);
+      max-width: 500px;
+      margin: 0 auto 24px;
+    }
 
-/* ── Quick nav ──────────────────────────────────────────────────────────────── */
-.quick-nav {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 40px;
-  padding: 16px 20px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-}
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-sub);
-  text-decoration: none;
-  padding: 6px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg-raised);
-  transition: all .15s;
-  cursor: pointer;
-}
-.nav-item:hover { background: var(--bg-hover); color: var(--text); border-color: var(--border-mid); }
-.nav-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .hero-meta {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
 
-/* ── Loading / error states ────────────────────────────────────────────────── */
-.loading-pill {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-muted);
-  animation: fade 1s ease-in-out infinite alternate;
-}
-@keyframes fade { from { opacity: .4 } to { opacity: 1 } }
+    .hero-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 12px;
+    }
 
-/* ── Responsive ────────────────────────────────────────────────────────────── */
-@media(max-width: 640px) {
-  main { padding: 24px 16px 60px; }
-  .project-grid { grid-template-columns: 1fr; }
-  .hdr { padding: 0 16px; }
-  .hero-title { font-size: 26px; }
-}
-</style>
+    .hero-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: .4
+      }
+    }
+
+    /* ── Section heading ────────────────────────────────────────────────────────── */
+    .sec-head {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    .sec-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .sec-line {
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── Project grid ──────────────────────────────────────────────────────────── */
+    .project-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 44px;
+    }
+
+    .project-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      transition: transform .2s var(--ease), box-shadow .2s var(--ease), border-color .2s;
+    }
+
+    .project-card:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-lg);
+      border-color: var(--border-mid);
+    }
+
+    .card-accent {
+      height: 4px;
+      width: 100%;
+    }
+
+    .card-body {
+      padding: 24px 24px 20px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .card-tag-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .card-tag {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    .card-tag.active {
+      background: var(--green-tint);
+      border-color: var(--green-border);
+      color: var(--green);
+    }
+
+    .card-title {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -.4px;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .card-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      margin-bottom: 14px;
+    }
+
+    .card-desc {
+      font-size: 13.5px;
+      color: var(--text-sub);
+      line-height: 1.65;
+      margin-bottom: 18px;
+    }
+
+    /* ── Stats row ─────────────────────────────────────────────────────────────── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 18px;
+    }
+
+    .stat-cell {
+      background: var(--bg-raised);
+      padding: 12px 10px;
+      text-align: center;
+    }
+
+    .stat-lbl {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .stat-val {
+      font-family: var(--font-mono);
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .stat-val.pos {
+      color: var(--green);
+    }
+
+    .stat-val.neg {
+      color: var(--red);
+    }
+
+    .stat-val.neutral {
+      color: var(--blue);
+    }
+
+    /* ── Card footer ────────────────────────────────────────────────────────────── */
+    .card-footer {
+      padding: 16px 24px;
+      background: var(--bg-raised);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .card-date-range {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .open-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .03em;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all .15s var(--ease);
+      white-space: nowrap;
+    }
+
+    .open-btn svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    /* ── EV Leaderboard ─────────────────────────────────────────────────────────── */
+    .ev-board {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      margin-bottom: 56px;
+    }
+
+    .ev-board-hd {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-raised);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .ev-board-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-sub);
+      letter-spacing: .04em;
+    }
+
+    .ev-board-note {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .ev-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    .ev-table th {
+      padding: 9px 12px;
+      text-align: left;
+      font-size: 9px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .ev-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+
+    .ev-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .ev-table tbody tr:hover td {
+      background: var(--bg-raised);
+      cursor: default;
+    }
+
+    .ev-rank {
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--text-muted);
+      width: 28px;
+      text-align: right;
+    }
+
+    .ev-rank.gold {
+      color: #f59e0b;
+    }
+
+    .ev-rank.silver {
+      color: #94a3b8;
+    }
+
+    .ev-rank.bronze {
+      color: #b45309;
+    }
+
+    .ev-model {
+      font-weight: 700;
+      color: var(--text);
+      font-size: 12.5px;
+    }
+
+    .ev-profile {
+      color: var(--text-sub);
+    }
+
+    .ev-type {
+      display: inline-block;
+      font-size: 8px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
+    .ev-type.pct {
+      background: var(--blue-tint);
+      border: 1px solid rgba(59, 130, 246, .25);
+      color: var(--blue);
+    }
+
+    .ev-type.mult {
+      background: var(--bg-raised);
+      border: 1px solid var(--border-mid);
+      color: var(--text-muted);
+    }
+
+    .ev-pos {
+      color: var(--green);
+      font-weight: 700;
+    }
+
+    .ev-neg {
+      color: var(--red);
+      font-weight: 700;
+    }
+
+    .ev-neu {
+      color: var(--text-sub);
+    }
+
+    .ev-edge {
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    .ev-edge.pos {
+      background: var(--green-tint);
+      color: var(--green);
+    }
+
+    .ev-edge.neg {
+      background: var(--red-tint);
+      color: var(--red);
+    }
+
+    /* ── Sweep model sub-table ───────────────────────────────────────────────────── */
+    .sweep-sub-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    .sweep-sub-table th {
+      padding: 8px 10px;
+      text-align: left;
+      font-size: 9px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+    }
+
+    .sweep-sub-table td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-sub);
+    }
+
+    .sweep-sub-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .sweep-sub-table tr:hover td {
+      background: var(--bg-raised);
+    }
+
+    /* ── Quick nav ──────────────────────────────────────────────────────────────── */
+    .quick-nav {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 40px;
+      padding: 16px 20px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-sub);
+      text-decoration: none;
+      padding: 6px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-raised);
+      transition: all .15s;
+      cursor: pointer;
+    }
+
+    .nav-item:hover {
+      background: var(--bg-hover);
+      color: var(--text);
+      border-color: var(--border-mid);
+    }
+
+    .nav-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    /* ── Loading / error states ────────────────────────────────────────────────── */
+    .loading-pill {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      animation: fade 1s ease-in-out infinite alternate;
+    }
+
+    @keyframes fade {
+      from {
+        opacity: .4
+      }
+
+      to {
+        opacity: 1
+      }
+    }
+
+    /* ── Responsive ────────────────────────────────────────────────────────────── */
+    @media(max-width: 640px) {
+      main {
+        padding: 24px 16px 60px;
+      }
+
+      .project-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .hdr {
+        padding: 0 16px;
+      }
+
+      .hero-title {
+        font-size: 26px;
+      }
+    }
+  </style>
 </head>
+
 <body>
 
-<header class="hdr">
-  <div class="hdr-brand">
-    <div class="hdr-logo">Statistic<em>.ally</em></div>
-    <div class="hdr-sub">NQ · ES Futures · Research Lab</div>
-  </div>
-  <div class="theme-picker" role="radiogroup" aria-label="Theme">
-    <button class="theme-opt" data-theme="dark"   title="Dark"   aria-label="Dark theme">☀</button>
-    <button class="theme-opt" data-theme="light"  title="Light"  aria-label="Light theme">☾</button>
-    <button class="theme-opt" data-theme="gold"   title="Gold"   aria-label="Gold theme">✦</button>
-    <button class="theme-opt" data-theme="indigo" title="Indigo" aria-label="Indigo theme">◆</button>
-  </div>
-</header>
-
-<main>
-
-  <!-- ── Hero ─────────────────────────────────────────────────────────────── -->
-  <div class="hero">
-    <div class="hero-eyebrow">NQ Futures · Quantitative Backtesting</div>
-    <h1 class="hero-title">Statistic<span class="accent">.ally</span></h1>
-    <p class="hero-desc">
-      Statistical backtesting across sweep fractal setups and first-presented fair value gaps —
-      15+ years of 1-minute NQ data, multiple risk profiles.
-    </p>
-    <div class="hero-meta">
-      <div class="hero-badge"><div class="dot"></div>Updated daily</div>
-      <div class="hero-badge">📊 2 Models</div>
-      <div class="hero-badge">🕐 2010 – 2026</div>
-      <div class="hero-badge">⚡ DuckDB · Python</div>
+  <header class="hdr">
+    <div class="hdr-brand">
+      <div class="hdr-logo">Statistic<em>.ally</em></div>
+      <div class="hdr-sub">NQ · ES Futures · Research Lab</div>
     </div>
-  </div>
-
-  <!-- ── Project cards ──────────────────────────────────────────────────── -->
-  <div class="sec-head">
-    <span class="sec-label">Projects</span>
-    <div class="sec-line"></div>
-  </div>
-
-  <div class="project-grid" id="projectGrid">
-    <!-- Cards injected by JS -->
-    <div class="loading-pill">Loading project stats…</div>
-  </div>
-
-
-  <!-- ── Serve instructions ─────────────────────────────────────────────── -->
-  <div class="sec-head">
-    <span class="sec-label">Quick Start</span>
-    <div class="sec-line"></div>
-  </div>
-  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:20px 24px;margin-bottom:56px;">
-    <p style="font-size:13px;color:var(--text-sub);margin-bottom:14px;">
-      Serve all dashboards from the <code style="font-family:var(--font-mono);background:var(--bg-raised);padding:2px 6px;border-radius:4px;">Downloads</code> directory at <code style="font-family:var(--font-mono);background:var(--bg-raised);padding:2px 6px;border-radius:4px;">http://localhost:9000</code>:
-    </p>
-    <div style="background:var(--bg-raised);border:1px solid var(--border-mid);border-radius:10px;padding:14px 18px;font-family:var(--font-mono);font-size:13px;color:var(--cyan);">
-      cd ~/Downloads &amp;&amp; python3 -m http.server 9000
+    <div class="theme-picker" role="radiogroup" aria-label="Theme">
+      <button class="theme-opt" data-theme="dark" title="Dark" aria-label="Dark theme">☀</button>
+      <button class="theme-opt" data-theme="light" title="Light" aria-label="Light theme">☾</button>
+      <button class="theme-opt" data-theme="gold" title="Gold" aria-label="Gold theme">✦</button>
+      <button class="theme-opt" data-theme="indigo" title="Indigo" aria-label="Indigo theme">◆</button>
     </div>
-    <p style="font-size:12px;color:var(--text-muted);margin-top:10px;">
-      Then open the dashboard links above. Data refreshes daily at 7am ET via cron → <code>daily_update.py</code> → rebuilds all JSON outputs.
-    </p>
-  </div>
+  </header>
 
-</main>
+  <main>
 
-<footer style="text-align:center;padding:24px;font-size:11px;color:var(--text-muted);border-top:1px solid var(--border);font-family:var(--font-mono);">
-  Statistic.ally · NQ &amp; ES Futures · Data: Databento GLBX.MDP3 · Timestamps: America/New_York
-</footer>
+    <!-- ── Hero ─────────────────────────────────────────────────────────────── -->
+    <div class="hero">
+      <div class="hero-eyebrow">NQ Futures · Quantitative Backtesting</div>
+      <h1 class="hero-title">Statistic<span class="accent">.ally</span></h1>
+      <p class="hero-desc">
+        Statistical backtesting across sweep fractal setups and first-presented fair value gaps —
+        15+ years of 1-minute NQ data, multiple risk profiles.
+      </p>
+      <div class="hero-meta">
+        <div class="hero-badge">
+          <div class="dot"></div>Updated daily
+        </div>
+        <div class="hero-badge">📊 2 Models</div>
+        <div class="hero-badge">🕐 2010 – 2026</div>
+        <div class="hero-badge">⚡ DuckDB · Python</div>
+      </div>
+    </div>
 
-<script>
-// ── Theme ────────────────────────────────────────────────────────────────────
-// Theme handling delegated to Analysis/dashboard/shared.js — auto-wires
-// .theme-picker buttons and persists the choice via localStorage['hub-theme'].
-// shared.js is loaded as a deferred script in <head>; the early inline block
-// at the bottom of <head> already set data-theme="dark" as a default so
-// nothing flashes before shared.js executes.
+    <!-- ── Project cards ──────────────────────────────────────────────────── -->
+    <div class="sec-head">
+      <span class="sec-label">Projects</span>
+      <div class="sec-line"></div>
+    </div>
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-function pct(v)  { return v != null ? (v * 100).toFixed(1) + '%' : '—'; }
-function sgn(v)  { return v != null ? (v >= 0 ? '+' : '') + v.toFixed(3) + 'R' : '—'; }
-function num(v)  { return v != null ? Number(v).toLocaleString() : '—'; }
+    <div class="project-grid" id="projectGrid">
+      <!-- Cards injected by JS -->
+      <div class="loading-pill">Loading project stats…</div>
+    </div>
 
-function wrColor(wr) {
-  if (wr == null) return 'neutral';
-  if (wr >= 0.55) return 'pos';
-  if (wr <= 0.28) return 'neg';
-  return '';
-}
 
-// ── Projects config ──────────────────────────────────────────────────────────
-const PROJECTS = [
-  {
-    id:       'sweep',
-    title:    'Fractal Sweep',
-    subtitle: 'Sweep + CISD · 3 Timeframes',
-    desc:     'Prior-candle sweep → return-to-range → CISD confirmation across 1H_5M, 30M_3M, and 15M_1M. 3 runtime-toggleable filters (Shallow Sweep, Closed Back Inside, NQ-ES Divergence) with 8 precomputed combinations. Engine and Pine indicator are aligned.',
-    json:     'Fractal Sweep/model_stats.json',
-    link:     'Fractal Sweep/model_dashboard.html',
-    color:    '#8b5cf6',
-    icon:     '🎯',
-    type:     'sweep',
-    stats:    null,
-  },
-  {
-    id:       'amas',
-    title:    'Amas Models',
-    subtitle: 'Mentorship-derived models · WIP',
-    desc:     'Backtest engine + dashboard for trading models extracted from the Amas mentorship materials. Mirrors the Fractal Sweep pattern: Python engine writes model_stats.json, single-file dashboard reads it.',
-    json:     'Amas Models/model_stats.json',
-    link:     'Amas Models/model_dashboard.html',
-    color:    '#06b6d4',
-    icon:     '📐',
-    type:     'amas',
-    stats:    null,
-  },
-  {
-    id:       'npg',
-    title:    'NPG Sweep',
-    subtitle: 'Wick Lick + CISD · 3 Pairings',
-    desc:     'Statistical engine for the npg "Sweep · CISD · FVG · Key Levels" model. 3 HTF/LTF pairings (1H_5M, 4H_15M, D_1H), 4-leg partial-exit profile, Silver late-week timing filter. Companion to Fractal Sweep — same data, different model spec.',
-    json:     'NPG Sweep/npg_stats.json',
-    link:     'NPG Sweep/npg_dashboard.html',
-    color:    '#f59e0b',
-    icon:     '⚡',
-    type:     'npg',
-    stats:    null,
-  },
-  {
-    id:       'hourly',
-    title:    'NQ Hourly Analysis',
-    subtitle: 'Breakout follow-through · Quarter-of-the-hour study',
-    desc:     'When an hourly candle closes above the prior hour\'s high (or below the prior low), how often does the next hour take out the newly-formed extreme — and in which quarter? Plus an in-depth standalone study of intra-hour quarter price action.',
-    json:     'Analysis/data/manifest.json',
-    link:     'Analysis/dashboard/index.html',
-    color:    '#10b981',
-    icon:     '⏱️',
-    type:     'hourly',
-    stats:    null,
-  },
-];
+    <!-- ── Serve instructions ─────────────────────────────────────────────── -->
+    <div class="sec-head">
+      <span class="sec-label">Quick Start</span>
+      <div class="sec-line"></div>
+    </div>
+    <div
+      style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:20px 24px;margin-bottom:56px;">
+      <p style="font-size:13px;color:var(--text-sub);margin-bottom:14px;">
+        Serve all dashboards from the <code
+          style="font-family:var(--font-mono);background:var(--bg-raised);padding:2px 6px;border-radius:4px;">Downloads</code>
+        directory at <code
+          style="font-family:var(--font-mono);background:var(--bg-raised);padding:2px 6px;border-radius:4px;">http://localhost:9000</code>:
+      </p>
+      <div
+        style="background:var(--bg-raised);border:1px solid var(--border-mid);border-radius:10px;padding:14px 18px;font-family:var(--font-mono);font-size:13px;color:var(--cyan);">
+        cd ~/Downloads &amp;&amp; python3 -m http.server 9000
+      </div>
+      <p style="font-size:12px;color:var(--text-muted);margin-top:10px;">
+        Then open the dashboard links above. Data refreshes daily at 7am ET via cron → <code>daily_update.py</code> →
+        rebuilds all JSON outputs.
+      </p>
+    </div>
 
-// ── Load JSON and extract key stats ──────────────────────────────────────────
-async function loadStats(project) {
-  try {
-    const res = await fetch(project.json);
-    if (!res.ok) return null;
-    const d = await res.json();
+  </main>
 
-    if (project.type === 'sweep') {
-      // Sweep+CISD model:
-      //   JSON shape: { "<tf>_PREV_CISD": { profiles: { simple_1r: { meta, ... } } } }
-      const models = [];
-      let totalN = 0;
-      let latestDate = null;
-      for (const [modelKey, modelData] of Object.entries(d)) {
-        const simple = (modelData.profiles || {}).simple_1r;
-        if (!simple) continue;
-        const m = simple.meta || {};
-        const n = m.total_wl || 0;
-        if (n < 20) continue;
-        models.push({
-          modelKey: m.model_key || modelKey.replace(/_PREV_CISD$/, ''),
-          n,
-          wr: m.win_rate,
-          ev: m.ev_per_trade,
-          pf: m.profit_factor,
-        });
-        totalN += n;
-        if (m.date_range) latestDate = m.date_range;
-      }
-      if (!models.length) return null;
-      // Best = highest EV
-      models.sort((a, b) => (b.ev || 0) - (a.ev || 0));
-      const best = models[0];
-      return {
-        label1: 'Best WR', val1: best.wr != null ? (best.wr * 100).toFixed(1) + '%' : '—', cls1: 'pos',
-        label2: 'Best EV', val2: best.ev != null ? sgn(best.ev) : '—', cls2: (best.ev || 0) >= 0 ? 'pos' : 'neg',
-        label3: 'Trades',  val3: num(totalN), cls3: 'neutral',
-        dateRange: latestDate || '—',
-        subtitle2: `Best: ${best.modelKey.replace(/_/g,' · ')} · PF ${best.pf?.toFixed(2) || '—'} · ${best.n.toLocaleString()} trades`,
-      };
+  <footer
+    style="text-align:center;padding:24px;font-size:11px;color:var(--text-muted);border-top:1px solid var(--border);font-family:var(--font-mono);">
+    Statistic.ally · NQ &amp; ES Futures · Data: Databento GLBX.MDP3 · Timestamps: America/New_York
+  </footer>
+
+  <script>
+    // ── Theme ────────────────────────────────────────────────────────────────────
+    // Theme handling delegated to Analysis/dashboard/shared.js — auto-wires
+    // .theme-picker buttons and persists the choice via localStorage['hub-theme'].
+    // shared.js is loaded as a deferred script in <head>; the early inline block
+    // at the bottom of <head> already set data-theme="dark" as a default so
+    // nothing flashes before shared.js executes.
+
+    // ── Helpers ──────────────────────────────────────────────────────────────────
+    function pct(v) { return v != null ? (v * 100).toFixed(1) + '%' : '—'; }
+    function sgn(v) { return v != null ? (v >= 0 ? '+' : '') + v.toFixed(3) + 'R' : '—'; }
+    function num(v) { return v != null ? Number(v).toLocaleString() : '—'; }
+
+    function wrColor(wr) {
+      if (wr == null) return 'neutral';
+      if (wr >= 0.55) return 'pos';
+      if (wr <= 0.28) return 'neg';
+      return '';
     }
 
-    if (project.type === 'hourly') {
-      // manifest.json shape: { total_hours, n_bullish_breakouts, n_bearish_breakouts,
-      //                        date_range_start, date_range_end, years_covered, ... }
-      const dr = (d.date_range_start && d.date_range_end)
-        ? `${d.date_range_start.slice(0,10)} → ${d.date_range_end.slice(0,10)}`
-        : '—';
-      return {
-        label1: 'Hours',          val1: num(d.total_hours),           cls1: 'neutral',
-        label2: 'Bull breakouts', val2: num(d.n_bullish_breakouts),   cls2: 'pos',
-        label3: 'Bear breakouts', val3: num(d.n_bearish_breakouts),   cls3: 'neg',
-        dateRange: dr,
-      };
-    }
+    // ── Projects config ──────────────────────────────────────────────────────────
+    const PROJECTS = [
+      {
+        id: 'sweep',
+        title: 'Fractal Sweep',
+        subtitle: 'Sweep + CISD · 3 Timeframes',
+        desc: 'Prior-candle sweep → return-to-range → CISD confirmation across 1H_5M, 30M_3M, and 15M_1M. 3 runtime-toggleable filters (Shallow Sweep, Closed Back Inside, NQ-ES Divergence) with 8 precomputed combinations. Engine and Pine indicator are aligned.',
+        json: 'Fractal Sweep/model_stats.json',
+        link: 'Fractal Sweep/model_dashboard.html',
+        color: '#8b5cf6',
+        icon: '🎯',
+        type: 'sweep',
+        stats: null,
+      },
+      {
+        id: 'amas',
+        title: 'Amas Models',
+        subtitle: 'Mentorship-derived models · WIP',
+        desc: 'Backtest engine + dashboard for trading models extracted from the Amas mentorship materials. Mirrors the Fractal Sweep pattern: Python engine writes model_stats.json, single-file dashboard reads it.',
+        json: 'Amas Models/model_stats.json',
+        link: 'Amas Models/model_dashboard.html',
+        color: '#06b6d4',
+        icon: '📐',
+        type: 'amas',
+        stats: null,
+      },
+      {
+        id: 'npg',
+        title: 'NPG Sweep',
+        subtitle: 'Wick Lick + CISD · 3 Pairings',
+        desc: 'Statistical engine for the npg "Sweep · CISD · FVG · Key Levels" model. 3 HTF/LTF pairings (1H_5M, 4H_15M, D_1H), 4-leg partial-exit profile, Silver late-week timing filter. Companion to Fractal Sweep — same data, different model spec.',
+        json: 'NPG Sweep/npg_stats.json',
+        link: 'NPG Sweep/npg_dashboard.html',
+        color: '#f59e0b',
+        icon: '⚡',
+        type: 'npg',
+        stats: null,
+      },
+      {
+        id: 'ttfm',
+        title: 'TTrades Fractal Model',
+        subtitle: 'Anatomy of the TTFM° Indicator',
+        desc: 'A multi-timeframe price-action indicator that detects high-timeframe candle sweeps, draws T-Spot zones at log-weighted midpoints, and confirms entries through CISD delivery sequences and pivot sweep mechanics.',
+        json: 'TTrades Fractal Model Analysis/ttfm_results.json',
+        link: 'TTrades Fractal Model Analysis/index.html',
+        color: '#06b6d4',
+        icon: '📐',
+        type: 'ttfm',
+        stats: null,
+      },
+      {
+        id: 'amas',
+        title: 'Amas Models',
+        subtitle: 'H1 Continuation & Macro filters',
+        desc: 'Amas specific quantitative models incorporating macroeconomic timing (Macro 010 filter), HTF structure filtering, and distribution candle logic to filter low-probability sweep continuations.',
+        json: 'Amas Models/model_stats.json',
+        link: 'Amas Models/index.html',
+        color: '#ef4444',
+        icon: '📊',
+        type: 'amas',
+        stats: null,
+      },
+      {
+        id: 'dpz',
+        title: 'Daily Probability Zones',
+        subtitle: 'Daily Range & Pivot analysis',
+        desc: 'Quantitative analysis of daily range extensions, mapping historical probability zones for intraday reversions and breakout follow-throughs.',
+        json: 'Daily Probability Zones/model_stats.json',
+        link: 'Daily Probability Zones/index.html',
+        color: '#3b82f6',
+        icon: '📈',
+        type: 'dpz',
+        stats: null,
+      },
+      {
+        id: 'hourly',
+        title: 'NQ Hourly Analysis',
+        subtitle: 'Breakout follow-through · Quarter-of-the-hour study',
+        desc: 'When an hourly candle closes above the prior hour\'s high (or below the prior low), how often does the next hour take out the newly-formed extreme — and in which quarter? Plus an in-depth standalone study of intra-hour quarter price action.',
+        json: 'Analysis/data/manifest.json',
+        link: 'Analysis/dashboard/index.html',
+        color: '#10b981',
+        icon: '⏱️',
+        type: 'hourly',
+        stats: null,
+      },
+      {
+        id: 'nested-fvg',
+        title: 'Nested FVG',
+        subtitle: '1-min FVG nested in HTF FVG · 3 pairings',
+        desc: 'A lower-timeframe fair-value gap nested inside a same-direction higher-timeframe FVG, during the Globex session, with fixed-point R/R and a 50% scale-out. Three nesting scales (1m/5m, 3m/15m, 5m/30m) on NQ — coarser scales carry the edge.',
+        json: 'Nested FVG/data/manifest.json',
+        link: 'Nested FVG/dashboard.html',
+        color: '#06b6d4',
+        icon: '◎',
+        type: 'nested-fvg',
+        stats: null,
+      },
+    ];
 
-    if (project.type === 'npg') {
-      // npg_stats.json shape: { summary: { '<pairing>/<profile>': { n_trades, agg: {n,wr,ev,pf,...}, reach_rates, ... } }, manifest: {...} }
-      // Headline: 1H_5M/series_multi (the most active pairing).
-      const s = (d.summary || {})['1H_5M/series_multi'];
-      if (!s) return null;
-      const a = s.agg || {};
-      const n = a.n != null ? a.n : s.n_trades;
-      const wr = a.wr != null ? a.wr : null;        // already a percentage (0-100)
-      const ev = a.ev != null ? a.ev : null;        // signed R per trade
-      return {
-        label1: '1H trades', val1: num(n),                                  cls1: 'neutral',
-        label2: 'Reach 1.0×', val2: wr != null ? wr.toFixed(1) + '%' : '—',  cls2: 'pos',
-        label3: 'EV (R)',     val3: ev != null ? (ev >= 0 ? '+' : '') + ev.toFixed(3) : '—',
-                              cls3: ev != null && ev > 0 ? 'pos' : ev != null && ev < 0 ? 'neg' : 'neutral',
-        dateRange: '—',
-      };
-    }
+    // ── Load JSON and extract key stats ──────────────────────────────────────────
+    async function loadStats(project) {
+      try {
+        const res = await fetch(project.json);
+        if (!res.ok) return null;
+        const d = await res.json();
 
-    if (project.type === 'amas') {
-      // model_stats.json shape:
-      //   { meta: {engine_version, generated_at, table, data_range, spec_sha},
-      //     models: { <model_key>: { label, filters, trades, summary, filter_variants, spec_html } } }
-      // Per-model `summary` is agg() output: { n, n_resolved, n_expired, wins,
-      //   wr, wr_ci_low, wr_ci_high, ev, pf, avg_mae, avg_mfe, ... }.
-      // `wr` here is a 0-1 fraction (not 0-100 like NPG).
-      const models = Object.entries(d.models || {});
-      if (!models.length) return null;
-      let totalN = 0;
-      let best = null;
-      for (const [, model] of models) {
-        const s = model.summary || {};
-        const n = s.n_resolved || 0;
-        if (n < 20) continue;
-        totalN += n;
-        if (best == null || (s.ev || 0) > (best.ev || 0)) {
-          best = { key: model.label || '', n, wr: s.wr, ev: s.ev, pf: s.pf };
+        if (project.type === 'sweep') {
+          // Sweep+CISD model:
+          //   JSON shape: { "<tf>_PREV_CISD": { profiles: { simple_1r: { meta, ... } } } }
+          const models = [];
+          let totalN = 0;
+          let latestDate = null;
+          for (const [modelKey, modelData] of Object.entries(d)) {
+            const simple = (modelData.profiles || {}).simple_1r;
+            if (!simple) continue;
+            const m = simple.meta || {};
+            const n = m.total_wl || 0;
+            if (n < 20) continue;
+            models.push({
+              modelKey: m.model_key || modelKey.replace(/_PREV_CISD$/, ''),
+              n,
+              wr: m.win_rate,
+              ev: m.ev_per_trade,
+              pf: m.profit_factor,
+            });
+            totalN += n;
+            if (m.date_range) latestDate = m.date_range;
+          }
+          if (!models.length) return null;
+          // Best = highest EV
+          models.sort((a, b) => (b.ev || 0) - (a.ev || 0));
+          const best = models[0];
+          return {
+            label1: 'Best WR', val1: best.wr != null ? (best.wr * 100).toFixed(1) + '%' : '—', cls1: 'pos',
+            label2: 'Best EV', val2: best.ev != null ? sgn(best.ev) : '—', cls2: (best.ev || 0) >= 0 ? 'pos' : 'neg',
+            label3: 'Trades', val3: num(totalN), cls3: 'neutral',
+            dateRange: latestDate || '—',
+            subtitle2: `Best: ${best.modelKey.replace(/_/g, ' · ')} · PF ${best.pf?.toFixed(2) || '—'} · ${best.n.toLocaleString()} trades`,
+          };
         }
+
+        if (project.type === 'hourly') {
+          // manifest.json shape: { total_hours, n_bullish_breakouts, n_bearish_breakouts,
+          //                        date_range_start, date_range_end, years_covered, ... }
+          const dr = (d.date_range_start && d.date_range_end)
+            ? `${d.date_range_start.slice(0, 10)} → ${d.date_range_end.slice(0, 10)}`
+            : '—';
+          return {
+            label1: 'Hours', val1: num(d.total_hours), cls1: 'neutral',
+            label2: 'Bull breakouts', val2: num(d.n_bullish_breakouts), cls2: 'pos',
+            label3: 'Bear breakouts', val3: num(d.n_bearish_breakouts), cls3: 'neg',
+            dateRange: dr,
+          };
+        }
+
+        if (project.type === 'nested-fvg') {
+          // manifest.json shape: { pairings: { '<pair>': { n_trades, agg: {n,wr,ev_r,pf,...} } },
+          //                        date_range_start, date_range_end, ... }
+          const ps = d.pairings || {};
+          // headline = the pairing with the strongest edge (highest ev_r)
+          let best = null;
+          for (const k in ps) {
+            if (!best || (ps[k].agg && ps[k].agg.ev_r) > (ps[best].agg && ps[best].agg.ev_r)) best = k;
+          }
+          if (!best) return null;
+          const a = ps[best].agg || {};
+          const dr = (d.date_range_start && d.date_range_end)
+            ? `${d.date_range_start.slice(0, 10)} → ${d.date_range_end.slice(0, 10)}`
+            : '—';
+          return {
+            label1: `Best: ${best}`, val1: num(a.n || 0), cls1: 'neutral',
+            label2: 'Win rate', val2: (a.wr || 0).toFixed(1) + '%', cls2: 'pos',
+            label3: 'EV (R)', val3: (a.ev_r >= 0 ? '+' : '') + (a.ev_r || 0).toFixed(3),
+            cls3: (a.ev_r || 0) > 0 ? 'pos' : 'neg',
+            dateRange: dr,
+          };
+        }
+
+        if (project.type === 'npg') {
+          // npg_stats.json shape: { summary: { '<pairing>/<profile>': { n_trades, agg: {n,wr,ev,pf,...}, reach_rates, ... } }, manifest: {...} }
+          // Headline: 1H_5M/series_multi (the most active pairing).
+          const s = (d.summary || {})['1H_5M/series_multi'];
+          if (!s) return null;
+          const a = s.agg || {};
+          const n = a.n != null ? a.n : s.n_trades;
+          const wr = a.wr != null ? a.wr : null;        // already a percentage (0-100)
+          const ev = a.ev != null ? a.ev : null;        // signed R per trade
+          return {
+            label1: '1H trades', val1: num(n), cls1: 'neutral',
+            label2: 'Reach 1.0×', val2: wr != null ? wr.toFixed(1) + '%' : '—', cls2: 'pos',
+            label3: 'EV (R)', val3: ev != null ? (ev >= 0 ? '+' : '') + ev.toFixed(3) : '—',
+            cls3: ev != null && ev > 0 ? 'pos' : ev != null && ev < 0 ? 'neg' : 'neutral',
+            dateRange: '—',
+          };
+        }
+
+        if (project.type === 'ttfm') {
+          const o = d.overall;
+          if (!o) return null;
+          return {
+            label1: 'Trades', val1: num(o.n), cls1: 'neutral',
+            label2: 'Win Rate', val2: pct(o.wr), cls2: wrColor(o.wr),
+            label3: 'EV', val3: sgn(o.ev), cls3: o.ev >= 0 ? 'pos' : 'neg',
+            dateRange: '—',
+          };
+        }
+
+        if (project.type === 'amas' || project.type === 'dpz') {
+          // Find the best variant across models
+          let best = null;
+          let totalN = 0;
+          if (d.models) {
+            for (const [modelKey, modelData] of Object.entries(d.models)) {
+              if (modelData.filter_variants) {
+                for (const v of modelData.filter_variants) {
+                  const s = v.stats;
+                  if (!s) continue;
+                  if (s.n) totalN += s.n;
+                  if (!best || (s.ev > best.ev)) {
+                    best = s;
+                  }
+                }
+              }
+            }
+          }
+          if (!best) return null;
+
+          let dateRangeStr = '—';
+          if (d.meta?.data_range) {
+            dateRangeStr = d.meta.data_range;
+          }
+
+          return {
+            label1: 'Best WR', val1: pct(best.wr), cls1: 'pos',
+            label2: 'Best EV', val2: sgn(best.ev), cls2: best.ev >= 0 ? 'pos' : 'neg',
+            label3: 'Trades', val3: num(totalN), cls3: 'neutral',
+            dateRange: dateRangeStr,
+          };
+        }
+
+      } catch (e) {
+        return null;
       }
-      if (!best) return null;
-      const dr = (d.meta && d.meta.data_range) || '—';
-      return {
-        label1: 'Best WR',    val1: best.wr != null ? (best.wr * 100).toFixed(1) + '%' : '—', cls1: 'pos',
-        label2: 'Best EV',    val2: best.ev != null ? sgn(best.ev) : '—',
-                              cls2: (best.ev || 0) >= 0 ? 'pos' : 'neg',
-        label3: 'Trades',     val3: num(totalN), cls3: 'neutral',
-        dateRange: dr,
-        subtitle2: `Best: ${best.key} · PF ${best.pf != null ? best.pf.toFixed(2) : '—'} · ${best.n.toLocaleString()} trades`,
-      };
     }
 
-  } catch(e) {
-    return null;
-  }
-}
-
-// ── Build project card HTML ───────────────────────────────────────────────────
-function buildCard(p) {
-  const s = p.stats;
-  const statsHtml = s ? `
+    // ── Build project card HTML ───────────────────────────────────────────────────
+    function buildCard(p) {
+      const s = p.stats;
+      const statsHtml = s ? `
     <div class="stats-row">
       <div class="stat-cell">
         <div class="stat-lbl">${s.label1}</div>
@@ -856,7 +1124,7 @@ function buildCard(p) {
     </div>
   `;
 
-  return `
+      return `
   <div class="project-card" id="card-${p.id}">
     <div class="card-accent" style="background:${p.color};"></div>
     <div class="card-body">
@@ -871,28 +1139,29 @@ function buildCard(p) {
     </div>
     <div class="card-footer">
       <div class="card-date-range">${s?.dateRange || '—'}</div>
-      <a class="open-btn" href="${p.link}"
+      ${p.link !== '#' ? `<a class="open-btn" href="${p.link}"
          style="background:${p.color};color:#fff;">
         Open Dashboard
         <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M2 6h8M6 2l4 4-4 4"/>
         </svg>
-      </a>
+      </a>` : `<span class="open-btn" style="background:var(--bg-hover);color:var(--text-muted);cursor:not-allowed;">No Dashboard</span>`}
     </div>
   </div>`;
-}
+    }
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
-async function init() {
-  const results = await Promise.all(PROJECTS.map(p => loadStats(p)));
-  results.forEach((s, i) => { PROJECTS[i].stats = s; });
+    // ── Boot ──────────────────────────────────────────────────────────────────────
+    async function init() {
+      const results = await Promise.all(PROJECTS.map(p => loadStats(p)));
+      results.forEach((s, i) => { PROJECTS[i].stats = s; });
 
-  // Render project cards
-  const grid = document.getElementById('projectGrid');
-  grid.innerHTML = PROJECTS.map(buildCard).join('');
-}
+      // Render project cards
+      const grid = document.getElementById('projectGrid');
+      grid.innerHTML = PROJECTS.map(buildCard).join('');
+    }
 
-init();
-</script>
+    init();
+  </script>
 </body>
+
 </html>

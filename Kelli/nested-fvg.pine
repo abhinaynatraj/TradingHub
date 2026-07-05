@@ -1,0 +1,610 @@
+// © nested_fvg_indicator
+// ► Run on a 1-MINUTE chart
+
+//@version=5
+indicator("Nested FVG (1min inside 5min)", overlay=true, max_boxes_count=500, max_labels_count=500, max_lines_count=500)
+
+// ─────────────────────────────────────────────────────────
+//  INPUTS
+// ─────────────────────────────────────────────────────────
+grp1 = "5-Minute FVG Settings"
+fvg5_show      = input.bool(true,  "Show 5-min FVGs",                      group=grp1)
+fvg5_bull_col  = input.color(color.new(#00bcd4, 70), "5-min Bullish Color", group=grp1)
+fvg5_bear_col  = input.color(color.new(#ff5252, 70), "5-min Bearish Color", group=grp1)
+fvg5_mitigated = input.bool(true,  "Remove 5-min FVG When Mitigated",       group=grp1)
+fvg5_min_bp    = input.float(0.15, "5-min FVG Min Size (basis points)",     group=grp1, minval=0, maxval=100, step=0.05)
+
+grp2 = "1-Minute FVG Settings"
+fvg1_show      = input.bool(true,  "Show 1-min Nested FVGs",               group=grp2)
+fvg1_bull_col  = input.color(color.new(#69f0ae, 40), "1-min Bullish Color", group=grp2)
+fvg1_bear_col  = input.color(color.new(#ff8a80, 40), "1-min Bearish Color", group=grp2)
+fvg1_min_bp    = input.float(0.15, "1-min FVG Min Size (basis points)",     group=grp2, minval=0, maxval=100, step=0.05)
+
+grp3 = "Signal Settings"
+sig_bull_col   = input.color(color.new(#00e676, 0), "Bullish Label Color",  group=grp3)
+sig_bear_col   = input.color(color.new(#ff1744, 0), "Bearish Label Color",  group=grp3)
+alert_on_nest  = input.bool(true, "Alert on Nested FVG",                    group=grp3)
+alert_partial  = input.bool(true, "Alert on Partial/BE Hit",                group=grp3)
+alert_stop     = input.bool(true, "Alert on Stop Hit",                      group=grp3)
+alert_target   = input.bool(true, "Alert on Target Hit",                    group=grp3)
+cooldown_bars  = input.int(30, "Cooldown Between Signals (bars/mins)",       group=grp3, minval=1, maxval=120)
+
+grp6 = "R/R Tool"
+rr_show        = input.bool(true,  "Show R/R Levels",                       group=grp6)
+rr_label_size  = input.string("tiny", "R/R Label Size",                     group=grp6, options=["tiny","small","normal","large","huge"])
+rr_stop_pts    = input.float(15.0, "Stop Loss (points)",                    group=grp6, minval=1, step=0.25)
+rr_target_pts  = input.float(45.0, "Main Target (points)",                  group=grp6, minval=1, step=0.25)
+rr_partial_pts = input.float(15.0, "Partial / BE Target (points)",          group=grp6, minval=1, step=0.25)
+rr_ext_pts     = input.float(60.0, "Extended Target (points)",              group=grp6, minval=1, step=0.25)
+rr_stop_col    = input.color(color.new(#ff1744, 0), "Stop Color",           group=grp6)
+rr_entry_col   = input.color(color.new(#ffeb3b, 0), "Entry Color",          group=grp6)
+rr_target_col  = input.color(color.new(#00e676, 0), "Target Color",         group=grp6)
+rr_partial_col = input.color(color.new(#2196f3, 0), "Partial Color",        group=grp6)
+rr_ext_col     = input.color(color.new(#ffeb3b, 0), "Extended Target Color", group=grp6)
+
+grp7 = "Trade Tracker"
+tbl_show       = input.bool(true,  "Show Trade Tracker Table",              group=grp7)
+tbl_pos        = input.string("Bottom Right", "Table Position",             group=grp7, options=["Top Right","Top Left","Bottom Right","Bottom Left","Middle Right","Middle Left"])
+tbl_size       = input.string("small", "Table Text Size",                   group=grp7, options=["tiny","small","normal"])
+tbl_max_rows   = input.int(10, "Max Rows to Display",                       group=grp7, minval=3, maxval=20)
+tbl_today_only = input.bool(true, "Today Only",                               group=grp7)
+
+grp5 = "Proximity Filter"
+proximity_bp   = input.float(5.0, "Proximity (basis points)",               group=grp5, minval=0, maxval=100, step=0.5)
+
+grp4 = "Time Filter"
+sess_string    = input.session("1900-1600:1234567", "Session (Exchange Time)", group=grp4)
+
+// ─────────────────────────────────────────────────────────
+//  CONVERSIONS
+// ─────────────────────────────────────────────────────────
+rr_sz = switch rr_label_size
+    "tiny"   => size.tiny
+    "small"  => size.small
+    "normal" => size.normal
+    "large"  => size.large
+    => size.huge
+
+tbl_pos_conv = switch tbl_pos
+    "Top Right"    => position.top_right
+    "Top Left"     => position.top_left
+    "Bottom Right" => position.bottom_right
+    "Bottom Left"  => position.bottom_left
+    "Middle Right" => position.middle_right
+    => position.middle_left
+
+tbl_sz_conv = switch tbl_size
+    "tiny"  => size.tiny
+    "small" => size.small
+    => size.normal
+
+// ─────────────────────────────────────────────────────────
+//  SESSION
+// ─────────────────────────────────────────────────────────
+inSession         = not na(time(timeframe.period, sess_string, "America/Chicago"))
+sessionJustOpened = inSession and not inSession[1]
+
+// ─────────────────────────────────────────────────────────
+//  5-MIN FVG STORAGE
+// ─────────────────────────────────────────────────────────
+var float[] fvg5_top    = array.new_float(0)
+var float[] fvg5_bot    = array.new_float(0)
+var int[]   fvg5_dir    = array.new_int(0)
+var box[]   fvg5_box    = array.new_box(0)
+var label[] fvg5_llabel = array.new_label(0)
+var label[] fvg5_rlabel = array.new_label(0)
+var box[]   fvg1_boxes  = array.new_box(0)
+
+// ─────────────────────────────────────────────────────────
+//  TRADE LOG ARRAYS
+// ─────────────────────────────────────────────────────────
+var int[]    tlog_num    = array.new_int(0)
+var string[] tlog_date   = array.new_string(0)
+var int[]    tlog_ts     = array.new_int(0)
+var string[] tlog_time   = array.new_string(0)
+var string[] tlog_dir    = array.new_string(0)
+var float[]  tlog_entry  = array.new_float(0)
+var float[]  tlog_stop   = array.new_float(0)
+var float[]  tlog_part   = array.new_float(0)
+var float[]  tlog_target = array.new_float(0)
+var float[]  tlog_ext    = array.new_float(0)
+var string[] tlog_result = array.new_string(0)
+var float[]  tlog_pnl    = array.new_float(0)
+
+// Open trade tracker
+var bool  ot_active      = false
+var int   ot_dir         = 0
+var float ot_entry       = na
+var float ot_stop        = na
+var float ot_target      = na
+var float ot_part        = na
+var int   ot_idx         = -1
+var bool  ot_partial_hit = false  // tracks if partial already hit
+
+// Running stats
+var int   stat_total     = 0
+var int   stat_wins      = 0
+var int   stat_losses    = 0
+var int   stat_partials  = 0
+var float stat_total_pnl = 0.0
+var float stat_daily_pnl = 0.0
+var int   stat_streak    = 0   // + = win streak, - = loss streak
+var int   pw_wins        = 0
+var int   pw_losses      = 0
+var int   pw_partials    = 0
+var float pw_pnl         = 0.0
+var int   pw_total       = 0
+
+// Signal counter
+var int sig_count = 0
+
+// ─────────────────────────────────────────────────────────
+//  COOLDOWN
+// ─────────────────────────────────────────────────────────
+var int last_bull_bar   = -999
+var int last_bear_bar   = -999
+var int last_signal_bar = -999
+
+// ─────────────────────────────────────────────────────────
+//  PURGE ON SESSION OPEN
+// ─────────────────────────────────────────────────────────
+if sessionJustOpened
+    if array.size(fvg5_box) > 0
+        for i = 0 to array.size(fvg5_box) - 1
+            box.delete(array.get(fvg5_box, i))
+    if array.size(fvg5_llabel) > 0
+        for i = 0 to array.size(fvg5_llabel) - 1
+            label.delete(array.get(fvg5_llabel, i))
+    if array.size(fvg5_rlabel) > 0
+        for i = 0 to array.size(fvg5_rlabel) - 1
+            label.delete(array.get(fvg5_rlabel, i))
+    if array.size(fvg1_boxes) > 0
+        for i = 0 to array.size(fvg1_boxes) - 1
+            box.delete(array.get(fvg1_boxes, i))
+    array.clear(fvg5_top)
+    array.clear(fvg5_bot)
+    array.clear(fvg5_dir)
+    array.clear(fvg5_box)
+    array.clear(fvg5_llabel)
+    array.clear(fvg5_rlabel)
+    array.clear(fvg1_boxes)
+    last_bull_bar    := -999
+    last_bear_bar    := -999
+    last_signal_bar  := -999
+    stat_daily_pnl   := 0.0
+    ot_active        := false
+    ot_partial_hit   := false
+
+bool _shared_ok       = (bar_index - last_signal_bar) >= cooldown_bars
+bool bull_cooldown_ok = _shared_ok and (bar_index - last_bull_bar) >= cooldown_bars
+bool bear_cooldown_ok = _shared_ok and (bar_index - last_bear_bar) >= cooldown_bars
+
+// ─────────────────────────────────────────────────────────
+//  OPEN TRADE OUTCOME DETECTION
+// ─────────────────────────────────────────────────────────
+bool outcome_partial = false
+bool outcome_win     = false
+bool outcome_loss    = false
+
+if ot_active and not na(ot_entry)
+    if ot_dir == 1
+        if low <= ot_stop
+            array.set(tlog_result, ot_idx, "❌ Loss")
+            float p = ot_stop - ot_entry
+            array.set(tlog_pnl, ot_idx, p)
+            stat_total_pnl += p
+            stat_daily_pnl += p
+            stat_losses    += 1
+            stat_streak     := stat_streak > 0 ? -1 : stat_streak - 1
+            ot_active       := false
+            ot_partial_hit  := false
+            outcome_loss    := true
+        else if high >= ot_target
+            array.set(tlog_result, ot_idx, "✅ Win")
+            float p = ot_target - ot_entry
+            array.set(tlog_pnl, ot_idx, p)
+            stat_total_pnl += p
+            stat_daily_pnl += p
+            stat_wins      += 1
+            stat_streak     := stat_streak < 0 ? 1 : stat_streak + 1
+            ot_active       := false
+            ot_partial_hit  := false
+            outcome_win     := true
+        else if high >= ot_part and not ot_partial_hit
+            array.set(tlog_result, ot_idx, "🔵 Partial")
+            array.set(tlog_pnl,    ot_idx, ot_part - ot_entry)
+            ot_partial_hit  := true
+            stat_partials   += 1
+            outcome_partial := true
+    else if ot_dir == -1
+        if high >= ot_stop
+            array.set(tlog_result, ot_idx, "❌ Loss")
+            float p = ot_entry - ot_stop
+            array.set(tlog_pnl, ot_idx, p)
+            stat_total_pnl += p
+            stat_daily_pnl += p
+            stat_losses    += 1
+            stat_streak     := stat_streak > 0 ? -1 : stat_streak - 1
+            ot_active       := false
+            ot_partial_hit  := false
+            outcome_loss    := true
+        else if low <= ot_target
+            array.set(tlog_result, ot_idx, "✅ Win")
+            float p = ot_entry - ot_target
+            array.set(tlog_pnl, ot_idx, p)
+            stat_total_pnl += p
+            stat_daily_pnl += p
+            stat_wins      += 1
+            stat_streak     := stat_streak < 0 ? 1 : stat_streak + 1
+            ot_active       := false
+            ot_partial_hit  := false
+            outcome_win     := true
+        else if low <= ot_part and not ot_partial_hit
+            array.set(tlog_result, ot_idx, "🔵 Partial")
+            array.set(tlog_pnl,    ot_idx, ot_entry - ot_part)
+            ot_partial_hit  := true
+            stat_partials   += 1
+            outcome_partial := true
+
+// ─────────────────────────────────────────────────────────
+//  5-MIN BOUNDARY DETECTION
+// ─────────────────────────────────────────────────────────
+is_new_5m = timeframe.change("5")
+
+var float running5High = na
+var float running5Low  = na
+var float h5_c0 = na
+var float l5_c0 = na
+var float h5_c1 = na
+var float l5_c1 = na
+var float h5_c2 = na
+var float l5_c2 = na
+
+if is_new_5m
+    h5_c2 := h5_c1
+    l5_c2 := l5_c1
+    h5_c1 := h5_c0
+    l5_c1 := l5_c0
+    h5_c0 := running5High
+    l5_c0 := running5Low
+    running5High := high
+    running5Low  := low
+else
+    running5High := na(running5High) ? high : math.max(running5High, high)
+    running5Low  := na(running5Low)  ? low  : math.min(running5Low,  low)
+
+// ─────────────────────────────────────────────────────────
+//  ADD 5-MIN FVG ZONE
+// ─────────────────────────────────────────────────────────
+f_add5(float ztop, float zbot, int zdir, string lbl, color bcol) =>
+    array.push(fvg5_top, ztop)
+    array.push(fvg5_bot, zbot)
+    array.push(fvg5_dir, zdir)
+    float mid = (ztop + zbot) / 2
+    if fvg5_show
+        b = box.new(bar_index - 15, ztop, bar_index, zbot,
+             border_color=color.new(bcol, 0),
+             bgcolor=color.new(bcol, 70),
+             extend=extend.none, border_width=2,
+             border_style=line.style_solid)
+        array.push(fvg5_box, b)
+        ll = label.new(bar_index - 15, mid, lbl,
+             color=color.new(color.black, 100),
+             textcolor=color.white,
+             style=label.style_none,
+             size=size.small,
+             textalign=text.align_left)
+        array.push(fvg5_llabel, ll)
+        rl = label.new(bar_index, mid, lbl,
+             color=color.new(color.black, 100),
+             textcolor=color.white,
+             style=label.style_none,
+             size=size.small,
+             textalign=text.align_right)
+        array.push(fvg5_rlabel, rl)
+    else
+        array.push(fvg5_box,    box.new(0, 0, 1, 0))
+        array.push(fvg5_llabel, label.new(0, 0, ""))
+        array.push(fvg5_rlabel, label.new(0, 0, ""))
+
+// ─────────────────────────────────────────────────────────
+//  DETECT 5-MIN FVGS
+// ─────────────────────────────────────────────────────────
+if is_new_5m and inSession and not na(h5_c2)
+    float gap5_bull = l5_c0 - h5_c2
+    float min5_bull = h5_c2 * (fvg5_min_bp / 10000.0)
+    if l5_c0 > h5_c2 and gap5_bull >= min5_bull
+        f_add5(l5_c0, h5_c2, 1, "BISI", #00bcd4)
+
+    float gap5_bear = l5_c2 - h5_c0
+    float min5_bear = h5_c0 * (fvg5_min_bp / 10000.0)
+    if h5_c0 < l5_c2 and gap5_bear >= min5_bear
+        f_add5(l5_c2, h5_c0, -1, "SIBI", #ff5252)
+
+// Stretch boxes + update right labels
+if inSession and fvg5_show and array.size(fvg5_box) > 0
+    for i = 0 to array.size(fvg5_box) - 1
+        box.set_right(array.get(fvg5_box, i), bar_index)
+        label.set_x(array.get(fvg5_rlabel, i), bar_index)
+
+// ─────────────────────────────────────────────────────────
+//  MITIGATION
+// ─────────────────────────────────────────────────────────
+if fvg5_mitigated and array.size(fvg5_top) > 0
+    int i = 0
+    while i < array.size(fvg5_top)
+        bool mit = (array.get(fvg5_dir, i) == 1  and close < array.get(fvg5_bot, i)) or
+                   (array.get(fvg5_dir, i) == -1 and close > array.get(fvg5_top, i))
+        if mit
+            array.remove(fvg5_top, i)
+            array.remove(fvg5_bot, i)
+            array.remove(fvg5_dir, i)
+            box.delete(array.remove(fvg5_box, i))
+            label.delete(array.remove(fvg5_llabel, i))
+            label.delete(array.remove(fvg5_rlabel, i))
+        else
+            i += 1
+
+// ─────────────────────────────────────────────────────────
+//  1-MIN FVG + NESTED CHECK
+// ─────────────────────────────────────────────────────────
+bool bullNested = false
+bool bearNested = false
+
+if barstate.isconfirmed and inSession
+    // ── Bullish ──────────────────────────────────────────
+    float gap1_bull = low - high[2]
+    float min1_bull = high[2] * (fvg1_min_bp / 10000.0)
+    if low > high[2] and gap1_bull >= min1_bull
+        float top1 = low
+        float bot1 = high[2]
+        bool nested = false
+        if array.size(fvg5_top) > 0
+            for i = 0 to array.size(fvg5_top) - 1
+                if array.get(fvg5_dir, i) == 1
+                    float prox = array.get(fvg5_bot, i) * (proximity_bp / 10000.0)
+                    if bot1 >= (array.get(fvg5_bot, i) - prox) and top1 <= (array.get(fvg5_top, i) + prox)
+                        nested := true
+                        break
+        if nested and bull_cooldown_ok
+            sig_count        += 1
+            bullNested        := true
+            last_bull_bar     := bar_index
+            last_signal_bar   := bar_index
+            stat_total        += 1
+            float _be  = bot1
+            float _bs  = _be - rr_stop_pts
+            float _bp  = _be + rr_partial_pts
+            float _bt  = _be + rr_target_pts
+            float _bx  = _be + rr_ext_pts
+            array.push(tlog_num,    sig_count)
+            array.push(tlog_date,   str.format("{0,date,MM/dd}", time))
+            array.push(tlog_ts,     time)
+            array.push(tlog_time,   str.format("{0,time,HH:mm}", time))
+            array.push(tlog_dir,    "▲ Bull")
+            array.push(tlog_entry,  _be)
+            array.push(tlog_stop,   _bs)
+            array.push(tlog_part,   _bp)
+            array.push(tlog_target, _bt)
+            array.push(tlog_ext,    _bx)
+            array.push(tlog_result, "⏳ Open")
+            array.push(tlog_pnl,    0.0)
+            ot_active      := true
+            ot_dir         := 1
+            ot_entry       := _be
+            ot_stop        := _bs
+            ot_target      := _bt
+            ot_part        := _bp
+            ot_idx         := array.size(tlog_time) - 1
+            ot_partial_hit := false
+            if fvg1_show
+                b1 = box.new(bar_index - 2, top1, bar_index + 15, bot1,
+                     border_color=color.new(#00ff00, 0), bgcolor=color.new(#00ff00, 40),
+                     extend=extend.none, border_width=3, border_style=line.style_dashed)
+                array.push(fvg1_boxes, b1)
+            if rr_show
+                int rs = bar_index + 1
+                int re = bar_index + 16
+                line.new(rs, _be, re, _be, color=rr_entry_col,   width=1, style=line.style_dashed)
+                line.new(rs, _bs, re, _bs, color=rr_stop_col,    width=1, style=line.style_dashed)
+                line.new(rs, _bp, re, _bp, color=rr_partial_col, width=1, style=line.style_dashed)
+                line.new(rs, _bt, re, _bt, color=rr_target_col,  width=2, style=line.style_solid)
+                line.new(rs, _bx, re, _bx, color=rr_ext_col,     width=2, style=line.style_solid)
+                box.new(rs, _be, re, _bs, border_color=color.new(#ff1744,70), bgcolor=color.new(#ff1744,88), border_width=1)
+                box.new(rs, _bt, re, _be, border_color=color.new(#00e676,70), bgcolor=color.new(#00e676,88), border_width=1)
+                box.new(rs, _bx, re, _bt, border_color=color.new(#ffeb3b,70), bgcolor=color.new(#ffeb3b,88), border_width=1)
+                label.new(re, _bx, "T2 +" + str.tostring(rr_ext_pts)     + "pts @ " + str.tostring(math.round(_bx,2)), color=color.new(#ffeb3b,10), textcolor=color.black, style=label.style_label_left, size=rr_sz)
+                label.new(re, _bt, "T  +" + str.tostring(rr_target_pts)  + "pts @ " + str.tostring(math.round(_bt,2)), color=color.new(#00e676,10), textcolor=color.white, style=label.style_label_left, size=rr_sz)
+                label.new(re, _bp, "Partial / BE +" + str.tostring(rr_partial_pts) + "pts @ " + str.tostring(math.round(_bp,2)), color=color.new(#2196f3,10), textcolor=color.white, style=label.style_label_left, size=rr_sz)
+                label.new(re, _bs, "S  -" + str.tostring(rr_stop_pts)    + "pts @ " + str.tostring(math.round(_bs,2)), color=color.new(#ff1744,10), textcolor=color.white, style=label.style_label_left, size=rr_sz)
+                label.new(re, _be, "#" + str.tostring(sig_count) + " E @ " + str.tostring(math.round(_be,2)), color=color.new(#ffeb3b,10), textcolor=color.black, style=label.style_label_left, size=rr_sz)
+
+    // ── Bearish ──────────────────────────────────────────
+    float gap1_bear = low[2] - high
+    float min1_bear = high * (fvg1_min_bp / 10000.0)
+    if high < low[2] and gap1_bear >= min1_bear
+        float top1 = low[2]
+        float bot1 = high
+        bool nested = false
+        if array.size(fvg5_top) > 0
+            for i = 0 to array.size(fvg5_top) - 1
+                if array.get(fvg5_dir, i) == -1
+                    float prox = array.get(fvg5_bot, i) * (proximity_bp / 10000.0)
+                    if bot1 >= (array.get(fvg5_bot, i) - prox) and top1 <= (array.get(fvg5_top, i) + prox)
+                        nested := true
+                        break
+        if nested and bear_cooldown_ok
+            sig_count        += 1
+            bearNested        := true
+            last_bear_bar     := bar_index
+            last_signal_bar   := bar_index
+            stat_total        += 1
+            float _te  = top1
+            float _ts  = _te + rr_stop_pts
+            float _tp  = _te - rr_partial_pts
+            float _tt  = _te - rr_target_pts
+            float _tx  = _te - rr_ext_pts
+            array.push(tlog_num,    sig_count)
+            array.push(tlog_date,   str.format("{0,date,MM/dd}", time))
+            array.push(tlog_ts,     time)
+            array.push(tlog_time,   str.format("{0,time,HH:mm}", time))
+            array.push(tlog_dir,    "▼ Bear")
+            array.push(tlog_entry,  _te)
+            array.push(tlog_stop,   _ts)
+            array.push(tlog_part,   _tp)
+            array.push(tlog_target, _tt)
+            array.push(tlog_ext,    _tx)
+            array.push(tlog_result, "⏳ Open")
+            array.push(tlog_pnl,    0.0)
+            ot_active      := true
+            ot_dir         := -1
+            ot_entry       := _te
+            ot_stop        := _ts
+            ot_target      := _tt
+            ot_part        := _tp
+            ot_idx         := array.size(tlog_time) - 1
+            ot_partial_hit := false
+            if fvg1_show
+                b1 = box.new(bar_index - 2, top1, bar_index + 15, bot1,
+                     border_color=color.new(#ff0000, 0), bgcolor=color.new(#ff0000, 40),
+                     extend=extend.none, border_width=3, border_style=line.style_dashed)
+                array.push(fvg1_boxes, b1)
+            if rr_show
+                int rs = bar_index + 1
+                int re = bar_index + 16
+                line.new(rs, _te, re, _te, color=rr_entry_col,   width=1, style=line.style_dashed)
+                line.new(rs, _ts, re, _ts, color=rr_stop_col,    width=1, style=line.style_dashed)
+                line.new(rs, _tp, re, _tp, color=rr_partial_col, width=1, style=line.style_dashed)
+                line.new(rs, _tt, re, _tt, color=rr_target_col,  width=2, style=line.style_solid)
+                line.new(rs, _tx, re, _tx, color=rr_ext_col,     width=2, style=line.style_solid)
+                box.new(rs, _ts, re, _te, border_color=color.new(#ff1744,70), bgcolor=color.new(#ff1744,88), border_width=1)
+                box.new(rs, _te, re, _tt, border_color=color.new(#00e676,70), bgcolor=color.new(#00e676,88), border_width=1)
+                box.new(rs, _tt, re, _tx, border_color=color.new(#ffeb3b,70), bgcolor=color.new(#ffeb3b,88), border_width=1)
+                label.new(re, _tx, "T2 -" + str.tostring(rr_ext_pts)     + "pts @ " + str.tostring(math.round(_tx,2)), color=color.new(#ffeb3b,10), textcolor=color.black, style=label.style_label_left, size=rr_sz)
+                label.new(re, _tt, "T  -" + str.tostring(rr_target_pts)  + "pts @ " + str.tostring(math.round(_tt,2)), color=color.new(#00e676,10), textcolor=color.white, style=label.style_label_left, size=rr_sz)
+                label.new(re, _tp, "Partial / BE -" + str.tostring(rr_partial_pts) + "pts @ " + str.tostring(math.round(_tp,2)), color=color.new(#2196f3,10), textcolor=color.white, style=label.style_label_left, size=rr_sz)
+                label.new(re, _ts, "S  +" + str.tostring(rr_stop_pts)    + "pts @ " + str.tostring(math.round(_ts,2)), color=color.new(#ff1744,10), textcolor=color.white, style=label.style_label_left, size=rr_sz)
+                label.new(re, _te, "#" + str.tostring(sig_count) + " E @ " + str.tostring(math.round(_te,2)), color=color.new(#ffeb3b,10), textcolor=color.black, style=label.style_label_left, size=rr_sz)
+
+// ─────────────────────────────────────────────────────────
+//  RENDER TRADE TRACKER TABLE
+// ─────────────────────────────────────────────────────────
+if tbl_show and barstate.islast
+    int  all_rows  = array.size(tlog_time)
+    string today_str = str.format("{0,date,MM/dd}", time)
+
+    // Build filtered index list
+    var int[] filtered = array.new_int(0)
+    array.clear(filtered)
+    if all_rows > 0
+        for i = 0 to all_rows - 1
+            if not tbl_today_only or array.get(tlog_date, i) == today_str
+                array.push(filtered, i)
+
+    int frows = array.size(filtered)
+    if frows > 0
+        int start = math.max(0, frows - tbl_max_rows)
+        int disp  = frows - start
+
+        // Filtered stats
+        int   f_wins = 0, f_losses = 0, f_partials = 0
+        float f_pnl  = 0.0
+        int   f_streak = 0
+        for k = 0 to frows - 1
+            int    ki = array.get(filtered, k)
+            string kr = array.get(tlog_result, ki)
+            float  kp = array.get(tlog_pnl,    ki)
+            if kr == "✅ Win"
+                f_wins   += 1
+                f_pnl    += kp
+                f_streak  := f_streak < 0 ? 1 : f_streak + 1
+            else if kr == "❌ Loss"
+                f_losses += 1
+                f_pnl    += kp
+                f_streak  := f_streak > 0 ? -1 : f_streak - 1
+            else if kr == "🔵 Partial"
+                f_partials += 1
+                f_pnl      += kp
+
+        int   f_settled = f_wins + f_losses + f_partials
+        float f_wr      = f_settled > 0 ? (f_wins / f_settled) * 100 : 0.0
+        string streak_str = f_streak > 0 ? "🔥 " + str.tostring(f_streak) + "W" : f_streak < 0 ? "🧊 " + str.tostring(math.abs(f_streak)) + "L" : "-"
+
+        color hbg     = color.new(#1a1a2e, 0)
+        color row_bg  = color.new(#2a2a3e, 20)
+        color sum_bg  = color.new(#1a1a2e, 0)
+
+        table t = table.new(tbl_pos_conv, 9, tbl_max_rows + 3,
+             border_color=color.new(color.gray, 50),
+             border_width=1,
+             frame_color=color.new(color.gray, 30),
+             frame_width=1)
+
+        // Header
+        table.cell(t, 0, 0, "Date",    text_color=color.white, bgcolor=hbg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 1, 0, "Time",    text_color=color.white, bgcolor=hbg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 2, 0, "Dir",     text_color=color.white, bgcolor=hbg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 3, 0, "Entry",   text_color=color.white, bgcolor=hbg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 4, 0, "Stop",    text_color=color.white, bgcolor=hbg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 5, 0, "Target",  text_color=color.white, bgcolor=hbg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 6, 0, "Result",  text_color=color.white, bgcolor=hbg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 7, 0, "P&L",     text_color=color.white, bgcolor=hbg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 8, 0, "#",       text_color=color.white, bgcolor=hbg, text_size=tbl_sz_conv, text_halign=text.align_center)
+
+        // Data rows
+        for i = 0 to disp - 1
+            int    idx = array.get(filtered, start + i)
+            int    row = i + 1
+            string res = array.get(tlog_result, idx)
+            float  pnl = array.get(tlog_pnl,    idx)
+            string dir = array.get(tlog_dir,     idx)
+            color  rc  = res == "✅ Win"     ? color.new(color.green, 20) :
+                         res == "❌ Loss"    ? color.new(color.red,   20) :
+                         res == "🔵 Partial" ? color.new(color.blue,  20) :
+                         color.new(color.gray, 60)
+            color  pc  = pnl > 0 ? color.new(color.green, 60) : pnl < 0 ? color.new(color.red, 60) : color.new(color.gray, 60)
+            color  dc  = str.contains(dir, "Bull") ? color.new(color.teal, 20) : color.new(color.red, 20)
+            table.cell(t, 0, row, array.get(tlog_date, idx),                                text_color=color.gray,   bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+            table.cell(t, 1, row, array.get(tlog_time, idx),                                text_color=color.white,  bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+            table.cell(t, 2, row, dir,                                                       text_color=color.white,  bgcolor=dc,     text_size=tbl_sz_conv, text_halign=text.align_center)
+            table.cell(t, 3, row, str.tostring(math.round(array.get(tlog_entry,  idx),2)),  text_color=color.yellow, bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_right)
+            table.cell(t, 4, row, str.tostring(math.round(array.get(tlog_stop,   idx),2)),  text_color=color.red,    bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_right)
+            table.cell(t, 5, row, str.tostring(math.round(array.get(tlog_target, idx),2)),  text_color=color.green,  bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_right)
+            table.cell(t, 6, row, res,                                                       text_color=color.white,  bgcolor=rc,     text_size=tbl_sz_conv, text_halign=text.align_center)
+            table.cell(t, 7, row, (pnl >= 0 ? "+" : "") + str.tostring(math.round(pnl,1)), text_color=pnl >= 0 ? color.green : color.red, bgcolor=pc, text_size=tbl_sz_conv, text_halign=text.align_right)
+            table.cell(t, 8, row, str.tostring(array.get(tlog_num, idx)),                   text_color=color.gray,   bgcolor=row_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+
+        // Summary row
+        int   srow   = disp + 1
+        color pnl_bg = f_pnl >= 0 ? color.new(#1b5e20, 0) : color.new(#b71c1c, 0)
+        color day_bg = stat_daily_pnl >= 0 ? color.new(#1b5e20, 30) : color.new(#b71c1c, 30)
+        string mode_lbl = tbl_today_only ? "📅 TODAY" : "📊 ALL"
+        table.cell(t, 0, srow, mode_lbl,                                                                                    text_color=color.white, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 1, srow, str.tostring(frows) + " trades",                                                             text_color=color.white, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 2, srow, "✅" + str.tostring(f_wins) + "  ❌" + str.tostring(f_losses) + "  🔵" + str.tostring(f_partials), text_color=color.white, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 3, srow, "Win Rate: " + str.tostring(math.round(f_wr,1)) + "%",                                      text_color=color.white, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 4, srow, "Streak: " + streak_str,                                                                     text_color=color.white, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 5, srow, "Day P&L: " + (stat_daily_pnl >= 0 ? "+" : "") + str.tostring(math.round(stat_daily_pnl,1)) + "pts", text_color=color.white, bgcolor=day_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 6, srow, "All-Time: " + (stat_total_pnl >= 0 ? "+" : "") + str.tostring(math.round(stat_total_pnl,1)) + "pts", text_color=color.white, bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 7, srow, (f_pnl >= 0 ? "+" : "") + str.tostring(math.round(f_pnl,1)) + "pts",                       text_color=color.white, bgcolor=pnl_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+        table.cell(t, 8, srow, str.tostring(stat_total) + " total",                                                         text_color=color.gray,  bgcolor=sum_bg, text_size=tbl_sz_conv, text_halign=text.align_center)
+
+// ─────────────────────────────────────────────────────────
+//  ALERTS
+// ─────────────────────────────────────────────────────────
+if alert_on_nest and bullNested
+    alert('{"ticker":"' + syminfo.ticker + '","action":"buy","signal":"' + str.tostring(sig_count) + '","price":' + str.tostring(math.round(close,2)) + '}', alert.freq_once_per_bar_close)
+if alert_on_nest and bearNested
+    alert('{"ticker":"' + syminfo.ticker + '","action":"sell","signal":"' + str.tostring(sig_count) + '","price":' + str.tostring(math.round(close,2)) + '}', alert.freq_once_per_bar_close)
+if alert_partial and outcome_partial
+    alert("Partial/BE Hit — Signal #" + str.tostring(sig_count) + " — " + syminfo.ticker, alert.freq_once_per_bar_close)
+if alert_stop and outcome_loss
+    alert("Stop Hit — Signal #" + str.tostring(sig_count) + " — " + syminfo.ticker, alert.freq_once_per_bar_close)
+if alert_target and outcome_win
+    alert("Target Hit — Signal #" + str.tostring(sig_count) + " — " + syminfo.ticker, alert.freq_once_per_bar_close)
+
+// ─────────────────────────────────────────────────────────
+//  PLOT MARKERS
+// ─────────────────────────────────────────────────────────
+plotshape(bullNested, "Nested Bull", shape.triangleup,   location.belowbar, sig_bull_col, size=size.small)
+plotshape(bearNested, "Nested Bear", shape.triangledown, location.abovebar, sig_bear_col, size=size.small)

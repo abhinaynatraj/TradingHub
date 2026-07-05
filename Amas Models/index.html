@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Amas Models · Probability Engine</title>
+  <link rel="stylesheet" href="../Analysis/dashboard/shared.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script defer src="../Analysis/dashboard/shared.js"></script>
+  <style>
+    body { background: var(--bg); color: var(--text-primary); font-family: var(--font-body); margin: 0; }
+    .hdr { display:flex; justify-content:space-between; align-items:center; padding:14px 24px; border-bottom:1px solid var(--border); background:var(--bg-elev-1); flex-wrap:wrap; gap:12px; }
+    .hdr-left { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+    .hub-back { color:var(--text-secondary); text-decoration:none; display:flex; align-items:center; gap:6px; font-family:var(--font-display); font-weight:600; }
+    .hub-back:hover { color:var(--text-primary); }
+    .hub-wordmark em { font-style:normal; color:var(--accent); }
+    .hdr-divider { width:1px; height:22px; background:var(--border); }
+    .hdr-wordmark { font-family:var(--font-display); font-weight:800; font-size:18px; color:var(--text-primary); letter-spacing:-0.01em; }
+    .hdr-wordmark em { font-style:normal; color:var(--accent); }
+    .hdr-sub { font-family:var(--font-data); font-size:11px; color:var(--text-muted); letter-spacing:.05em; text-transform:uppercase; }
+    .hdr-right { display:flex; align-items:center; gap:10px; }
+    .main { padding: 22px 28px 60px; max-width: 1280px; margin: 0 auto; }
+    .sec-label { font-family: var(--font-data); font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: .05em; margin: 22px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    .sec-label:first-child { margin-top: 0; }
+    .card { background: var(--bg-elev-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin: 10px 0; }
+    .tbl { width: 100%; border-collapse: collapse; font-family: var(--font-data); font-size: 12px; }
+    .tbl th { text-align: left; padding: 8px 10px; color: var(--text-muted); font-weight: 500; font-size: 10px; text-transform: uppercase; border-bottom: 1px solid var(--border); letter-spacing: .05em; }
+    .tbl th.num, .tbl td.num { text-align: right; }
+    .tbl td { padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--text-primary); }
+    .tbl tr:last-child td { border-bottom: none; }
+    .tbl tr:hover td { background: var(--bg-elev-2); }
+    .tbl tr.row-best td { background: var(--green-tint); }
+    .ev-heat { padding-left: 10px; padding-right: 10px; border-radius: var(--radius-sm); }
+    .stat-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-family: var(--font-data); font-size: 11px; }
+    .stat-pill.pos { background: var(--green-tint); color: var(--green); border: 1px solid var(--green-border); }
+    .filter-chip { display: inline-block; padding: 2px 6px; background: var(--bg-elev-2); border: 1px solid var(--border-mid); border-radius: 4px; font-size: 10px; margin: 2px; color: var(--text-secondary); }
+    .loading { color: var(--text-muted); font-family: var(--font-data); font-size: 12px; padding: 24px 0; text-align: center; }
+  </style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-left">
+    <a class="hub-back" href="../index.html">
+      <span>←</span>
+      <span class="hub-wordmark">Statistic<em>.ally</em></span>
+    </a>
+    <div class="hdr-divider"></div>
+    <div class="hdr-wordmark">Amas<em>Models</em></div>
+    <div class="hdr-divider"></div>
+    <div class="hdr-sub">H1 Continuation & Macro filters</div>
+  </div>
+  <div class="hdr-right">
+    <div class="theme-picker" role="radiogroup" aria-label="Theme">
+      <button class="theme-opt" data-theme="dark"   title="Dark"   aria-label="Dark theme">☀</button>
+      <button class="theme-opt" data-theme="light"  title="Light"  aria-label="Light theme">☾</button>
+      <button class="theme-opt" data-theme="gold"   title="Gold"   aria-label="Gold theme">✦</button>
+      <button class="theme-opt" data-theme="indigo" title="Indigo" aria-label="Indigo theme">◆</button>
+    </div>
+  </div>
+</header>
+
+<main class="main">
+  <div class="sec-label" id="date-range-label">Date Range: Loading...</div>
+  <div class="sec-label">Best Performing Variant (Highest EV)</div>
+  <div class="card" id="best-variant">
+    <div class="loading">Loading stats...</div>
+  </div>
+
+  <div class="sec-label">All Filter Variants</div>
+  <div class="card" style="overflow-x:auto;">
+    <div id="variants-table">
+      <div class="loading">Loading table...</div>
+    </div>
+  </div>
+</main>
+
+<script>
+  const fmtN = n => Number(n).toLocaleString();
+  const fmtPct = n => (n * 100).toFixed(1) + '%';
+  const fmtR = n => (n >= 0 ? '+' : '') + (+n).toFixed(3) + 'R';
+  const fmtPF = n => (+n).toFixed(2);
+  
+  function evHeat(ev) {
+    const t = Math.max(-1, Math.min(1, (ev || 0) / 0.5));
+    if (t >= 0) return `rgba(34,197,94,${(t * 0.35).toFixed(2)})`;
+    return `rgba(239,68,68,${(-t * 0.35).toFixed(2)})`;
+  }
+
+  async function loadData() {
+    try {
+      const res = await fetch('model_stats.json');
+      const d = await res.json();
+
+      if (d.meta?.data_range) {
+        document.getElementById('date-range-label').textContent = 'Date Range: ' + d.meta.data_range;
+      }
+
+      const variants = d.models?.h1_continuation?.filter_variants || [];
+      if (!variants.length) {
+        document.getElementById('best-variant').innerHTML = '<div>No variants found.</div>';
+        document.getElementById('variants-table').innerHTML = '';
+        return;
+      }
+
+      // Sort by EV desc
+      variants.sort((a, b) => (b.stats?.ev || 0) - (a.stats?.ev || 0));
+      const best = variants[0];
+
+      // Render Best
+      const s = best.stats;
+      document.getElementById('best-variant').innerHTML = `
+        <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:center;">
+          <div style="flex:1;">
+            <div style="font-family:var(--font-data); font-size:11px; color:var(--text-muted); margin-bottom:4px;">Filters Applied</div>
+            <div>${best.filters.map(f => `<span class="filter-chip">${f.replace(/_/g, ' ')}</span>`).join('')}</div>
+          </div>
+          <div style="display:flex; gap:24px; text-align:right;">
+            <div>
+              <div style="font-family:var(--font-data); font-size:10px; color:var(--text-muted); text-transform:uppercase;">Trades</div>
+              <div style="font-family:var(--font-data); font-size:20px; font-weight:700;">${fmtN(s.n)}</div>
+            </div>
+            <div>
+              <div style="font-family:var(--font-data); font-size:10px; color:var(--text-muted); text-transform:uppercase;">Win Rate</div>
+              <div style="font-family:var(--font-data); font-size:20px; font-weight:700;">${fmtPct(s.wr)}</div>
+            </div>
+            <div>
+              <div style="font-family:var(--font-data); font-size:10px; color:var(--text-muted); text-transform:uppercase;">EV / Trade</div>
+              <div style="font-family:var(--font-data); font-size:20px; font-weight:700; color:${s.ev >= 0 ? 'var(--green)' : 'var(--red)'};">${fmtR(s.ev)}</div>
+            </div>
+            <div>
+              <div style="font-family:var(--font-data); font-size:10px; color:var(--text-muted); text-transform:uppercase;">Profit Factor</div>
+              <div style="font-family:var(--font-data); font-size:20px; font-weight:700;">${fmtPF(s.pf)}</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Render Table
+      const rows = variants.map((v, i) => {
+        const vs = v.stats || {};
+        return `
+          <tr ${i === 0 ? 'class="row-best"' : ''}>
+            <td>${v.filters.map(f => `<span class="filter-chip">${f.replace(/_/g, ' ')}</span>`).join('')}</td>
+            <td class="num">${fmtN(vs.n)}</td>
+            <td class="num">${fmtPct(vs.wr)}</td>
+            <td class="num ev-heat" style="background:${evHeat(vs.ev)}">${fmtR(vs.ev)}</td>
+            <td class="num">${fmtPF(vs.pf)}</td>
+            <td class="num">${vs.avg_mae_pts ? vs.avg_mae_pts.toFixed(2) : '—'}</td>
+            <td class="num">${vs.avg_mfe_pts ? vs.avg_mfe_pts.toFixed(2) : '—'}</td>
+            <td class="num">${vs.avg_risk_pts ? vs.avg_risk_pts.toFixed(2) : '—'}</td>
+          </tr>
+        `;
+      }).join('');
+
+      document.getElementById('variants-table').innerHTML = `
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Filters</th>
+              <th class="num">N</th>
+              <th class="num">WR</th>
+              <th class="num">EV</th>
+              <th class="num">PF</th>
+              <th class="num">Avg MAE (pts)</th>
+              <th class="num">Avg MFE (pts)</th>
+              <th class="num">Avg Risk (pts)</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+
+    } catch (err) {
+      document.getElementById('best-variant').innerHTML = `<div style="color:var(--red)">Failed to load data: ${err.message}</div>`;
+      document.getElementById('variants-table').innerHTML = '';
+    }
+  }
+
+  loadData();
+</script>
+
+</body>
+</html>

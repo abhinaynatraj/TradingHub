@@ -32,6 +32,10 @@ const C = () => {
   };
 };
 function lineChart(container,data,H,yMin,yMax,key,labelKey){
+  if (!data || data.length === 0) {
+    container.innerHTML = `<div style="font-family:var(--font-data);font-size:11px;color:var(--text-muted);padding:8px">No data to display.</div>`;
+    return;
+  }
   const W=container.clientWidth||340,c=C();
   const ml=42,mr=20,mt=12,mb=28,cw=W-ml-mr,ch=H-mt-mb,range=yMax-yMin;
   const yS=v=>(1-(v-yMin)/range)*ch,xS=i=>i/(data.length-1||1)*cw;

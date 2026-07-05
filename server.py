@@ -68,14 +68,48 @@ def _get_data(engine: str) -> dict | None:
 
 
 # ── Parquet trade cache ──────────────────────────────────────────────────────
-_parquet_cache: dict[str, object] = {}  # engine → DataFrame
+_parquet_cache: dict[str, object] = {}        # engine → DataFrame
+_last_parquet_mtimes: dict[str, float] = {}   # engine → mtime when loaded
+
+def _parse_full_key(full_key: str) -> tuple[str, str, str]:
+    """Decompose JSON-style key '1H_5M_PREV_CISD' into (model_key, sweep_mode, cisd_mode).
+
+    Parquet stores these as 3 separate columns; the JSON dashboard concatenates them
+    as `{model_key}_{sweep_mode}_{cisd_mode}`. Splitting from the right keeps the
+    model name intact even when it contains underscores (e.g. '1H_5M').
+    """
+    parts = full_key.rsplit("_", 2)
+    if len(parts) != 3:
+        raise ValueError(f"unexpected full_key shape: {full_key!r}")
+    return parts[0], parts[1], parts[2]
+
 
 def _get_trades(
     engine: str,
     model: str | None,
     profile: str | None,
-    limit: int,
+    period: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int | None = None,
 ) -> dict | None:
+    """Slice the engine's parquet trade table.
+
+    Args:
+      model: JSON-style full key, e.g. '1H_5M_PREV_CISD'. Decomposed into
+             (model_key, sweep_mode, cisd_mode) before filtering the parquet.
+      period: one of '2y'|'1y'|'6m'|'3m'|'1m'|'all'. Anchored to MAX(date)
+              in the parquet (NOT today() — keeps results reproducible).
+              Day counts (730/365/182/91/30) match engine's _compute_by_tf.
+      date_from, date_to: arbitrary YYYY-MM-DD window. XOR with `period`.
+      limit: optional row cap (applied after sorting by date desc).
+
+    Returns: {"trades": [...], "count": N} on success;
+             {"error": "..."} on parameter validation failure;
+             None if parquet not present for the engine.
+
+    EXPIRED setups are filtered out to match JSON recent_trades semantics.
+    """
     import pandas as pd
 
     pq_paths = {
@@ -85,25 +119,79 @@ def _get_trades(
     if not path or not path.exists():
         return None
 
-    if engine not in _parquet_cache:
+    # XOR: exactly one of (period) or (date_from AND date_to)
+    has_period = period is not None
+    has_range = date_from is not None or date_to is not None
+    if has_period and has_range:
+        return {"error": "specify either period OR from/to, not both"}
+    if not has_period and not has_range:
+        return {"error": "specify period or from/to"}
+    if has_range and not (date_from and date_to):
+        return {"error": "from and to are both required"}
+
+    VALID_PERIODS = {"all", "2y", "1y", "6m", "3m", "1m"}
+    if has_period and period not in VALID_PERIODS:
+        return {"error": f"invalid period '{period}'. Valid: {sorted(VALID_PERIODS)}"}
+
+    # Re-read parquet if the file's mtime has changed (e.g. after a recalc).
+    # Matches _get_data's pattern so /trades doesn't serve stale data.
+    mtime = path.stat().st_mtime
+    if engine not in _parquet_cache or _last_parquet_mtimes.get(engine) != mtime:
         _parquet_cache[engine] = pd.read_parquet(path)
+        _last_parquet_mtimes[engine] = mtime
 
     df = _parquet_cache[engine]
+
     if model:
-        df = df[df["model_key"] == model]
+        try:
+            model_key, sweep_mode, cisd_mode = _parse_full_key(model)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        df = df[
+            (df["model_key"] == model_key)
+            & (df["sweep_mode"] == sweep_mode)
+            & (df["cisd_mode"] == cisd_mode)
+        ]
     if profile:
         df = df[df["profile_key"] == profile]
+
+    # Exclude EXPIRED setups — JSON recent_trades does the same.
+    df = df[df["outcome"] != "EXPIRED"]
 
     if df.empty:
         return {"trades": [], "count": 0}
 
-    df = df.sort_values("date", ascending=False).head(limit)
-    records = df.where(pd.notna(df), None).to_dict("records")
+    dates = pd.to_datetime(df["date"])
+
+    if has_period and period != "all":
+        days_lookup = {"2y": 730, "1y": 365, "6m": 182, "3m": 91, "1m": 30}
+        cutoff = dates.max() - pd.Timedelta(days=days_lookup[period])
+        df = df[dates >= cutoff]
+
+    if has_range:
+        df = df[(dates >= pd.Timestamp(date_from)) & (dates <= pd.Timestamp(date_to + " 23:59:59"))]
+
+    if limit is not None:
+        df = df.sort_values("date", ascending=False).head(limit)
+
+    if df.empty:
+        return {"trades": [], "count": 0}
+
+    records = df.to_dict("records")
+    # Scrub NaN values to None. pandas can't store None in float-typed columns
+    # (auto-coerces back to NaN), so we must do this on the plain-Python dicts
+    # AFTER to_dict("records"). NaN in JSON output is invalid per RFC 7159 —
+    # browsers reject it. Affects raw_measure rows where stop_price /
+    # target_price are NaN (no SL/TP for measurement-only profile).
+    import math
     for r in records:
         r["date"] = str(r["date"])[:19]
-        for k in ("dow", "hr", "mn"):
-            if r.get(k) is not None:
+        for k in ("dow", "hr", "mn", "yr"):
+            if r.get(k) is not None and not (isinstance(r[k], float) and math.isnan(r[k])):
                 r[k] = int(r[k])
+        for k, v in list(r.items()):
+            if isinstance(v, float) and math.isnan(v):
+                r[k] = None
 
     return {"trades": records, "count": len(records)}
 
@@ -228,15 +316,105 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         if parsed.path == "/trades":
-            engine  = (qs.get("engine")  or [""])[0]
-            model   = (qs.get("model")   or [None])[0]
-            profile = (qs.get("profile") or [None])[0]
-            limit   = int((qs.get("limit") or [12000])[0])
-            result  = _get_trades(engine, model, profile, limit)
+            engine    = (qs.get("engine")    or [""])[0]
+            model     = (qs.get("model")     or [None])[0]
+            profile   = (qs.get("profile")   or [None])[0]
+            period    = (qs.get("period")    or [None])[0]
+            date_from = (qs.get("from")      or [None])[0]
+            date_to   = (qs.get("to")        or [None])[0]
+            limit_str = (qs.get("limit")     or [None])[0]
+            limit     = int(limit_str) if limit_str else None
+            result = _get_trades(engine, model, profile,
+                                  period=period, date_from=date_from, date_to=date_to,
+                                  limit=limit)
             if result is None:
-                self._json(404, {"error": "No trade data found"})
+                self._json(404, {"error": f"no parquet for engine '{engine}'"})
+                return
+            if "error" in result:
+                self._json(400, result)
                 return
             self._json(200, result)
+            return
+        if parsed.path == "/v7_candles":
+            import duckdb
+            ts_ns_str = (qs.get("ts_ns") or [""])[0]
+            instrument = (qs.get("instrument") or ["nq"])[0].lower()
+            window_min = int((qs.get("window") or ["90"])[0])
+            tz = (qs.get("tz") or ["America/Chicago"])[0]
+            
+            if ts_ns_str and ts_ns_str != "0":
+                ts_ns = int(ts_ns_str)
+            else:
+                date_str = (qs.get("date") or [""])[0]
+                hour_str = (qs.get("hour") or [""])[0]
+                minute_str = (qs.get("minute") or [""])[0]
+                if not date_str or not hour_str or not minute_str:
+                    self._json(400, {"error": "ts_ns or (date, hour, minute) required"})
+                    return
+                import pandas as pd
+                ts = pd.Timestamp(f"{date_str} {int(hour_str):02d}:{int(minute_str):02d}:00", tz=tz)
+                ts_ns = int(ts.timestamp() * 1e9)
+                
+            db_path = ROOT / "Fractal Sweep" / "candle_science.duckdb"
+            if not db_path.exists():
+                self._json(404, {"error": "DB not found"})
+                return
+                
+            tf = (qs.get("tf") or ["1m"])[0].lower()
+            table = f"{instrument}_1m"
+            # window in nanoseconds
+            delta_ns = window_min * 60 * 1_000_000_000
+            start_ts = ts_ns - delta_ns
+            end_ts = ts_ns + delta_ns
+            
+            try:
+                con = duckdb.connect(str(db_path), read_only=True)
+                # Check if volume column exists
+                cols = [c[0] for c in con.execute(f"PRAGMA table_info('{table}')").fetchall()]
+                has_vol = 'volume' in cols
+                vol_col = ", volume" if has_vol else ""
+                df = con.execute(f"""
+                    SELECT 
+                        timestamp,
+                        open, high, low, close{vol_col}
+                    FROM {table}
+                    WHERE CAST(EXTRACT(EPOCH FROM timestamp) * 1e9 AS BIGINT) BETWEEN {start_ts} AND {end_ts}
+                    ORDER BY timestamp
+                """).fetchdf()
+                con.close()
+                
+                if not df.empty:
+                    import pandas as pd
+                    df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+                    df.set_index('timestamp', inplace=True)
+                    if tf != '1m':
+                        rule = tf.replace('m', 'min').replace('h', 'h')
+                        agg_dict = {
+                            'open': 'first',
+                            'high': 'max',
+                            'low': 'min',
+                            'close': 'last',
+                        }
+                        if has_vol:
+                            agg_dict['volume'] = 'sum'
+                        df = df.resample(rule).agg(agg_dict).dropna()
+                    else:
+                        df = df.dropna()
+                    
+                    # Convert DatetimeIndex to seconds robustly using total_seconds()
+                    df['time'] = (df.index - pd.Timestamp("1970-01-01", tz="UTC")).total_seconds().astype('int64')
+                    df = df[['time', 'open', 'high', 'low', 'close']]
+                    
+                    # Ensure no inf/nan
+                    import numpy as np
+                    df = df.replace([np.inf, -np.inf], np.nan).dropna()
+                    records = df.to_dict('records')
+                else:
+                    records = []
+                    
+                self._json(200, records)
+            except Exception as e:
+                self._json(500, {"error": str(e)})
             return
 
         try:

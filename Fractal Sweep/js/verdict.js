@@ -1,7 +1,7 @@
 import { activeModel, activeMode, activeCisd, activeProfile, activeTF, activeSmt, activeF3, activeF4, SVG_FONT, isDark, RR_PROFILES, PROFILE_LABELS, PCT_PROFILES, MODEL_LABELS } from './state.js';
 import { C } from './charts.js';
 import { pct, evFmt, evCls, pfFmt, wrHeatClr, wrHeatTxt } from './utils.js';
-import { getProfileData, DATA } from './data.js';
+import { getProfileData, DATA, loadTrades } from './data.js';
 
 function getSmtFilteredTrades(trades) {
   if (!trades || !trades.length) return trades;
@@ -57,7 +57,7 @@ function renderProfileComparison(){
 }
 
 
-function renderVerdict(targetEl, opts = {}) {
+async function renderVerdict(targetEl, opts = {}) {
   const el = targetEl;
   if (!el) return;
 
@@ -68,15 +68,32 @@ function renderVerdict(targetEl, opts = {}) {
   const ACCT_V = 4500, RPT_V = 225;
   const {tradeDateSet, walkForwardPairs} = opts;
 
+  // Determine which period to fetch for each profile. For custom-range
+  // overlay (tradeDateSet provided), we fetch the full 'all' set and the
+  // caller-supplied date set narrows it. Otherwise honor the active period.
+  const _periodForCache = tradeDateSet ? 'all' : (activeTF === 'custom' ? 'all' : (activeTF || 'all'));
+
+  // Determine which profiles we'll actually score (cap at 6 to avoid browser
+  // freeze) BEFORE priming the cache, so we only fetch what we need.
+  const allKeys = Object.keys(base.profiles);
+  const keysToScore = new Set([activeProfile]);
+  for (const k of allKeys) { if (keysToScore.size >= 6) break; keysToScore.add(k); }
+
+  // Prime the trade cache for only the profiles we'll actually score.
+  // loadTrades is idempotent (returns cached on hit) so re-priming is cheap.
+  await Promise.all([...keysToScore].map(pk =>
+    loadTrades(fullKey, pk, _periodForCache).catch(e => {
+      console.warn('[verdict] loadTrades failed for', pk, e);
+      return [];
+    })
+  ));
+
   // ── Score each profile ─────────────────────────────────────────────────
   function scoreProfile(pk) {
     const pd = base.profiles[pk];
-    if (!pd || !pd.recent_trades) return null;
-    let pt = pd.recent_trades;
-    // Apply TF period filter (for overview tab)
-    if (!tradeDateSet && activeTF !== 'all' && pd.by_tf && pd.by_tf[activeTF] && pd.by_tf[activeTF].recent_trades) {
-      pt = pd.by_tf[activeTF].recent_trades;
-    }
+    if (!pd) return null;
+    let pt = DATA[fullKey]?.trades?.[pk]?.[_periodForCache] || [];
+    if (!pt.length) return null;
     // Apply date filter (for custom ranges)
     if (tradeDateSet) pt = pt.filter(t => tradeDateSet.has(t.date));
     // Apply full 4-filter pipeline (F3/SMT/Hour/PriorEng)
@@ -116,10 +133,7 @@ function renderVerdict(targetEl, opts = {}) {
             n, wr, ev, pf, sharpe, maxDD: maxDD*100, blown: eq <= 0, smtWR, noSmtWR};
   }
 
-  // Score active profile + up to 5 others to avoid browser freeze with 25 profiles
-  const allKeys = Object.keys(base.profiles);
-  const keysToScore = new Set([activeProfile]);
-  for (const k of allKeys) { if (keysToScore.size >= 6) break; keysToScore.add(k); }
+  // Score active profile + up to 5 others (keysToScore already built above)
   const profileScores = [...keysToScore].map(scoreProfile).filter(Boolean);
   if (profileScores.length === 0) { el.innerHTML = ''; return; }
 

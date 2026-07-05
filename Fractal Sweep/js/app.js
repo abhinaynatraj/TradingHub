@@ -1,13 +1,15 @@
 // ── Imports ───────────────────────────────────────────────────────────────
-import { activePageTab, RAW_TABS, RAW_TAB_LABELS,
-         activeModel, activeMode, activeCisd, activeProfile, activeTF,
-         activeSmt, activeF3, activeF4,
-         MODEL_KEYS, MODEL_LABELS, isDemo,
-         DASHBOARD_SCHEMA_VERSION,
-         setActiveTF, setIsDemo, setActivePageTab, setCurrentTheme } from './state.js';
+import {
+  activePageTab, RAW_TABS, RAW_TAB_LABELS,
+  activeModel, activeMode, activeCisd, activeProfile, activeTF,
+  activeSmt, activeF3, activeF4,
+  MODEL_KEYS, MODEL_LABELS, isDemo,
+  DASHBOARD_SCHEMA_VERSION,
+  setActiveTF, setIsDemo, setActivePageTab, setCurrentTheme
+} from './state.js';
 import { applyTheme, _savedTheme } from './theme.js';
 import { fmtDateRange, triggerCSVDownload, csvEscape, showTip, hideTip } from './utils.js';
-import { getProfileData, getActiveTFData, getSmtD, applyLoadedData, DEMO, DATA, setData, initProfileData, loadProfile } from './data.js';
+import { getProfileData, getActiveTFData, getSmtD, applyLoadedData, DEMO, DATA, setData, initProfileData, loadProfile, getActiveTrades, invalidateTradesCache } from './data.js';
 import { drawSetupViz, renderOverviewEquityCurve, lineChart, rDistChart, renderEquityCurveFS } from './charts.js';
 import { renderModel, renderModelDropdown, renderProfileDropdown, switchProfile, switchTF, renderControls, switchModel, updateProfileFromSelectors } from './tabs/overview.js';
 import { renderEdgeStudy } from './tabs/edge.js';
@@ -15,17 +17,19 @@ import { updateFilterChipDeltas } from './tabs/filters.js';
 import { renderRecentTrades } from './tabs/trades.js';
 import { renderMAEStudy, renderMFEStudy } from './tabs/excursion.js';
 import { renderFilterVariants } from './verdict.js';
-import { switchSMT, switchF3, switchF4, switchP42, switchPD, _restoreFilters,
-         renderRangeSlots, addCustomRange, removeRange, updateRange, saveAndRenderRanges,
-         applyCustomRanges, switchCustomTab, customRanges,
-         setRenderActive } from './walkforward.js';
+import {
+  switchSMT, switchF3, switchF4, switchP42, switchPD, _restoreFilters,
+  renderRangeSlots, addCustomRange, removeRange, updateRange, saveAndRenderRanges,
+  applyCustomRanges, switchCustomTab, customRanges,
+  setRenderActive
+} from './walkforward.js';
 
 // ── PAGE TAB NAVIGATION ────────────────────────────────────────────────────
 
 function updateTabVisibility() {
   const isRaw = activeProfile === 'raw_measure';
   document.querySelectorAll('.page-tab').forEach(btn => {
-    const label = btn.textContent.trim().toLowerCase().replace(/\s+/g,'');
+    const label = btn.textContent.trim().toLowerCase().replace(/\s+/g, '');
     const isRawTab = RAW_TABS.some(t => label.includes(RAW_TAB_LABELS[t] || t));
     btn.style.display = (isRaw && !isRawTab) ? 'none' : '';
   });
@@ -34,68 +38,76 @@ function updateTabVisibility() {
   }
 }
 
-function switchPageTab(tab){
+function switchPageTab(tab) {
   setActivePageTab(tab);
   document.querySelectorAll('.page-pane').forEach(p => { p.classList.remove('active'); p.style.display = 'none'; });
   const pane = document.getElementById('pane-' + tab);
-  if(pane){ pane.classList.add('active'); pane.style.display = ''; }
+  if (pane) { pane.classList.add('active'); pane.style.display = ''; }
   document.querySelectorAll('.page-tab').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.sb-nav-btn').forEach(b => b.classList.remove('active'));
-  const btn = [...document.querySelectorAll('.page-tab')].find(b => b.textContent.toLowerCase().replace(/\s+/g,'').includes(tab.replace('-','')));
-  const sbBtn = [...document.querySelectorAll('.sb-nav-btn')].find(b => b.textContent.toLowerCase().replace(/\s+/g,'').includes(tab.replace('-','')));
-  if(btn) btn.classList.add('active');
-  if(sbBtn) sbBtn.classList.add('active');
-  window.scrollTo({top:0,behavior:'smooth'});
+  const btn = [...document.querySelectorAll('.page-tab')].find(b => b.textContent.toLowerCase().replace(/\s+/g, '').includes(tab.replace('-', '')));
+  const sbBtn = [...document.querySelectorAll('.sb-nav-btn')].find(b => b.textContent.toLowerCase().replace(/\s+/g, '').includes(tab.replace('-', '')));
+  if (btn) btn.classList.add('active');
+  if (sbBtn) sbBtn.classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
   // Re-render canvases that need sizing when tab becomes visible
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
   const baseD = getProfileData(fullKey, activeProfile);
-  if(!baseD) return;
+  if (!baseD) return;
   const D = getSmtD(getActiveTFData(baseD));
-  if(tab === 'overview'){
+  if (tab === 'overview') {
     renderOverviewEquityCurve(D);
   }
-  if(tab === 'edge'){
+  if (tab === 'edge') {
     renderEdgeStudy(D);
   }
-  if(tab === 'filters'){
+  if (tab === 'filters') {
     renderFilterVariants(D);
   }
-  if(tab === 'risk'){
-    rDistChart(document.getElementById('rdist-chart'),D.r_hist||[]);
-    lineChart(document.getElementById('year-chart'),D.by_year||[],200,40,75,'wr','yr');
+  if (tab === 'risk') {
+    rDistChart(document.getElementById('rdist-chart'), D.r_hist || []);
+    lineChart(document.getElementById('year-chart'), D.by_year || [], 200, 40, 75, 'wr', 'yr');
     renderEquityCurveFS(D);
   }
-  if(tab === 'excursion'){
+  if (tab === 'excursion') {
     renderMAEStudy(D);
     renderMFEStudy(D);
   }
-  if(tab === 'trades') renderRecentTrades(0);
-  if(tab === 'overview') drawSetupViz();
+  if (tab === 'trades') renderRecentTrades(0);
+  if (tab === 'overview') drawSetupViz();
 }
 
 // ── MAIN RENDER ────────────────────────────────────────────────────────────
-function renderActive(){
+async function renderActive() {
   const customView = document.getElementById('custom-view');
   const pageNav = document.querySelector('.page-nav');
-  if(activeTF === 'custom'){
-    if(customView) customView.style.display = '';
-    if(pageNav) pageNav.style.display = 'none';
+  if (activeTF === 'custom') {
+    if (customView) customView.style.display = '';
+    if (pageNav) pageNav.style.display = 'none';
     document.querySelectorAll('.page-pane').forEach(p => p.style.display = 'none');
     document.getElementById('meta-row').innerHTML = '';
-    if(customRanges.some(r => r.start && r.end)) applyCustomRanges();
+    if (customRanges.some(r => r.start && r.end)) applyCustomRanges();
     return;
   } else {
-    if(customView) customView.style.display = 'none';
-    if(pageNav) pageNav.style.display = '';
+    if (customView) customView.style.display = 'none';
+    if (pageNav) pageNav.style.display = '';
     // Restore active pane visibility
     document.querySelectorAll('.page-pane').forEach(p => {
-      if(p.classList.contains('active')) p.style.display = 'block';
+      if (p.classList.contains('active')) p.style.display = 'block';
     });
   }
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
+  if (!isDemo && typeof window.query === 'function') {
+    const duckData = await fetchProfileFromDB(fullKey, activeProfile);
+    if (duckData) {
+      if (!DATA[fullKey]) DATA[fullKey] = { profiles: {} };
+      if (!DATA[fullKey].profiles) DATA[fullKey].profiles = {};
+      DATA[fullKey].profiles[activeProfile] = duckData;
+    }
+  }
   const baseD = getProfileData(fullKey, activeProfile);
-  if(!baseD){
-    document.getElementById('meta-row').innerHTML=`<div style="grid-column:1/-1;font-family:var(--font-data);font-size:11px;color:var(--text-muted);padding:8px">No data for ${fullKey} / ${activeProfile}. Run model_stats.py to generate.</div>`;
+  if (!baseD) {
+    document.getElementById('meta-row').innerHTML = `<div style="grid-column:1/-1;font-family:var(--font-data);font-size:11px;color:var(--text-muted);padding:8px">No data for ${fullKey} / ${activeProfile}. Run model_stats.py to generate.</div>`;
     return;
   }
   const D = getActiveTFData(baseD);
@@ -104,22 +116,31 @@ function renderActive(){
 }
 
 // ── RENDER ─────────────────────────────────────────────────────────────────
-function render(){
-  const D = getProfileData(`${activeModel}_${activeMode}_${activeCisd}`, activeProfile);
-  document.getElementById('hdr-sub').textContent=`Multi-TF Probability Engine · ${D?.meta?.instrument||'NQ'} · ${fmtDateRange(D?.meta?.date_range)}`;
+async function render() {
+  const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
+  if (!isDemo && typeof window.query === 'function') {
+    const duckData = await fetchProfileFromDB(fullKey, activeProfile);
+    if (duckData) {
+      if (!DATA[fullKey]) DATA[fullKey] = { profiles: {} };
+      if (!DATA[fullKey].profiles) DATA[fullKey].profiles = {};
+      DATA[fullKey].profiles[activeProfile] = duckData;
+    }
+  }
+  const D = getProfileData(fullKey, activeProfile);
+  document.getElementById('hdr-sub').textContent = `Multi-TF Probability Engine · ${D?.meta?.instrument || 'NQ'} · ${fmtDateRange(D?.meta?.date_range)}`;
   renderModelDropdown();
-  renderProfileDropdown();
+  await renderProfileDropdown();
   renderControls();
-  renderActive();
+  await renderActive();
 }
 
 // Parse a key like "1H_5M_PREV_CISD" — last segment = cisd, second-to-last = sweep, rest = model
-function parseKey(k){
+function parseKey(k) {
   const parts = k.split('_');
-  const cisd  = parts[parts.length - 1];           // last = CISD
+  const cisd = parts[parts.length - 1];           // last = CISD
   const sweep = parts[parts.length - 2];           // second to last = PREV
   const model = parts.slice(0, -2).join('_');      // everything else = model key
-  return {model, sweep, cisd};
+  return { model, sweep, cisd };
 }
 
 // ── Download trades ────────────────────────────────────────────────────────
@@ -127,58 +148,76 @@ function downloadFSTrades() {
   const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
   const baseD = getProfileData(fullKey, activeProfile);
   const D = getActiveTFData(baseD);
-  const trades = D?.recent_trades;
+  const trades = getActiveTrades(D);
   if (!trades || !trades.length) return;
-  const headers = ['date','direction','session','hr','mn','dow_name','entry_price','sweep_extreme','target_price','risk_pts','r','outcome'];
+  // Parquet rows have `dow` (int) but no `dow_name`. Derive it so CSV columns
+  // align regardless of whether trades came from parquet or legacy JSON.
+  const DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const tradesWithDowName = trades.map(t => ({
+    ...t,
+    dow_name: t.dow_name || DOW_NAMES[t.dow] || ''
+  }));
+  const headers = ['date', 'direction', 'session', 'hr', 'mn', 'dow_name', 'entry_price', 'sweep_extreme', 'target_price', 'risk_pts', 'r', 'outcome'];
   const tf = activeTF || 'all';
-  const filename = `fractal_sweep_${activeModel}_${activeProfile}_${tf}_${new Date().toISOString().slice(0,10)}.csv`;
-  triggerCSVDownload(trades, headers, filename);
+  const filename = `fractal_sweep_${activeModel}_${activeProfile}_${tf}_${new Date().toISOString().slice(0, 10)}.csv`;
+  triggerCSVDownload(tradesWithDowName, headers, filename);
 }
 
 // ── Recalc button (calls local server.py) ───────────────────────────────────
-async function triggerRecalc(){
-  const btn=document.getElementById('recalc-btn');
-  if(!btn||btn.disabled)return;
-  btn.disabled=true;
-  btn.textContent='⟳ Running…';
-  try{
-    const r=await fetch('http://localhost:8001/recalc?engine=fractal_sweep',{method:'POST'});
-    if(r.status===409){btn.textContent='⟳ Already running';setTimeout(()=>{btn.textContent='⟳ Recalculate';btn.disabled=false;},2000);return;}
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    btn.textContent='⟳ Running…';
+async function triggerRecalc() {
+  const btn = document.getElementById('recalc-btn');
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = '⟳ Running…';
+  try {
+    const r = await fetch('http://localhost:8001/recalc?engine=fractal_sweep', { method: 'POST' });
+    if (r.status === 409) { btn.textContent = '⟳ Already running'; setTimeout(() => { btn.textContent = '⟳ Recalculate'; btn.disabled = false; }, 2000); return; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    btn.textContent = '⟳ Running…';
     pollRecalc();
-  }catch(e){
-    btn.textContent='⚠ Server not running';
-    btn.title='Start server.py first: python3 server.py';
-    setTimeout(()=>{btn.textContent='⟳ Recalculate';btn.disabled=false;btn.title='';},3000);
+  } catch (e) {
+    btn.textContent = '⚠ Server not running';
+    btn.title = 'Start server.py first: python3 server.py';
+    setTimeout(() => { btn.textContent = '⟳ Recalculate'; btn.disabled = false; btn.title = ''; }, 3000);
   }
 }
-function pollRecalc(){
-  const btn=document.getElementById('recalc-btn');
-  const iv=setInterval(async()=>{
-    try{
-      const r=await fetch('http://localhost:8001/recalc/status?engine=fractal_sweep');
-      const s=await r.json();
-      if(s.status==='ok'){
+function pollRecalc() {
+  const btn = document.getElementById('recalc-btn');
+  const iv = setInterval(async () => {
+    try {
+      const r = await fetch('http://localhost:8001/recalc/status?engine=fractal_sweep');
+      const s = await r.json();
+      if (s.status === 'ok') {
         clearInterval(iv);
-        btn.textContent='✓ Done — reloading…';
-        setTimeout(()=>{
-          fetch('./model_stats.json').then(r=>r.json()).then(applyLoadedData).finally(()=>{
-            btn.textContent='⟳ Recalculate';btn.disabled=false;
-          });
-        },400);
-      } else if(s.status==='error'){
+        btn.textContent = '✓ Done — reloading…';
+        setTimeout(async () => {
+          // Engine just regenerated model_stats.json + model_stats.parquet.
+          // Invalidate the trade cache for the current model (parquet
+          // contents may have shifted) and force /data refetch by clearing
+          // DATA[fullKey], then re-prime via initProfileData (which loads
+          // aggregates + trades for the initial period).
+          const fullKey = `${activeModel}_${activeMode}_${activeCisd}`;
+          invalidateTradesCache(fullKey);
+          if (DATA[fullKey]) DATA[fullKey] = { profiles: {} };
+          try {
+            await initProfileData();
+            window.render();
+          } finally {
+            btn.textContent = '⟳ Recalculate'; btn.disabled = false;
+          }
+        }, 400);
+      } else if (s.status === 'error') {
         clearInterval(iv);
-        btn.textContent='⚠ Engine error';
-        setTimeout(()=>{btn.textContent='⟳ Recalculate';btn.disabled=false;},3000);
+        btn.textContent = '⚠ Engine error';
+        setTimeout(() => { btn.textContent = '⟳ Recalculate'; btn.disabled = false; }, 3000);
       }
-    }catch{clearInterval(iv);btn.textContent='⟳ Recalculate';btn.disabled=false;}
-  },2000);
+    } catch { clearInterval(iv); btn.textContent = '⟳ Recalculate'; btn.disabled = false; }
+  }, 2000);
 }
 
 // ── Window bindings (for HTML onclick handlers) ──────────────────────────
 // Global error resilience
-window.onerror = function(msg, url, line) {
+window.onerror = function (msg, url, line) {
   console.error('[sweep]', msg, url, line);
   const el = document.getElementById('meta-row');
   if (el) el.innerHTML = `<div style="grid-column:1/-1;font-family:var(--font-data);font-size:11px;color:var(--red);padding:8px">Error: ${msg} (line ${line})</div>`;
@@ -214,14 +253,14 @@ window.updateTabVisibility = updateTabVisibility;
 setRenderActive(renderActive);
 
 const savedTF = localStorage.getItem('fractal-active-tf');
-if(savedTF){
+if (savedTF) {
   setActiveTF(savedTF);
   const sel = document.getElementById('tf-select');
-  if(sel) sel.value = savedTF;
-  if(savedTF === 'custom'){
+  if (sel) sel.value = savedTF;
+  if (savedTF === 'custom') {
     const builder = document.getElementById('custom-range-builder');
-    if(builder) builder.style.display = '';
-    if(customRanges.length === 0) addCustomRange();
+    if (builder) builder.style.display = '';
+    if (customRanges.length === 0) addCustomRange();
     renderRangeSlots();
   }
 }
@@ -231,7 +270,7 @@ if(savedTF){
 // shared.js calls window.applyTheme — and because this module's
 // `window.applyTheme = applyTheme` assignment above runs later, the
 // local applyTheme (with chart redraw) wins.
-if(_savedTheme){ applyTheme(_savedTheme); setCurrentTheme(_savedTheme); }
+if (_savedTheme) { applyTheme(_savedTheme); setCurrentTheme(_savedTheme); }
 
 // Show a loading overlay while model_stats.json is being fetched. Demo data
 // is kept as a *fallback* only — used if the fetch fails — to avoid the
@@ -265,7 +304,7 @@ initProfileData()
     });
     setIsDemo(true);
     const badge = document.getElementById('demo-badge');
-    if(badge){ badge.style.display = ''; }
+    if (badge) { badge.style.display = ''; }
     render();
     updateTabVisibility();
     drawSetupViz();
@@ -273,25 +312,25 @@ initProfileData()
   .finally(() => {
     // Hide the loading overlay either way once a render has happened.
     const overlay = document.getElementById('initial-loading');
-    if(overlay) overlay.remove();
+    if (overlay) overlay.remove();
   });
 
 // JSON file upload handler
 document.getElementById('json-loader')?.addEventListener('change', e => {
   const file = e.target.files[0];
-  if(!file) return;
+  if (!file) return;
   const reader = new FileReader();
   reader.onload = ev => {
-    try{
+    try {
       const j = JSON.parse(ev.target.result);
       applyLoadedData(j);
       setIsDemo(false);
       const badge = document.getElementById('demo-badge');
-      if(badge) badge.style.display = 'none';
+      if (badge) badge.style.display = 'none';
       render();
       updateTabVisibility();
       drawSetupViz();
-    }catch(err){
+    } catch (err) {
       console.error('[sweep] Failed to parse uploaded JSON:', err);
     }
   };
@@ -299,4 +338,4 @@ document.getElementById('json-loader')?.addEventListener('change', e => {
 });
 
 // Resize handler
-let rt; window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{renderActive();drawSetupViz();},150);});
+let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { renderActive(); drawSetupViz(); }, 150); });
